@@ -187,6 +187,7 @@ _uv_handle_set_data
 _uv_handle_get_data
 _uv_handle_get_loop
 _uv_handle_get_type
+_uv_handle_size
 _uv_cpu_info
 _uv_free_cpu_info
 _uv_timer_init
@@ -210,3 +211,4 @@ _uv_cond_signal
 _uv_cond_broadcast
 _uv_cond_wait
 _uv_cond_timedwait
+_uv_strerror

@@ -54,6 +54,27 @@ Deno.test(async function websocketH2SendSmallPacket() {
   await promise;
 });
 
+// Regression test: the WebSocket-over-HTTP/2 client must disable HTTP/2 server
+// push (SETTINGS_ENABLE_PUSH = 0). Leaving push enabled exposes an h2
+// state-machine assertion that a malicious server can trip via a crafted
+// PUSH_PROMISE sequence, aborting the whole process. The test server attempts a
+// server push and reports the outcome as its first message: a safe client makes
+// h2 reject the push ("push-rejected").
+Deno.test(async function websocketH2DisablesServerPush() {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const ws = new WebSocket(new URL("wss://localhost:4266/"));
+  ws.onerror = (e) => reject(e);
+  ws.onmessage = (m) => {
+    try {
+      assertEquals(m.data, "push-rejected");
+    } finally {
+      ws.close();
+    }
+  };
+  ws.onclose = () => resolve();
+  await promise;
+});
+
 Deno.test(async function websocketH2SendLargePacket() {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const ws = new WebSocket(new URL("wss://localhost:4249/"));

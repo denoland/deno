@@ -8,6 +8,7 @@ const { core, primordials } = __bootstrap;
 
 const {
   Hasher,
+  op_base64url_encode_from_buffer,
   op_node_create_hash,
   op_node_export_secret_key,
   op_node_get_hashes,
@@ -24,7 +25,6 @@ const lazyStream = core.createLazyLoader("node:stream");
 
 const {
   forgivingBase64Encode: encodeToBase64,
-  forgivingBase64UrlEncode: encodeToBase64Url,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
   validateEncoding,
@@ -64,6 +64,7 @@ const {
   StringFromCharCode,
   StringPrototypeToLowerCase,
   Symbol,
+  TypedArrayPrototypeGetByteLength,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
@@ -171,7 +172,7 @@ Hash.prototype._transform = function _transform(
 
 Hash.prototype._flush = function _flush(callback: () => void) {
   const digest = op_node_hash_digest(this[kHandle]);
-  // deno-lint-ignore prefer-primordials -- `this` is a Node stream (Transform)
+  // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Node stream (Transform)
   this.push(digest === null ? Buffer.alloc(0) : Buffer.from(digest));
   callback();
 };
@@ -201,11 +202,11 @@ Hash.prototype.update = function update(
     const u8 = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
       ? buf as Uint8Array
       : new Uint8Array(
-        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        // deno-lint-ignore deno-internal/prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
         (buf as ArrayBufferView).buffer,
-        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        // deno-lint-ignore deno-internal/prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
         (buf as ArrayBufferView).byteOffset,
-        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        // deno-lint-ignore deno-internal/prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
         (buf as ArrayBufferView).byteLength,
       );
     unwrapErr(op_node_hash_update(this[kHandle], u8));
@@ -238,12 +239,16 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
     case "base64":
       return encodeToBase64(digest);
     case "base64url":
-      return encodeToBase64Url(digest);
+      return op_base64url_encode_from_buffer(
+        digest,
+        0,
+        TypedArrayPrototypeGetByteLength(digest),
+      );
     case undefined:
     case "buffer":
       return Buffer.from(digest);
     default:
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding), not String.prototype.toString
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding), not String.prototype.toString
       return Buffer.from(digest).toString(outputEncoding);
   }
 };
@@ -287,7 +292,7 @@ class HmacImpl {
         callback();
       },
       flush(callback: () => void) {
-        // deno-lint-ignore prefer-primordials -- `this` is a Node stream (Transform)
+        // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Node stream (Transform)
         this.push(self.digest());
         callback();
       },
@@ -316,7 +321,7 @@ class HmacImpl {
       const hash = new Hash(alg, options);
       bufKey = hash.update(keyData).digest() as Buffer;
     } else {
-      // deno-lint-ignore prefer-primordials -- Buffer.concat, not Array.prototype.concat
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.concat, not Array.prototype.concat
       bufKey = Buffer.concat([keyData, this.#ZEROES], blockSize);
     }
 

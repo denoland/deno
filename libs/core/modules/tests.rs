@@ -688,6 +688,39 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/36216
+///
+/// Evaluating a pre-instantiated module cached under a synthetic ESM specifier
+/// can synchronously start a dynamic import. The cache-hit path must not keep
+/// `ModuleMapData` borrowed while V8 runs the module body, because starting
+/// the import allocates a new module load ID from the same map.
+#[test]
+fn test_cached_synthetic_esm_evaluation_allows_dynamic_import() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  module_map.add_synthetic_esm_module(
+    ascii_str!("custom:synthetic").into(),
+    ascii_str!("ext:test/backing.js").into(),
+  );
+  let module_id = module_map
+    .new_es_module(
+      scope,
+      false,
+      ascii_str!("custom:synthetic").into(),
+      ascii_str!(r#"import("file:///dynamic_import.js").catch(() => {});"#)
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, module_id).unwrap();
+  module_map
+    .lazy_load_synthetic_esm_module(scope, "custom:synthetic")
+    .unwrap();
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/34307
 ///
 /// Two concurrent dynamic `import()` calls each spawn their own
@@ -2302,6 +2335,97 @@ fn builtin_core_module() {
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
   runtime.module_map().set_loading_internal_modules(false);
+}
+
+#[test]
+fn safe_array_iterator_remains_done_after_array_grows() {
+  let main_specifier =
+    resolve_url("ext:///safe_array_iterator_test.js").unwrap();
+
+  let source_code = r#"
+    import { primordials } from "ext:core/mod.js";
+
+    const array = [1, 2];
+    const iterator = new primordials.SafeArrayIterator(array);
+
+    for (const value of iterator) {
+      if (value !== 1) throw new Error("unexpected first value");
+      break;
+    }
+
+    const resumed = iterator.next();
+    if (resumed.done || resumed.value !== 2) {
+      throw new Error("iterator did not resume after an early exit");
+    }
+    if (!iterator.next().done) throw new Error("iterator was not exhausted");
+
+    array.push(3);
+    if (!iterator.next().done) {
+      throw new Error("exhausted iterator resumed after the array grew");
+    }
+  "#;
+  let loader = StaticModuleLoader::new([(main_specifier.clone(), source_code)]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(loader)),
+    ..Default::default()
+  });
+  runtime.module_map().set_loading_internal_modules(true);
+
+  let main_id =
+    futures::executor::block_on(runtime.load_main_es_module(&main_specifier))
+      .unwrap();
+  let receiver = runtime.mod_evaluate(main_id);
+  futures::executor::block_on(runtime.run_event_loop(Default::default()))
+    .unwrap();
+  futures::executor::block_on(receiver).unwrap();
+  runtime.module_map().set_loading_internal_modules(false);
+}
+
+// An internal module that is lazily loaded at runtime gets its imports
+// resolved by the embedder's loader, which in Deno applies the user's import
+// map. Mapping `ext:core/mod.js` used to rewrite internal imports too and
+// break instantiation. Regression test for
+// https://github.com/denoland/deno/issues/36302.
+#[test]
+fn lazy_loaded_internal_module_ignores_loader_remapping() {
+  /// Stands in for an import map that maps every specifier.
+  struct RemappingLoader;
+
+  impl ModuleLoader for RemappingLoader {
+    fn resolve(
+      &self,
+      _specifier: &str,
+      _referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      Ok(ModuleSpecifier::parse("file:///remapped.js").unwrap())
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!();
+    }
+  }
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(RemappingLoader)),
+    ..Default::default()
+  });
+
+  runtime
+    .lazy_load_es_module_with_code(
+      "ext:test/lazy.js",
+      r#"
+      import { core } from "ext:core/mod.js";
+      if (typeof core === "undefined") throw new Error("core missing");
+    "#,
+    )
+    .unwrap();
 }
 
 #[test]

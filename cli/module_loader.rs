@@ -68,6 +68,7 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::is_synthetic_module;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -82,6 +83,7 @@ use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::errors::PackageJsonLoadError;
 use rustc_hash::FxHashSet;
 use sys_traits::FsCanonicalize;
@@ -102,6 +104,7 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
+use crate::graph_util::GraphRootsValidOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
@@ -150,8 +153,10 @@ pub struct PrepareModuleLoadOptions<'a> {
   pub is_dynamic: bool,
   pub lib: TsTypeLib,
   pub permissions: PermissionsContainer,
+  pub file_permission_api_name: Option<&'static str>,
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   /// Whether to skip validating the graph roots. This is useful
   /// for when you want to defer doing this until later (ex. get the
   /// graph back, reload some specifiers in it, then do graph validation).
@@ -196,8 +201,10 @@ impl ModuleLoadPreparer {
       is_dynamic,
       lib,
       permissions,
+      file_permission_api_name,
       ext_overwrite,
       allow_unknown_media_types,
+      allow_sloppy_imports_hints_for_unreferenced_roots,
       skip_graph_roots_validation,
       file_content_overrides,
       file_header_overrides,
@@ -206,7 +213,10 @@ impl ModuleLoadPreparer {
 
     let mut loader = self
       .module_graph_builder
-      .create_graph_loader_with_permissions(permissions);
+      .create_graph_loader_with_permissions(
+        permissions,
+        file_permission_api_name,
+      );
     if !file_content_overrides.is_empty() {
       loader.set_file_content_overrides(file_content_overrides);
     }
@@ -250,7 +260,15 @@ impl ModuleLoadPreparer {
       .await?;
 
     if !skip_graph_roots_validation {
-      self.graph_roots_valid(graph, roots, allow_unknown_media_types, false)?;
+      self.graph_roots_valid(
+        graph,
+        roots,
+        GraphRootsValidOptions {
+          allow_unknown_media_types,
+          allow_unknown_jsr_exports: false,
+          allow_sloppy_imports_hints_for_unreferenced_roots,
+        },
+      )?;
     }
 
     drop(_pb_clear_guard);
@@ -302,7 +320,7 @@ impl ModuleLoadPreparer {
 
     let loader = self
       .module_graph_builder
-      .create_graph_loader_with_permissions(permissions);
+      .create_graph_loader_with_permissions(permissions, None);
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
@@ -327,15 +345,11 @@ impl ModuleLoadPreparer {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-    allow_unknown_media_types: bool,
-    allow_unknown_jsr_exports: bool,
+    options: GraphRootsValidOptions,
   ) -> Result<(), JsErrorBox> {
-    self.module_graph_builder.graph_roots_valid(
-      graph,
-      roots,
-      allow_unknown_media_types,
-      allow_unknown_jsr_exports,
-    )
+    self
+      .module_graph_builder
+      .graph_roots_valid(graph, roots, options)
   }
 }
 
@@ -603,6 +617,33 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
+// Recursive CJS analysis must not prompt for or acquire new read access. This
+// provider is constructed with a prompt-disabled snapshot of CLI permissions.
+struct PermissionedCjsAnalysisSourceProvider<'a> {
+  permissions: PermissionsContainer,
+  npm_registry_permission_checker: &'a NpmRegistryReadPermissionChecker<CliSys>,
+  sys: &'a CliSys,
+}
+
+impl CjsAnalysisSourceProvider for PermissionedCjsAnalysisSourceProvider<'_> {
+  fn load_source<'a>(
+    &'a self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Cow<'a, str>> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    let mut permissions = self.permissions.clone();
+    let path = self
+      .npm_registry_permission_checker
+      .ensure_read_permission(&mut permissions, Cow::Owned(path))
+      .ok()?;
+    self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .ok()
+      .map(|source| Cow::Owned(source.into_owned()))
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolveReferrerError {
   #[class(inherit)]
@@ -670,6 +711,28 @@ fn patch_react_cves_source(
   }
 }
 
+fn has_prepared_dynamic_import(
+  graph: &ModuleGraph,
+  specifier: &ModuleSpecifier,
+  maybe_referrer: Option<&str>,
+) -> bool {
+  let Some(referrer) =
+    maybe_referrer.and_then(|referrer| ModuleSpecifier::parse(referrer).ok())
+  else {
+    return false;
+  };
+  let Some(referrer) = graph.get(&referrer) else {
+    return false;
+  };
+  let specifier = graph.resolve(specifier);
+  referrer.dependencies().values().any(|dependency| {
+    dependency.is_dynamic
+      && dependency
+        .get_code()
+        .is_some_and(|dependency| graph.resolve(dependency) == specifier)
+  })
+}
+
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
@@ -702,8 +765,10 @@ impl<TGraphContainer: ModuleGraphContainer>
           is_dynamic,
           lib: self.lib,
           permissions: permissions.clone(),
+          file_permission_api_name: None,
           ext_overwrite: None,
           allow_unknown_media_types: false,
+          allow_sloppy_imports_hints_for_unreferenced_roots: !is_dynamic_import,
           skip_graph_roots_validation: true,
           file_content_overrides: HashMap::new(),
           file_header_overrides: HashMap::new(),
@@ -889,6 +954,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
+    let cjs_analysis_source_provider = PermissionedCjsAnalysisSourceProvider {
+      permissions: self.permissions.deep_clone_without_prompt(),
+      npm_registry_permission_checker: &self
+        .shared
+        .npm_registry_permission_checker,
+      sys: &self.shared.sys,
+    };
     match self
       .shared
       .module_loader
@@ -897,6 +969,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         &specifier,
         maybe_referrer,
         &deno_resolver_requested_module_type,
+        Some(&cjs_analysis_source_provider),
       )
       .await?
     {
@@ -1151,6 +1224,19 @@ impl<TGraphContainer: ModuleGraphContainer>
         )));
       }
       Ok(())
+    }
+
+    // `deno eval` and piped stdin have no file on disk — their source is held
+    // in memory under a synthetic `$deno$` specifier that is already fully
+    // resolved. Neither the import map nor node resolution has anything to
+    // contribute, and node resolution actively breaks it when the cwd is inside
+    // an npm package, because it checks the file system for a file that is
+    // never going to be there.
+    if matches!(kind, deno_core::ResolutionKind::MainModule)
+      && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
+      && is_synthetic_module(&url)
+    {
+      return Ok(url);
     }
 
     // An `npm:` package's bin entry chosen as the main module is
@@ -1525,7 +1611,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   fn prepare_load(
     &self,
     specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<String>,
+    maybe_referrer: Option<String>,
     maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
@@ -1596,35 +1682,48 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         &inner.parent_permissions
       };
 
-      if options.is_dynamic_import {
-        // This doesn't acquire a graph update permit because that will
-        // clone the graph which is a bit slow.
-        let mut graph = graph_container.graph();
-        // When the specifier is already in the graph then it means it
-        // was previously loaded, so we can skip that and only check if
-        // this part of the graph is valid.
-        if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
-          let did_reload = inner
-            .maybe_reload_dynamic(&graph, &specifier, permissions)
-            .await
-            .map_err(JsErrorBox::from_err)?;
-          if did_reload {
-            graph = inner.graph_container.graph();
-          }
+      let allow_sloppy_imports_hints_for_unreferenced_roots =
+        if options.is_dynamic_import {
+          // This doesn't acquire a graph update permit because that will
+          // clone the graph which is a bit slow.
+          let mut graph = graph_container.graph();
+          let has_prepared_dynamic_import = has_prepared_dynamic_import(
+            &graph,
+            &specifier,
+            maybe_referrer.as_deref(),
+          );
+          // When the specifier is already in the graph then it means it
+          // was previously loaded, so we can skip that and only check if
+          // this part of the graph is valid.
+          if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
+            let did_reload = inner
+              .maybe_reload_dynamic(&graph, &specifier, permissions)
+              .await
+              .map_err(JsErrorBox::from_err)?;
+            if did_reload {
+              graph = inner.graph_container.graph();
+            }
 
-          log::debug!("Skipping prepare module load.");
-          // roots are already validated so we can skip those
-          if did_reload || !graph.roots.contains(&specifier) {
-            module_load_preparer.graph_roots_valid(
-              &graph,
-              &[specifier],
-              false,
-              false,
-            )?;
+            log::debug!("Skipping prepare module load.");
+            // roots are already validated so we can skip those
+            if did_reload || !graph.roots.contains(&specifier) {
+              module_load_preparer.graph_roots_valid(
+                &graph,
+                &[specifier],
+                GraphRootsValidOptions {
+                  allow_unknown_media_types: false,
+                  allow_unknown_jsr_exports: false,
+                  allow_sloppy_imports_hints_for_unreferenced_roots:
+                    has_prepared_dynamic_import,
+                },
+              )?;
+            }
+            return Ok(());
           }
-          return Ok(());
-        }
-      }
+          has_prepared_dynamic_import
+        } else {
+          true
+        };
 
       let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
@@ -1672,8 +1771,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               is_dynamic,
               lib,
               permissions: permissions.clone(),
+              file_permission_api_name: None,
               ext_overwrite: None,
               allow_unknown_media_types: false,
+              allow_sloppy_imports_hints_for_unreferenced_roots,
               skip_graph_roots_validation: is_dynamic,
               file_content_overrides: file_overrides,
               file_header_overrides: header_overrides,
@@ -1699,8 +1800,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         module_load_preparer.graph_roots_valid(
           &graph_container.graph(),
           specifiers,
-          false,
-          false,
+          GraphRootsValidOptions {
+            allow_unknown_media_types: false,
+            allow_unknown_jsr_exports: false,
+            allow_sloppy_imports_hints_for_unreferenced_roots,
+          },
         )?;
       }
 

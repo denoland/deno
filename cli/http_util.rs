@@ -19,6 +19,8 @@ use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_fetch::create_http_client;
+use deno_runtime::deno_fetch::dns::ResolvedDenyCheckKind;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::TlsKey;
 use deno_runtime::deno_tls::load_certs;
@@ -72,6 +74,22 @@ impl HttpClientProvider {
       client: OnceCell::new(),
       cert_clients: DashMap::new(),
     }
+  }
+
+  /// Makes every connection this provider's clients open re-check the address
+  /// it resolved to against the `--deny-import` list.
+  ///
+  /// The import permission check runs on the specifier's hostname before any
+  /// DNS lookup, so on its own it cannot see that a name resolves to a denied
+  /// address. Used by the module fetcher, whose requests are the ones
+  /// `--deny-import` governs.
+  pub fn with_import_permissions(
+    mut self,
+    permissions: PermissionsContainer,
+  ) -> Self {
+    self.options.permissions = Some(permissions);
+    self.options.resolved_deny_check_kind = ResolvedDenyCheckKind::Import;
+    self
   }
 
   pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {
@@ -415,15 +433,15 @@ impl HttpClient {
     .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
     if status.is_redirection() && status != http::StatusCode::NOT_MODIFIED {
+      let mut redirect_headers = headers.clone();
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
         let mut req = self.get(new_url.clone())?.build();
 
-        let mut headers = headers.clone();
         if should_strip_auth_on_redirect(&url, &new_url) {
-          headers.remove(http::header::AUTHORIZATION);
+          redirect_headers.remove(http::header::AUTHORIZATION);
         }
-        *req.headers_mut() = headers;
+        *req.headers_mut() = redirect_headers.clone();
 
         let new_response = if should_decompress {
           self.client.clone().send(req).await
@@ -557,6 +575,9 @@ mod test {
   use std::hash::RandomState;
 
   use deno_runtime::deno_tls::rustls::RootCertStore;
+  use tokio::io::AsyncReadExt;
+  use tokio::io::AsyncWriteExt;
+  use tokio::net::TcpListener;
 
   use super::*;
 
@@ -585,6 +606,114 @@ mod test {
       .err()
       .unwrap();
     assert_eq!(err.to_string(), "Too many redirects.");
+  }
+
+  async fn read_request(
+    stream: &mut tokio::net::TcpStream,
+  ) -> (String, Option<String>) {
+    let mut request = Vec::new();
+    let mut buffer = [0; 1024];
+    loop {
+      let count = stream.read(&mut buffer).await.unwrap();
+      assert_ne!(count, 0, "connection closed before request headers");
+      request.extend_from_slice(&buffer[..count]);
+      if request.windows(4).any(|window| window == b"\r\n\r\n") {
+        break;
+      }
+    }
+
+    let request = String::from_utf8(request).unwrap();
+    let path = request
+      .lines()
+      .next()
+      .and_then(|line| line.split_whitespace().nth(1))
+      .unwrap()
+      .to_string();
+    let authorization = request.lines().find_map(|line| {
+      let (name, value) = line.split_once(':')?;
+      name
+        .eq_ignore_ascii_case("authorization")
+        .then(|| value.trim().to_string())
+    });
+    (path, authorization)
+  }
+
+  #[tokio::test]
+  async fn test_http_client_redirect_does_not_restore_auth() {
+    let source_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let source_addr = source_listener.local_addr().unwrap();
+    let destination_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let destination_addr = destination_listener.local_addr().unwrap();
+
+    let source_server = tokio::spawn(async move {
+      let requests = [
+        ("/start", format!("http://{source_addr}/same")),
+        ("/same", format!("http://{destination_addr}/first")),
+      ];
+      let mut auth_headers = Vec::new();
+      for (expected_path, location) in requests {
+        let (mut stream, _) = source_listener.accept().await.unwrap();
+        let (path, authorization) = read_request(&mut stream).await;
+        assert_eq!(path, expected_path);
+        auth_headers.push(authorization);
+        stream
+          .write_all(
+            format!(
+              "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .as_bytes(),
+          )
+          .await
+          .unwrap();
+      }
+      auth_headers
+    });
+
+    let destination_server = tokio::spawn(async move {
+      let mut auth_headers = Vec::new();
+      for expected_path in ["/first", "/last"] {
+        let (mut stream, _) = destination_listener.accept().await.unwrap();
+        let (path, authorization) = read_request(&mut stream).await;
+        assert_eq!(path, expected_path);
+        auth_headers.push(authorization);
+        let response = if path == "/first" {
+          format!(
+            "HTTP/1.1 302 Found\r\nLocation: http://{destination_addr}/last\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+          )
+        } else {
+          "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+            .to_string()
+        };
+        stream.write_all(response.as_bytes()).await.unwrap();
+      }
+      auth_headers
+    });
+
+    let client = HttpClientProvider::new(None, None).get_or_create().unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+      http::header::AUTHORIZATION,
+      HeaderValue::from_static("Bearer test-token"),
+    );
+    let (response, url) = client
+      .get_redirected_response(
+        Url::parse(&format!("http://{source_addr}/start")).unwrap(),
+        &headers,
+        true,
+      )
+      .await
+      .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(url.as_str(), format!("http://{destination_addr}/last"));
+    assert_eq!(
+      source_server.await.unwrap(),
+      [
+        Some("Bearer test-token".to_string()),
+        Some("Bearer test-token".to_string())
+      ]
+    );
+    assert_eq!(destination_server.await.unwrap(), [None, None]);
   }
 
   #[tokio::test]

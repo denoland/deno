@@ -1174,25 +1174,41 @@ async fn publish_package(
       Box::pin(provenance::generate_provenance(http_client, vec![subject]))
         .await?;
 
-    let tlog_entry = &bundle.verification_material.tlog_entries[0];
-    log::info!(
-      "{}",
-      colors::green(format!(
-        "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
-        tlog_entry.log_index
-      ))
-    );
+    let log_index = bundle.verification_material.tlog_entries[0].log_index;
+    let transparency_log =
+      format!("https://search.sigstore.dev/?logIndex={log_index}");
 
     // Submit bundle to JSR
     let provenance_url = format!(
       "{}scopes/{}/packages/{}/versions/{}/provenance",
       registry_api_url, package.scope, package.package, package.version
     );
-    http_client
-      .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
-      .header(http::header::AUTHORIZATION, authorization.parse()?)
-      .send()
-      .await?;
+    match submit_provenance_bundle(
+      http_client,
+      &provenance_url,
+      authorization,
+      &bundle,
+    )
+    .await
+    {
+      Ok(()) => log::info!(
+        "{}",
+        colors::green(format!(
+          "Provenance transparency log available at {transparency_log}"
+        ))
+      ),
+      // The version is already published and immutable at this point, so a
+      // registry-side failure must not turn a successful release into a failed
+      // command. Say plainly what did not happen instead.
+      Err(err) => log::warn!(
+        "{} {:#}\n  The package was published, but it will not show a provenance badge.\n  The attestation itself was signed and is in the transparency log at {}",
+        colors::yellow(
+          "Warning: the registry did not accept the provenance attestation:"
+        ),
+        err,
+        transparency_log,
+      ),
+    }
   }
 
   log::info!(
@@ -1308,6 +1324,51 @@ struct ManifestEntry {
 struct VersionManifest {
   manifest: HashMap<String, ManifestEntry>,
   exports: HashMap<String, String>,
+}
+
+/// Submit a signed provenance bundle to the registry, erroring on any response
+/// that is not a success.
+///
+/// The response used to be discarded entirely, so a registry that rejected
+/// every attestation looked identical to one that accepted them: publishes kept
+/// reporting a transparency-log entry and success while no package gained a
+/// provenance badge. That is how jsr-io/jsr#1474 went unnoticed for a month.
+async fn submit_provenance_bundle(
+  http_client: &HttpClient,
+  provenance_url: &str,
+  authorization: &str,
+  bundle: &provenance::ProvenanceBundle,
+) -> Result<(), AnyError> {
+  let response = http_client
+    .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
+    .header(http::header::AUTHORIZATION, authorization.parse()?)
+    .send()
+    .await?;
+
+  let status = response.status();
+  if status.is_success() {
+    return Ok(());
+  }
+
+  // Carried into the error so that a report of this warning is traceable in the
+  // registry's own logs, which is where the reason for a rejection lives.
+  let x_deno_ray = response
+    .headers()
+    .get("x-deno-ray")
+    .and_then(|value| value.to_str().ok())
+    .map(|s| s.to_string());
+
+  // The endpoint answers 204 with an empty body on success, so there is nothing
+  // to deserialize; on failure the body is the registry's JSON error, which
+  // `ApiError` renders as "<message> (<code>)".
+  let body = response.collect().await?.to_bytes();
+  match serde_json::from_slice::<registry::ApiError>(&body) {
+    Ok(mut err) => {
+      err.x_deno_ray = x_deno_ray;
+      Err(err.into())
+    }
+    Err(_) => bail!("{}: {}", status, response_body_snippet(&body)),
+  }
 }
 
 /// Returns a truncated, lossy UTF-8 rendering of a response body for use in

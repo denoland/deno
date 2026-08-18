@@ -44,7 +44,7 @@ function onWarning(
     msg += `${warning.stack}`;
   } else {
     msg += typeof warning.toString === "function"
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       ? `${warning.toString()}`
       : ErrorPrototypeToString(warning);
   }

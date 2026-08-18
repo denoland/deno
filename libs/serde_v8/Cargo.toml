@@ -2,7 +2,7 @@
 
 [package]
 name = "serde_v8"
-version = "0.317.0"
+version = "0.319.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,11 @@ description = "Rust to V8 serialization and deserialization"
 
 [lib]
 path = "lib.rs"
+
+[features]
+default = ["v8"]
+quickjs = ["v8/quickjs", "serde_v8_utilities/quickjs"]
+v8 = ["v8/v8", "serde_v8_utilities/v8"]
 
 [dependencies]
 deno_error.workspace = true
@@ -24,7 +29,7 @@ v8.workspace = true
 [dev-dependencies]
 serde_bytes.workspace = true
 serde_json.workspace = true
-serde_v8_utilities = { path = "./utilities" }
+serde_v8_utilities = { path = "./utilities", default-features = false }
 
 [[example]]
 name = "basic"

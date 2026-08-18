@@ -21,7 +21,7 @@ function cpSyncFn(
 ) {
   try {
     if (opts.filter) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const shouldCopy = opts.filter(src, dest);
       if (isPromise(shouldCopy)) {
         throw new ERR_INVALID_RETURN_VALUE("boolean", "filter", shouldCopy);

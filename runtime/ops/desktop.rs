@@ -198,6 +198,8 @@ pub enum DesktopEvent {
   #[serde(rename_all = "camelCase")]
   WindowMove { window_id: u32, x: i32, y: i32 },
   #[serde(rename_all = "camelCase")]
+  PageLoad { window_id: u32 },
+  #[serde(rename_all = "camelCase")]
   CloseRequested { window_id: u32 },
   #[serde(rename_all = "camelCase")]
   RuntimeError {
@@ -2086,6 +2088,7 @@ mod tests {
       }),
       "windowMove"
     );
+    assert_eq!(kind_of(DesktopEvent::PageLoad { window_id: 0 }), "pageLoad");
     assert_eq!(
       kind_of(DesktopEvent::CloseRequested { window_id: 0 }),
       "closeRequested"

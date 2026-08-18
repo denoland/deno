@@ -80,6 +80,17 @@ pub fn discover_npmrc_from_workspace<TSys: EnvVar + EnvHomeDir + FsRead>(
   )
 }
 
+/// Discover only the `.npmrc` file in the user's home directory.
+///
+/// This is useful for internal tooling that should honor user-level registry
+/// configuration without accepting package settings from the current
+/// workspace.
+pub fn discover_npmrc_from_home<TSys: EnvVar + EnvHomeDir + FsRead>(
+  sys: &TSys,
+) -> Result<(ResolvedNpmRc, Option<PathBuf>), NpmRcDiscoverError> {
+  discover_npmrc(sys, None, None)
+}
+
 fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
   sys: &TSys,
   maybe_package_json_path: Option<PathBuf>,
@@ -136,6 +147,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
         project_rc.registry_configs,
         home_rc.registry_configs,
       ),
+      replace_registry_host: project_rc
+        .replace_registry_host
+        .or(home_rc.replace_registry_host),
       min_release_age_days: project_rc
         .min_release_age_days
         .or(home_rc.min_release_age_days),
@@ -259,9 +273,53 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
       },
     )]),
     registry_configs: Default::default(),
+    replace_registry_host: deno_npmrc::ReplaceRegistryHost::for_npm(sys)
+      .unwrap_or_default(),
     min_release_age_days: deno_npmrc::min_release_age_days_from_env(sys),
     trust_policy: Default::default(),
     trust_policy_ignore_after_minutes: None,
     trust_policy_exclude: Vec::new(),
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use sys_traits::EnvSetVar;
+  use sys_traits::impls::InMemorySys;
+
+  use super::*;
+
+  #[test]
+  fn discover_npmrc_from_home_ignores_workspace_config() {
+    let sys = InMemorySys::new_with_cwd("/workspace");
+    sys.env_set_var("HOME", "/home/test");
+    sys.fs_insert(
+      "/home/test/.npmrc",
+      concat!(
+        "registry=http://home.example/\n",
+        "//home.example/:_authToken=test-token\n",
+        "trust-policy=no-downgrade\n",
+      ),
+    );
+    sys.fs_insert("/workspace/.npmrc", "registry=http://workspace.example/\n");
+
+    let (npmrc, path) = discover_npmrc_from_home(&sys).unwrap();
+
+    assert_eq!(path, Some(PathBuf::from("/home/test/.npmrc")));
+    assert_eq!(
+      npmrc.get_registry_url("@esbuild/linux-x64").as_str(),
+      "http://home.example/"
+    );
+    assert_eq!(
+      npmrc
+        .get_registry_config("@esbuild/linux-x64")
+        .auth_token
+        .as_deref(),
+      Some("test-token")
+    );
+    assert_eq!(
+      npmrc.trust_policy,
+      deno_npmrc::TrustPolicyConfig::NoDowngrade
+    );
   }
 }

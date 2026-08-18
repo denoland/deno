@@ -1837,3 +1837,52 @@ Deno.test(
     db.close();
   },
 );
+
+Deno.test("SQLTagStore iterator is invalidated when the statement is rebound", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  for (const text of ["bob", "mac", "alice"]) {
+    sql.run`INSERT INTO foo (text) VALUES (${text})`;
+  }
+
+  const iter = sql.iterate`SELECT * FROM foo WHERE id >= ${1} ORDER BY id ASC`;
+  assertStrictEquals(iter.next().value.text, "bob");
+
+  // Rebinding the cached statement for another caller must stop the live
+  // iterator rather than let it resume over the new parameters.
+  assertStrictEquals(
+    sql.get`SELECT * FROM foo WHERE id >= ${3} ORDER BY id ASC`.text,
+    "alice",
+  );
+  assertThrows(() => iter.next(), Error, "invalidated");
+});
+
+Deno.test("SQLTagStore invalidated iterator does not reset a live one", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  for (const text of ["bob", "mac", "alice"]) {
+    sql.run`INSERT INTO foo (text) VALUES (${text})`;
+  }
+
+  const first = sql.iterate`SELECT * FROM foo WHERE id >= ${1} ORDER BY id ASC`;
+  assertStrictEquals(first.next().value.text, "bob");
+
+  // The second iterate() takes over the cached statement; `first` is now stale.
+  const second = sql
+    .iterate`SELECT * FROM foo WHERE id >= ${1} ORDER BY id ASC`;
+  assertStrictEquals(second.next().value.text, "bob");
+
+  // Closing the stale iterator must not reset the statement `second` is
+  // stepping through, which would restart it from the first row.
+  assertThrows(() => first.next(), Error, "invalidated");
+  first.return?.();
+  assertStrictEquals(second.next().value.text, "mac");
+  assertStrictEquals(second.next().value.text, "alice");
+  assertStrictEquals(second.next().done, true);
+});

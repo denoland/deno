@@ -33,6 +33,9 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const lazyProcess = core.createLazyLoader("node:process");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { isAnyArrayBuffer } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const lazyStream = core.createLazyLoader("node:stream");
 
 function isWritableStream(object) {
@@ -41,6 +44,17 @@ function isWritableStream(object) {
 
 function isReadableStream(object) {
   return object instanceof ReadableStream;
+}
+
+// Normalize a `writev` completion value to the first real error, or `undefined`
+// when every write succeeded. `Promise.all` fulfils with an array (one slot per
+// chunk, holes for successes), while a rejection or synchronous throw settles
+// with a single scalar error.
+function firstWritevError(error) {
+  if (Array.isArray(error)) {
+    return error.find((e) => e);
+  }
+  return error == null ? undefined : error;
 }
 
 function newStreamReadableFromReadableStream(
@@ -162,9 +176,8 @@ function newStreamWritableFromWritableStream(
 
     writev(chunks, callback) {
       function done(error) {
-        error = error.filter((e) => e);
         try {
-          callback(error.length === 0 ? undefined : error);
+          callback(firstWritevError(error));
         } catch (error) {
           // In a next tick because this is happening within
           // a promise context, and if there are any errors
@@ -175,13 +188,16 @@ function newStreamWritableFromWritableStream(
         }
       }
 
+      // If the fulfillment arrow throws synchronously (e.g. `writer.write`
+      // throwing before it returns a promise), the sibling `done` rejection
+      // handler never sees it, so `.catch(done)` routes that failure too.
       writer.ready.then(
         () =>
           Promise.all(
             chunks.map((data) => writer.write(data.chunk)),
           ).then(done, done),
         done,
-      );
+      ).catch(done);
     },
 
     write(chunk, encoding, callback) {
@@ -198,7 +214,7 @@ function newStreamWritableFromWritableStream(
         try {
           callback(error);
         } catch (error) {
-          destroy(this, duplex, error);
+          destroy.call(writable, error);
         }
       }
 
@@ -324,26 +340,28 @@ function newStreamDuplexFromReadableWritablePair(
 
     writev(chunks, callback) {
       function done(error) {
-        error = error.filter((e) => e);
         try {
-          callback(error.length === 0 ? undefined : error);
+          callback(firstWritevError(error));
         } catch (error) {
           // In a next tick because this is happening within
           // a promise context, and if there are any errors
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          lazyProcess().default.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy.call(duplex, error));
         }
       }
 
+      // If the fulfillment arrow throws synchronously (e.g. `writer.write`
+      // throwing before it returns a promise), the sibling `done` rejection
+      // handler never sees it, so `.catch(done)` routes that failure too.
       writer.ready.then(
         () =>
           Promise.all(
             chunks.map((data) => writer.write(data.chunk)),
           ).then(done, done),
         done,
-      );
+      ).catch(done);
     },
 
     write(chunk, encoding, callback) {
@@ -360,7 +378,7 @@ function newStreamDuplexFromReadableWritablePair(
         try {
           callback(error);
         } catch (error) {
-          destroy(duplex, error);
+          destroy.call(duplex, error);
         }
       }
 
@@ -380,7 +398,7 @@ function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          lazyProcess().default.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy.call(duplex, error));
         }
       }
 
@@ -398,7 +416,7 @@ function newStreamDuplexFromReadableWritablePair(
             duplex.push(chunk.value);
           }
         },
-        (error) => destroy(duplex, error),
+        (error) => destroy.call(duplex, error),
       );
     },
 
@@ -449,7 +467,7 @@ function newStreamDuplexFromReadableWritablePair(
     (error) => {
       writableClosed = true;
       readableClosed = true;
-      destroy(duplex, error);
+      destroy.call(duplex, error);
     },
   );
 
@@ -460,7 +478,7 @@ function newStreamDuplexFromReadableWritablePair(
     (error) => {
       writableClosed = true;
       readableClosed = true;
-      destroy(duplex, error);
+      destroy.call(duplex, error);
     },
   );
 
@@ -495,8 +513,15 @@ function newReadableStreamFromStreamReadable(
 
   const objectMode = streamReadable.readableObjectMode;
   const highWaterMark = streamReadable.readableHighWaterMark;
+  const isByteStream = options?.type === "bytes";
 
   const evaluateStrategyOrFallback = (strategy) => {
+    // A byte stream already measures its queue in bytes and the spec forbids
+    // giving it a size algorithm, so only the highWaterMark applies.
+    if (isByteStream) {
+      return { highWaterMark };
+    }
+
     // If there is a strategy available, use it
     if (strategy) {
       return strategy;
@@ -508,11 +533,23 @@ function newReadableStreamFromStreamReadable(
       return new CountQueuingStrategy({ highWaterMark });
     }
 
-    // When not running in objectMode explicitly, we just fall
-    // back to a minimal strategy that just specifies the highWaterMark
-    // and no size algorithm. Using a ByteLengthQueuingStrategy here
-    // is unnecessary.
-    return { highWaterMark };
+    // Outside of objectMode `highWaterMark` is a byte count, so the queue has
+    // to be measured in bytes as well. With the default size algorithm (1 per
+    // chunk) `controller.desiredSize` only reaches 0 after `highWaterMark`
+    // *chunks*, so `onData` below never pauses the source and the whole
+    // stream ends up buffered in memory instead of flowing with backpressure.
+    //
+    // Node uses a plain `ByteLengthQueuingStrategy` here, whose size algorithm
+    // reads `chunk.byteLength`. That is `undefined` for the strings a
+    // non-objectMode Readable emits once an encoding is set, which makes the
+    // enqueue throw `ERR_INVALID_ARG_VALUE`; fall back to the string length
+    // for those instead.
+    return {
+      highWaterMark,
+      size(chunk) {
+        return chunk.byteLength ?? chunk.length;
+      },
+    };
   };
 
   const strategy = evaluateStrategyOrFallback(options?.strategy);
@@ -559,7 +596,6 @@ function newReadableStreamFromStreamReadable(
 
   streamReadable.on("data", onData);
 
-  const isByteStream = options?.type === "bytes";
   const underlyingSource = {
     start(c) {
       controller = c;
@@ -661,6 +697,13 @@ function newWritableStreamFromStreamWritable(streamWritable) {
     },
 
     async write(chunk) {
+      // A non-object-mode Writable only accepts BufferSource views. Wrap a bare
+      // ArrayBuffer (or SharedArrayBuffer) in a Uint8Array so it can be written
+      // without a copy. Node only unwraps ArrayBuffer here; we also unwrap
+      // SharedArrayBuffer so both are usable.
+      if (!streamWritable.writableObjectMode && isAnyArrayBuffer(chunk)) {
+        chunk = new Uint8Array(chunk);
+      }
       if (streamWritable.writableNeedDrain || !streamWritable.write(chunk)) {
         backpressurePromise = Promise.withResolvers();
         return backpressurePromise.promise.finally(() => {
@@ -670,7 +713,7 @@ function newWritableStreamFromStreamWritable(streamWritable) {
     },
 
     abort(reason) {
-      destroy(streamWritable, reason);
+      destroy.call(streamWritable, reason);
     },
 
     close() {

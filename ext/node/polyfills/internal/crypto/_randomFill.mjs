@@ -89,14 +89,14 @@ function randomFill(buf, offset, size, cb) {
     validateFunction(cb, "callback");
   }
 
-  // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
+  // deno-lint-ignore deno-internal/prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
   offset = assertOffset(offset, elementSize, buf.byteLength);
 
   if (size === undefined) {
-    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed buf byteLength getter
     size = buf.byteLength - offset;
   } else {
-    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed buf byteLength getter
     size = assertSize(size, elementSize, offset, buf.byteLength);
   }
 
@@ -110,9 +110,9 @@ function randomFill(buf, offset, size, cb) {
     const target = isAnyArrayBuffer(buf)
       ? new Uint8Array(buf, offset, size)
       : new Uint8Array(
-        // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
+        // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
         buf.buffer,
-        // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
+        // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
         buf.byteOffset + offset,
         size,
       );
@@ -134,14 +134,14 @@ function randomFillSync(buf, offset = 0, size) {
 
   const elementSize = buf.BYTES_PER_ELEMENT || 1;
 
-  // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
+  // deno-lint-ignore deno-internal/prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
   offset = assertOffset(offset, elementSize, buf.byteLength);
 
   if (size === undefined) {
-    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed buf byteLength getter
     size = buf.byteLength - offset;
   } else {
-    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed buf byteLength getter
     size = assertSize(size, elementSize, offset, buf.byteLength);
   }
 
@@ -151,7 +151,7 @@ function randomFillSync(buf, offset = 0, size) {
 
   const bytes = isAnyArrayBuffer(buf)
     ? new Uint8Array(buf, offset, size)
-    // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
+    // deno-lint-ignore deno-internal/prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
     : new Uint8Array(buf.buffer, buf.byteOffset + offset, size);
   op_node_fill_random(bytes);
 

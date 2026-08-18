@@ -91,6 +91,31 @@ fn provenance() {
     .assert_matches_file("publish/successful_provenance.out");
 }
 
+/// A registry that rejects the attestation must not fail the publish — the
+/// version is already live and immutable — but it must say so. Regression test
+/// for jsr-io/jsr#1474, where this response was discarded and a registry that
+/// rejected every attestation was indistinguishable from one that accepted
+/// them.
+#[test]
+fn provenance_rejected_by_registry() {
+  let output = TestContextBuilder::new()
+    .use_http_server()
+    .envs(env_vars_for_jsr_provenance_tests())
+    .cwd("publish/provenance_rejected")
+    .build()
+    .new_command()
+    .args("publish")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file("publish/provenance_rejected.out");
+  // The success line must not claim a transparency-log entry the registry never
+  // accepted.
+  assert_not_contains!(
+    output.combined_output(),
+    "Provenance transparency log available at"
+  );
+}
+
 #[test]
 fn ignores_gitignore() {
   let context = publish_context_builder().build();

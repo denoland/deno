@@ -53,6 +53,20 @@ const workflow = createWorkflow({
           'LATEST_FILE=$(deno run --allow-net --allow-write tools/release/upload_version_file.ts "$VERSION" || exit 0)',
           '[ -z "$LATEST_FILE" ] && exit 0',
           'aws s3 cp "$LATEST_FILE" "s3://dl-deno-land/$LATEST_FILE"',
+          'echo "LATEST_FILE=$LATEST_FILE" >> "$GITHUB_ENV"',
+        ],
+      }),
+      step({
+        name: "Purge CDN cache",
+        env: {
+          CLOUDFLARE_ZONE_ID: "${{ vars.CLOUDFLARE_ZONE_ID }}",
+          CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}",
+        },
+        run: [
+          "# These live at a stable URL but change every release, so the edge",
+          "# has to be told to drop them. Otherwise `deno upgrade` keeps",
+          "# serving the previous version until the 4 hour TTL expires.",
+          'deno run -A --lock=tools/deno.lock.json tools/release/purge_cdn_cache.ts versions.json ${LATEST_FILE:+"$LATEST_FILE"}',
         ],
       }),
     ],

@@ -23,6 +23,7 @@ const {
   isReadableFinished,
   isReadableNodeStream,
   isReadableStream,
+  isTransformStream,
   isWritable,
   isWritableErrored,
   isWritableFinished,
@@ -95,6 +96,17 @@ function eos(stream, options, callback) {
 
   if (isReadableStream(stream) || isWritableStream(stream)) {
     return eosWeb(stream, options, callback);
+  }
+
+  // Only a genuine web TransformStream (whose `.readable` is a real
+  // ReadableStream carrying `kIsClosedPromise`) is tracked here; a loosely
+  // shaped `{ readable, writable }` object falls through to the
+  // ERR_INVALID_ARG_TYPE below rather than a cryptic property-access TypeError.
+  if (isTransformStream(stream) && isReadableStream(stream.readable)) {
+    // A web TransformStream has no `kIsClosedPromise` of its own; track its
+    // readable side, which closes once the transform's output is fully done.
+    // Used by `addAbortSignal` to clean up its abort listener.
+    return eosWeb(stream.readable, options, callback);
   }
 
   if (!isNodeStream(stream)) {
@@ -301,6 +313,12 @@ function eos(stream, options, callback) {
 function eosWeb(stream, options, callback) {
   let isAborted = false;
   let abort = nop;
+  let disposable;
+  const cleanup = () => {
+    callback = nop;
+    disposable?.[SymbolDispose]();
+    disposable = undefined;
+  };
   if (options.signal) {
     abort = () => {
       isAborted = true;
@@ -313,10 +331,10 @@ function eosWeb(stream, options, callback) {
       lazyProcess().nextTick(abort);
     } else {
       addAbortListener ??= _mod2.addAbortListener;
-      const disposable = addAbortListener(options.signal, abort);
+      disposable = addAbortListener(options.signal, abort);
       const originalCallback = callback;
       callback = once((...args) => {
-        disposable[SymbolDispose]();
+        cleanup();
         originalCallback.apply(stream, args);
       });
     }
@@ -331,7 +349,10 @@ function eosWeb(stream, options, callback) {
     resolverFn,
     resolverFn,
   );
-  return nop;
+  // Deno diverges from upstream, which returns `nop`, to honor the returned
+  // cleanup function contract.
+  // https://github.com/nodejs/node/pull/46205
+  return cleanup;
 }
 
 function finished(stream, opts) {

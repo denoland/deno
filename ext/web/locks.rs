@@ -3,7 +3,9 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::fmt::Display;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -60,6 +62,14 @@ static LOCK_STATE: LazyLock<Mutex<LockState>> = LazyLock::new(|| {
 static CLIENT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 struct LockClientId(String);
+
+pub fn worker_lock_client_id(worker_id: impl Display) -> String {
+  format!("worker-{worker_id}")
+}
+
+pub fn set_lock_client_id(state: &mut OpState, client_id: String) {
+  state.put(LockClientId(client_id));
+}
 
 fn get_client_id(state: &mut OpState) -> String {
   if let Some(id) = state.try_borrow::<LockClientId>() {
@@ -118,6 +128,68 @@ fn cancel_request(state: &mut LockState, id: u64) {
       let _ = req.tx.send(false);
       return;
     }
+  }
+}
+
+/// Whether `client_id` currently holds any lock. Used at worker teardown to
+/// decide whether the worker's JS must be halted before its held locks are
+/// handed off to other clients (see `WorkerThread::drop`). A worker that holds
+/// nothing needs no halt, so we avoid interrupting it — halting an arbitrary
+/// worker can abort an in-progress synthetic module instantiation during boot.
+pub fn client_holds_lock(client_id: &str) -> bool {
+  let state = LOCK_STATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  state.held.iter().any(|lock| lock.client_id == client_id)
+}
+
+pub fn cleanup_locks_for_client_id(client_id: &str) {
+  // Runs from `WorkerThread::drop`, so recover from a poisoned mutex instead
+  // of `unwrap()`ing: a panic here would be a panic during unwinding, which
+  // aborts the process.
+  let mut state = LOCK_STATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+  // Most workers never touch Web Locks; skip the held/queue scan entirely when
+  // there is nothing to clean up.
+  if state.held.is_empty() && state.queues.is_empty() {
+    return;
+  }
+
+  let mut affected_names = HashSet::new();
+
+  state.held.retain(|lock| {
+    if lock.client_id == client_id {
+      affected_names.insert(lock.name.clone());
+      false
+    } else {
+      true
+    }
+  });
+
+  // Drop this client's pending requests, rejecting each (`send(false)`), and
+  // keep the rest in original order. `VecDeque::remove` is O(n), so queues that
+  // hold one of this client's requests are drained into a fresh queue in one
+  // O(n) pass rather than removed by index; queues without any are left as-is.
+  for (name, queue) in state.queues.iter_mut() {
+    if !queue.iter().any(|request| request.client_id == client_id) {
+      continue;
+    }
+    let mut kept = VecDeque::with_capacity(queue.len());
+    while let Some(request) = queue.pop_front() {
+      if request.client_id == client_id {
+        let _ = request.tx.send(false);
+        affected_names.insert(name.clone());
+      } else {
+        kept.push_back(request);
+      }
+    }
+    *queue = kept;
+  }
+
+  for name in affected_names {
+    process_queue(&mut state, &name);
   }
 }
 
@@ -319,6 +391,29 @@ pub async fn op_lock_manager_await_steal(
   // `Ok(())` means the lock was stolen; `Err(_)` means the sender was dropped
   // because the lock was released normally.
   rx.await.is_ok()
+}
+
+/// Synchronous op: reports whether a held lock has been stolen. A steal removes
+/// the lock from `held` synchronously (see `op_lock_manager_request`), while the
+/// steal notification that `op_lock_manager_await_steal` waits on is only
+/// delivered a full event-loop turn later. A fast-returning callback can
+/// therefore finish before that async notification arrives, so `request()`
+/// re-checks synchronously via this op to guarantee a stolen lock still rejects.
+#[op2(fast)]
+pub fn op_lock_manager_is_stolen(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> bool {
+  let Ok(held) = state.resource_table.get::<HeldLockResource>(rid) else {
+    return false;
+  };
+  let id = held.id;
+  let ls = LOCK_STATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  // Only a steal removes a still-held lock from `held` before its holder
+  // releases it, so a missing id means the lock was stolen.
+  !ls.held.iter().any(|h| h.id == id)
 }
 
 /// Cancels a pending lock request (used by AbortSignal).

@@ -89,6 +89,24 @@ Deno.test("[node/crypto.Hash] basic usage - base64url output", () => {
   assertEquals(d, "H4rBDyPFtbwRZ72oS4M-XAV6d9I");
 });
 
+Deno.test("[node/crypto.Hash] sha256 base64url output", () => {
+  // FIPS 180-2 SHA-256 test vectors, base64url-encoded.
+  assertEquals(
+    createHash("sha256").update("abc").digest("base64url"),
+    "ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0",
+  );
+  assertEquals(
+    createHash("sha256")
+      .update("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+      .digest("base64url"),
+    "JI1qYdIGOLjlwCaTDD5gOaM85Flk_yFn9uzt1BnbBsE",
+  );
+  assertEquals(
+    createHash("sha256").update("").digest("base64url"),
+    "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+  );
+});
+
 Deno.test("[node/crypto.Hash] streaming usage", async () => {
   const source = Readable.from(["abc", "def"]);
   const hash = createHash("sha1");

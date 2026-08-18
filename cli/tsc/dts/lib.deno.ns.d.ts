@@ -4617,7 +4617,8 @@ declare namespace Deno {
       | "statfs"
       | "getPriority"
       | "setPriority"
-      | "ca";
+      | "ca"
+      | "umask";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -5102,11 +5103,11 @@ declare namespace Deno {
    * console.log(Deno.umask());  // e.g. 63 (0o077)
    * ```
    *
-   * This API is under consideration to determine if permissions are required to
-   * call it.
+   * Requires `allow-sys="umask"` permission.
    *
    * *Note*: This API is not implemented on Windows
    *
+   * @tags allow-sys
    * @category File System
    */
   export function umask(mask?: number): number;

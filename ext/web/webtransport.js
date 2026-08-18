@@ -156,7 +156,7 @@ class WebTransport {
   #conn;
   #promise;
   #ready;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   #closed = Promise.withResolvers();
   #settingsTx;
   #settingsRx;
@@ -897,7 +897,7 @@ class WebTransportDatagramDuplexStream {
           assert(this.#incomingDatagramsPullPromise === null);
           const queue = this.#incomingDatagramsQueue;
           if (queue.length === 0) {
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             this.#incomingDatagramsPullPromise = Promise.withResolvers();
             return this.#incomingDatagramsPullPromise.promise;
           }

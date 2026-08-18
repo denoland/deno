@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "pretty": {
+      "args": "test --reporter=pretty control_chars.ts",
+      "exitCode": 0,
+      "output": "pretty.out"
+    },
+    "tap": {
+      "args": "test --reporter=tap control_chars.ts",
+      "exitCode": 0,
+      "output": "tap.out"
+    }
+  }
+}

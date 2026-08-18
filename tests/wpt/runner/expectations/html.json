@@ -11,12 +11,18 @@
           "non-object.any.worker.html": true,
           "repeated-imports.any.html": {
             "expectedFailures": [
-              "Two modules of different type with the same specifier can load if the server changes its responses"
+              "Two modules of different type with the same specifier can load if the server changes its responses",
+              "An import should succeed even if the same specifier/module type pair previously failed due to a MIME type mismatch",
+              "An import should succeed even if the same specifier/module type pair previously failed due to a HTTP error",
+              "An import should succeed even if the same specifier/module type pair previously failed due to a network error"
             ]
           },
           "repeated-imports.any.worker.html": {
             "expectedFailures": [
-              "Two modules of different type with the same specifier can load if the server changes its responses"
+              "Two modules of different type with the same specifier can load if the server changes its responses",
+              "An import should succeed even if the same specifier/module type pair previously failed due to a MIME type mismatch",
+              "An import should succeed even if the same specifier/module type pair previously failed due to a HTTP error",
+              "An import should succeed even if the same specifier/module type pair previously failed due to a network error"
             ]
           },
           "charset-2.html": false,
@@ -131,7 +137,11 @@
             "string-compilation-nonce-module.html": false,
             "string-compilation-of-promise-result.html": false,
             "string-compilation-other-document.html": false,
-            "v8-code-cache.html": false
+            "v8-code-cache.html": false,
+            "basic-deferred-evaluation.tentative.html": true,
+            "cyclic-tla-defer-eval.tentative.html": true,
+            "cyclic-tla-fn-defer-eval.tentative.html": true,
+            "tla-deferred-evaluation.tentative.html": false
           },
           "import-meta": {
             "import-meta-url.any.worker-module.html": true,
@@ -234,7 +244,12 @@
             "sibling-imports-not-blocked.any.html": true,
             "sibling-imports-not-blocked.any.worker.html": true
           },
-          "type.html": true
+          "type.html": true,
+          "evaluation-error-5.html": false,
+          "modulepreload-cross-origin-referrerpolicy.sub.html": false,
+          "modulepreload-inline-referrerpolicy.html": false,
+          "modulepreload-referrer-check.html": false,
+          "modulepreload-referrerpolicy.html": false
         },
         "import-attributes": {
           "dynamic-import-with-attributes-argument.any.html": true,
@@ -263,7 +278,8 @@
           "load-error-events.html": false,
           "referrer-policies.sub.html": false,
           "relative-urls.html": false,
-          "script-element-css-src.html": false
+          "script-element-css-src.html": false,
+          "css-module-parse-error.html": false
         },
         "data-url.html": false,
         "emptyish-script-elements.html": false,
@@ -561,7 +577,42 @@
         "script-type-and-language-js.html": false,
         "script-type-and-language-with-params.html": false,
         "script-type-whitespace.html": false,
-        "scripting-enabled.html": false
+        "scripting-enabled.html": false,
+        "text-module": {
+          "charset-2.html": false,
+          "charset-bom.any.html": true,
+          "charset-bom.any.worker.html": true,
+          "charset.html": false,
+          "cors-crossorigin-requests.html": false,
+          "credentials.sub.html": false,
+          "http-accept-header.sub.html": false,
+          "ignore-content-type.any.html": false,
+          "ignore-content-type.any.worker.html": false,
+          "ignore-extension.any.html": true,
+          "ignore-extension.any.worker.html": true,
+          "integrity.html": false,
+          "load-error-events.html": false,
+          "module.html": false,
+          "referrer-policies.sub.html": false,
+          "repeated-imports.any.html": {
+            "expectedFailures": [
+              "Importing a specifier that previously failed due to an incorrect type attribute can succeed if the correct attribute is later given",
+              "Two modules of different type with the same specifier can load if the server changes its responses (first text, then JS)",
+              "An import should always fail if the same specifier/type attribute pair failed previously",
+              "Two modules of different type with the same specifier can load if the server changes its responses (first JS, then text)"
+            ]
+          },
+          "repeated-imports.any.worker.html": {
+            "expectedFailures": [
+              "Importing a specifier that previously failed due to an incorrect type attribute can succeed if the correct attribute is later given",
+              "Two modules of different type with the same specifier can load if the server changes its responses (first text, then JS)",
+              "An import should always fail if the same specifier/type attribute pair failed previously",
+              "Two modules of different type with the same specifier can load if the server changes its responses (first JS, then text)"
+            ]
+          },
+          "script-element-json-src.html": false,
+          "service-worker-test.https.html": false
+        }
       },
       "the-noscript-element": {
         "non-html-noscript.html": false
@@ -600,7 +651,8 @@
           "template-descendant-body.html": false,
           "template-descendant-frameset.html": false,
           "template-descendant-head.html": false
-        }
+        },
+        "reflect-html-for.tentative.html": false
       }
     },
     "embedded-content": {
@@ -671,117 +723,10 @@
         "toDataURL.zeroheight.html": false,
         "toDataURL.zerosize.html": false,
         "toDataURL.zerowidth.html": false,
-        "type.exists.html": false
-      },
-      "the-iframe-element": {
-        "cross-origin-to-whom-part-2.window.html": false,
-        "cross-origin-to-whom.window.html": false,
-        "change_parentage.html": false,
-        "content_document_changes_only_after_load_matures.html": false,
-        "cross_origin_parentage.sub.html": false,
-        "document-getters-return-null-for-cross-origin.html": false,
-        "historical.html": false,
-        "iframe-allow.html": false,
-        "iframe-allowfullscreen.html": false,
-        "iframe-append-to-child-document.html": false,
-        "iframe-display-none-with-object.html": false,
-        "iframe-first-load-canceled-second-load-blank.html": false,
-        "iframe-load-event.html": false,
-        "iframe-loading-eager.html": false,
-        "iframe-loading-lazy-adopt-lazy-iframe-from-script-disabled-document.html": false,
-        "iframe-loading-lazy-base-url-2.html": false,
-        "iframe-loading-lazy-base-url-3.html": false,
-        "iframe-loading-lazy-base-url.html": false,
-        "iframe-loading-lazy-history-pushState.html": false,
-        "iframe-loading-lazy-history-replaceState.html": false,
-        "iframe-loading-lazy-in-script-disabled-iframe.html": false,
-        "iframe-loading-lazy-in-scroller-far.html": true,
-        "iframe-loading-lazy-in-scroller-horizontal-far.html": true,
-        "iframe-loading-lazy-in-scroller-horizontal.html": false,
-        "iframe-loading-lazy-in-scroller-nested-2.html": false,
-        "iframe-loading-lazy-in-scroller-nested-3.html": false,
-        "iframe-loading-lazy-in-scroller-nested-4.html": false,
-        "iframe-loading-lazy-in-scroller-nested-5.html": false,
-        "iframe-loading-lazy-in-scroller-nested.html": false,
-        "iframe-loading-lazy-in-scroller.html": false,
-        "iframe-loading-lazy-load-event.html": false,
-        "iframe-loading-lazy-multiple-queued-navigations.html": false,
-        "iframe-loading-lazy-multiple-times.html": false,
-        "iframe-loading-lazy-nav-form-submit.html": false,
-        "iframe-loading-lazy-nav-link-click-fragment.html": false,
-        "iframe-loading-lazy-nav-link-click.html": false,
-        "iframe-loading-lazy-nav-location-assign.html": false,
-        "iframe-loading-lazy-nav-location-replace-cross-origin.html": false,
-        "iframe-loading-lazy-nav-location-replace-set-src.html": false,
-        "iframe-loading-lazy-nav-location-replace.html": false,
-        "iframe-loading-lazy-nav-meta-refresh.optional.html": false,
-        "iframe-loading-lazy-nav-navigation-navigate.html": false,
-        "iframe-loading-lazy-nav-window-open.html": false,
-        "iframe-loading-lazy-referrerpolicy-change.sub.html": false,
-        "iframe-loading-lazy-reload-location-reload.html": false,
-        "iframe-loading-lazy-reload-navigation-reload.html": false,
-        "iframe-loading-lazy-to-eager.html": false,
-        "iframe-loading-lazy.html": false,
-        "iframe-network-error.sub.html": false,
-        "iframe-nosrc.html": false,
-        "iframe-synchronously-discard.html": false,
-        "iframe_javascript_url_initial_insertion.html": false,
-        "iframe_javascript_url_not_about_blank.html": false,
-        "iframe_javascript_url_remove_srcdoc.html": false,
-        "iframe_navigate_ancestor-1.sub.html": false,
-        "iframe_remove_src.html": false,
-        "iframe_sandbox_allow_script.html": false,
-        "iframe_sandbox_allow_top_navigation-1.html": false,
-        "iframe_sandbox_allow_top_navigation-2.html": false,
-        "iframe_sandbox_allow_top_navigation-3.html": false,
-        "iframe_sandbox_allow_top_navigation_by_user_activation_without_user_gesture.html": false,
-        "iframe_sandbox_anchor_download_allow_downloads.tentative.html": false,
-        "iframe_sandbox_anchor_download_block_downloads.tentative.html": false,
-        "iframe_sandbox_block_modals-1.html": false,
-        "iframe_sandbox_block_modals-2.html": false,
-        "iframe_sandbox_block_modals-3.html": false,
-        "iframe_sandbox_block_modals-4.html": false,
-        "iframe_sandbox_navigate_ancestor-1.html": false,
-        "iframe_sandbox_navigate_ancestor-2.html": false,
-        "iframe_sandbox_navigate_descendants.html": false,
-        "iframe_sandbox_navigate_history_go_back-2.html": false,
-        "iframe_sandbox_navigate_history_go_back.html": false,
-        "iframe_sandbox_navigate_history_go_forward.html": false,
-        "iframe_sandbox_navigate_itself.html": false,
-        "iframe_sandbox_navigate_other_frame_popup.sub.html": false,
-        "iframe_sandbox_navigation_download_allow_downloads.sub.tentative.html": false,
-        "iframe_sandbox_navigation_download_block_downloads.sub.tentative.html": false,
-        "iframe_sandbox_popups_escaping-1.html": false,
-        "iframe_sandbox_popups_escaping-2.html": false,
-        "iframe_sandbox_popups_escaping-3.html": false,
-        "iframe_sandbox_popups_nonescaping-1.html": false,
-        "iframe_sandbox_popups_nonescaping-2.html": false,
-        "iframe_sandbox_popups_nonescaping-3.html": false,
-        "iframe_sandbox_window_open_download_allow_downloads.tentative.html": false,
-        "iframe_sandbox_window_open_download_block_downloads.tentative.html": false,
-        "move_iframe_in_dom_01.html": false,
-        "move_iframe_in_dom_02.html": false,
-        "move_iframe_in_dom_03.html": false,
-        "move_iframe_in_dom_04.html": false,
-        "same_origin_parentage.html": false,
-        "sandbox-ascii-case-insensitive.html": false,
-        "sandbox-inherit-to-blank-document-unsandboxed-frame.html": false,
-        "sandbox-inherit-to-blank-document-unsandboxed.html": false,
-        "sandbox-top-navigation-child-cross-origin-frame.tentative.sub.window.html": false,
-        "sandbox-top-navigation-child-delivered-both.tentative.sub.window.html": false,
-        "sandbox-top-navigation-child-delivered.tentative.sub.window.html": false,
-        "sandbox-top-navigation-child-unsandboxed.tentative.sub.window.html": false,
-        "sandbox-top-navigation-grandchild-allow-same-origin.tentative.sub.window.html": false,
-        "sandbox-top-navigation-grandchild-frame-allow-top.tentative.sub.window.html": false,
-        "sandbox-top-navigation-grandchild-sandboxed-cross-origin-parent.tentative.sub.window.html": false,
-        "sandbox-top-navigation-grandchild-sandboxed.tentative.sub.window.html": false,
-        "sandbox-top-navigation-grandchild-unsandboxed-cross-origin-parent.tentative.sub.window.html": false,
-        "sandbox-top-navigation-grandchild-unsandboxed-inherit.tentative.sub.window.html": false,
-        "src-repeated-in-ancestor.html": false,
-        "srcdoc-anchor.html": false,
-        "srcdoc-attribute-reset.html": false,
-        "srcdoc_change_hash.html": false,
-        "srcdoc_process_attributes.html": false
+        "type.exists.html": false,
+        "canvas-descendants-focusability-006.html": false,
+        "security.resize.cross.html": false,
+        "security.resize.redirect.html": false
       }
     }
   },
@@ -808,7 +753,6 @@
       "type-long-settimeout.any.html": true,
       "type-long-settimeout.any.worker.html": true,
       "setinterval-cross-realm-callback-report-exception.html": false,
-      "setinterval-settimeout-clamping.html": true,
       "settimeout-cross-realm-callback-report-exception.html": false
     },
     "microtask-queuing": {

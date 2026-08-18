@@ -7,7 +7,10 @@
 const { core, primordials } = __bootstrap;
 const {
   Array,
+  ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
   BigInt64Array,
   BigUint64Array,
   DataView,
@@ -407,7 +410,7 @@ class Deserializer {
   readRawBytes(length: number): Buffer {
     const offset = this._readRawBytes(length);
     // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const view = this.buffer;
     return Buffer.from(
       getViewBuffer(view),
@@ -416,7 +419,11 @@ class Deserializer {
     );
   }
   _readRawBytes(length: number): number {
-    return op_v8_read_raw_bytes(this[kHandle], length);
+    const offset = op_v8_read_raw_bytes(this[kHandle], length);
+    if (offset < 0) {
+      throw new Error("ReadRawBytes() failed");
+    }
+    return offset;
   }
   getWireFormatVersion(): number {
     return op_v8_get_wire_format_version(this[kHandle]);
@@ -626,7 +633,7 @@ class DefaultDeserializer extends Deserializer {
     const BYTES_PER_ELEMENT = ctor?.BYTES_PER_ELEMENT ?? 1;
 
     // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const view = this.buffer;
     const offset = getViewByteOffset(view) + byteOffset;
     if (offset % BYTES_PER_ELEMENT === 0) {
@@ -640,7 +647,7 @@ class DefaultDeserializer extends Deserializer {
     const bufferCopy = Buffer.allocUnsafe(byteLength);
     Buffer.from(
       getViewBuffer(view),
-      byteOffset,
+      offset,
       byteLength,
     ).copy(bufferCopy);
     return new ctor(
@@ -650,6 +657,166 @@ class DefaultDeserializer extends Deserializer {
     );
   }
 }
+// ---------------------------------------------------------------------------
+// v8.promiseHooks
+// https://nodejs.org/api/v8.html#promise-hooks
+// ---------------------------------------------------------------------------
+
+type PromiseHookFn = (
+  promise: Promise<unknown>,
+  parent?: Promise<unknown>,
+) => void;
+
+function validatePlainFunction(value: unknown, name: string) {
+  // Reject non-functions as well as async functions and async generators -
+  // none of them can be used as promise hooks.
+  const ctorName = typeof value === "function"
+    ? (value as { constructor?: { name?: string } }).constructor?.name
+    : undefined;
+  if (
+    typeof value !== "function" ||
+    ctorName === "AsyncFunction" ||
+    ctorName === "AsyncGeneratorFunction"
+  ) {
+    throw new TypeError(
+      `The "${name}" argument must be of type function. Received ${typeof value}`,
+    );
+  }
+}
+
+// Track all registered hooks so we can rebuild the combined hooks
+// when individual hooks are added/removed.
+const initHooks: PromiseHookFn[] = [];
+const beforeHooks: PromiseHookFn[] = [];
+const afterHooks: PromiseHookFn[] = [];
+const resolveHooks: PromiseHookFn[] = [];
+
+// Re-entrancy guard: V8 promise hooks fire for ALL promise operations,
+// including any promises created/resolved inside the hooks themselves.
+let inPromiseHook = false;
+
+// Register dispatchers once. core.setPromiseHooks is additive (no removal),
+// so we install permanent dispatchers that check the current hook arrays.
+let hooksInstalled = false;
+
+function ensureHooksInstalled() {
+  if (hooksInstalled) return;
+  hooksInstalled = true;
+  core.setPromiseHooks(
+    (promise: Promise<unknown>, parent?: Promise<unknown>) => {
+      if (inPromiseHook || initHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        // Snapshot the list: a hook that removes itself (or another) during
+        // dispatch must not shift the indices of hooks still to be called.
+        const hooks = ArrayPrototypeSlice(initHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise, parent);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || beforeHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        const hooks = ArrayPrototypeSlice(beforeHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || afterHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        const hooks = ArrayPrototypeSlice(afterHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || resolveHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        const hooks = ArrayPrototypeSlice(resolveHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+  );
+}
+
+function removeHook(arr: PromiseHookFn[], value: PromiseHookFn) {
+  const idx = ArrayPrototypeIndexOf(arr, value);
+  if (idx !== -1) {
+    ArrayPrototypeSplice(arr, idx, 1);
+  }
+}
+
+const promiseHooks = {
+  onInit(initHook: PromiseHookFn): () => void {
+    validatePlainFunction(initHook, "initHook");
+    ArrayPrototypePush(initHooks, initHook);
+    ensureHooksInstalled();
+    return () => removeHook(initHooks, initHook);
+  },
+  onBefore(beforeHook: PromiseHookFn): () => void {
+    validatePlainFunction(beforeHook, "beforeHook");
+    ArrayPrototypePush(beforeHooks, beforeHook);
+    ensureHooksInstalled();
+    return () => removeHook(beforeHooks, beforeHook);
+  },
+  onAfter(afterHook: PromiseHookFn): () => void {
+    validatePlainFunction(afterHook, "afterHook");
+    ArrayPrototypePush(afterHooks, afterHook);
+    ensureHooksInstalled();
+    return () => removeHook(afterHooks, afterHook);
+  },
+  onSettled(settledHook: PromiseHookFn): () => void {
+    validatePlainFunction(settledHook, "settledHook");
+    ArrayPrototypePush(resolveHooks, settledHook);
+    ensureHooksInstalled();
+    return () => removeHook(resolveHooks, settledHook);
+  },
+  createHook(
+    { init, before, after, settled }: {
+      init?: PromiseHookFn;
+      before?: PromiseHookFn;
+      after?: PromiseHookFn;
+      settled?: PromiseHookFn;
+    },
+  ): () => void {
+    // Validate every provided callback before registering any of them, so a
+    // later validation failure can't leave earlier hooks permanently
+    // registered with no stop function to remove them.
+    if (init !== undefined) validatePlainFunction(init, "initHook");
+    if (before !== undefined) validatePlainFunction(before, "beforeHook");
+    if (after !== undefined) validatePlainFunction(after, "afterHook");
+    if (settled !== undefined) validatePlainFunction(settled, "settledHook");
+    if (init !== undefined) ArrayPrototypePush(initHooks, init);
+    if (before !== undefined) ArrayPrototypePush(beforeHooks, before);
+    if (after !== undefined) ArrayPrototypePush(afterHooks, after);
+    if (settled !== undefined) ArrayPrototypePush(resolveHooks, settled);
+    ensureHooksInstalled();
+    return () => {
+      if (init !== undefined) removeHook(initHooks, init);
+      if (before !== undefined) removeHook(beforeHooks, before);
+      if (after !== undefined) removeHook(afterHooks, after);
+      if (settled !== undefined) removeHook(resolveHooks, settled);
+    };
+  },
+};
+
 return {
   cachedDataVersionTag,
   getHeapCodeStatistics,
@@ -670,5 +837,6 @@ return {
   Deserializer,
   DefaultSerializer,
   DefaultDeserializer,
+  promiseHooks,
 };
 })();

@@ -8,6 +8,7 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
@@ -15,6 +16,7 @@ use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_unsync::sync::TaskQueue;
 use parking_lot::Mutex;
 use thiserror::Error;
+use url::Url;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
@@ -39,6 +41,7 @@ enum SyncState<TSys: LockfileSys> {
 #[derive(Debug)]
 pub struct NpmResolutionInitializer<TSys: LockfileSys> {
   npm_resolution: Arc<NpmResolutionCell>,
+  npmrc: Arc<ResolvedNpmRc>,
   link_packages: WorkspaceNpmLinkPackagesRc,
   queue: TaskQueue,
   sync_state: Mutex<SyncState<TSys>>,
@@ -47,11 +50,13 @@ pub struct NpmResolutionInitializer<TSys: LockfileSys> {
 impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   pub fn new(
     npm_resolution: Arc<NpmResolutionCell>,
+    npmrc: Arc<ResolvedNpmRc>,
     link_packages: WorkspaceNpmLinkPackagesRc,
     snapshot_option: NpmResolverManagedSnapshotOption<TSys>,
   ) -> Self {
     Self {
       npm_resolution,
+      npmrc,
       link_packages,
       queue: Default::default(),
       sync_state: Mutex::new(SyncState::Pending(Some(snapshot_option))),
@@ -100,7 +105,7 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
       }
     };
 
-    match resolve_snapshot(snapshot_option, &self.link_packages) {
+    match resolve_snapshot(snapshot_option, &self.npmrc, &self.link_packages) {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
           self
@@ -139,6 +144,7 @@ pub struct ResolveSnapshotErrorData {
 
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
+  npmrc: &ResolvedNpmRc,
   link_packages: &WorkspaceNpmLinkPackagesRc,
 ) -> Result<Option<SnapshotWithPending>, ResolveSnapshotError> {
   match snapshot {
@@ -149,6 +155,7 @@ fn resolve_snapshot<TSys: LockfileSys>(
       if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(
           lockfile.clone(),
+          npmrc,
           link_packages,
           dedup_equivalent_peer_variants,
         )
@@ -185,17 +192,38 @@ struct SnapshotWithPending {
   is_pending: bool,
 }
 
+struct NpmRcDefaultTarballUrlProvider<'a>(&'a ResolvedNpmRc);
+
+impl deno_npm::resolution::DefaultTarballUrlProvider
+  for NpmRcDefaultTarballUrlProvider<'_>
+{
+  fn default_tarball_url(
+    &self,
+    nv: &deno_semver::package::PackageNv,
+  ) -> String {
+    let default_url =
+      deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider
+        .default_tarball_url(nv);
+    self
+      .0
+      .replace_tarball_url(Url::parse(&default_url).unwrap(), &nv.name)
+      .to_string()
+  }
+}
+
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
+  npmrc: &ResolvedNpmRc,
   link_packages: &WorkspaceNpmLinkPackagesRc,
   dedup_equivalent_peer_variants: bool,
 ) -> Result<SnapshotWithPending, SnapshotFromLockfileError> {
   let lockfile = lockfile.lock();
+  let default_tarball_url = NpmRcDefaultTarballUrlProvider(npmrc);
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
       link_packages: &link_packages.0,
       lockfile: &lockfile,
-      default_tarball_url: Default::default(),
+      default_tarball_url: &default_tarball_url,
       dedup_equivalent_peer_variants,
     },
   )?;
@@ -204,4 +232,61 @@ fn snapshot_from_lockfile<TSys: LockfileSys>(
     snapshot,
     is_pending: lockfile.has_content_changed,
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use deno_npm::resolution::DefaultTarballUrlProvider;
+  use deno_npmrc::NPM_DEFAULT_REGISTRY;
+  use deno_npmrc::NpmRc;
+  use deno_npmrc::NpmRegistryUrl;
+  use deno_semver::package::PackageNv;
+  use sys_traits::impls::InMemorySys;
+
+  use super::*;
+
+  fn npmrc(config: &str) -> ResolvedNpmRc {
+    NpmRc::parse(&InMemorySys::default(), config)
+      .unwrap()
+      .as_resolved(&NpmRegistryUrl {
+        url: Url::parse(NPM_DEFAULT_REGISTRY).unwrap(),
+        from_env: false,
+      })
+      .unwrap()
+  }
+
+  #[test]
+  fn default_tarball_url_uses_configured_registry() {
+    let npmrc = npmrc("registry=https://mirror.example.com/npm/");
+    let provider = NpmRcDefaultTarballUrlProvider(&npmrc);
+    assert_eq!(
+      provider.default_tarball_url(&PackageNv::from_str("pkg@1.0.0").unwrap()),
+      "https://mirror.example.com/npm/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn default_tarball_url_honors_never() {
+    let npmrc = npmrc(
+      "registry=https://mirror.example.com/npm/\nreplace-registry-host=never",
+    );
+    let provider = NpmRcDefaultTarballUrlProvider(&npmrc);
+    assert_eq!(
+      provider.default_tarball_url(&PackageNv::from_str("pkg@1.0.0").unwrap()),
+      "https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn default_tarball_url_uses_scoped_registry() {
+    let npmrc = npmrc(
+      "registry=https://default.example.com/\n@scope:registry=https://scope.example.com/npm/",
+    );
+    let provider = NpmRcDefaultTarballUrlProvider(&npmrc);
+    assert_eq!(
+      provider
+        .default_tarball_url(&PackageNv::from_str("@scope/pkg@1.0.0").unwrap()),
+      "https://scope.example.com/npm/@scope/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
 }

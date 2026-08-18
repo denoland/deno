@@ -91,14 +91,14 @@ class CacheStorage {
       }
       const cache = await this.open(cacheName);
       // false positive: cache is a local Cache instance, not a global intrinsic
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       return await cache.match(request, options);
     }
     const names = await op_cache_storage_keys();
     for (let i = 0; i < names.length; ++i) {
       const cache = await this.open(names[i]);
       // false positive: cache is a local Cache instance, not a global intrinsic
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const response = await cache.match(request, options);
       if (response !== undefined) {
         return response;
@@ -197,7 +197,7 @@ class Cache {
     await op_cache_put(
       {
         cacheId: this[_id],
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         requestUrl: reqUrl.toString(),
         responseHeaders: wireHeaderList(innerResponse),
         requestHeaders: innerRequest.headerList,
@@ -281,7 +281,7 @@ class Cache {
       // Remove the fragment from the request URL before matching.
       const url = new URL(r.url);
       url.hash = "";
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       requestUrl = url.toString();
     }
 
@@ -340,7 +340,7 @@ class Cache {
       const matchResult = await op_cache_match(
         {
           cacheId: this[_id],
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           requestUrl: url.toString(),
           requestHeaders: innerRequest.headerList,
         },
