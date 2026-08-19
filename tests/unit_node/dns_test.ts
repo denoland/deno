@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertThrows, fail } from "@std/assert";
 import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
   getDefaultResultOrder as getDefaultResultOrderPromise,
@@ -65,8 +65,15 @@ Deno.test("[node/dns] lookupService accepts a string port", async () => {
 Deno.test("[node/dns] Resolver.setLocalAddress does not throw", () => {
   const resolver = new dns.promises.Resolver();
   resolver.setLocalAddress("0.0.0.0", "::");
+  // The two addresses may be given in either order (one IPv4, one IPv6).
+  resolver.setLocalAddress("::", "0.0.0.0");
   // Callable with only the IPv4 argument too.
   resolver.setLocalAddress("0.0.0.0");
+  // ... but the second argument must be the *other* family, and an invalid
+  // address is rejected, matching Node's c-ares `SetLocalAddress`.
+  assertThrows(() => resolver.setLocalAddress("::1", "::1"));
+  assertThrows(() => resolver.setLocalAddress("127.0.0.1", "127.0.0.1"));
+  assertThrows(() => resolver.setLocalAddress("bad"));
 });
 
 // Regression test for https://github.com/denoland/deno/issues/36516

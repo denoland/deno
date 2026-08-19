@@ -323,7 +323,14 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
+    // `getHostByAddr` (reverse) receives an IP address, not a domain, so it
+    // must be passed through verbatim. Running it through `domainToASCII`
+    // would map a bare IPv6 literal (which contains `:`) to an empty string
+    // and make the lookup fail with EINVAL, unlike Node.
+    const err = resolver._handle[bindingName](
+      req,
+      bindingName === "getHostByAddr" ? hostname : domainToASCII(hostname),
+    );
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
