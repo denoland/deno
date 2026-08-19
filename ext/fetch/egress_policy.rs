@@ -22,9 +22,9 @@
 //! Semantics per outbound request:
 //!
 //! - Headers named in `remove`, `set`, `append`, or `forward` are
-//!   *policy-owned* ([`EgressHeaderPolicy::owns_header`]): values supplied by
-//!   user code are scrubbed before the policy applies. Headers named in
-//!   `default` are not owned and not scrubbed.
+//!   *policy-owned*: values supplied by user code are scrubbed before the
+//!   policy applies. Headers named in `default` are not owned and not
+//!   scrubbed.
 //! - `forward`: values of these headers on the inbound HTTP request currently
 //!   being served (if any) are copied onto the outbound request.
 //! - `set`: the header is set to the given value, replacing anything present.
@@ -293,26 +293,6 @@ impl EgressHeaderPolicy {
   /// lowercase. Empty lists mean the JS fast path can skip entirely.
   pub fn forward_config(&self) -> (&[String], &[(String, String)]) {
     (&self.forward, &self.append)
-  }
-
-  /// Whether the policy takes *ownership* of this (lowercase) header: it
-  /// scrubs any user-supplied value and writes its own. That is `remove` ∪
-  /// `set` (scrubbed in Rust, [`Self::apply_static`]) ∪ `forward` ∪ `append`
-  /// (selected in JS and reasserted in Rust, [`Self::apply_dynamic`]).
-  ///
-  /// Embedders with their own header mechanisms use this to yield to the
-  /// policy — the CLI's legacy `CDN_LOOP`/`X_DENO_FETCH_TOKEN` handling skips
-  /// owned headers, since it runs after the JS-applied `forward`/`append` ops
-  /// and would otherwise clobber their values.
-  ///
-  /// `default` deliberately does **not** count: it only fills the header in
-  /// when absent and never scrubs, so a legacy mechanism that scrubs and sets
-  /// must keep running — yielding to a `default` entry would drop the scrub
-  /// without replacing it and let user code spoof the header.
-  pub fn owns_header(&self, name: &str) -> bool {
-    self.scrub_static.iter().any(|n| n.as_str() == name)
-      || self.forward.iter().any(|n| n == name)
-      || self.append.iter().any(|(n, _)| n == name)
   }
 }
 
@@ -620,24 +600,6 @@ mod tests {
       panic!("expected Invalid");
     };
     assert!(msg.contains("bogus"));
-  }
-
-  // Ownership drives whether an embedder's own header mechanism yields to the
-  // policy. `default` never scrubs, so it must not claim ownership — doing so
-  // would disable the embedder's scrub and replace it with nothing.
-  #[test]
-  fn owns_header_covers_scrubbing_ops_only() {
-    for (json, owned) in [
-      (r#"{"remove": ["x-a"]}"#, true),
-      (r#"{"set": {"x-a": "1"}}"#, true),
-      (r#"{"forward": ["x-a"]}"#, true),
-      (r#"{"append": {"x-a": "1"}}"#, true),
-      (r#"{"default": {"x-a": "1"}}"#, false),
-      (r#"{"set": {"x-b": "1"}}"#, false),
-    ] {
-      let policy = EgressHeaderPolicy::parse(json).unwrap();
-      assert_eq!(policy.owns_header("x-a"), owned, "for {json}");
-    }
   }
 
   #[test]
