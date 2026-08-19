@@ -3091,6 +3091,130 @@ createServerLengthTest("fixedResponseKnownEmpty", {
   expectsConnLen: true,
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerTruncatesStreamingResponseToContentLength() {
+    const payload = "x".repeat(5_000);
+    const ac = new AbortController();
+    await using server = Deno.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      signal: ac.signal,
+      onListen() {},
+      handler: (request) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(payload));
+            controller.close();
+          },
+        });
+        return new Response(stream, {
+          headers: {
+            "content-length": new URL(request.url).pathname === "/zero"
+              ? "0"
+              : "70",
+          },
+        });
+      },
+    });
+
+    const port = (server.addr as Deno.NetAddr).port;
+    const encoder = new TextEncoder();
+    async function readToEnd(
+      conn: Deno.Conn,
+      pendingRequestBodyAfter?: number,
+    ): Promise<string> {
+      const decoder = new TextDecoder();
+      let raw = "";
+      let requestBodySent = false;
+      while (true) {
+        const chunk = new Uint8Array(1024);
+        const read = await conn.read(chunk);
+        if (read === null) break;
+        raw += decoder.decode(chunk.subarray(0, read), { stream: true });
+        const separator = raw.indexOf("\r\n\r\n");
+        if (
+          pendingRequestBodyAfter !== undefined &&
+          !requestBodySent &&
+          separator >= 0 &&
+          raw.length >= separator + 4 + pendingRequestBodyAfter
+        ) {
+          // Keep the body pending until the response is complete so this
+          // exercises the shared writer, then unblock the server's drain.
+          await writeAll(conn, encoder.encode("x"));
+          requestBodySent = true;
+        }
+      }
+      return raw + decoder.decode();
+    }
+
+    // The POST leaves its request body unread so the shared connection writer
+    // takes the same fixed-length path as the normal GET response writer.
+    for (
+      const [request, expectedBody] of [
+        [
+          "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+          "x".repeat(70),
+        ],
+        [
+          "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1\r\nConnection: close\r\n\r\n",
+          "x".repeat(70),
+        ],
+        [
+          "GET /zero HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+          "",
+        ],
+        [
+          "POST /zero HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1\r\nConnection: close\r\n\r\n",
+          "",
+        ],
+      ]
+    ) {
+      const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+      await writeAll(conn, encoder.encode(request));
+      const raw = await readToEnd(
+        conn,
+        request.startsWith("POST") ? expectedBody.length : undefined,
+      );
+      conn.close();
+
+      const separator = raw.indexOf("\r\n\r\n");
+      assert(separator > 0);
+      assertStringIncludes(
+        raw.slice(0, separator).toLowerCase(),
+        `content-length: ${expectedBody.length}`,
+      );
+      assertEquals(raw.slice(separator + 4), expectedBody);
+    }
+
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+    await writeAll(
+      conn,
+      encoder.encode(
+        "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n" +
+          "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+      ),
+    );
+    const raw = await readToEnd(conn);
+    conn.close();
+
+    const firstHeaderEnd = raw.indexOf("\r\n\r\n");
+    assert(firstHeaderEnd > 0);
+    const secondResponse = raw.indexOf("HTTP/1.1 200 OK", firstHeaderEnd + 4);
+    assert(secondResponse > firstHeaderEnd);
+    assertEquals(
+      raw.slice(firstHeaderEnd + 4, secondResponse),
+      "x".repeat(70),
+    );
+    const secondHeaderEnd = raw.indexOf("\r\n\r\n", secondResponse);
+    assert(secondHeaderEnd > secondResponse);
+    assertEquals(raw.slice(secondHeaderEnd + 4), "x".repeat(70));
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 createServerLengthTest("chunkedRespondKnown", {
   headers: { "transfer-encoding": "chunked" },
   body: "foo bar baz",
