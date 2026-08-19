@@ -512,6 +512,7 @@ async fn compile_desktop(
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
     no_terminal: false,
+    include_code_cache: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
       _ => None,

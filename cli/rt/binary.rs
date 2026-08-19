@@ -46,6 +46,7 @@ use crate::file_system::VfsRoot;
 
 pub struct StandaloneData {
   pub metadata: Metadata,
+  pub embedded_code_cache: Option<&'static [u8]>,
   pub modules: Arc<StandaloneModules>,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub root_path: PathBuf,
@@ -96,6 +97,7 @@ pub fn extract_standalone_with_finder(
 
   let DeserializedDataSection {
     npm_snapshot,
+    embedded_code_cache,
     modules_store: remote_modules,
     vfs_root_entries,
     vfs_files_data,
@@ -146,6 +148,7 @@ pub fn extract_standalone_with_finder(
   };
   Ok(StandaloneData {
     metadata,
+    embedded_code_cache,
     modules: Arc::new(StandaloneModules {
       modules: remote_modules,
       vfs: vfs.clone(),
@@ -463,6 +466,7 @@ fn read_from_file_fallback() -> Result<&'static [u8], AnyError> {
 
 pub struct DeserializedDataSection {
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  pub embedded_code_cache: Option<&'static [u8]>,
   pub modules_store: RemoteModulesStore,
   pub vfs_root_entries: VirtualDirectoryEntries,
   pub vfs_files_data: &'static [u8],
@@ -510,19 +514,23 @@ fn deserialize_binary_data_section(
   } else {
     Some(deserialize_npm_snapshot(data).context("deserializing npm snapshot")?)
   };
-  // 3. Specifiers
+  // 3. Embedded V8 code cache
+  let (input, data) =
+    read_bytes_with_u64_len(input).context("reading embedded code cache")?;
+  let embedded_code_cache = (!data.is_empty()).then_some(data);
+  // 4. Specifiers
   let (input, specifiers_store) =
     SpecifierStore::deserialize(root_dir_url, input)
       .context("deserializing specifiers")?;
-  // 4. Redirects
+  // 5. Redirects
   let (input, redirects_store) =
     SpecifierDataStore::<SpecifierId>::deserialize(input)
       .context("deserializing redirects")?;
-  // 5. Remote modules
+  // 6. Remote modules
   let (input, remote_modules_store) =
     SpecifierDataStore::<RemoteModuleEntry<'static>>::deserialize(input)
       .context("deserializing remote modules")?;
-  // 6. VFS
+  // 7. VFS
   let (input, data) = read_bytes_with_u64_len(input).context("vfs")?;
   let vfs_root_entries: VirtualDirectoryEntries =
     serde_json::from_slice(data).context("deserializing vfs data")?;
@@ -543,6 +551,7 @@ fn deserialize_binary_data_section(
 
   Ok(DeserializedDataSection {
     npm_snapshot,
+    embedded_code_cache,
     modules_store,
     vfs_root_entries,
     vfs_files_data,
