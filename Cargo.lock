@@ -10344,6 +10344,7 @@ dependencies = [
 name = "test_napi"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "libuv-sys-lite",
  "napi_sys",
 ]
