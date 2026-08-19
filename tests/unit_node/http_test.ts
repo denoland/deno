@@ -25,7 +25,13 @@ import { channel } from "node:diagnostics_channel";
 import * as v8 from "node:v8";
 import { runInNewContext } from "node:vm";
 
-import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
 import { retry } from "@std/async/retry";
@@ -3853,6 +3859,75 @@ Deno.test(
       await promise;
       assertEquals(seenUrl, expected);
     }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target cannot retarget the authority",
+  () => {
+    // The --allow-net check upstream only validated the requested host and
+    // port. An absolute `path` naming a different authority - or a different
+    // port, or embedding credentials - would slip a request past that check
+    // once the proxy forwards it. Reject it in ClientRequest, failing closed
+    // like a denied direct connection, before any bytes reach the proxy.
+    for (
+      const path of [
+        "http://evil.example/x",
+        "http://example.com:9999/x", // same host, but an unchecked port
+        "http://user:pass@example.com:8080/x", // userinfo for the checked one
+      ]
+    ) {
+      const err = assertThrows(
+        () =>
+          http.request({
+            hostname: "example.com",
+            port: 8080,
+            path,
+            agent: new http.Agent({
+              // Never dialed: the rewrite throws before connecting.
+              proxyEnv: { HTTP_PROXY: "http://127.0.0.1:1" },
+            } as ProxyAgentLike),
+          }),
+        Error,
+        "Invalid URL",
+      );
+      assertEquals((err as { code?: string }).code, "ERR_INVALID_URL");
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target matching the authority is honored",
+  async () => {
+    // The authority matches the checked target, so the absolute-form path is
+    // a legitimate request target and is forwarded to the proxy as given.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    let seenUrl: string | undefined;
+    const proxy = http.createServer((req, res) => {
+      seenUrl = req.url;
+      res.end("via-proxy");
+    });
+    proxy.listen(0, () => {
+      const proxyPort = (proxy.address() as AddressInfo).port;
+      const req = http.request({
+        hostname: "example.com",
+        port: 8080,
+        path: "http://example.com:8080/foo",
+        agent: new http.Agent({
+          proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+        } as ProxyAgentLike),
+      }, (res) => {
+        res.resume();
+        res.on("end", () => {
+          proxy.close();
+          resolve();
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+    assertEquals(seenUrl, "http://example.com:8080/foo");
   },
 );
 

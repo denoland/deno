@@ -459,19 +459,44 @@ function isURL(input) {
 // path of `//host/x` is protocol-relative to the URL parser and would
 // otherwise silently retarget the request at another authority.
 function buildProxyRequestTarget(authorityHost, port, path) {
+  let base;
   try {
-    const base = new URL(`http://${authorityHost}`);
+    base = new URL(`http://${authorityHost}`);
     base.port = port;
-    try {
-      // An absolute-form path is already a complete target.
-      return new URL(path).href;
-    } catch {
-      return new URL(base.origin + path).href;
-    }
   } catch {
     // A host the URL parser rejects is not a reachable target; node:http
     // reports that while building the request. Fall back to concatenation so
     // this helper is not what fails first.
+    const portSuffix = +port === 80 ? "" : `:${port}`;
+    return `http://${authorityHost}${portSuffix}${path}`;
+  }
+
+  // An absolute-form path is already a complete target. It is only honored
+  // when its authority matches the one that `--allow-net` validated and it
+  // carries no userinfo: the permission check upstream sees only `host` and
+  // `port`, so an absolute `path` aimed at another authority (or embedding
+  // credentials for one) would otherwise retarget the proxied request past
+  // that check. Fail closed instead - like a denied direct connection.
+  let absolute = null;
+  try {
+    absolute = new URL(path);
+  } catch {
+    // Not absolute-form; resolved as an origin-form path below.
+  }
+  if (absolute !== null) {
+    if (
+      absolute.host !== base.host ||
+      absolute.username !== "" ||
+      absolute.password !== ""
+    ) {
+      throw new ERR_INVALID_URL(path);
+    }
+    return absolute.href;
+  }
+
+  try {
+    return new URL(base.origin + path).href;
+  } catch {
     const portSuffix = +port === 80 ? "" : `:${port}`;
     return `http://${authorityHost}${portSuffix}${path}`;
   }
