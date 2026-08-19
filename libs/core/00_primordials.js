@@ -640,7 +640,27 @@
   };
 
   // Create getter and setter for `SharedArrayBuffer`, it hasn't been bound yet.
+  // Defer copying prototype methods until first access so isolates with a tight
+  // heap limit do not OOM during 01_core.js.
+  let sharedArrayBufferConstructor = undefined;
   let sharedArrayBufferPrimordials = undefined;
+  function ensureSharedArrayBufferPrimordials() {
+    if (sharedArrayBufferPrimordials !== undefined) {
+      return;
+    }
+    if (sharedArrayBufferConstructor === undefined) {
+      return;
+    }
+    const dest = { __proto__: null };
+    dest.SharedArrayBuffer = sharedArrayBufferConstructor;
+    copyPropsRenamed(sharedArrayBufferConstructor, dest, "SharedArrayBuffer");
+    copyPrototype(
+      sharedArrayBufferConstructor.prototype,
+      dest,
+      "SharedArrayBufferPrototype",
+    );
+    sharedArrayBufferPrimordials = dest;
+  }
   [
     "SharedArrayBuffer",
     "SharedArrayBufferLength",
@@ -657,19 +677,16 @@
     ObjectDefineProperty(primordials, name, {
       __proto__: null,
       get() {
+        ensureSharedArrayBufferPrimordials();
         return sharedArrayBufferPrimordials?.[name];
       },
     });
   });
   primordials.setSharedArrayBuffer = (value) => {
-    if (sharedArrayBufferPrimordials !== undefined) {
+    if (sharedArrayBufferConstructor !== undefined) {
       throw new Error("SharedArrayBuffer is already defined");
     }
-    const dest = { __proto__: null };
-    dest.SharedArrayBuffer = value;
-    copyPropsRenamed(value, dest, "SharedArrayBuffer");
-    copyPrototype(value.prototype, dest, "SharedArrayBufferPrototype");
-    sharedArrayBufferPrimordials = dest;
+    sharedArrayBufferConstructor = value;
   };
 
   // Renaming from `eval` is necessary because otherwise it would perform direct
