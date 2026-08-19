@@ -1324,6 +1324,8 @@
   ObjectAssign(globalThis, { queueMicrotask });
   setQueueMicrotask(queueMicrotask);
   // SharedArrayBuffer may be hidden from the global (V8 per-context flag).
-  // The constructor still exists internally; pull it from V8 via Rust.
-  setSharedArrayBuffer(op_get_shared_array_buffer_constructor());
+  // Use it when present so startup does not cross the op boundary.
+  const SharedArrayBuffer = globalThis.SharedArrayBuffer ??
+    op_get_shared_array_buffer_constructor();
+  setSharedArrayBuffer(SharedArrayBuffer);
 })(globalThis);

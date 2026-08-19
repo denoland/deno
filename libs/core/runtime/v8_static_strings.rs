@@ -34,7 +34,6 @@ v8_static_strings!(
   SET_IMMEDIATE_INFO = "__setImmediateInfo",
   RUN_IMMEDIATE_CALLBACKS = "runImmediateCallbacks",
   SET_TIMER_INFO = "__setTimerInfo",
-  SHARED_ARRAY_BUFFER = "SharedArrayBuffer",
   FILENAME = "filename",
   INSTANCE = "Instance",
   MAIN = "main",

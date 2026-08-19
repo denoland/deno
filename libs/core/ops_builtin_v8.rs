@@ -1584,26 +1584,13 @@ pub fn op_get_extras_binding_object<'s, 'i>(
 /// Return the `SharedArrayBuffer` constructor.
 ///
 /// V8 always initializes the constructor on the native context, but may hide
-/// it from `globalThis` (`--enable-sharedarraybuffer-per-context`). Prefer the
-/// global when present so startup does not allocate a SAB instance. Isolates
-/// constructed with a tight heap limit (e.g. 5MB in heap-limit tests) OOM if
-/// we create one during `01_core.js`. Fall back to a zero-length instance and
-/// read its `constructor`.
+/// it from `globalThis` (`--enable-sharedarraybuffer-per-context`). Callers
+/// should use the global when present. This op recovers the constructor from
+/// a zero-length instance created via the C++ API.
 #[op2]
 pub fn op_get_shared_array_buffer_constructor<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
 ) -> v8::Local<'s, v8::Value> {
-  let context = scope.get_current_context();
-  let global = context.global(scope);
-  let name = v8_static_strings::SHARED_ARRAY_BUFFER
-    .v8_string(scope)
-    .unwrap();
-  if let Some(value) = global.get(scope, name.into())
-    && value.is_function()
-  {
-    return value;
-  }
-
   let sab = v8::SharedArrayBuffer::new(scope, 0)
     .expect("Failed to create SharedArrayBuffer");
   let key = v8_static_strings::CONSTRUCTOR.v8_string(scope).unwrap();
