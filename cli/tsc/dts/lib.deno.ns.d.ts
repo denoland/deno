@@ -4617,6 +4617,7 @@ declare namespace Deno {
       | "statfs"
       | "getPriority"
       | "setPriority"
+      | "setgroups"
       | "ca"
       | "umask";
   }
