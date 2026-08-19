@@ -344,15 +344,49 @@ impl Default for WorkerOptions {
   }
 }
 
+static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
+  OnceLock::new();
+static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+
+fn x_deno_fetch_token_value() -> &'static Option<http::HeaderValue> {
+  X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  })
+}
+
+fn cdn_loop_value() -> &'static Option<http::HeaderValue> {
+  CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  })
+}
+
+/// Resolves the operator-provided egress configuration from the environment:
+/// the `DENO_EGRESS_HEADER_POLICY` policy plus the legacy `X_DENO_FETCH_TOKEN`
+/// and `CDN_LOOP` values used by [`request_builder_hook`].
+///
+/// Called at worker construction, before user code runs, so that every one of
+/// these is fixed for the life of the process. Reading the legacy values
+/// lazily on the first fetch instead would let user code choose them with
+/// `Deno.env.set`, which would defeat the anti-spoofing scrub in the hook and
+/// void the guarantee that a policy `default` entry only fills a gap the
+/// operator left.
+pub(crate) fn egress_config_from_env()
+-> Option<Arc<deno_fetch::EgressHeaderPolicyState>> {
+  x_deno_fetch_token_value();
+  cdn_loop_value();
+  egress_header_policy_from_env()
+}
+
 pub(crate) fn request_builder_hook(
   request: &mut http::Request<deno_fetch::ReqBody>,
 ) -> Result<(), JsErrorBox> {
   const X_DENO_FETCH_TOKEN: http::HeaderName =
     http::HeaderName::from_static("x-deno-fetch-token");
   const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
-  static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
-    OnceLock::new();
-  static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
   // This hook does not coordinate with the egress header policy. The policy
   // applies after it (`apply_static`/`apply_dynamic` in `op_fetch`) and scrubs
   // every header it owns, so whatever is written here for an owned header is
@@ -367,25 +401,13 @@ pub(crate) fn request_builder_hook(
     entry.remove_entry_mult();
   }
 
-  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
-    std::env::var("X_DENO_FETCH_TOKEN")
-      .ok()
-      .and_then(|v| http::HeaderValue::from_str(&v).ok())
-  });
-
-  if let Some(token) = maybe_x_deno_fetch_token {
+  if let Some(token) = x_deno_fetch_token_value() {
     request
       .headers_mut()
       .insert(X_DENO_FETCH_TOKEN, token.clone());
   }
 
-  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
-    std::env::var("CDN_LOOP")
-      .ok()
-      .and_then(|v| http::HeaderValue::from_str(&v).ok())
-  });
-
-  if let Some(cdn_loop) = cdn_loop_value {
+  if let Some(cdn_loop) = cdn_loop_value() {
     request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
   }
 
@@ -690,7 +712,7 @@ impl MainWorker {
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           resolver: services.fetch_dns_resolver,
           request_builder_hook: Some(request_builder_hook),
-          egress_header_policy: egress_header_policy_from_env(),
+          egress_header_policy: egress_config_from_env(),
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),

@@ -561,7 +561,7 @@ impl WebWorker {
           .clone(),
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         request_builder_hook: Some(request_builder_hook),
-        egress_header_policy: crate::worker::egress_header_policy_from_env(),
+        egress_header_policy: crate::worker::egress_config_from_env(),
         ..Default::default()
       }),
       deno_cache::deno_cache::init(create_cache),
