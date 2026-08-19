@@ -920,8 +920,12 @@ function getEgressPolicy() {
  *
  * Names must be lowercased before matching: the raw HTTP/1.1 server path
  * hands back the client's on-the-wire casing (`CDN-Loop`), while the policy's
- * names are always lowercase. Only reached when the policy has a non-empty
- * `forward` list.
+ * names are always lowercase.
+ *
+ * `getEgressPolicy()` cannot return `null` here: the only caller reaches this
+ * through `getEgressForwardContextEnter` in ext/http/00_serve.ts, which
+ * resolves to `null` (and so never calls in) unless the same op reported a
+ * non-empty `forward` list.
  */
 function enterEgressForwardContext(reqHeaders) {
   const policy = getEgressPolicy();
@@ -1005,7 +1009,6 @@ function fetch(input, init = undefined) {
 
       // 3.
       const request = toInnerRequest(requestObject);
-
       // 4.
       if (requestObject.signal.aborted) {
         if (span) {

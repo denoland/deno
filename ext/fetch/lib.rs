@@ -131,8 +131,10 @@ pub struct Options {
     Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
   /// An operator-provided policy of headers to enforce on outbound requests,
   /// applied after `request_builder_hook`. See [`EgressHeaderPolicy`] for the
-  /// format and semantics. [`EgressHeaderPolicyState::Invalid`] fails every
-  /// fetch with the policy's parse error (fail closed).
+  /// format, semantics and — importantly for anyone deploying this as a
+  /// control — the scope limits. [`EgressHeaderPolicyState::Invalid`] fails
+  /// every outbound HTTP(S) `fetch()` with the policy's parse error (fail
+  /// closed); it does not govern other egress paths such as `node:http`.
   pub egress_header_policy: Option<Arc<EgressHeaderPolicyState>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
@@ -443,6 +445,11 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
+/// Note for embedders dispatching this op directly: it gained a trailing
+/// `redirect_sensitive_stripped: bool` when the egress header policy landed.
+/// Pass `false` for a fresh request; `26_fetch.js` passes `true` once a
+/// redirect has crossed origins, which keeps the policy from re-adding the
+/// credential headers WHATWG fetch drops there.
 #[op2(stack_trace)]
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]

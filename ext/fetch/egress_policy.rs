@@ -49,15 +49,45 @@
 //! [`EgressHeaderPolicy::apply_static`].
 //!
 //! The policy is not the last writer on the wire. `Client::send` runs after
-//! it and fills in `user-agent` and `accept` when absent, so `remove` of
-//! either yields the client default rather than no header at all; it also
-//! overwrites `proxy-authorization` with credentials taken from the proxy
-//! URL, which beats a `set`. Policies covering those three headers only hold
-//! where the client leaves them alone.
+//! it and fills in `user-agent`, `accept` and `accept-encoding` when absent,
+//! so `remove` of any of them yields the client default rather than no header
+//! at all; it also overwrites `proxy-authorization` with credentials taken
+//! from the proxy URL, which beats a `set`. Policies covering those four
+//! headers only hold where the client leaves them alone.
 //!
 //! A policy that fails to parse or validate is retained as
-//! [`EgressHeaderPolicyState::Invalid`]: every fetch then fails with the
-//! parse error instead of proceeding without the policy (fail closed).
+//! [`EgressHeaderPolicyState::Invalid`]: every outbound HTTP(S) `fetch()` then
+//! fails with the parse error instead of proceeding without the policy (fail
+//! closed). See the scope note below for what that does *not* cover.
+//!
+//! # Scope and limitations
+//!
+//! The policy applies at exactly one place: `op_fetch`, the op behind
+//! `fetch()` for `http:` and `https:` URLs. That is narrower than "outbound
+//! HTTP from this process", and the gap matters for anyone deploying it as a
+//! control:
+//!
+//! - **Other egress paths are untouched.** `node:http`/`node:https` (and the
+//!   npm ecosystem built on them), raw `Deno.connect` sockets, and WebSocket
+//!   handshakes never reach `op_fetch`. Neither do the CLI's own downloads —
+//!   remote module loads, npm/jsr registry traffic, `deno upgrade` — which
+//!   build their clients without these [`crate::Options`]. An `Invalid` policy
+//!   fails `fetch()` closed but does not stop the process egressing by these
+//!   other routes.
+//! - **Non-network schemes are unaffected.** `file:`, `data:` and `blob:`
+//!   fetches resolve before or outside the HTTP arm of `op_fetch`, so they
+//!   succeed even under an `Invalid` policy. There is no egress to govern.
+//! - **It is not a sandbox.** The policy governs code that goes through
+//!   `fetch()`; it does not confine code that chooses not to. Any program
+//!   holding `--allow-net` can bypass it in two lines via `node:http` or a raw
+//!   socket. Treat it as an enforcement default for cooperative code — a way
+//!   to make the right headers happen by default — not as a boundary against
+//!   hostile code. The boundary is the permission system.
+//! - **Policy values are not secrets.** `DENO_EGRESS_HEADER_POLICY` is
+//!   readable by user code under `--allow-env` and is inherited by every
+//!   subprocess. Do not put credentials in it. (The CLI's env-file denylist
+//!   stops an `.env` file from *setting* the variable; it does nothing to hide
+//!   an already-set one.)
 
 use std::collections::BTreeMap;
 
