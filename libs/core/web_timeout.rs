@@ -78,7 +78,7 @@ impl<Tmr: ReactorTimer + 'static> MutableSleep<Tmr> {
     // each time a repeating uv timer reschedules). The poll below re-sets
     // `ready` if the *new* timer is already due, so an immediate deadline
     // still fires promptly.
-    self.ready.set(false);
+    self.wake_state.ready.store(false, Ordering::Release);
     let pin = unsafe {
       // First replace the current timer
       *self.sleep.get() = Some(timer);
