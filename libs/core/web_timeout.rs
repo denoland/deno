@@ -118,6 +118,14 @@ impl<Tmr: ReactorTimer + 'static> MutableSleep<Tmr> {
   }
 
   fn change(&self, timer: Tmr) {
+    // Installing a new timer invalidates any pending fired-state left over
+    // from the previous timer: that `ready` referred to a deadline we're now
+    // replacing. Without this, a stale `ready` would be observed by the next
+    // `poll_ready` and cause one spurious re-poll after every re-arm (e.g.
+    // each time a repeating uv timer reschedules). The poll below re-sets
+    // `ready` if the *new* timer is already due, so an immediate deadline
+    // still fires promptly.
+    self.ready.set(false);
     let pin = unsafe {
       // First replace the current timer
       *self.sleep.get() = Some(timer);
