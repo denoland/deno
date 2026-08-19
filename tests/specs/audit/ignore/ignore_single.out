@@ -1,10 +1,11 @@
 ╭ @denotest/with-vuln2 can steal crypto keys
 │ Severity:   critical
+│ ID:         GHSA-2222-2222-2222
 │ Package:    @denotest/with-vuln2
 │ Vulnerable: <2.0.0
 │ Patched:    >=2.0.0
-│ Info:       https://example.com/vuln/202020
-╰ Actions:    update @denotest/with-vuln2 to >=2.0.0
+│ Info:       https://github.com/advisories/GHSA-2222-2222-2222
+╰ Actions:    update @denotest/with-vuln2 to >=2.0.0 (major upgrade, not applied by --fix)
 
 Found 1 vulnerabilities
 Severity: 0 low, 0 moderate, 0 high, 1 critical
