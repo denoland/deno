@@ -62,6 +62,12 @@ use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE;
 
+#[cfg(unix)]
+const STDIN_READ_POLL_TIMEOUT_MS: i32 = 100;
+#[cfg(windows)]
+const STDIN_READ_POLL_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_millis(100);
+
 mod fd_table;
 pub mod fs;
 mod pipe;
@@ -715,6 +721,69 @@ impl StdFileResourceInner {
     }
   }
 
+  #[cfg(unix)]
+  fn poll_stdin_ready(file: &StdFile) -> io::Result<bool> {
+    use std::os::fd::AsRawFd;
+
+    let mut pollfd = libc::pollfd {
+      fd: file.as_raw_fd(),
+      events: libc::POLLIN,
+      revents: 0,
+    };
+    // SAFETY: `pollfd` is a valid single-element poll array for this call.
+    //
+    // A bounded timeout lets cancellation stop scheduling additional reads
+    // without keeping a blocking-pool thread parked indefinitely. Any positive
+    // return is handed to `read`, which owns EOF/POLLHUP/POLLERR semantics.
+    match unsafe { libc::poll(&mut pollfd, 1, STDIN_READ_POLL_TIMEOUT_MS) } {
+      0 => Ok(false),
+      n if n > 0 => Ok(true),
+      _ => {
+        let err = io::Error::last_os_error();
+        if err.kind() == ErrorKind::Interrupted {
+          Ok(false)
+        } else {
+          Err(err)
+        }
+      }
+    }
+  }
+
+  #[cfg(windows)]
+  fn poll_stdin_pipe_ready(file: &StdFile) -> io::Result<Option<bool>> {
+    use std::os::windows::io::AsRawHandle;
+
+    use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
+    use windows_sys::Win32::Storage::FileSystem::GetFileType;
+    use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+
+    let handle = file.as_raw_handle();
+    if unsafe { GetFileType(handle) } != FILE_TYPE_PIPE {
+      return Ok(None);
+    }
+
+    let mut bytes_available = 0u32;
+    let result = unsafe {
+      PeekNamedPipe(
+        handle,
+        std::ptr::null_mut(),
+        0,
+        std::ptr::null_mut(),
+        &mut bytes_available,
+        std::ptr::null_mut(),
+      )
+    };
+    if result == 0 {
+      let err = io::Error::last_os_error();
+      if err.kind() == ErrorKind::BrokenPipe {
+        return Ok(Some(true));
+      }
+      return Err(err);
+    }
+
+    Ok(Some(bytes_available > 0))
+  }
+
   #[cfg(windows)]
   async fn handle_stdin_read(
     &self,
@@ -731,6 +800,12 @@ impl StdFileResourceInner {
       let fut = self.with_inner_blocking_task(move |file| {
         let _terminal_input_guard =
           deno_permissions::prompter::lock_terminal_input();
+        match Self::poll_stdin_pipe_ready(file) {
+          Ok(Some(false)) => return Ok((None, buf)),
+          Ok(_) => {}
+          Err(e) => return Err((e.into(), buf)),
+        }
+
         /* Start reading, and set the reading flag to true */
         state.lock().reading = true;
         let nread = match file.read(&mut buf) {
@@ -788,15 +863,21 @@ impl StdFileResourceInner {
           return Err((FsError::FileBusy, buf));
         }
 
-        Ok((nread, buf))
+        Ok((Some(nread), buf))
       });
 
       match fut.await {
+        Ok((Some(nread), b)) => return Ok((nread, b)),
+        Ok((None, b)) => {
+          buf = b;
+          tokio::time::sleep(STDIN_READ_POLL_TIMEOUT).await;
+          continue;
+        }
         Err((FsError::FileBusy, b)) => {
           buf = b;
           continue;
         }
-        other => return other.map_err(|(e, _)| e),
+        Err((e, _)) => return Err(e),
       }
     }
   }
@@ -1291,26 +1372,31 @@ impl crate::fs::File for StdFileResourceInner {
         self.handle_stdin_read(state.clone(), buf).await
       }
       #[cfg(not(windows))]
-      StdFileResourceKind::Stdin(_) => {
-        // Stdin may be set to non-blocking mode by Node's process.stdin.
-        // Retry on WouldBlock (see read_sync comment for details).
-        self
-          .with_inner_blocking_task(|file| {
-            let _terminal_input_guard =
-              deno_permissions::prompter::lock_terminal_input();
-            loop {
-              match file.read(&mut buf) {
-                Ok(nread) => return Ok((nread, buf)),
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                  std::thread::yield_now();
-                  continue;
-                }
-                Err(e) => return Err(e.into()),
+      StdFileResourceKind::Stdin(_) => loop {
+        let (maybe_nread, next_buf) = self
+          .with_inner_blocking_task(
+            |file| -> FsResult<(Option<usize>, BufMutView)> {
+              let _terminal_input_guard =
+                deno_permissions::prompter::lock_terminal_input();
+              if !Self::poll_stdin_ready(file)? {
+                return Ok((None, buf));
               }
-            }
-          })
-          .await
-      }
+              match file.read(&mut buf) {
+                Ok(nread) => Ok((Some(nread), buf)),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  Ok((None, buf))
+                }
+                Err(e) => Err(e.into()),
+              }
+            },
+          )
+          .await?;
+        buf = next_buf;
+        if let Some(nread) = maybe_nread {
+          return Ok((nread, buf));
+        }
+        tokio::task::yield_now().await;
+      },
       _ => {
         self
           .with_inner_blocking_task(|file| {

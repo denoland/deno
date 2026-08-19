@@ -151,7 +151,10 @@ class Stdin {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = lazyStreams().readableStreamForRid(this.#rid, false);
+      this.#readable = lazyStreams().readableStreamForRidUnrefable(
+        this.#rid,
+        { autoClose: false, closeOnCancel: false },
+      );
     }
     return this.#readable;
   }
@@ -170,12 +173,18 @@ class Stdin {
     if (this.#opPromise) {
       core.refOpPromise(this.#opPromise);
     }
+    if (this.#readable) {
+      lazyStreams().readableStreamForRidUnrefableRef(this.#readable);
+    }
   }
 
   [UNREF]() {
     this.#ref = false;
     if (this.#opPromise) {
       core.unrefOpPromise(this.#opPromise);
+    }
+    if (this.#readable) {
+      lazyStreams().readableStreamForRidUnrefableUnref(this.#readable);
     }
   }
 }
