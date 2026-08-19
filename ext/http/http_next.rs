@@ -4730,10 +4730,9 @@ async fn serve_http11_raw(
           continue;
         }
         if reader_owns_conn {
-          record_cancel_guard.disarm();
           // Boxed: this is the cold path, and inlining it would grow the
           // per-connection future.
-          return Box::pin(write_direct_response_for_reader(
+          Box::pin(write_direct_response_for_reader(
             body_conn,
             request_body_for_cancel,
             record,
@@ -4744,7 +4743,9 @@ async fn serve_http11_raw(
             body,
             head,
           ))
-          .await;
+          .await?;
+          record_cancel_guard.disarm();
+          return Ok(());
         }
       }
       wait_raw_response_ready(
