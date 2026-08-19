@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fmt;
@@ -971,6 +972,9 @@ impl<I> RawH1ConnectionState<I>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+  /// Reads the next body chunk. An empty `BufView` means end-of-stream: a
+  /// `Chunk` always carries at least one byte, so callers rely on an empty
+  /// read to detect that the body is finished.
   fn poll_read_body(
     &mut self,
     cx: &mut Context<'_>,
@@ -1552,70 +1556,54 @@ impl Drop for RawHttpRecordCancelGuard {
 struct RawH1RequestBody<I> {
   conn: RawH1ConnectionCell<I>,
   size_hint: (u64, Option<u64>),
-  canceled: std::cell::Cell<bool>,
+  canceled: Cell<bool>,
   // Set once JS has taken this body as a resource (i.e. accessed `req.body`),
-  // meaning it is being read on a separate task.
-  taken: std::cell::Cell<bool>,
+  // meaning it may be read on a separate task.
+  taken: Cell<bool>,
   // Set once the JS reader is finished with the body: either it reached the end
-  // of the stream, the resource was closed/cancelled, or the read errored. The
-  // connection loop waits on this before tearing the connection down so a
-  // background body read that outlives the response isn't cut off.
-  reader_done: std::cell::Cell<bool>,
-  reader_done_waker: RefCell<Option<std::task::Waker>>,
+  // of the stream, the resource was closed/cancelled, or the read errored.
+  reader_done: Cell<bool>,
+  // Cancelled when the server tears its connections down. A body read that
+  // outlived its response is only bounded by the client, so it has to be
+  // cancellable or the server can never go away.
+  cancel_handle: Rc<CancelHandle>,
 }
 
 impl<I> RawH1RequestBody<I> {
-  fn new(conn: RawH1ConnectionCell<I>, length: Option<u64>) -> Self {
+  fn new(
+    conn: RawH1ConnectionCell<I>,
+    length: Option<u64>,
+    cancel_handle: Rc<CancelHandle>,
+  ) -> Self {
     Self {
       conn,
       size_hint: length.map_or((0, None), |length| (length, Some(length))),
-      canceled: std::cell::Cell::new(false),
-      taken: std::cell::Cell::new(false),
-      reader_done: std::cell::Cell::new(false),
-      reader_done_waker: RefCell::new(None),
+      canceled: Cell::new(false),
+      taken: Cell::new(false),
+      reader_done: Cell::new(false),
+      cancel_handle,
     }
   }
 
   fn cancel(&self) {
     self.canceled.set(true);
-    // A cancelled read makes no further progress; stop the connection loop from
-    // waiting on it.
+    // A cancelled read makes no further progress.
     self.mark_reader_done();
   }
 
   fn mark_reader_done(&self) {
     self.reader_done.set(true);
-    if let Some(waker) = self.reader_done_waker.borrow_mut().take() {
-      waker.wake();
-    }
   }
 
-  /// Resolves once the JS-side reader is finished with the request body. If JS
-  /// never took the body, resolves immediately (nothing is reading it).
-  fn wait_reader_done(self: &Rc<Self>) -> impl Future<Output = ()> {
-    struct WaitReaderDone<I>(Rc<RawH1RequestBody<I>>);
-
-    impl<I> Future for WaitReaderDone<I> {
-      type Output = ();
-
-      fn poll(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-      ) -> Poll<Self::Output> {
-        let body = &self.0;
-        if !body.taken.get() || body.reader_done.get() {
-          return Poll::Ready(());
-        }
-        *body.reader_done_waker.borrow_mut() = Some(cx.waker().clone());
-        // Re-check to avoid missing a wake that raced with registration.
-        if body.reader_done.get() {
-          return Poll::Ready(());
-        }
-        Poll::Pending
-      }
-    }
-
-    WaitReaderDone(self.clone())
+  /// Whether a JS reader still owns this body, i.e. `req.body` was taken as a
+  /// resource and has not reached end-of-stream, been closed or been cancelled.
+  ///
+  /// While that is the case the connection must not be reclaimed by the
+  /// connection loop: the reader and the response writer share it, and taking
+  /// it away would fail an in-flight read with a spurious "resource
+  /// unavailable" error and truncate the body.
+  fn reader_owns_connection(&self) -> bool {
+    self.taken.get() && !self.reader_done.get()
   }
 
   fn try_take_full(&self) -> Option<Vec<u8>> {
@@ -1648,10 +1636,7 @@ where
     let this = self.get_mut();
     if this.body.canceled.get() {
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let mut conn = this.body.conn.borrow_mut();
@@ -1664,10 +1649,7 @@ where
     if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let result = conn.poll_read_body(cx, this.limit);
@@ -1691,10 +1673,7 @@ where
     let this = self.get_mut();
     if this.body.canceled.get() {
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let mut conn = this.body.conn.borrow_mut();
@@ -1708,10 +1687,7 @@ where
     if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let buf = this.buf.as_mut().unwrap();
@@ -1735,12 +1711,12 @@ where
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      RawH1RequestBodyRead { body: self, limit }.await.map_err(
-        |err| match err {
-          HttpNextError::Other(error) => error,
-          _ => deno_error::JsErrorBox::new("Http", err.to_string()),
-        },
-      )
+      let cancel_handle = self.cancel_handle.clone();
+      RawH1RequestBodyRead { body: self, limit }
+        .or_cancel(cancel_handle)
+        .await
+        .map_err(|_| raw_h1_request_body_unavailable())?
+        .map_err(raw_h1_request_body_error)
     })
   }
 
@@ -1749,15 +1725,15 @@ where
     buf: BufMutView,
   ) -> AsyncResult<(usize, BufMutView)> {
     Box::pin(async move {
+      let cancel_handle = self.cancel_handle.clone();
       RawH1RequestBodyReadByob {
         body: self,
         buf: Some(buf),
       }
+      .or_cancel(cancel_handle)
       .await
-      .map_err(|err| match err {
-        HttpNextError::Other(error) => error,
-        _ => deno_error::JsErrorBox::new("Http", err.to_string()),
-      })
+      .map_err(|_| raw_h1_request_body_unavailable())?
+      .map_err(raw_h1_request_body_error)
     })
   }
 
@@ -3709,6 +3685,20 @@ where
     .await
 }
 
+fn raw_h1_request_body_unavailable() -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::new(
+    "BadResource",
+    "Cannot read request body as underlying resource unavailable",
+  )
+}
+
+fn raw_h1_request_body_error(error: HttpNextError) -> deno_error::JsErrorBox {
+  match error {
+    HttpNextError::Other(error) => error,
+    _ => deno_error::JsErrorBox::new("Http", error.to_string()),
+  }
+}
+
 fn raw_h1_connection_closed() -> HttpNextError {
   HttpNextError::Other(deno_error::JsErrorBox::generic(
     "HTTP connection closed",
@@ -3747,6 +3737,94 @@ async fn wait_raw_response_ready(
     Poll::Pending
   })
   .await
+}
+
+/// Decide whether the connection has to be left behind with the JS reader that
+/// still owns the request body, once the response has been written.
+///
+/// The request-body reader and the response writer share a single connection.
+/// A request whose body was not fully read never reuses its connection, so
+/// rather than reclaiming it here -- which would fail an in-flight read with a
+/// spurious "resource unavailable" error and truncate the body -- ownership is
+/// handed to the body resource. The socket is then closed when JS reaches
+/// end-of-stream or closes, cancels or drops the body stream.
+///
+/// Returns `true` when the caller must return without touching the connection.
+/// If the connection is being cancelled (the server is going away) the body is
+/// cancelled instead, so a parked read is failed and the connection is torn
+/// down right away.
+fn hand_off_connection_to_reader(
+  request_body: &Rc<RawH1RequestBody<RawH1Io>>,
+  cancel: &CancelHandle,
+) -> bool {
+  if !request_body.reader_owns_connection() {
+    return false;
+  }
+  if cancel.is_canceled() {
+    request_body.cancel();
+    return false;
+  }
+  true
+}
+
+/// Writes a synchronously produced response for a request whose body is still
+/// owned by a JS reader: the connection cannot be reclaimed, so the response
+/// goes out through the shared connection cell and the connection is then
+/// handed to the reader (see `hand_off_connection_to_reader`).
+#[allow(clippy::too_many_arguments, reason = "response writing plumbing")]
+async fn write_direct_response_for_reader(
+  body_conn: RawNetworkH1ConnectionCell,
+  request_body: Option<Rc<RawH1RequestBody<RawH1Io>>>,
+  record: Rc<RawHttpRecord>,
+  cancel: Rc<CancelHandle>,
+  version: h1::Version,
+  response_context: RawH1ResponseContext,
+  response_parts: RawResponseParts,
+  body: RawResponseBody,
+  head: bool,
+) -> Result<(), HttpNextError> {
+  // The reader owns the request body, so this request never reuses its
+  // connection: the response is always written with `keep_alive: false`.
+  match body {
+    RawResponseBody::Flat(body) => {
+      write_h1_flat_response_shared(
+        body_conn.clone(),
+        version,
+        response_parts,
+        body,
+        false,
+        head,
+      )
+      .await?;
+    }
+    RawResponseBody::Stream(body) => {
+      let response_context = RawH1ResponseContext {
+        version: response_context.version,
+        keep_alive: false,
+        head: response_context.head,
+      };
+      write_h1_stream_response_shared(
+        body_conn.clone(),
+        response_context,
+        response_parts,
+        body,
+        record,
+      )
+      .await?;
+    }
+  }
+  if let Some(request_body) = request_body.as_ref()
+    && hand_off_connection_to_reader(request_body, &cancel)
+  {
+    return Ok(());
+  }
+  let state = { body_conn.borrow_mut().take() };
+  if let Some(state) = state {
+    let mut conn = state.conn;
+    let mut scratch = state.scratch;
+    let _ = conn.discard_body_with_scratch(&mut scratch).await;
+  }
+  Ok(())
 }
 
 async fn wait_raw_response_ready_or_closed<I>(
@@ -4551,6 +4629,7 @@ async fn serve_http11_raw(
         Rc::new(RawH1RequestBody::new(
           body_conn.clone(),
           parsed.request_body_len,
+          cancel.clone(),
         ))
       });
       let request_body_for_cancel = request_body_resource.clone();
@@ -4585,7 +4664,19 @@ async fn serve_http11_raw(
         let (response_parts, body) =
           raw_response_from_direct_response(&record, response);
         let response_status = response_parts.status;
-        let state = { body_conn.borrow_mut().take() };
+        // The handler produced its response synchronously, but a JS reader may
+        // still own the request body -- and with it the shared connection. When
+        // it does, the response has to go out through the shared connection
+        // cell instead of a reclaimed connection, or the in-flight read is
+        // truncated.
+        let reader_owns_conn = request_body_for_cancel
+          .as_ref()
+          .is_some_and(|body| body.reader_owns_connection());
+        let state = if reader_owns_conn {
+          None
+        } else {
+          body_conn.borrow_mut().take()
+        };
         if let Some(state) = state {
           let mut local_conn = state.conn;
           let mut local_scratch = state.scratch;
@@ -4637,6 +4728,23 @@ async fn serve_http11_raw(
             return Ok(());
           }
           continue;
+        }
+        if reader_owns_conn {
+          record_cancel_guard.disarm();
+          // Boxed: this is the cold path, and inlining it would grow the
+          // per-connection future.
+          return Box::pin(write_direct_response_for_reader(
+            body_conn,
+            request_body_for_cancel,
+            record,
+            cancel,
+            parsed.version,
+            response_context,
+            response_parts,
+            body,
+            head,
+          ))
+          .await;
         }
       }
       wait_raw_response_ready(
@@ -4736,16 +4844,16 @@ async fn serve_http11_raw(
         record_cancel_guard.disarm();
         return Ok(());
       }
-      // The response was produced while the request body was still being read on
-      // another task (`req.body` is being piped/consumed in the background).
-      // Wait for that reader to finish before reclaiming the connection: taking
-      // `body_conn` out from under an in-flight read would fail it with a
-      // spurious "resource unavailable" error and truncate the body. Resolves
-      // immediately if JS never took the body or the read already finished.
+      // The response is on the wire. If a JS reader still owns the request body
+      // (`req.body` is being piped/consumed in the background), hand the
+      // connection over to it instead of reclaiming it here -- see
+      // `hand_off_connection_to_reader`.
       if parsed.has_body
         && let Some(request_body) = request_body_for_cancel.as_ref()
+        && hand_off_connection_to_reader(request_body, &cancel)
       {
-        request_body.wait_reader_done().await;
+        record_cancel_guard.disarm();
+        return Ok(());
       }
       let Some(state) = body_conn.borrow_mut().take() else {
         return Err(raw_h1_connection_closed());
