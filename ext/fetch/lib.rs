@@ -1078,6 +1078,19 @@ pub fn create_http_client(
   builder.timer(TokioTimer::new());
   builder.pool_timer(TokioTimer::new());
 
+  // The hyper client defaults `SETTINGS_MAX_HEADER_LIST_SIZE` to 16KB, which is
+  // small enough that responses with large header blocks (e.g. long
+  // `content-security-policy` or many `set-cookie` headers) get rejected by the
+  // h2 stack with a PROTOCOL_ERROR before they ever reach JavaScript. Browsers
+  // advertise a much larger value (Chrome uses 256KB), so match that as the
+  // default to keep `fetch()` interoperable with the same servers browsers can
+  // talk to. https://github.com/denoland/deno/issues/36462
+  //
+  // Apply this *before* the builder hook so an embedder can still override it,
+  // and apply the explicit `Deno.createHttpClient({ http2MaxHeaderListSize })`
+  // option *after* the hook below, giving precedence: default < hook < option.
+  builder.http2_max_header_list_size(DEFAULT_HTTP2_MAX_HEADER_LIST_SIZE);
+
   if let Some(client_builder_hook) = options.client_builder_hook {
     builder = client_builder_hook(builder);
   }
@@ -1149,19 +1162,11 @@ pub fn create_http_client(
     );
   }
 
-  // The hyper client defaults `SETTINGS_MAX_HEADER_LIST_SIZE` to 16KB, which is
-  // small enough that responses with large header blocks (e.g. long
-  // `content-security-policy` or many `set-cookie` headers) get rejected by the
-  // h2 stack with a PROTOCOL_ERROR before they ever reach JavaScript. Browsers
-  // advertise a much larger value (Chrome uses 256KB), so match that as the
-  // default to keep `fetch()` interoperable with the same servers browsers can
-  // talk to. Users can still override this via `http2MaxHeaderListSize`.
-  // https://github.com/denoland/deno/issues/36462
-  builder.http2_max_header_list_size(
-    options
-      .http2_max_header_list_size
-      .unwrap_or(DEFAULT_HTTP2_MAX_HEADER_LIST_SIZE),
-  );
+  // An explicit `Deno.createHttpClient({ http2MaxHeaderListSize })` takes
+  // precedence over both the default above and the builder hook.
+  if let Some(http2_max_header_list_size) = options.http2_max_header_list_size {
+    builder.http2_max_header_list_size(http2_max_header_list_size);
+  }
 
   match (options.http1, options.http2) {
     (true, false) => {} // noop, handled by ALPN above
