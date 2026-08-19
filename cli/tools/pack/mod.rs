@@ -474,10 +474,12 @@ fn collect_asset_files(
       excluded.insert(p);
     }
   }
-  // The source config file is replaced by the generated package.json.
+  // The source config file and any existing package.json are replaced by the
+  // generated package.json.
   if let Ok(p) = package.config_file.specifier.to_file_path() {
     excluded.insert(p);
   }
+  excluded.insert(package_dir.join("package.json"));
   // README/LICENSE are added by `collect_readme_license_files`.
   for file in readme_license_files {
     excluded.insert(package_dir.join(&file.relative_path));
