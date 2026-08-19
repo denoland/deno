@@ -429,7 +429,14 @@ function resolver(bindingName: string) {
     req.oncomplete = onresolve;
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
-    const err = this._handle[bindingName](req, domainToASCII(name));
+    // `getHostByAddr` (reverse) receives an IP address, not a domain, so it
+    // must be passed through verbatim. Running it through `domainToASCII`
+    // would map a bare IPv6 literal (which contains `:`) to an empty string
+    // and make the lookup fail with EINVAL, unlike Node.
+    const err = this._handle[bindingName](
+      req,
+      bindingName === "getHostByAddr" ? name : domainToASCII(name),
+    );
 
     if (err) {
       throw dnsException(err, bindingName, name);

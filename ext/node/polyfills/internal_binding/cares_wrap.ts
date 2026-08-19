@@ -308,7 +308,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #cancelRids: Set<number> = new SafeSet();
   // Local bind address(es) set via `setLocalAddress`. Currently only stored so
   // the call matches Node's behavior; not yet applied to outgoing queries.
-  #localAddress: { ipv4: string; ipv6?: string } | null = null;
+  #localAddress: { ipv4?: string; ipv6?: string } | null = null;
 
   constructor(timeout: number, tries: number, maxTimeout: number) {
     super(providerType.DNSCHANNEL);
@@ -906,24 +906,44 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   setLocalAddress(addr0: string, addr1?: string) {
-    // Node binds the outgoing DNS query sockets of this channel to the given
-    // local IPv4 (`addr0`) and/or IPv6 (`addr1`) address. The caller
-    // (`Resolver.setLocalAddress` in `internal/dns/utils.ts`) has already
-    // validated the arguments are strings.
+    // Mirror Node's c-ares `ChannelWrap::SetLocalAddress`: the first argument
+    // may be either an IPv4 or IPv6 address; if a second argument is given it
+    // must be the *other* family (so exactly one IPv4 and one IPv6 address, in
+    // either order). The caller (`Resolver.setLocalAddress` in
+    // `internal/dns/utils.ts`) has already validated the arguments are strings.
     //
-    // We validate the addresses are well-formed and record them so the call no
-    // longer throws and matches Node's observable behavior. The underlying
-    // resolver op (`op_dns_resolve`) does not yet expose a per-query bind
-    // address, so the stored value is not applied to outgoing queries; see
+    // We validate the addresses here and record them so the call no longer
+    // throws and matches Node's observable behavior. The underlying resolver op
+    // (`op_dns_resolve`) does not yet expose a per-query bind address, so the
+    // stored value is not applied to outgoing queries; see
     // https://github.com/denoland/deno/issues/36518.
-    if (addr0 !== "" && !isIPv4(addr0) && !isIPv6(addr0)) {
+    let type0: 4 | 6;
+    if (isIPv4(addr0)) {
+      type0 = 4;
+    } else if (isIPv6(addr0)) {
+      type0 = 6;
+    } else {
       throw new Error(`Invalid IP address: ${addr0}`);
     }
-    if (addr1 !== undefined && addr1 !== "" && !isIPv6(addr1)) {
-      throw new Error(`Invalid IP address: ${addr1}`);
+
+    if (addr1 !== undefined) {
+      if (isIPv4(addr1)) {
+        if (type0 === 4) {
+          throw new Error("Cannot specify two IPv4 addresses");
+        }
+      } else if (isIPv6(addr1)) {
+        if (type0 === 6) {
+          throw new Error("Cannot specify two IPv6 addresses");
+        }
+      } else {
+        throw new Error(`Invalid IP address: ${addr1}`);
+      }
     }
 
-    this.#localAddress = { ipv4: addr0, ipv6: addr1 };
+    this.#localAddress = {
+      ipv4: type0 === 4 ? addr0 : addr1,
+      ipv6: type0 === 6 ? addr0 : addr1,
+    };
   }
 
   cancel() {
