@@ -107,14 +107,30 @@ pub enum EgressHeaderPolicyError {
   },
 }
 
-/// Headers whose manipulation would corrupt the HTTP request itself. The
-/// policy exists to manage application-level headers; framing stays with the
-/// HTTP stack.
-const FORBIDDEN_HEADERS: [HeaderName; 4] = [
+/// Headers whose manipulation would corrupt the HTTP request itself: message
+/// framing, hop-by-hop connection management, and the declared encoding of the
+/// body. The policy exists to manage application-level headers; these stay
+/// with the HTTP stack.
+///
+/// A forbidden name is rejected for every op, `remove` included. Allowing a
+/// `remove` of, say, `content-encoding` would be harmless on its own, but the
+/// whole list is refused at parse time so an operator gets one loud error
+/// rather than a policy that silently applies to some ops and not others.
+const FORBIDDEN_HEADERS: [HeaderName; 11] = [
   header::HOST,
   header::CONTENT_LENGTH,
   header::TRANSFER_ENCODING,
   header::CONNECTION,
+  header::UPGRADE,
+  header::TE,
+  header::TRAILER,
+  header::EXPECT,
+  // Describes how the body is encoded; setting it mislabels every request the
+  // policy touches, and the body is not the policy's to describe.
+  header::CONTENT_ENCODING,
+  // No `http::header` constant for these two.
+  HeaderName::from_static("keep-alive"),
+  HeaderName::from_static("proxy-connection"),
 ];
 
 /// Credential-bearing headers that `httpRedirectFetch` drops when a redirect
@@ -502,12 +518,48 @@ mod tests {
       r#"{"set": {"Host": "example.com"}}"#,
       r#"{"remove": ["content-length"]}"#,
       r#"{"forward": ["transfer-encoding"]}"#,
+      r#"{"set": {"connection": "close"}}"#,
     ] {
       let err = EgressHeaderPolicy::parse(json).unwrap_err();
       assert!(
         matches!(err, EgressHeaderPolicyError::ForbiddenHeader(_)),
         "expected ForbiddenHeader for {json}"
       );
+    }
+  }
+
+  // Every forbidden name is refused in every op, so an operator cannot corrupt
+  // framing, hop-by-hop connection management, or the declared body encoding
+  // from any direction. `content-encoding` is the one that bites quietly: it
+  // would mislabel the body of every request the policy touches.
+  #[test]
+  fn rejects_every_forbidden_header_in_every_op() {
+    for name in [
+      "host",
+      "content-length",
+      "transfer-encoding",
+      "connection",
+      "upgrade",
+      "te",
+      "trailer",
+      "expect",
+      "content-encoding",
+      "keep-alive",
+      "proxy-connection",
+    ] {
+      for json in [
+        format!(r#"{{"remove": ["{name}"]}}"#),
+        format!(r#"{{"forward": ["{name}"]}}"#),
+        format!(r#"{{"set": {{"{name}": "x"}}}}"#),
+        format!(r#"{{"append": {{"{name}": "x"}}}}"#),
+        format!(r#"{{"default": {{"{name}": "x"}}}}"#),
+      ] {
+        let err = EgressHeaderPolicy::parse(&json).unwrap_err();
+        assert!(
+          matches!(err, EgressHeaderPolicyError::ForbiddenHeader(ref n) if n == name),
+          "expected ForbiddenHeader({name}) for {json}, got {err:?}"
+        );
+      }
     }
   }
 
