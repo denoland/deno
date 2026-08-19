@@ -353,57 +353,40 @@ pub(crate) fn request_builder_hook(
   static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
     OnceLock::new();
   static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
-  // Headers the egress header policy *owns* are left entirely to the policy:
-  // it applies after this hook (and its `forward`/`append` ops even earlier,
-  // in JS), so touching them here would clobber its values. Ownership means
-  // the policy also scrubs user-supplied values — a `default` entry does not,
-  // so it does not suppress the scrub below (see
-  // `EgressHeaderPolicy::owns_header`). With no policy configured both flags
-  // are false and behavior is unchanged.
-  static POLICY_OWNED: OnceLock<(bool, bool)> = OnceLock::new();
+  // This hook does not coordinate with the egress header policy. The policy
+  // applies after it (`apply_static`/`apply_dynamic` in `op_fetch`) and scrubs
+  // every header it owns, so whatever is written here for an owned header is
+  // replaced before the request goes out. A `default` entry owns nothing and
+  // only fills a gap, which is exactly the case where the writes below should
+  // still happen.
 
-  let (policy_owns_token, policy_owns_cdn_loop) =
-    *POLICY_OWNED.get_or_init(|| {
-      match egress_header_policy_from_env().as_deref() {
-        Some(deno_fetch::EgressHeaderPolicyState::Valid(policy)) => (
-          policy.owns_header("x-deno-fetch-token"),
-          policy.owns_header("cdn-loop"),
-        ),
-        _ => (false, false),
-      }
-    });
-
-  if !policy_owns_token {
-    // Scrub Deno-specific headers to prevent user code from spoofing them.
-    if let http::header::Entry::Occupied(entry) =
-      request.headers_mut().entry(X_DENO_FETCH_TOKEN)
-    {
-      entry.remove_entry_mult();
-    }
-
-    let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
-      std::env::var("X_DENO_FETCH_TOKEN")
-        .ok()
-        .and_then(|v| http::HeaderValue::from_str(&v).ok())
-    });
-
-    if let Some(token) = maybe_x_deno_fetch_token {
-      request
-        .headers_mut()
-        .insert(X_DENO_FETCH_TOKEN, token.clone());
-    }
+  // Scrub Deno-specific headers to prevent user code from spoofing them.
+  if let http::header::Entry::Occupied(entry) =
+    request.headers_mut().entry(X_DENO_FETCH_TOKEN)
+  {
+    entry.remove_entry_mult();
   }
 
-  if !policy_owns_cdn_loop {
-    let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
-      std::env::var("CDN_LOOP")
-        .ok()
-        .and_then(|v| http::HeaderValue::from_str(&v).ok())
-    });
+  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
 
-    if let Some(cdn_loop) = cdn_loop_value {
-      request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
-    }
+  if let Some(token) = maybe_x_deno_fetch_token {
+    request
+      .headers_mut()
+      .insert(X_DENO_FETCH_TOKEN, token.clone());
+  }
+
+  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  });
+
+  if let Some(cdn_loop) = cdn_loop_value {
+    request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
   }
 
   Ok(())
