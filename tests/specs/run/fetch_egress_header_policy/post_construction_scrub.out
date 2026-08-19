@@ -1,1 +1,1 @@
-authorization: Bearer operator-secret
+authorization: Bearer not-a-real-credential

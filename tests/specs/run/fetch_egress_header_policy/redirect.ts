@@ -3,6 +3,12 @@
 // `append` runs once per fetch() call, so its entry must survive redirect hops
 // without duplicating. `set`/`default` re-run per hop, so they must not undo
 // the cross-origin credential strip that `httpRedirectFetch` performs.
+//
+// The policy here sets `authorization` because that is one of the headers the
+// strip covers, which is the whole point of the test. It is not a suggestion:
+// a policy lives in an env var that user code can read under --allow-env and
+// that every subprocess inherits, so real credentials do not belong in one.
+// See the scope notes in ext/fetch/egress_policy.rs.
 
 // One server serves both roles, so a redirect to its own `localhost` URL is
 // same-origin while a redirect to its `127.0.0.1` URL is not.

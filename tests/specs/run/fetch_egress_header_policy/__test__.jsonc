@@ -17,7 +17,7 @@
     "post_construction_scrub": {
       "args": "run -A post_construction_scrub.ts",
       "envs": {
-        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"authorization\":\"Bearer operator-secret\"}}"
+        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"authorization\":\"Bearer not-a-real-credential\"}}"
       },
       "output": "post_construction_scrub.out"
     },
@@ -76,7 +76,7 @@
     "redirect": {
       "args": "run -A redirect.ts",
       "envs": {
-        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"},\"set\":{\"authorization\":\"Bearer operator-secret\",\"user-agent\":\"enforced/1.0\"}}"
+        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"},\"set\":{\"authorization\":\"Bearer not-a-real-credential\",\"user-agent\":\"enforced/1.0\"}}"
       },
       "output": "redirect.out"
     },

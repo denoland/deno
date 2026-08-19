@@ -687,7 +687,7 @@ mod tests {
   #[test]
   fn set_and_default_yield_to_the_cross_origin_redirect_strip() {
     let policy = EgressHeaderPolicy::parse(
-      r#"{"set": {"authorization": "Bearer secret"},
+      r#"{"set": {"authorization": "Bearer not-a-real-credential"},
           "default": {"cookie": "a=1"},
           "append": {"x-keep": "1"}}"#,
     )
@@ -696,7 +696,10 @@ mod tests {
     // Before any cross-origin redirect the credentials are applied.
     let mut headers = HeaderMap::new();
     policy.apply_static(&mut headers, false);
-    assert_eq!(headers.get("authorization").unwrap(), "Bearer secret");
+    assert_eq!(
+      headers.get("authorization").unwrap(),
+      "Bearer not-a-real-credential"
+    );
     assert_eq!(headers.get("cookie").unwrap(), "a=1");
 
     // Once a hop has crossed origins they stay gone.
