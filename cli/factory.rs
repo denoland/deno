@@ -94,6 +94,7 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmCacheServices;
 use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmInstallerFactory;
@@ -595,6 +596,42 @@ impl CliFactory {
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
     self.npm_installer_factory()?.npm_cache()
+  }
+
+  pub fn create_npm_cache_services(
+    &self,
+    npmrc: Arc<ResolvedNpmRc>,
+  ) -> Result<CliNpmCacheServices, AnyError> {
+    let sys = self.sys();
+    let npm_cache_dir = Arc::new(NpmCacheDir::new(
+      &sys,
+      self.deno_dir()?.npm_folder_path(),
+      npmrc.get_all_known_registries_urls(),
+    ));
+    let packument_format = if npmrc.min_release_age_days.is_some()
+      || npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off
+    {
+      NpmPackumentFormat::Full
+    } else {
+      NpmPackumentFormat::Abbreviated
+    };
+    let npm_client = Arc::new(CliNpmCacheHttpClient::new(
+      self.http_client_provider().clone(),
+      self.text_only_progress_bar().clone(),
+      packument_format,
+    ));
+    Ok(CliNpmCacheServices::new(
+      npm_cache_dir,
+      sys,
+      NpmCacheSetting::from_cache_setting(&self.cli_options()?.cache_setting()),
+      npmrc,
+      npm_client,
+      packument_format,
+      self
+        .install_reporter()?
+        .cloned()
+        .map(|r| r as Arc<dyn deno_npm_cache::TarballCacheReporter>),
+    ))
   }
 
   pub fn npm_cache_dir(&self) -> Result<&Arc<NpmCacheDir>, AnyError> {

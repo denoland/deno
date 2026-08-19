@@ -10,6 +10,43 @@ import { copy } from "@std/io/copy";
 
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
+function changingCreateOptions(): Deno.OpenOptions {
+  let writeReads = 0;
+  return {
+    read: false,
+    create: true,
+    get write() {
+      // Validation reads this getter twice before the op converts the options.
+      writeReads++;
+      return writeReads <= 2;
+    },
+  };
+}
+
+Deno.test(
+  { permissions: { read: true, write: false } },
+  function openSyncChangingOptionsChecksConvertedAccess() {
+    const path = `open_sync_changing_options_${crypto.randomUUID()}`;
+
+    assertThrows(
+      () => Deno.openSync(path, changingCreateOptions()),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: false } },
+  async function openChangingOptionsChecksConvertedAccess() {
+    const path = `open_changing_options_${crypto.randomUUID()}`;
+
+    await assertRejects(
+      () => Deno.open(path, changingCreateOptions()),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
 Deno.test(function filesStdioFileDescriptors() {
   // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
   assertEquals(Deno.stdin.rid, 0);
