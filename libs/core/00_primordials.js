@@ -678,7 +678,7 @@
       __proto__: null,
       get() {
         ensureSharedArrayBufferPrimordials();
-        return sharedArrayBufferPrimordials?.[name];
+        return sharedArrayBufferPrimordials[name];
       },
     });
   });
