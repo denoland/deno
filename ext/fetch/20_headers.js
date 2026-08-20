@@ -73,6 +73,12 @@ function ensureLowerNames(headers) {
   return lower;
 }
 
+function invalidateIterableHeaders(headers) {
+  const cache = headers[_iterableHeadersCache];
+  cache[0] = undefined;
+  cache[1] = undefined;
+}
+
 /**
  * @typedef Header
  * @type {[string, string]}
@@ -193,6 +199,7 @@ function appendHeader(headers, name, value) {
   }
   ArrayPrototypePush(list, [name, value]);
   ArrayPrototypePush(lowerNames, lowercaseName);
+  invalidateIterableHeaders(headers);
 }
 
 function appendHeaderToList(list, name, value) {
@@ -357,26 +364,33 @@ class Headers {
   [_headerListGetter] = null;
   [_headerGet] = null;
   [_headerTarget] = null;
+  /**
+   * Mutable cell so freezing Headers does not freeze its internal cache.
+   * @type {[HeaderList | undefined, number | undefined]}
+   */
+  [_iterableHeadersCache] = [undefined, undefined];
   /** @type {"immutable" | "request" | "request-no-cors" | "response" | "none"} */
   [_guard];
 
   get [_iterableHeaders]() {
     const list = headerListFromHeaders(this);
+    const cache = this[_iterableHeadersCache];
 
     if (
-      this[_guard] === "immutable" &&
-      this[_iterableHeadersCache] !== undefined
+      cache[0] !== undefined &&
+      cache[1] === list.length
     ) {
-      return this[_iterableHeadersCache];
+      return cache[0];
     }
 
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
     const seenHeaders = { __proto__: null };
     const entries = [];
+    const lowerNames = ensureLowerNames(this);
     for (let i = 0; i < list.length; ++i) {
       const entry = list[i];
-      const name = byteLowerCase(entry[0]);
+      const name = lowerNames[i];
       const value = entry[1];
       if (value === null) throw new TypeError("Unreachable");
       // The following if statement is not spec compliant.
@@ -414,7 +428,8 @@ class Headers {
       },
     );
 
-    this[_iterableHeadersCache] = entries;
+    cache[0] = entries;
+    cache[1] = list.length;
 
     return entries;
   }
@@ -481,6 +496,7 @@ class Headers {
     if (writeIdx !== list.length) {
       ArrayPrototypeSplice(list, writeIdx);
       ArrayPrototypeSplice(lowerNames, writeIdx);
+      invalidateIterableHeaders(this);
     }
   }
 
@@ -627,6 +643,7 @@ class Headers {
       ArrayPrototypeSplice(list, writeIdx);
       ArrayPrototypeSplice(lowerNames, writeIdx);
     }
+    invalidateIterableHeaders(this);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -732,11 +749,11 @@ function headersFromHeaderListLazyTarget(target, guard) {
  * IMPORTANT: callers must change the list length when mutating (push, splice,
  * or empty-and-refill). Equal-length in-place mutations
  * (`list[i] = [...]` or `list[i][0] = ...`, pop-and-push pairs) silently leave
- * the parallel `[_lowerNames]` cache (see `ensureLowerNames`) stale, because
- * the rebuild trigger is a length divergence between `_headerList` and
- * `[_lowerNames]`. There is currently no caller doing this; the next one to
- * reach for an equal-length in-place mutation needs to add a cache-invalidator
- * (and a test) alongside it.
+ * the parallel `[_lowerNames]` cache (see `ensureLowerNames`) and iterable
+ * cache stale, because both rebuild triggers use the raw list length. There is
+ * currently no caller doing this; the next one to reach for an equal-length
+ * in-place mutation needs to add a cache-invalidator (and a test) alongside
+ * it.
  *
  * @param {Headers} headers
  * @returns {HeaderList}
