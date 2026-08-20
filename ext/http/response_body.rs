@@ -631,7 +631,7 @@ mod tests {
       if v.is_empty() {
         break;
       }
-      let rand = (rand::random::<usize>() % v.len()) + 1;
+      let rand = rand::random_range(1..=v.len());
       let new = v.split_off(rand);
       out.push(v);
       v = new;
