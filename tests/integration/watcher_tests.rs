@@ -2014,8 +2014,7 @@ console.log("Files reloaded");
 console.log("start cwd:", Deno.cwd());
 Deno.mkdirSync("temp", { recursive: true });
 Deno.chdir("temp");
-// Read the cwd after the chdir so any cwd caching is exercised across
-// the watcher restart, not just the chdir itself.
+// Read cwd after chdir so cwd caching is exercised across the restart.
 console.log("temp cwd:", Deno.cwd());
 "#,
   );
