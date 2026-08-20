@@ -96,7 +96,16 @@ fn is_skippable_optional_error(err: &NpmResolutionError) -> bool {
     NpmResolutionError::Registry(
       NpmRegistryPackageInfoLoadError::LoadError(_),
     ) => false,
-    NpmResolutionError::Resolution(_) => true,
+    NpmResolutionError::Resolution(
+      NpmPackageVersionResolutionError::DistTagNotFound { .. }
+      | NpmPackageVersionResolutionError::DistTagVersionNotFound { .. }
+      | NpmPackageVersionResolutionError::DistTagVersionTooNew { .. }
+      | NpmPackageVersionResolutionError::VersionNotFound(_)
+      | NpmPackageVersionResolutionError::VersionReqNotMatched { .. },
+    ) => true,
+    NpmResolutionError::Resolution(
+      NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. },
+    ) => false,
     NpmResolutionError::DependencyEntry(_) => false,
   }
 }
@@ -3510,7 +3519,9 @@ mod test {
   use crate::resolution::NewestDependencyDate;
   use crate::resolution::NewestDependencyDateOptions;
   use crate::resolution::NpmPackageVersionNotFound;
+  use crate::resolution::NpmTrustPolicy;
   use crate::resolution::SerializedNpmResolutionSnapshot;
+  use crate::resolution::TrustPolicyOptions;
 
   #[test]
   fn resolved_id_tests() {
@@ -6172,6 +6183,66 @@ mod test {
         "@scope/linux-x64@1.0.0".to_string(),
         "package-a@1.0.0".to_string(),
       ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_optional_dep_trust_policy_downgrade_still_errors() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.add_optional_dep(("package-a", "1.0.0"), ("package-b", "1.1.0"));
+    api.with_package("package-b", |info| {
+      info.versions.insert(
+        version("1.0.0"),
+        serde_json::from_str(
+          r#"{ "version": "1.0.0", "_npmUser": { "approver": {} } }"#,
+        )
+        .unwrap(),
+      );
+      info.versions.insert(
+        version("1.1.0"),
+        serde_json::from_str(r#"{ "version": "1.1.0" }"#).unwrap(),
+      );
+      info.time.insert(
+        version("1.0.0"),
+        "2026-08-01T00:00:00.000Z".parse().unwrap(),
+      );
+      info.time.insert(
+        version("1.1.0"),
+        "2026-08-02T00:00:00.000Z".parse().unwrap(),
+      );
+    });
+
+    let snapshot = NpmResolutionSnapshot::new(Default::default());
+    let mut graph = Graph::from_snapshot(snapshot);
+    let npm_version_resolver = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    let mut resolver = GraphDependencyResolver::new(
+      &mut graph,
+      &api,
+      &npm_version_resolver,
+      None,
+      GraphDependencyResolverOptions { should_dedup: true },
+    );
+    let req = PackageReq::from_str("package-a@1.0.0").unwrap();
+    resolver
+      .add_package_req(&req, &api.package_info(&req.name).await.unwrap())
+      .unwrap();
+
+    let err = resolver.resolve_pending().await.unwrap_err();
+    assert!(
+      matches!(
+        err,
+        NpmResolutionError::Resolution(
+          NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
+        )
+      ),
+      "expected TrustPolicyDowngrade, got {err:?}"
     );
   }
 
