@@ -88,6 +88,15 @@ pub enum NpmResolutionError {
 /// minimum dependency age — mirror npm/yarn/pnpm, which never fail an install
 /// over an unmet optional dependency. Transient failures (e.g. a registry
 /// load error) are not swallowed so real problems still surface.
+///
+/// Invariant: every variant classified as skippable here must be raised
+/// *before* the dependency's node is created in the graph (in practice, by
+/// `resolve_best_package_version_info`, which `analyze_dependency` calls
+/// before `create_node_from_version_info`). Skipping an error raised after
+/// node creation would leave an orphan node in the graph that no parent
+/// links to, and that node would then be materialized into the snapshot.
+/// If a new variant can be raised post-creation, it must be classified as
+/// non-skippable regardless of how deterministic it is.
 fn is_skippable_optional_error(err: &NpmResolutionError) -> bool {
   match err {
     NpmResolutionError::Registry(
@@ -1149,6 +1158,10 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   /// don't pollute the root scope. Phase 2 uses these when a required
   /// peer isn't found in scope.
   peer_fallbacks: BTreeMap<StackString, NodeId>,
+  /// `name@version_req` of optional dependencies that have already been
+  /// warned about, so that an optional dep reached via several parent paths
+  /// only produces a single warning.
+  warned_skipped_optional: FxHashSet<String>,
 }
 
 impl<'a, TNpmRegistryApi: NpmRegistryApi>
@@ -1176,7 +1189,33 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       pure_pkgs: FxHashSet::default(),
       peers_cache: FxHashMap::default(),
       peer_fallbacks: BTreeMap::new(),
+      warned_skipped_optional: FxHashSet::default(),
     }
+  }
+
+  /// Warns that an optional dependency was skipped.
+  ///
+  /// Skipping keeps the install from failing, but the dropped package may be
+  /// the very one this system needs (e.g. the host platform's prebuild is the
+  /// one blocked by the minimum dependency age), in which case the failure
+  /// would otherwise resurface at runtime as an opaque "module not found".
+  /// The underlying error is included so a genuinely broken version
+  /// requirement in `optionalDependencies` stays diagnosable.
+  fn warn_skipped_optional_dep(
+    &mut self,
+    dep: &NpmDependencyEntry,
+    err: &dyn std::fmt::Display,
+  ) {
+    let key = format!("{}@{}", dep.name, dep.version_req.version_text());
+    if !self.warned_skipped_optional.insert(key) {
+      return;
+    }
+    log::warn!(
+      "Skipping optional dependency '{}@{}': {}",
+      dep.name,
+      dep.version_req.version_text(),
+      err
+    );
   }
 
   /// Follows the `node_id_mappings` chain to find the canonical (latest)
@@ -2756,10 +2795,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       Ok(info) => info,
       // npm doesn't fail when an optional dependency (or optional peer
       // dependency) doesn't exist in the registry — it's simply skipped.
-      Err(NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
+      Err(err @ NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
         if dep.optional
           || matches!(dep.kind, NpmDependencyEntryKind::OptionalPeer) =>
       {
+        // an unmet optional *peer* dep is routine and was always silent, so
+        // only warn for entries from `optionalDependencies`
+        if dep.optional {
+          self.warn_skipped_optional_dep(dep, &err);
+        }
         return Ok(false);
       }
       Err(e) => return Err(e.into()),
@@ -2813,6 +2857,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               // npm/yarn/pnpm. Only version-resolution failures are swallowed;
               // transient errors (e.g. a registry load failure) still surface.
               Err(err) if dep.optional && is_skippable_optional_error(&err) => {
+                self.warn_skipped_optional_dep(dep, &err);
                 return Ok(false);
               }
               Err(err) => return Err(err),
@@ -6259,6 +6304,91 @@ mod test {
       err.to_string(),
       "Could not find npm package 'package-b' matching '2'."
     );
+  }
+
+  #[test]
+  fn skippable_optional_error_classification() {
+    // Exhaustive table for `is_skippable_optional_error`. Deterministic
+    // resolution failures are skipped for optional deps; anything that could
+    // mask a transient or genuinely dangerous condition is not.
+    let skippable: Vec<NpmResolutionError> = vec![
+      NpmRegistryPackageInfoLoadError::PackageNotExists {
+        package_name: "package-a".to_string(),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::DistTagNotFound {
+        dist_tag: "latest".to_string(),
+        package_name: "package-a".into(),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::DistTagVersionNotFound {
+        package_name: "package-a".into(),
+        dist_tag: "latest".to_string(),
+        version: "1.0.0".to_string(),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::DistTagVersionTooNew {
+        package_name: "package-a".into(),
+        dist_tag: "latest".to_string(),
+        version: "1.0.0".to_string(),
+        publish_date: "2026-08-15T00:00:00.000Z".parse().unwrap(),
+        newest_dependency_date: NewestDependencyDate(
+          "2026-08-01T00:00:00.000Z".parse().unwrap(),
+        ),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::VersionNotFound(
+        NpmPackageVersionNotFound(PackageNv {
+          name: "package-a".into(),
+          version: version("1.0.0"),
+        }),
+      )
+      .into(),
+      NpmPackageVersionResolutionError::VersionReqNotMatched {
+        package_name: "package-a".into(),
+        version_req: VersionReq::parse_from_npm("2").unwrap(),
+        newest_dependency_date: None,
+      }
+      .into(),
+    ];
+    for err in &skippable {
+      assert!(
+        is_skippable_optional_error(err),
+        "expected skippable: {err:?}"
+      );
+    }
+
+    let fatal: Vec<NpmResolutionError> = vec![
+      // transient — a registry hiccup must not silently drop a package
+      NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
+        deno_error::JsErrorBox::generic("connection reset"),
+      ))
+      .into(),
+      // a possible supply chain incident is never worth swallowing
+      NpmPackageVersionResolutionError::TrustPolicyDowngrade {
+        package_name: "package-a".into(),
+        version: version("1.0.0"),
+        past_evidence: "provenance",
+        current_evidence: "nothing",
+      }
+      .into(),
+      // a malformed dependency entry is raised after the node is created,
+      // so skipping it would leave an orphan node in the graph
+      NpmResolutionError::DependencyEntry(Box::new(NpmDependencyEntryError {
+        parent_nv: PackageNv {
+          name: "package-a".into(),
+          version: version("1.0.0"),
+        },
+        key: "package-b".to_string(),
+        value: "not-a-version".to_string(),
+        source: NpmDependencyEntryErrorSource::LocalDependency {
+          specifier: "file:./b".to_string(),
+        },
+      })),
+    ];
+    for err in &fatal {
+      assert!(!is_skippable_optional_error(err), "expected fatal: {err:?}");
+    }
   }
 
   #[tokio::test]

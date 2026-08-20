@@ -1,5 +1,9 @@
 Add npm:@denotest/napi-optional-platform@1.0.0
 [WILDCARD]
+Skipping optional dependency '@denotest/napi-optional-platform-android-arm64@1.0.0': Could not find npm package '@denotest/napi-optional-platform-android-arm64' matching '1.0.0'.
+
+A newer matching version was found, but it was not used because it was newer than the specified minimum dependency date of 2030-01-01 00:00:00 UTC.
+[WILDCARD]
 Dependencies:
 + npm:@denotest/napi-optional-platform 1.0.0
 [WILDCARD]

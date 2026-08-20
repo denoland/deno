@@ -1082,6 +1082,10 @@ impl NpmPackageVersionInfo {
         // but then use this dependency version requirement otherwise
         if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
           peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
+          // the peer entry is the one that gets resolved, so carry the
+          // optional flag over to it rather than dropping it along with the
+          // rest of this entry
+          peer_dep_entry.optional = entry.optional;
         } else {
           result.insert(entry.bare_specifier.clone(), entry);
         }
