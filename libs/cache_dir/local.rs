@@ -1103,6 +1103,8 @@ fn url_path_segments(url: &Url) -> impl Iterator<Item = &str> {
 mod test {
   use deno_maybe_sync::new_rc;
   use pretty_assertions::assert_eq;
+  use sys_traits::FsRemoveDirAll;
+  use sys_traits::FsWrite;
   use sys_traits::impls::RealSys;
   use tempfile::TempDir;
   use tempfile::tempdir;
@@ -1296,11 +1298,9 @@ mod test {
 
   #[test]
   fn hashed_path_components_remain_short() {
-    let url = Url::parse(&format!(
-      "https://localhost/{}.d.mts",
-      "A".repeat(64)
-    ))
-    .unwrap();
+    let url =
+      Url::parse(&format!("https://localhost/{}.d.mts", "A".repeat(64)))
+        .unwrap();
     let sub_path = url_to_local_sub_path(&url, None).unwrap();
     let component = sub_path.parts.last().unwrap();
 
@@ -1315,8 +1315,9 @@ mod test {
     let temp = tempdir().unwrap();
     let global_path = temp.path().join("global");
     let local_path = temp.path().join("local");
+    let sys = RealSys;
     let global_cache =
-      new_rc(GlobalHttpCache::new(RealSys, global_path.clone()));
+      new_rc(GlobalHttpCache::new(sys.clone(), global_path.clone()));
     let url =
       Url::parse("https://localhost/SuperLongPackageNameX/mod.ts").unwrap();
     let fresh_content = b"export const value = 'fresh';";
@@ -1326,19 +1327,24 @@ mod test {
 
     let legacy_file =
       local_path.join("localhost/#superlongpackagename_efdea/mod.ts");
-    std::fs::create_dir_all(legacy_file.parent().unwrap()).unwrap();
-    std::fs::write(&legacy_file, b"export const value = 'legacy';").unwrap();
-    std::fs::write(
-      local_path.join("manifest.json"),
-      serde_json::to_vec_pretty(&serde_json::json!({
-        "folders": {
-          "https://localhost/SuperLongPackageNameX/":
-            "localhost/#superlongpackagename_efdea"
-        }
-      }))
-      .unwrap(),
-    )
-    .unwrap();
+    sys
+      .fs_create_dir_all(legacy_file.parent().unwrap())
+      .unwrap();
+    sys
+      .fs_write(&legacy_file, b"export const value = 'legacy';")
+      .unwrap();
+    sys
+      .fs_write(
+        local_path.join("manifest.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+          "folders": {
+            "https://localhost/SuperLongPackageNameX/":
+              "localhost/#superlongpackagename_efdea"
+          }
+        }))
+        .unwrap(),
+      )
+      .unwrap();
 
     let local_cache = LocalHttpCache::new(
       local_path.clone(),
@@ -1353,15 +1359,18 @@ mod test {
     let regenerated_file = local_path.join(
       "localhost/#superlon_efdea95c2352e1c0e8fe4125c9852138cafa1860e379443f62e52d10d0af0fca/mod.ts",
     );
-    assert_eq!(std::fs::read(&regenerated_file).unwrap(), fresh_content);
     assert_eq!(
-      std::fs::read(&legacy_file).unwrap(),
+      sys.fs_read(&regenerated_file).unwrap().as_ref(),
+      fresh_content
+    );
+    assert_eq!(
+      sys.fs_read(&legacy_file).unwrap().as_ref(),
       b"export const value = 'legacy';"
     );
 
     // Once regenerated, the local cache remains usable without the global
     // cache from which the new path was populated.
-    std::fs::remove_dir_all(global_path).unwrap();
+    sys.fs_remove_dir_all(global_path).unwrap();
     let local_cache = LocalHttpCache::new(
       local_path,
       global_cache,
