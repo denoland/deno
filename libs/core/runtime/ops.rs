@@ -349,6 +349,241 @@ pub fn serde_v8_to_rust<'a, 's, 'i, T: Deserialize<'a>>(
   from_v8(scope, input)
 }
 
+#[inline(always)]
+fn validate_buffer_backing_store(
+  store: &v8::SharedRef<v8::BackingStore>,
+) -> Result<(), &'static str> {
+  if store.is_resizable_by_user_javascript() {
+    return Err("resizable buffers are not supported");
+  }
+  if store.is_shared() {
+    return Err("shared buffers are not supported");
+  }
+  Ok(())
+}
+
+/// An op buffer that either borrows a fixed V8 backing store or owns a
+/// snapshot of a backing store that JavaScript can resize or share.
+pub enum V8SliceOrCopy<T>
+where
+  T: V8Sliceable,
+{
+  V8(serde_v8::V8Slice<T>),
+  Copy(Vec<T>),
+}
+
+impl<T> V8SliceOrCopy<T>
+where
+  T: V8Sliceable,
+{
+  pub fn to_vec(&self) -> Vec<T> {
+    self.as_ref().to_vec()
+  }
+
+  pub fn to_boxed_slice(&self) -> Box<[T]> {
+    self.as_ref().into()
+  }
+}
+
+/// A fast-call buffer backed either by a fixed V8 view or an owned snapshot.
+pub enum FastV8Slice<'a, T> {
+  V8(&'a mut [T]),
+  Copy(Vec<T>),
+}
+
+impl<T> AsMut<[T]> for FastV8Slice<'_, T> {
+  fn as_mut(&mut self) -> &mut [T] {
+    match self {
+      Self::V8(slice) => slice,
+      Self::Copy(slice) => slice.as_mut(),
+    }
+  }
+}
+
+impl<T> AsRef<[T]> for V8SliceOrCopy<T>
+where
+  T: V8Sliceable,
+{
+  fn as_ref(&self) -> &[T] {
+    match self {
+      Self::V8(slice) => slice.as_ref(),
+      Self::Copy(slice) => slice.as_ref(),
+    }
+  }
+}
+
+/// Copies an ArrayBufferView without first creating a Rust slice over its
+/// backing store.
+pub fn copy_array_buffer_view<T>(
+  view: v8::Local<v8::ArrayBufferView>,
+) -> Result<Vec<T>, &'static str>
+where
+  T: V8Sliceable,
+{
+  let byte_length = view.byte_length();
+  if !byte_length.is_multiple_of(std::mem::size_of::<T>()) {
+    return Err("buffer length is not aligned");
+  }
+
+  let length = byte_length / std::mem::size_of::<T>();
+  let mut copy = Vec::<T>::with_capacity(length);
+  // SAFETY: `copy` has capacity for `byte_length` bytes. CopyContents writes
+  // initialized bytes into the allocation, using relaxed copying for shared
+  // stores, and we set the element length only after verifying that it filled
+  // the entire view.
+  let destination = unsafe {
+    std::slice::from_raw_parts_mut(
+      copy.as_mut_ptr().cast::<std::mem::MaybeUninit<u8>>(),
+      byte_length,
+    )
+  };
+  if view.copy_contents_uninit(destination) != byte_length {
+    return Err("buffer changed while being copied");
+  }
+  // SAFETY: CopyContents initialized all bytes in the allocation above.
+  unsafe { copy.set_len(length) };
+  Ok(copy)
+}
+
+/// Converts a fast-call ArrayBufferView without borrowing invalidatable or
+/// concurrently writable backing memory.
+///
+/// # Safety
+///
+/// The returned buffer must not outlive the fast call or the `storage`
+/// provided for V8's inline typed-array contents.
+#[inline(always)]
+pub unsafe fn to_fast_v8_slice<'a, T, const COPY_INVALID: bool>(
+  view: v8::Local<v8::ArrayBufferView>,
+  storage: &'a mut [u8],
+) -> Result<FastV8Slice<'a, T>, &'static str>
+where
+  T: V8Sliceable,
+{
+  let Some(store) = view.get_backing_store() else {
+    return Err("buffer missing");
+  };
+  if store.is_resizable_by_user_javascript() || store.is_shared() {
+    if COPY_INVALID {
+      return copy_array_buffer_view(view).map(FastV8Slice::Copy);
+    }
+    return Err("resizable or shared buffers are not supported");
+  }
+
+  // SAFETY: the backing store is fixed and unshared, `storage` outlives the
+  // returned slice, and the caller keeps the V8 view alive for the fast call.
+  let (input_ptr, input_len) = unsafe { view.get_contents_raw_parts(storage) };
+  let input_ptr = if input_ptr.is_null() {
+    std::ptr::dangling_mut()
+  } else {
+    input_ptr
+  };
+  // SAFETY: V8 returned `input_len` initialized bytes either in `storage` or
+  // in the fixed, unshared backing store kept alive by `view`.
+  let slice = unsafe { std::slice::from_raw_parts_mut(input_ptr, input_len) };
+  // SAFETY: the view's concrete typed-array class guarantees element
+  // alignment; the result is checked below before use.
+  let (before, slice, after) = unsafe { slice.align_to_mut::<T>() };
+  if !before.is_empty() || !after.is_empty() {
+    return Err("buffer length is not aligned");
+  }
+  Ok(FastV8Slice::V8(slice))
+}
+
+/// Retrieve an immutable op buffer, copying backing stores whose contents
+/// cannot safely be represented by a borrowed Rust slice.
+pub fn to_v8_slice_or_copy<'a, T>(
+  input: v8::Local<'a, v8::Value>,
+) -> Result<V8SliceOrCopy<T>, &'static str>
+where
+  T: V8Sliceable,
+  v8::Local<'a, T::V8>: TryFrom<v8::Local<'a, v8::Value>>,
+  v8::Local<'a, v8::ArrayBufferView>: From<v8::Local<'a, T::V8>>,
+{
+  let Ok(buf) = v8::Local::<T::V8>::try_from(input) else {
+    return Err("expected typed ArrayBufferView");
+  };
+  let buf: v8::Local<v8::ArrayBufferView> = buf.into();
+  let Some(store) = buf.get_backing_store() else {
+    return Err("buffer missing");
+  };
+  if store.is_resizable_by_user_javascript() || store.is_shared() {
+    return copy_array_buffer_view(buf).map(V8SliceOrCopy::Copy);
+  }
+  let offset = buf.byte_offset();
+  let length = buf.byte_length();
+  // SAFETY: the fixed, unshared backing store remains valid for the lifetime
+  // of the V8Slice, and the view provides an in-bounds byte range.
+  Ok(V8SliceOrCopy::V8(unsafe {
+    serde_v8::V8Slice::from_parts(store, offset..offset + length)
+  }))
+}
+
+fn copy_array_buffer(
+  buffer: v8::Local<v8::ArrayBuffer>,
+) -> Result<Vec<u8>, &'static str> {
+  let length = buffer.byte_length();
+  let mut copy = Vec::<u8>::with_capacity(length);
+  if length != 0 {
+    let Some(source) = buffer.data() else {
+      return Err("buffer missing");
+    };
+    // SAFETY: the destination has capacity for `length` bytes. A resizable
+    // ArrayBuffer cannot be resized concurrently from another JavaScript
+    // agent, and this helper does not re-enter JavaScript while copying.
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        source.as_ptr().cast::<u8>(),
+        copy.as_mut_ptr(),
+        length,
+      );
+      copy.set_len(length);
+    }
+  }
+  Ok(copy)
+}
+
+/// Retrieve an immutable ArrayBuffer op argument, copying a resizable backing
+/// store before Rust receives a slice.
+pub fn to_v8_slice_buffer_or_copy(
+  input: v8::Local<v8::Value>,
+) -> Result<V8SliceOrCopy<u8>, &'static str> {
+  let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) else {
+    return Err("expected ArrayBuffer");
+  };
+  let store = buf.get_backing_store();
+  if store.is_shared() {
+    return Err("shared buffers are not supported");
+  }
+  if store.is_resizable_by_user_javascript() {
+    return copy_array_buffer(buf).map(V8SliceOrCopy::Copy);
+  }
+  Ok(V8SliceOrCopy::V8(unsafe {
+    serde_v8::V8Slice::from_parts(store, 0..buf.byte_length())
+  }))
+}
+
+/// Retrieve an immutable ArrayBuffer or ArrayBufferView op argument, copying
+/// backing stores that JavaScript can resize or share.
+pub fn to_v8_slice_any_or_copy(
+  input: v8::Local<v8::Value>,
+) -> Result<V8SliceOrCopy<u8>, &'static str> {
+  if let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(input) {
+    let offset = buf.byte_offset();
+    let length = buf.byte_length();
+    let Some(store) = buf.get_backing_store() else {
+      return Err("buffer missing");
+    };
+    if store.is_resizable_by_user_javascript() || store.is_shared() {
+      return copy_array_buffer_view(buf).map(V8SliceOrCopy::Copy);
+    }
+    return Ok(V8SliceOrCopy::V8(unsafe {
+      serde_v8::V8Slice::from_parts(store, offset..offset + length)
+    }));
+  }
+  to_v8_slice_buffer_or_copy(input)
+}
+
 /// Retrieve a [`serde_v8::V8Slice`] from a typed array in an [`v8::ArrayBufferView`].
 pub fn to_v8_slice<'a, T>(
   input: v8::Local<'a, v8::Value>,
@@ -364,6 +599,7 @@ where
       let Some(buffer) = buf.get_backing_store() else {
         return Err("buffer missing");
       };
+      validate_buffer_backing_store(&buffer)?;
       (buffer, buf.byte_offset(), buf.byte_length())
     }
     _ => {
@@ -424,6 +660,8 @@ pub unsafe fn to_slice_buffer(
     let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) else {
       return Err("expected ArrayBuffer");
     };
+    let store = buf.get_backing_store();
+    validate_buffer_backing_store(&store)?;
     let len = buf.byte_length();
     let slice = if len > 0 {
       if let Some(ptr) = buf.data() {
@@ -450,8 +688,14 @@ pub unsafe fn to_slice_buffer_any(
   unsafe {
     let (data, len) = {
       if let Ok(buf) = v8::Local::<v8::ArrayBufferView>::try_from(input) {
+        let Some(store) = buf.get_backing_store() else {
+          return Err("buffer missing");
+        };
+        validate_buffer_backing_store(&store)?;
         (NonNull::new(buf.data()), buf.byte_length())
       } else if let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) {
+        let store = buf.get_backing_store();
+        validate_buffer_backing_store(&store)?;
         (buf.data(), buf.byte_length())
       } else {
         return Err("expected ArrayBuffer or ArrayBufferView");
@@ -477,9 +721,10 @@ pub fn to_v8_slice_buffer(
   let Ok(buf) = v8::Local::<v8::ArrayBuffer>::try_from(input) else {
     return Err("expected ArrayBuffer");
   };
-  let slice = unsafe {
-    serde_v8::V8Slice::from_parts(buf.get_backing_store(), 0..buf.byte_length())
-  };
+  let store = buf.get_backing_store();
+  validate_buffer_backing_store(&store)?;
+  let slice =
+    unsafe { serde_v8::V8Slice::from_parts(store, 0..buf.byte_length()) };
   Ok(slice)
 }
 
@@ -512,6 +757,7 @@ pub fn to_v8_slice_any(
     let Some(buf) = buf.get_backing_store() else {
       return Err("buffer missing");
     };
+    validate_buffer_backing_store(&buf)?;
     return Ok(unsafe {
       serde_v8::V8Slice::<u8>::from_parts(buf, offset..offset + len)
     });
@@ -1674,20 +1920,76 @@ mod tests {
         assert(new {arr}(out)[0] == 1);"
         ),
       )?;
-      // Resizable
+      // Read-only resizable input is snapshotted before Rust receives it.
       run_test2(
-        JIT_SLOW_ITERATIONS,
+        JIT_ITERATIONS,
         op,
         &format!(
           r"
         let inbuf = new ArrayBuffer(10 * {size}, {{ maxByteLength: 100 * {size} }});
         let in_u8 = new {arr}(inbuf);
         in_u8[5] = 1;
-        let out = new ArrayBuffer(10 * {size}, {{ maxByteLength: 100 * {size} }});
+        let out = new ArrayBuffer(10 * {size});
         {op}(new {arr}(inbuf, 5 * {size}, 5), 5, new {arr}(out), 10);
         assert(new {arr}(out)[0] == 1);"
         ),
       )?;
+      // Shared read-only input is also snapshotted.
+      run_test2(
+        JIT_ITERATIONS,
+        op,
+        &format!(
+          r"
+        let inbuf = new SharedArrayBuffer(10 * {size});
+        let in_u8 = new {arr}(inbuf);
+        in_u8[5] = 1;
+        let out = new ArrayBuffer(10 * {size});
+        {op}(new {arr}(inbuf, 5 * {size}, 5), 5, new {arr}(out), 10);
+        assert(new {arr}(out)[0] == 1);"
+        ),
+      )?;
+      // Mutable resizable and shared outputs cannot be borrowed by Rust.
+      for output in [
+        format!(
+          "new {arr}(new ArrayBuffer(10 * {size}, {{ maxByteLength: 100 * {size} }}))"
+        ),
+        format!("new {arr}(new SharedArrayBuffer(10 * {size}))"),
+      ] {
+        run_test2(
+          JIT_ITERATIONS,
+          op,
+          &format!(
+            r"
+          try {{
+            {op}(new {arr}(10), 10, {output}, 10);
+            assert(false);
+          }} catch (e) {{
+            assertErrorContains(e, 'buffers are not supported');
+          }}"
+          ),
+        )?;
+      }
+      // Raw pointer arguments never receive invalidatable backing stores.
+      for input in [
+        format!(
+          "new {arr}(new ArrayBuffer(10 * {size}, {{ maxByteLength: 100 * {size} }}))"
+        ),
+        format!("new {arr}(new SharedArrayBuffer(10 * {size}))"),
+      ] {
+        run_test2(
+          JIT_ITERATIONS,
+          op_ptr,
+          &format!(
+            r"
+          try {{
+            {op_ptr}({input}, 10, new {arr}(10), 10);
+            assert(false);
+          }} catch (e) {{
+            assertErrorContains(e, 'buffers are not supported');
+          }}"
+          ),
+        )?;
+      }
     }
     Ok(())
   }
@@ -1720,6 +2022,24 @@ mod tests {
         op_buffer_jsbuffer(new Uint8Array(inbuf, 5, 5), 5, new Uint8Array(out), 10);
         assert(new Uint8Array(out)[0] == 1);",
     )?;
+    for input in [
+      "new Uint8Array(new ArrayBuffer(10, { maxByteLength: 100 }))",
+      "new Uint8Array(new SharedArrayBuffer(10))",
+    ] {
+      run_test2(
+        JIT_SLOW_ITERATIONS,
+        "op_buffer_jsbuffer",
+        &format!(
+          r"
+        try {{
+          op_buffer_jsbuffer({input}, 10, new Uint8Array(10), 10);
+          assert(false);
+        }} catch (e) {{
+          assertErrorContains(e, 'buffers are not supported');
+        }}"
+        ),
+      )?;
+    }
     Ok(())
   }
 
@@ -1825,6 +2145,26 @@ mod tests {
       "op_buffer_any_length",
       "assert(op_buffer_any_length(new DataView(new ArrayBuffer(10))) == 10);",
     )?;
+    run_test2(
+      JIT_ITERATIONS,
+      "op_buffer_any_length",
+      "assert(op_buffer_any_length(new Uint8Array(new ArrayBuffer(10, { maxByteLength: 100 }))) == 10);",
+    )?;
+    run_test2(
+      JIT_ITERATIONS,
+      "op_buffer_any_length",
+      "assert(op_buffer_any_length(new Uint8Array(new SharedArrayBuffer(10))) == 10);",
+    )?;
+    run_test2(
+      JIT_ITERATIONS,
+      "op_buffer_any_length",
+      "assert(op_buffer_any_length(new DataView(new ArrayBuffer(12, { maxByteLength: 100 }), 2, 7)) == 7);",
+    )?;
+    run_test2(
+      JIT_ITERATIONS,
+      "op_buffer_any_length",
+      "assert(op_buffer_any_length(new DataView(new SharedArrayBuffer(12), 2, 7)) == 7);",
+    )?;
     Ok(())
   }
 
@@ -1859,6 +2199,30 @@ mod tests {
       let outbuf = new ArrayBuffer(10);
       op_arraybuffer_slice(inbuf, 10, outbuf, 10);
       assert((new Uint8Array(outbuf))[0] == 1);",
+    )?;
+    run_test2(
+      JIT_ITERATIONS,
+      "op_arraybuffer_slice",
+      r"let inbuf = new ArrayBuffer(10, { maxByteLength: 100 });
+      (new Uint8Array(inbuf))[0] = 1;
+      let outbuf = new ArrayBuffer(10);
+      op_arraybuffer_slice(inbuf, 10, outbuf, 10);
+      assert((new Uint8Array(outbuf))[0] == 1);",
+    )?;
+    run_test2(
+      JIT_ITERATIONS,
+      "op_arraybuffer_slice",
+      r"try {
+        op_arraybuffer_slice(
+          new ArrayBuffer(10),
+          10,
+          new ArrayBuffer(10, { maxByteLength: 100 }),
+          10,
+        );
+        assert(false);
+      } catch (e) {
+        assertErrorContains(e, 'buffers are not supported');
+      }",
     )?;
     Ok(())
   }
@@ -1925,6 +2289,22 @@ mod tests {
       op_buffer_copy(input, input, input);
       assert(input[0] == 1);",
     )?;
+    for input in [
+      "new Uint8Array(new ArrayBuffer(10, { maxByteLength: 100 }))",
+      "new Uint8Array(new SharedArrayBuffer(10))",
+    ] {
+      run_test2(
+        JIT_ITERATIONS,
+        "op_buffer_copy",
+        &format!(
+          r"
+        const input = {input};
+        input[0] = 1;
+        op_buffer_copy(input, input, input);
+        assert(input[0] == 1);"
+        ),
+      )?;
+    }
     Ok(())
   }
 
@@ -2381,6 +2761,25 @@ mod tests {
       "assert(await op_async_buffer_impl(new Uint8Array(10)) == 10)",
     )
     .await?;
+    for input in [
+      "new Uint8Array(new ArrayBuffer(10, { maxByteLength: 100 }))",
+      "new Uint8Array(new SharedArrayBuffer(10))",
+    ] {
+      run_async_test(
+        2,
+        "op_async_buffer",
+        &format!(
+          r"
+        try {{
+          await op_async_buffer({input});
+          assert(false);
+        }} catch (e) {{
+          assertErrorContains(e, 'buffers are not supported');
+        }}"
+        ),
+      )
+      .await?;
+    }
     Ok(())
   }
 
