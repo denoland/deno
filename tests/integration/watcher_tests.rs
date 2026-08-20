@@ -2413,6 +2413,161 @@ async fn run_watch_sigterm_on_restart() {
   check_alive_then_kill(child);
 }
 
+/// Test that a JS SIGTERM handler which unregisters itself and re-raises a
+/// real OS SIGTERM (the `signal-exit` "unload + re-raise" pattern bundled in
+/// Vite 8 / rolldown) does not kill the watcher: the process must restart on
+/// file change instead of terminating.
+/// Regression test for https://github.com/denoland/deno/issues/35942.
+#[cfg(unix)]
+#[test(flaky)]
+async fn run_watch_sigterm_reraise_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let contents = r#"
+    import process from "node:process";
+    const handler = () => {
+      console.log("SIGTERM handler");
+      // Unregister self, then re-raise a real OS SIGTERM.
+      process.off("SIGTERM", handler);
+      process.kill(process.pid, "SIGTERM");
+    };
+    process.on("SIGTERM", handler);
+    setInterval(() => {}, 1000);
+  "#;
+  file_to_watch.write(contents);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart; the handler fires, unregisters itself and re-raises a
+  // real SIGTERM.
+  file_to_watch.write(format!("{contents}\n// changed"));
+
+  wait_contains("SIGTERM handler", &mut stdout_lines).await;
+  // The re-raised real SIGTERM must be suppressed so the watcher restarts
+  // instead of dying.
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// A genuine external SIGTERM (e.g. `kill <pid>` from a supervisor) delivered
+/// around the graceful-restart window must still terminate the watcher.
+/// Suppression is one-shot: it swallows only the single re-raised SIGTERM, not
+/// a later external one. Guards against the flag being too broad/long-lived.
+#[cfg(unix)]
+#[test(flaky)]
+async fn run_watch_external_sigterm_still_terminates() {
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  // Same unregister-and-re-raise pattern that opens the suppression window.
+  let contents = r#"
+    import process from "node:process";
+    const handler = () => {
+      console.log("SIGTERM handler");
+      process.off("SIGTERM", handler);
+      process.kill(process.pid, "SIGTERM");
+    };
+    process.on("SIGTERM", handler);
+    setInterval(() => {}, 1000);
+  "#;
+  file_to_watch.write(contents);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  file_to_watch.write(format!("{contents}\n// changed"));
+  wait_contains("SIGTERM handler", &mut stdout_lines).await;
+
+  // The one re-raise is consumed; a second, external SIGTERM must not be
+  // suppressed and must bring the watcher down.
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
+
+  let status = child.wait().unwrap();
+  assert!(!status.success());
+}
+
+/// Ctrl+C (SIGINT) around the graceful-restart window must still exit the
+/// watcher: only the re-raised SIGTERM is suppressed, never SIGINT.
+#[cfg(unix)]
+#[test(flaky)]
+async fn run_watch_ctrl_c_during_restart_still_exits() {
+  use std::os::unix::process::ExitStatusExt;
+
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  // A SIGTERM listener opens the graceful window on restart (raise() reports a
+  // handler). There is no SIGINT listener, so a Ctrl+C in the window is
+  // unhandled and must terminate rather than being swallowed.
+  let contents = r#"
+    Deno.addSignalListener("SIGTERM", () => {
+      console.log("received SIGTERM");
+    });
+    setInterval(() => {}, 1000);
+  "#;
+  file_to_watch.write(contents);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart to open the graceful window, then Ctrl+C during it.
+  file_to_watch.write(format!("{contents}\n// changed"));
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
+
+  // The watcher must terminate (by clean exit or by the signal) rather than
+  // suppressing the Ctrl+C and continuing to run.
+  let status = child.wait().unwrap();
+  assert!(status.code().is_some() || status.signal().is_some());
+}
+
 /// Test that both SIGINT and SIGTERM are dispatched on Ctrl+C in watch mode.
 #[cfg(unix)]
 #[test(flaky)]
