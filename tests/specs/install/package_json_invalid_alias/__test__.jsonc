@@ -1,0 +1,91 @@
+{
+  "tempDir": true,
+  "tests": {
+    "isolated": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=auto --no-lock",
+          "output": "[WILDCARD]Invalid package alias '../outside'[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-read check.ts",
+          "output": "preserved\n"
+        }
+      ]
+    },
+    "hoisted": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=manual --node-modules-linker=hoisted --no-lock",
+          "output": "[WILDCARD]Invalid package alias '../outside'[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-read check.ts",
+          "output": "preserved\n"
+        }
+      ]
+    },
+    "leading_dot_isolated": {
+      "cwd": "leading_dot",
+      "steps": [
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-write=node_modules setup.ts",
+          "output": ""
+        },
+        {
+          "args": "install --node-modules-dir=auto --no-lock",
+          "output": "[WILDCARD]Invalid package alias '.deno'[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-read=node_modules check.ts",
+          "output": "preserved\n"
+        }
+      ]
+    },
+    "leading_dot_hoisted": {
+      "cwd": "leading_dot",
+      "steps": [
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-write=node_modules setup.ts",
+          "output": ""
+        },
+        {
+          "args": "install --node-modules-dir=manual --node-modules-linker=hoisted --no-lock",
+          "output": "[WILDCARD]Invalid package alias '.deno'[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-read=node_modules check.ts",
+          "output": "preserved\n"
+        }
+      ]
+    },
+    "run_rejects_invalid_alias": {
+      "cwd": "leading_dot",
+      "args": "run --no-lock main.ts",
+      "output": "[WILDCARD]Invalid package alias '.deno'[WILDCARD]",
+      "exitCode": 1
+    },
+    "task_rejects_invalid_alias": {
+      "cwd": "leading_dot",
+      "args": "task noop",
+      "output": "[WILDCARD]Invalid package alias '.deno'[WILDCARD]",
+      "exitCode": 1
+    },
+    "cache_rejects_invalid_alias": {
+      "cwd": "leading_dot",
+      "args": "cache --no-lock main.ts",
+      "output": "[WILDCARD]Invalid package alias '.deno'[WILDCARD]",
+      "exitCode": 1
+    },
+    "workspace_member_name": {
+      "cwd": "workspace_member",
+      "args": "install --no-lock",
+      "output": "[WILDCARD]Invalid workspace package name '.deno'[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}
