@@ -1157,6 +1157,17 @@ fn spawn_child_node(
   let stdout_fd = child_stdio_to_fd!(child, stdout);
   let stderr_fd = child_stdio_to_fd!(child, stderr);
 
+  {
+    let fd_table = state.borrow_mut::<deno_io::FdTable>();
+    for fd in [stdin_fd, stdout_fd, stderr_fd]
+      .into_iter()
+      .flatten()
+      .chain(extra_pipe_fds.iter().flatten().copied())
+    {
+      fd_table.register_uv_adoptable(fd as i32);
+    }
+  }
+
   let child_rid = state.resource_table.add(ChildResource {
     child: RefCell::new(child),
     pid,

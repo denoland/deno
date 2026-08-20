@@ -13,6 +13,11 @@
       "args": "run -A duplicate_fd.ts",
       "output": "duplicate_fd.out"
     },
+    "isolate_fd_ownership": {
+      "args":
+        "run --allow-read --unstable-worker-options isolate_fd_ownership.ts",
+      "output": "isolate_fd_ownership.out"
+    },
     "main_read": {
       "if": "unix",
       "args": "run -A main_read.ts",
