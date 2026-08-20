@@ -2032,6 +2032,10 @@ fn assert_fd_closed(fd: i32) {
 }
 
 #[cfg(unix)]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "uv_compat tests require real Unix socket paths"
+)]
 fn pipe_test_socket_path(name: &str) -> std::path::PathBuf {
   static NEXT_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
@@ -3285,6 +3289,10 @@ async fn pipe_bound_connect_transfers_raw_fd_ownership() {
     assert_fd_closed(fd);
 
     drop(listener);
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "clean up the real Unix socket created by Tokio"
+    )]
     let _ = std::fs::remove_file(server_path);
   })
   .await;
