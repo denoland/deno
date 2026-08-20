@@ -64,6 +64,41 @@ Deno.test("[node/tty isatty] returns false for raw file fd", () => {
   }
 });
 
+Deno.test("[node/tty] raw TTY constructor checks non-stdio fd permissions", async () => {
+  const helper = `
+    import process from "node:process";
+    try {
+      const { TTY } = process.binding("tty_wrap");
+      new TTY(3, {});
+      console.log("constructed");
+    } catch (error) {
+      console.log(error.name + ":" + error.message);
+    }
+  `;
+  const tmpScript = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(tmpScript, helper);
+  try {
+    const output = await new Deno.Command(Deno.execPath(), {
+      args: ["run", "--quiet", tmpScript],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const stdout = new TextDecoder().decode(output.stdout);
+    const stderr = new TextDecoder().decode(output.stderr);
+
+    assert(
+      output.success,
+      `raw TTY constructor child failed: ${stdout} ${stderr}`,
+    );
+    assert(
+      stdout.includes("NotCapable:"),
+      `raw TTY constructor should require permission: ${stdout} ${stderr}`,
+    );
+  } finally {
+    await Deno.remove(tmpScript);
+  }
+});
+
 Deno.test({
   name: "[node/tty] HandleWrap.close calls uv_close for TTY handles",
   ignore: Deno.build.os === "windows",
