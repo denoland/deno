@@ -31,13 +31,36 @@ use crate::interface::FsFileType;
 use crate::interface::FsReadDir;
 use crate::interface::FsReadDirRc;
 
+// The working directory is process-global state: chdir from any thread
+// (e.g. `Deno.chdir()` in a web worker) changes it for every thread, so the
+// cache must be process-global too. The mutex is held across the underlying
+// syscalls so a concurrent `cwd()` cannot repopulate the cache with a value
+// read before an in-flight `chdir` completed.
+static CWD_CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Clears the cwd cache used by [`RealFs::cwd`].
+///
+/// Must be called after changing the process working directory by any means
+/// other than [`FileSystem::chdir`] on [`RealFs`] (e.g. a direct
+/// `std::env::set_current_dir` call) if JS may already have run.
+pub fn invalidate_cwd_cache() {
+  *CWD_CACHE.lock().unwrap() = None;
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
 
 #[async_trait::async_trait(?Send)]
 impl FileSystem for RealFs {
   fn cwd(&self) -> FsResult<PathBuf> {
-    std::env::current_dir().map_err(Into::into)
+    let mut cache = CWD_CACHE.lock().unwrap();
+    if let Some(cwd) = &*cache {
+      return Ok(cwd.clone());
+    }
+    // Errors (e.g. a deleted cwd) are not cached; every call retries.
+    let cwd = std::env::current_dir()?;
+    *cache = Some(cwd.clone());
+    Ok(cwd)
   }
 
   fn tmp_dir(&self) -> FsResult<PathBuf> {
@@ -45,7 +68,13 @@ impl FileSystem for RealFs {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    std::env::set_current_dir(path).map_err(Into::into)
+    let mut cache = CWD_CACHE.lock().unwrap();
+    std::env::set_current_dir(path)?;
+    // Clear rather than store `path`: getcwd returns the symlink-resolved
+    // physical path, which `path` need not be. On failure the working
+    // directory is unchanged and the cached value stays valid.
+    *cache = None;
+    Ok(())
   }
 
   #[cfg(windows)]

@@ -1734,6 +1734,8 @@ async fn run_desktop(
   // dev server watches the original source files, not the extracted VFS.
   if is_framework_dev && let Ok(source_dir) = env::var("DENO_DESKTOP_HMR") {
     std::env::set_current_dir(&source_dir)?;
+    // The runtime thread may already have populated the cwd cache.
+    deno_runtime::deno_fs::invalidate_cwd_cache();
   }
 
   // Shared initial window ID for navigate_fut and HMR reload.

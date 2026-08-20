@@ -2011,9 +2011,12 @@ async fn run_watch_chdir() {
   file_to_watch.write(
     r#"
 console.log("Files reloaded");
-console.log("cwd:", Deno.cwd());
+console.log("start cwd:", Deno.cwd());
 Deno.mkdirSync("temp", { recursive: true });
 Deno.chdir("temp");
+// Read the cwd after the chdir so any cwd caching is exercised across
+// the watcher restart, not just the chdir itself.
+console.log("temp cwd:", Deno.cwd());
 "#,
   );
 
@@ -2033,7 +2036,8 @@ Deno.chdir("temp");
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   wait_contains("Files reloaded", &mut stdout_lines).await;
-  let initial_cwd_log = wait_contains("cwd:", &mut stdout_lines).await;
+  let initial_cwd_log = wait_contains("start cwd:", &mut stdout_lines).await;
+  wait_contains("temp cwd:", &mut stdout_lines).await;
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   // Trigger a restart. The previous run changed cwd via `Deno.chdir`;
@@ -2042,16 +2046,17 @@ Deno.chdir("temp");
   file_to_watch.write(
     r#"
 console.log("Files reloaded");
-console.log("cwd:", Deno.cwd());
+console.log("start cwd:", Deno.cwd());
 Deno.mkdirSync("temp", { recursive: true });
 Deno.chdir("temp");
+console.log("temp cwd:", Deno.cwd());
 console.log("done");
 "#,
   );
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("Files reloaded", &mut stdout_lines).await;
-  let cwd_line_after = wait_contains("cwd:", &mut stdout_lines).await;
+  let cwd_line_after = wait_contains("start cwd:", &mut stdout_lines).await;
   wait_contains("done", &mut stdout_lines).await;
   // The cwd printed on restart must match the cwd printed on the
   // first run — `Deno.chdir("temp")` from the previous iteration must
