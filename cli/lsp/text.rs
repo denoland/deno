@@ -58,14 +58,6 @@ impl LineIndex {
       character: lc.column_index as u32,
     }
   }
-
-  pub fn line_length_utf16(&self, line: u32) -> TextSize {
-    self.inner.line_length_utf16(line)
-  }
-
-  pub fn text_content_length_utf16(&self) -> TextSize {
-    self.inner.text_content_length_utf16()
-  }
 }
 
 /// Compare two strings and return a vector of text edit records which are

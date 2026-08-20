@@ -1,8 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::RefCell;
 use std::collections::HashSet;
-use std::rc::Rc;
 
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
@@ -16,26 +14,15 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use lazy_regex::lazy_regex;
 use lsp_types::Uri;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis::source_range_to_lsp_range;
-use super::config::CodeLensSettings;
 use super::language_server;
 use super::testing::collectors::parse_test_context_param;
-use super::text::LineIndex;
-use super::tsc;
-use super::tsc::NavigationTree;
-
-static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
-
-static EXPORT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\bexport\b");
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub enum CodeLensSource {
@@ -652,93 +639,6 @@ pub fn collect_test(
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
   parsed_source.program().visit_with(&mut collector);
   Ok(collector.take())
-}
-
-/// Return tsc navigation tree code lenses.
-pub fn collect_tsc(
-  uri: &Uri,
-  code_lens_settings: &CodeLensSettings,
-  line_index: &LineIndex,
-  navigation_tree: &NavigationTree,
-  token: &CancellationToken,
-) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  let code_lenses = Rc::new(RefCell::new(Vec::new()));
-  navigation_tree.walk(token, &|i, mp| {
-    let mut code_lenses = code_lenses.borrow_mut();
-
-    // TSC Implementations Code Lens
-    if code_lens_settings.implementations {
-      let source = CodeLensSource::Implementations;
-      match i.kind {
-        tsc::ScriptElementKind::InterfaceElement => {
-          code_lenses.push(i.to_code_lens(line_index, uri, source));
-        }
-        tsc::ScriptElementKind::ClassElement
-        | tsc::ScriptElementKind::MemberFunctionElement
-        | tsc::ScriptElementKind::MemberVariableElement
-        | tsc::ScriptElementKind::MemberGetAccessorElement
-        | tsc::ScriptElementKind::MemberSetAccessorElement
-          if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) =>
-        {
-          code_lenses.push(i.to_code_lens(line_index, uri, source));
-        }
-        _ => (),
-      }
-    }
-
-    // TSC References Code Lens
-    if code_lens_settings.references {
-      let source = CodeLensSource::References;
-      if let Some(parent) = &mp
-        && parent.kind == tsc::ScriptElementKind::EnumElement
-      {
-        code_lenses.push(i.to_code_lens(line_index, uri, source));
-      }
-      match i.kind {
-        tsc::ScriptElementKind::FunctionElement
-          if code_lens_settings.references_all_functions =>
-        {
-          code_lenses.push(i.to_code_lens(line_index, uri, source));
-        }
-        tsc::ScriptElementKind::ConstElement
-        | tsc::ScriptElementKind::LetElement
-        | tsc::ScriptElementKind::VariableElement
-          if EXPORT_MODIFIER.is_match(&i.kind_modifiers) =>
-        {
-          code_lenses.push(i.to_code_lens(line_index, uri, source));
-        }
-        tsc::ScriptElementKind::ClassElement if i.text != "<class>" => {
-          code_lenses.push(i.to_code_lens(line_index, uri, source));
-        }
-        tsc::ScriptElementKind::InterfaceElement
-        | tsc::ScriptElementKind::TypeElement
-        | tsc::ScriptElementKind::EnumElement => {
-          code_lenses.push(i.to_code_lens(line_index, uri, source));
-        }
-        tsc::ScriptElementKind::LocalFunctionElement
-        | tsc::ScriptElementKind::MemberFunctionElement
-        | tsc::ScriptElementKind::MemberGetAccessorElement
-        | tsc::ScriptElementKind::MemberSetAccessorElement
-        | tsc::ScriptElementKind::ConstructorImplementationElement
-        | tsc::ScriptElementKind::MemberVariableElement => {
-          if let Some(parent) = &mp
-            && parent.spans[0].start != i.spans[0].start
-          {
-            match parent.kind {
-              tsc::ScriptElementKind::ClassElement
-              | tsc::ScriptElementKind::InterfaceElement
-              | tsc::ScriptElementKind::TypeElement => {
-                code_lenses.push(i.to_code_lens(line_index, uri, source));
-              }
-              _ => (),
-            }
-          }
-        }
-        _ => (),
-      }
-    }
-  })?;
-  Ok(Rc::try_unwrap(code_lenses).unwrap().into_inner())
 }
 
 #[cfg(test)]
