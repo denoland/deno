@@ -306,7 +306,7 @@ class ChildProcess extends EventEmitter {
   disconnect;
 
   #process;
-  #sentKillSignal = null;
+  #windowsSignalFallback: string | null = null;
   #spawned = PromiseWithResolvers();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
@@ -664,7 +664,7 @@ class ChildProcess extends EventEmitter {
 
       (async () => {
         const status = await this.#process.status;
-        this.signalCode = status.signal || this.#sentKillSignal;
+        this.signalCode = status.signal || this.#windowsSignalFallback;
         if (this.signalCode) {
           this.exitCode = null;
         } else {
@@ -873,13 +873,15 @@ class ChildProcess extends EventEmitter {
       }
     }
 
+    this.#recordWindowsSignalFallback(signalName);
     this.killed = true;
-    // Windows does not report a signal in the process status, so retain the
-    // signal that TerminateProcess accepted for the eventual exit event.
-    if (isWindows) {
-      this.#sentKillSignal = signalName;
-    }
     return true;
+  }
+
+  #recordWindowsSignalFallback(signalName: string) {
+    if (isWindows) {
+      this.#windowsSignalFallback = signalName;
+    }
   }
 
   [SymbolDispose]() {
