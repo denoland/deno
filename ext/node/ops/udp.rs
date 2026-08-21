@@ -19,6 +19,8 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use socket2::Domain;
 use socket2::Protocol;
+use socket2::SockAddr;
+use socket2::SockRef;
 use socket2::Socket;
 use socket2::Type;
 use tokio::net::UdpSocket;
@@ -560,6 +562,130 @@ pub fn op_node_udp_leave_source_specific(
   )
 }
 
+#[op2(fast)]
+pub fn op_node_udp_connect(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] hostname: &str,
+  #[smi] port: u16,
+) -> Result<(), NodeUdpError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net(&(hostname, Some(port)), "socket.connect()")?;
+
+  let addr = deno_net::resolve_addr::resolve_addr_sync(hostname, port)?
+    .next()
+    .ok_or(NodeUdpError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "socket.connect()")?;
+
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  SockRef::from(&resource.socket).connect(&SockAddr::from(addr))?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_udp_disconnect(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  disconnect_udp_socket(&resource.socket)?;
+  Ok(())
+}
+
+#[op2]
+#[serde]
+pub fn op_node_udp_getsockname(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(String, u16), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  let addr = resource.socket.local_addr()?;
+  Ok((addr.ip().to_string(), addr.port()))
+}
+
+#[cfg(unix)]
+fn disconnect_udp_socket(socket: &UdpSocket) -> std::io::Result<()> {
+  use std::os::fd::AsRawFd;
+
+  // AF_UNSPEC is the platform-defined way to dissolve a datagram socket
+  // association. This mirrors libuv's cross-Unix implementation.
+  // SAFETY: All-zero is a valid initialization for `sockaddr`; the family is
+  // assigned immediately below.
+  let mut addr = unsafe { std::mem::zeroed::<libc::sockaddr>() };
+  addr.sa_family = libc::AF_UNSPEC as libc::sa_family_t;
+
+  loop {
+    // SAFETY: `socket` owns a valid socket descriptor and `addr` is a valid
+    // sockaddr with the length passed below.
+    let result = unsafe {
+      libc::connect(
+        socket.as_raw_fd(),
+        &addr,
+        std::mem::size_of_val(&addr) as libc::socklen_t,
+      )
+    };
+    if result == 0 {
+      return Ok(());
+    }
+
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::EINTR) {
+      continue;
+    }
+
+    #[cfg(any(
+      target_os = "macos",
+      target_os = "ios",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd",
+      target_os = "dragonfly"
+    ))]
+    if matches!(
+      err.raw_os_error(),
+      Some(code) if code == libc::EAFNOSUPPORT || code == libc::EINVAL
+    ) {
+      // BSD kernels may report one of these errors after successfully
+      // dissolving the association.
+      return Ok(());
+    }
+
+    return Err(err);
+  }
+}
+
+#[cfg(windows)]
+fn disconnect_udp_socket(socket: &UdpSocket) -> std::io::Result<()> {
+  use std::os::windows::io::AsRawSocket;
+
+  use windows_sys::Win32::Networking::WinSock::SOCKADDR;
+  use windows_sys::Win32::Networking::WinSock::SOCKADDR_STORAGE;
+  use windows_sys::Win32::Networking::WinSock::WSAGetLastError;
+
+  // SAFETY: All-zero is a valid initialization for `SOCKADDR_STORAGE` and
+  // denotes AF_UNSPEC, as required to dissolve the association.
+  let addr = unsafe { std::mem::zeroed::<SOCKADDR_STORAGE>() };
+  // SAFETY: `socket` owns a valid Winsock socket and `addr` is a zeroed
+  // AF_UNSPEC SOCKADDR_STORAGE, which disconnects a datagram socket.
+  let result = unsafe {
+    windows_sys::Win32::Networking::WinSock::connect(
+      socket.as_raw_socket() as _,
+      &addr as *const SOCKADDR_STORAGE as *const SOCKADDR,
+      std::mem::size_of_val(&addr) as i32,
+    )
+  };
+  if result == 0 {
+    Ok(())
+  } else {
+    Err(std::io::Error::from_raw_os_error(unsafe {
+      WSAGetLastError()
+    }))
+  }
+}
+
 #[op2]
 #[smi]
 pub async fn op_node_udp_send(
@@ -598,6 +724,71 @@ pub async fn op_node_udp_send(
     .send_to(&buf, &addr)
     .or_cancel(cancel)
     .await??;
+
+  Ok(nwritten)
+}
+
+fn check_udp_send_permission(
+  state: &mut OpState,
+  hostname: &str,
+  port: u16,
+) -> Result<(), NodeUdpError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net(&(hostname, Some(port)), "socket.send()")?;
+
+  let addr = deno_net::resolve_addr::resolve_addr_sync(hostname, port)?
+    .next()
+    .ok_or(NodeUdpError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "socket.send()")?;
+
+  Ok(())
+}
+
+#[op2(fast)]
+#[smi]
+/// Returns the number of synchronously written bytes plus one, or zero when
+/// the socket would block and the caller should fall back to the async op.
+/// The offset distinguishes a synchronous zero-length datagram from fallback.
+pub fn op_node_udp_try_send_connected(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[buffer] buf: &[u8],
+  #[string] hostname: &str,
+  #[smi] port: u16,
+) -> Result<usize, NodeUdpError> {
+  check_udp_send_permission(state, hostname, port)?;
+
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  match SockRef::from(&resource.socket).send(buf) {
+    Ok(nwritten) => Ok(nwritten + 1),
+    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Ok(0),
+    Err(err) => Err(err.into()),
+  }
+}
+
+#[op2]
+#[smi]
+pub async fn op_node_udp_send_connected(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[buffer] buf: JsBuffer,
+  #[string] hostname: String,
+  #[smi] port: u16,
+) -> Result<usize, NodeUdpError> {
+  {
+    check_udp_send_permission(&mut state.borrow_mut(), &hostname, port)?;
+  }
+
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NodeUdpSocketResource>(rid)?;
+
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
+  let nwritten = resource.socket.send(&buf).or_cancel(cancel).await??;
 
   Ok(nwritten)
 }
