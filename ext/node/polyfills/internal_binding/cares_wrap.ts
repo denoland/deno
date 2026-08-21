@@ -324,9 +324,11 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     // deno-lint-ignore no-explicit-any
     let code: any;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
+    const servers = this.#servers;
+    const hasCustomServers = servers !== null && servers.length > 0;
 
-    if (this.#servers !== null && this.#servers.length) {
-      for (const server of new SafeArrayIterator(this.#servers)) {
+    if (hasCustomServers) {
+      for (const server of new SafeArrayIterator(servers)) {
         const ipAddr = server[0];
         const port = server[1];
         const resolveOptions = {
@@ -352,6 +354,16 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       }
     } else {
       ({ code, ret } = await this.#resolve(query, recordType, null, ttl));
+    }
+
+    if (
+      !hasCustomServers && query === "" &&
+      code === codeMap.get("EAI_NODATA")!
+    ) {
+      // Node's default c-ares resolver passes string ENODATA for this case,
+      // so DNSException leaves errno undefined. Custom servers can answer
+      // NXDOMAIN for the root name and must keep the general error path.
+      code = "ENODATA";
     }
 
     return { code: code!, ret: ret! };

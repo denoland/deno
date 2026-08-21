@@ -272,3 +272,116 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
 });
+
+function assertEmptyHostnameResolveError(
+  error: unknown,
+  syscall: "queryA" | "queryMx",
+) {
+  assert(error instanceof Error);
+
+  const dnsError = error as ErrnoException;
+  assertEquals(dnsError.name, "Error");
+  assertEquals(dnsError.message, `${syscall} ENODATA`);
+  assertEquals(dnsError.code, "ENODATA");
+  assertEquals(dnsError.errno, undefined);
+  assertEquals(dnsError.syscall, syscall);
+  assertEquals(dnsError.hostname, undefined);
+}
+
+Deno.test(
+  "[node/dns] resolve empty hostname callback reports ENODATA",
+  async () => {
+    const error = await new Promise<unknown>((resolve) => {
+      dns.resolve("", "A", (error) => resolve(error));
+    });
+
+    assertEmptyHostnameResolveError(error, "queryA");
+  },
+);
+
+Deno.test(
+  "[node/dns] promises.resolve empty hostname reports ENODATA",
+  async () => {
+    const error = await dnsPromises.resolve("", "A").then(
+      () => undefined,
+      (error) => error,
+    );
+
+    assertEmptyHostnameResolveError(error, "queryA");
+  },
+);
+
+Deno.test(
+  "[node/dns] promises.resolve empty hostname as MX reports ENODATA",
+  async () => {
+    const error = await dnsPromises.resolve("", "MX").then(
+      () => undefined,
+      (error) => error,
+    );
+
+    assertEmptyHostnameResolveError(error, "queryMx");
+  },
+);
+
+Deno.test(
+  "[node/dns] resolve of a missing host reports ENOTFOUND",
+  async () => {
+    const error = await dnsPromises.resolve(
+      "nonexistent-host.invalid",
+      "A",
+    ).then(
+      () => undefined,
+      (error) => error,
+    );
+
+    assert(error instanceof Error);
+    const dnsError = error as ErrnoException;
+    assertEquals(
+      dnsError.message,
+      "queryA ENOTFOUND nonexistent-host.invalid",
+    );
+    assertEquals(dnsError.code, "ENOTFOUND");
+    assertEquals(dnsError.syscall, "queryA");
+    assertEquals(dnsError.hostname, "nonexistent-host.invalid");
+  },
+);
+
+Deno.test(
+  "[node/dns] custom resolver preserves NXDOMAIN for empty hostname",
+  async () => {
+    const server = Deno.listenDatagram({
+      transport: "udp",
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    const { port } = server.addr as Deno.NetAddr;
+    const resolver = new dnsPromises.Resolver();
+    resolver.setServers([`127.0.0.1:${port}`]);
+
+    const responseSent = (async () => {
+      const [request, remoteAddress] = await server.receive();
+      const response = request.slice();
+      response[2] = 0x81;
+      response[3] = 0x83; // Standard recursive response with NXDOMAIN.
+      response.fill(0, 6, 12);
+      await server.send(response, remoteAddress);
+    })();
+
+    try {
+      const error = await resolver.resolve("", "A").then(
+        () => undefined,
+        (error) => error,
+      );
+      await responseSent;
+
+      assert(error instanceof Error);
+      const dnsError = error as ErrnoException;
+      assertEquals(dnsError.message, "queryA ENOTFOUND");
+      assertEquals(dnsError.code, "ENOTFOUND");
+      assertEquals(dnsError.syscall, "queryA");
+      assertEquals(dnsError.hostname, undefined);
+    } finally {
+      server.close();
+    }
+  },
+);
