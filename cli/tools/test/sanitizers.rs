@@ -194,6 +194,10 @@ pub fn create_test_sanitizer_helper(
     .iter()
     .position(|op| *op == "op_host_recv_ctrl")
     .unwrap();
+  let op_id_host_recv_stdio_message = ops
+    .iter()
+    .position(|op| *op == "op_host_recv_stdio_message")
+    .unwrap();
 
   // For consistency between tests with and without sanitizers, we _always_ include
   // the actual sanitizer capture before and after a test, but a test that ignores resource
@@ -204,6 +208,7 @@ pub fn create_test_sanitizer_helper(
   filter = filter.with_timers();
   filter = filter.omit_op(op_id_host_recv_ctrl as _);
   filter = filter.omit_op(op_id_host_recv_message as _);
+  filter = filter.omit_op(op_id_host_recv_stdio_message as _);
 
   // Count the top-level stats so we can filter them out if they complete and restart within
   // a test.
