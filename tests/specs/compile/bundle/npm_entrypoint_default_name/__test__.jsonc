@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --bundle --no-check --allow-env npm:@denotest/cli-with-permissions",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./cli-with-permissions",
+    "envs": {
+      "DENO_HELLO": "it works"
+    },
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }]
+}
