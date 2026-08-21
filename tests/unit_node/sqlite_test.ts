@@ -737,6 +737,21 @@ Deno.test("[node/sqlite] calling StatementSync and Session methods after connect
   assertThrows(() => sess.patchset(), Error, errMessageClosed);
 });
 
+Deno.test("[node/sqlite] Session stays closed after connection reopens", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(value INTEGER)");
+  const session = db.createSession();
+  db.exec("INSERT INTO data VALUES (1)");
+
+  db.close();
+  db.open();
+
+  const errMessage = "session is not open";
+  assertThrows(() => session.changeset(), Error, errMessage);
+  assertThrows(() => session.patchset(), Error, errMessage);
+  assertThrows(() => session.close(), Error, errMessage);
+});
+
 // Regression test for https://github.com/denoland/deno/issues/30144
 Deno.test("[node/sqlite] StatementSync iterate should not reuse previous state", () => {
   using db = new DatabaseSync(":memory:");
