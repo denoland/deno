@@ -44,7 +44,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
-use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::fmt_errors::format_js_error_with_type_module_package_json;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -52,6 +52,7 @@ use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
+use node_resolver::PackageJsonResolver;
 use node_resolver::UrlOrPath;
 use node_resolver::errors::ResolvePkgJsonBinExportError;
 use url::Url;
@@ -87,6 +88,87 @@ enum StorageKeyResolverStrategy {
 }
 
 pub struct StorageKeyResolver(StorageKeyResolverStrategy);
+
+const MAX_COMMONJS_ERROR_CAUSE_DEPTH: usize = 64;
+const COMMONJS_ESM_MODULE_PATH_PROPERTY: &str = "__denoCommonJsEsmModulePath";
+
+fn is_commonjs_global_error(message: &str) -> bool {
+  message.contains("module is not defined")
+    || message.contains("exports is not defined")
+    || message.contains("require is not defined")
+}
+
+fn find_commonjs_global_error(error: &JsError) -> Option<&JsError> {
+  let mut error = error;
+  for _ in 0..MAX_COMMONJS_ERROR_CAUSE_DEPTH {
+    if error
+      .message
+      .as_deref()
+      .is_some_and(is_commonjs_global_error)
+    {
+      return Some(error);
+    }
+    error = error.cause.as_deref()?;
+  }
+  None
+}
+
+fn file_name_to_path(file_name: &str) -> Option<PathBuf> {
+  if let Ok(url) = Url::parse(file_name) {
+    if url.scheme() != "file" {
+      return None;
+    }
+    url_to_file_path(&url).ok()
+  } else {
+    let path = Path::new(file_name);
+    path.is_absolute().then(|| path.to_path_buf())
+  }
+}
+
+/// Find the explicit `"type": "module"` package boundary for the
+/// authoritative `.js` module of a CommonJS-global error.
+pub fn maybe_type_module_package_json<TSys: DenoLibSys>(
+  error: &JsError,
+  resolver: &PackageJsonResolver<TSys>,
+) -> Option<PathBuf> {
+  let error = find_commonjs_global_error(error)?;
+  let file_path = error
+    .additional_properties
+    .iter()
+    .find(|(key, _)| key == COMMONJS_ESM_MODULE_PATH_PROPERTY)
+    .and_then(|(_, value)| file_name_to_path(value))
+    .or_else(|| {
+      error
+        .frames
+        .first()
+        .and_then(|frame| frame.file_name.as_deref())
+        .and_then(file_name_to_path)
+    })?;
+
+  if file_path.extension().and_then(|e| e.to_str()) != Some("js") {
+    return None;
+  }
+
+  let package_json = resolver
+    .get_closest_package_json(&file_path)
+    .ok()
+    .flatten()?;
+  (package_json.typ == "module").then(|| package_json.path.clone())
+}
+
+fn format_js_error_for_worker<TSys: DenoLibSys>(
+  error: &JsError,
+  initial_cwd: Option<&Url>,
+  resolver: &PackageJsonResolver<TSys>,
+) -> String {
+  let maybe_type_module_package_json =
+    maybe_type_module_package_json(error, resolver);
+  format_js_error_with_type_module_package_json(
+    error,
+    initial_cwd,
+    maybe_type_module_package_json.as_deref(),
+  )
+}
 
 impl StorageKeyResolver {
   pub fn from_flag(location: &Url) -> Self {
@@ -421,6 +503,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         bundle_provider: shared.bundle_provider.clone(),
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+      let pkg_json_resolver = shared.pkg_json_resolver.clone();
       // Apply resource limits to v8::CreateParams if specified.
       // Uses individual V8 ResourceConstraints setters to match Node.js
       // behavior (node_worker.cc UpdateResourceConstraints).
@@ -518,7 +601,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         seed: shared.options.seed,
         create_web_worker_cb,
         format_js_error_fn: Some(Arc::new(move |a| {
-          format_js_error(a, maybe_initial_cwd.as_ref())
+          format_js_error_for_worker(
+            a,
+            maybe_initial_cwd.as_ref(),
+            &pkg_json_resolver,
+          )
         })),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
@@ -721,6 +808,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     };
 
     let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+    let pkg_json_resolver = shared.pkg_json_resolver.clone();
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
@@ -767,7 +855,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .clone(),
       seed: shared.options.seed,
       format_js_error_fn: Some(Arc::new(move |e| {
-        format_js_error(e, maybe_initial_cwd.as_ref())
+        format_js_error_for_worker(
+          e,
+          maybe_initial_cwd.as_ref(),
+          &pkg_json_resolver,
+        )
       })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
       should_break_on_first_statement: shared.options.inspect_brk,

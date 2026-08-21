@@ -49,15 +49,17 @@ use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::worker::LibWorkerFactoryRoots;
+use deno_lib::worker::maybe_type_module_package_json;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::WorkerExecutionMode;
-use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::fmt_errors::format_js_error_with_type_module_package_json;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
+use node_resolver::PackageJsonResolver;
 use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
@@ -762,7 +764,15 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     Some(e) => {
       let initial_cwd = initial_cwd
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
-      format_js_error(e, initial_cwd.as_ref())
+      let package_json_resolver =
+        PackageJsonResolver::new(crate::sys::CliSys::default(), None);
+      let maybe_type_module_package_json =
+        maybe_type_module_package_json(e, &package_json_resolver);
+      format_js_error_with_type_module_package_json(
+        e,
+        initial_cwd.as_ref(),
+        maybe_type_module_package_json.as_deref(),
+      )
     }
     None => format!("{error:?}"),
   };

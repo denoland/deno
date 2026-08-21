@@ -81,9 +81,52 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
+  SymbolFor,
   SyntaxError,
   TypeError,
 } = primordials;
+
+const kErrorAdditionalPropertyKeys = SymbolFor(
+  "errorAdditionalPropertyKeys",
+);
+const kCommonJsEsmModulePath = "__denoCommonJsEsmModulePath";
+
+function setCommonJsEsmModuleErrorContext(error, filename) {
+  if (
+    !(error instanceof Error) ||
+    !StringPrototypeEndsWith(filename, ".js")
+  ) {
+    return;
+  }
+
+  try {
+    ObjectDefineProperty(error, kCommonJsEsmModulePath, {
+      value: filename,
+      writable: false,
+      enumerable: false,
+      configurable: true,
+    });
+
+    let additionalPropertyKeys = error[kErrorAdditionalPropertyKeys];
+    if (!ArrayIsArray(additionalPropertyKeys)) {
+      additionalPropertyKeys = [];
+      ObjectDefineProperty(error, kErrorAdditionalPropertyKeys, {
+        value: additionalPropertyKeys,
+        writable: false,
+        enumerable: false,
+        configurable: false,
+      });
+    }
+    if (
+      !ArrayPrototypeIncludes(additionalPropertyKeys, kCommonJsEsmModulePath)
+    ) {
+      ArrayPrototypePush(additionalPropertyKeys, kCommonJsEsmModulePath);
+    }
+  } catch {
+    // This context only improves the diagnostic, so preserve the original
+    // error if it cannot be annotated.
+  }
+}
 
 const _httpAgent = core.createLazyLoader("node:_http_agent");
 const _httpCommon = core.createLazyLoader("node:_http_common");
@@ -2266,6 +2309,7 @@ function loadESMFromCJS(module, filename, code, sourceFromHook = false) {
     ) {
       _throwRequireAsyncModule(specifier, module);
     }
+    setCommonJsEsmModuleErrorContext(e, filename);
     throw e;
   }
   if (ObjectHasOwn(namespace, "module.exports")) {
