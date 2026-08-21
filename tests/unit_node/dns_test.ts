@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertThrows, fail } from "@std/assert";
 import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
   getDefaultResultOrder as getDefaultResultOrderPromise,
@@ -271,4 +271,24 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.errno, -3008);
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
+});
+
+Deno.test("[node/dns] resolveCname validates the callback argument", () => {
+  const resolver = new dns.Resolver();
+
+  try {
+    const error = assertThrows(
+      () =>
+        Reflect.apply(resolver.resolveCname, resolver, [
+          "www.github.com",
+          () => {},
+          "ignored",
+        ]),
+      TypeError,
+      'The "callback" argument must be of type function',
+    );
+    assertEquals((error as ErrnoException).code, "ERR_INVALID_ARG_TYPE");
+  } finally {
+    resolver.cancel();
+  }
 });
