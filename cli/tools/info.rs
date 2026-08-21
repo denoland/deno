@@ -165,8 +165,10 @@ pub async fn info(
       }
     };
 
-    let mut loader =
-      module_graph_builder.create_graph_loader_with_root_permissions();
+    let mut loader = module_graph_builder
+      .create_graph_loader_with_root_permissions(std::slice::from_ref(
+        &specifier,
+      ));
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_creator
       .create_graph_with_loader(
