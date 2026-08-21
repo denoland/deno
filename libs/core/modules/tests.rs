@@ -2667,6 +2667,190 @@ fn test_code_cache_not_created_for_json_module() {
 }
 
 #[test]
+fn test_termination_during_synthetic_esm_materialization() {
+  unsafe extern "C" fn terminate_execution_on_interrupt(
+    isolate: v8::UnsafeRawIsolatePtr,
+    _data: *mut std::ffi::c_void,
+  ) {
+    // SAFETY: V8 supplies the active isolate to its interrupt callback.
+    let isolate = unsafe { v8::Isolate::ref_from_raw_isolate_ptr(&isolate) };
+    isolate.terminate_execution();
+  }
+
+  #[op2(fast)]
+  fn op_request_termination(scope: &mut v8::PinScope) {
+    let isolate_handle = scope.thread_safe_handle();
+    std::thread::spawn(move || {
+      isolate_handle.request_interrupt(
+        terminate_execution_on_interrupt,
+        std::ptr::null_mut(),
+      );
+    })
+    .join()
+    .unwrap();
+  }
+
+  deno_core::extension!(termination_test_ext, ops = [op_request_termination]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![termination_test_ext::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  module_map.add_lazy_loaded_script_source(
+    ascii_str!("ext:test/backing.js").into(),
+    ascii_str!(
+      r#"
+        (function () {
+          return Object.defineProperty({}, "value", {
+            enumerable: true,
+            get() {
+              Deno.core.ops.op_request_termination();
+              while (true) {}
+            },
+          });
+        })();
+      "#
+    )
+    .into(),
+  );
+  module_map.add_synthetic_esm_module(
+    ascii_str!("custom:synthetic").into(),
+    ascii_str!("ext:test/backing.js").into(),
+  );
+
+  deno_core::scope!(scope, runtime);
+  let main_id = module_map
+    .new_es_module(
+      scope,
+      true,
+      ascii_str!("file:///main.js").into(),
+      ascii_str!(r#"import "custom:synthetic";"#).into(),
+      false,
+      None,
+    )
+    .unwrap();
+  let error = module_map.instantiate_module(scope, main_id).unwrap_err();
+
+  assert!(scope.cancel_terminate_execution());
+  assert!(
+    matches!(
+      error,
+      ModuleError::Core(ref error)
+        if matches!(error.as_kind(), CoreErrorKind::ExecutionTerminated)
+    ),
+    "{error:?}"
+  );
+
+  module_map.add_lazy_loaded_script_source(
+    ascii_str!("ext:test/terminating.js").into(),
+    ascii_str!(
+      r#"
+        (function () {
+          Deno.core.ops.op_request_termination();
+          while (true) {}
+          return {};
+        })();
+      "#
+    )
+    .into(),
+  );
+  let error = module_map
+    .load_ext_script(scope, "ext:test/terminating.js")
+    .unwrap_err();
+
+  assert!(scope.cancel_terminate_execution());
+  assert!(matches!(
+    error.as_kind(),
+    CoreErrorKind::ExecutionTerminated
+  ));
+
+  module_map.add_lazy_loaded_esm_source(
+    ascii_str!("ext:test/terminating_esm.js").into(),
+    ascii_str!(
+      r#"
+        Deno.core.ops.op_request_termination();
+        while (true) {}
+      "#
+    )
+    .into(),
+  );
+  let error = module_map
+    .lazy_load_esm_module(scope, "ext:test/terminating_esm.js")
+    .unwrap_err();
+
+  assert!(scope.cancel_terminate_execution());
+  assert!(matches!(
+    error.as_kind(),
+    CoreErrorKind::ExecutionTerminated
+  ));
+
+  let sync_module_id = module_map
+    .new_es_module(
+      scope,
+      false,
+      ascii_str!("file:///sync.js").into(),
+      ascii_str!(
+        r#"
+          Deno.core.ops.op_request_termination();
+          while (true) {}
+        "#
+      )
+      .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map
+    .instantiate_module(scope, sync_module_id)
+    .unwrap();
+  let error = module_map
+    .mod_evaluate_sync(scope, sync_module_id)
+    .unwrap_err();
+
+  assert!(scope.cancel_terminate_execution());
+  assert!(matches!(
+    error.as_kind(),
+    CoreErrorKind::ExecutionTerminated
+  ));
+}
+
+#[test]
+fn test_exception_while_reading_synthetic_esm_exports() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let exports = runtime
+    .execute_script(
+      "exports.js",
+      r#"
+        Object.defineProperty({}, "value", {
+          enumerable: true,
+          get() {
+            throw new Error("export getter failed");
+          },
+        });
+      "#,
+    )
+    .unwrap();
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  let exports = crate::v8::Local::new(scope, exports);
+  let exports =
+    crate::v8::Local::<crate::v8::Object>::try_from(exports).unwrap();
+  let ModuleError::Exception(exception) = module_map
+    .new_synthetic_module_from_exports_object(scope, "node:test", exports)
+    .unwrap_err()
+  else {
+    panic!("expected the export getter exception");
+  };
+  let exception = crate::v8::Local::new(scope, exception);
+  let error =
+    exception_to_err_result::<()>(scope, exception, false, true).unwrap_err();
+
+  assert!(error.to_string().contains("export getter failed"));
+}
+
+#[test]
 fn ext_module_loader_relative() {
   let loader = ExtModuleLoader::new(vec![], None);
   let cases = [
