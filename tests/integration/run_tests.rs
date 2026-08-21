@@ -3022,7 +3022,7 @@ console.log(returnsHi());"#,
   // ensure we can add and execute files in directories that have a hash in them
   test_context
     .new_command()
-    // http_localhost_4545/subdir/#capitals_c75d7/main.js
+    // http_localhost_4545/subdir/#capitals_c75d7517fabca9b33b14448fec86d081fa6a32a288ccc5fd33c2ad044efc4c51/main.js
     .args("cache --allow-import http://localhost:4545/subdir/CAPITALS/main.js")
     .run()
     .skip_output_check();
@@ -3030,12 +3030,14 @@ console.log(returnsHi());"#,
     vendor_dir.join("manifest.json").read_json_value(),
     json!({
       "folders": {
-        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
+        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7517fabca9b33b14448fec86d081fa6a32a288ccc5fd33c2ad044efc4c51"
       }
     })
   );
   vendor_dir
-    .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
+    .join(
+      "http_localhost_4545/subdir/#capitals_c75d7517fabca9b33b14448fec86d081fa6a32a288ccc5fd33c2ad044efc4c51/hello_there.ts",
+    )
     .write("console.log('hello there');");
   test_context
     .new_command()
