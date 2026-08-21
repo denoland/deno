@@ -119,7 +119,35 @@ pub fn op_node_idna_punycode_to_unicode(
 #[op2]
 #[string]
 pub fn op_node_idna_domain_to_ascii(#[string] domain: String) -> String {
-  idna::domain_to_ascii(&domain).unwrap_or_default()
+  // Node's `url.domainToASCII` is backed by ada and runs the full WHATWG URL
+  // host parser, not just UTS #46 ToASCII. That means, before applying ToASCII,
+  // it: strips ASCII tab/newline code points, terminates the host at the first
+  // `/`, `\`, `?` or `#`, percent-decodes the remainder, parses IPv4/IPv6
+  // literals (normalizing them, e.g. `0xff.0.0.1` -> `255.0.0.1` and
+  // `[0:0:0:0:0:0:0:1]` -> `[::1]`), and rejects forbidden host code points
+  // (control chars, space, `:%<>[]|` ...) by returning an empty string.
+  //
+  // Reproduce that here by driving the same WHATWG host parser that the `url`
+  // crate implements, so results agree with Node (see
+  // https://github.com/denoland/deno/issues/36514).
+
+  // Strip ASCII tab and newlines, which the URL parser removes up front.
+  let stripped: Cow<str> = if domain.contains(['\t', '\n', '\r']) {
+    Cow::Owned(domain.replace(['\t', '\n', '\r'], ""))
+  } else {
+    Cow::Borrowed(domain.as_str())
+  };
+
+  // The host ends at the first host terminator for special schemes.
+  let host = match stripped.find(['/', '\\', '?', '#']) {
+    Some(i) => &stripped[..i],
+    None => &stripped,
+  };
+
+  match url::Host::parse(host) {
+    Ok(host) => host.to_string(),
+    Err(_) => String::new(),
+  }
 }
 
 /// Converts a domain to Unicode as per the IDNA spec
