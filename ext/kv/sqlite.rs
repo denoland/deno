@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -55,6 +56,25 @@ enum Mode {
   InMemory,
 }
 
+fn resolve_sqlite_system_path_alias(path: &Path) -> PathBuf {
+  // SQLITE_OPEN_NOFOLLOW rejects symlinks in every path component. macOS
+  // exposes its temporary directories through root-owned aliases, so resolve
+  // only those fixed system prefixes and leave every user-controlled path
+  // component visible to SQLite.
+  #[cfg(target_os = "macos")]
+  for prefix in [Path::new("/var"), Path::new("/tmp")] {
+    if let Ok(suffix) = path.strip_prefix(prefix)
+      && let Ok(prefix) = deno_path_util::fs::canonicalize_path_maybe_not_exists(
+        &sys_traits::impls::RealSys,
+        prefix,
+      )
+    {
+      return prefix.join(suffix);
+    }
+  }
+  path.to_path_buf()
+}
+
 #[async_trait(?Send)]
 impl DatabaseHandler for SqliteDbHandler {
   type DB = denokv_sqlite::Sqlite;
@@ -98,7 +118,9 @@ impl DatabaseHandler for SqliteDbHandler {
             Some("Deno.openKv"),
           )
           .map_err(JsErrorBox::from_err)?;
-        Ok(Some(PathOrInMemory::Path(path.into_owned_path())))
+        Ok(Some(PathOrInMemory::Path(
+          resolve_sqlite_system_path_alias(&path),
+        )))
       }
     }
 
@@ -133,21 +155,16 @@ impl DatabaseHandler for SqliteDbHandler {
             None,
           ),
           (Some(PathOrInMemory::Path(path)), _) => {
-            let flags =
-              OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-            let resolved_path =
-              deno_path_util::fs::canonicalize_path_maybe_not_exists(
-                // todo(dsherret): probably should use the FileSystem in the op state instead
-                &sys_traits::impls::RealSys,
-                path,
-              )
-              .map_err(JsErrorBox::from_err)?;
+            let flags = OpenFlags::default()
+              .difference(OpenFlags::SQLITE_OPEN_URI)
+              | OpenFlags::SQLITE_OPEN_NOFOLLOW;
             let path = path.clone();
+            let notifier_key = path.clone();
             (
               Arc::new(move || {
                 rusqlite::Connection::open_with_flags(&path, flags)
               }) as ConnGen,
-              Some(resolved_path),
+              Some(notifier_key),
             )
           }
           (None, Some(path)) => {
