@@ -3382,6 +3382,7 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
+ "serde_bytes",
  "sha2",
  "sys_traits",
  "test_util",
@@ -6391,9 +6392,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a9149a6c84f22c936d2b6ff1ba3392de20f9ee76eb65e5aebfdca4c8621ba3f"
+checksum = "8a2a04490eb866f17dcbbb44c8277b45964eeb0f68bb17c444e69c2feff0db94"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
