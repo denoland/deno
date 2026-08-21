@@ -900,9 +900,10 @@ pub enum MenuItem {
     /// Checkmark next to the item. All platforms.
     #[serde(default)]
     checked: bool,
-    /// File path to a PNG image shown next to the label. macOS and
+    /// PNG-encoded image bytes shown next to the label. macOS and
     /// Windows only.
-    icon: Option<String>,
+    #[serde(with = "serde_bytes", default)]
+    icon: Option<Vec<u8>>,
     /// Tooltip shown on hover. macOS only.
     tooltip: Option<String>,
   },
@@ -1857,7 +1858,7 @@ mod tests {
         "label": "Mute",
         "enabled": true,
         "checked": true,
-        "icon": "/tmp/mute.png",
+        "icon": [0x89, 0x50, 0x4E, 0x47],
         "tooltip": "Silence notifications",
       }
     }))
@@ -1870,7 +1871,7 @@ mod tests {
         ..
       } => {
         assert!(checked);
-        assert_eq!(icon.as_deref(), Some("/tmp/mute.png"));
+        assert_eq!(icon.as_deref(), Some(&[0x89u8, 0x50, 0x4E, 0x47][..]));
         assert_eq!(tooltip.as_deref(), Some("Silence notifications"));
       }
       _ => panic!("expected Item"),

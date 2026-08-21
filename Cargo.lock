@@ -3382,6 +3382,7 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
+ "serde_bytes",
  "sha2",
  "sys_traits",
  "test_util",

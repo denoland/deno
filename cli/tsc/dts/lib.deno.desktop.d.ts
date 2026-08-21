@@ -500,11 +500,12 @@ declare namespace Deno {
         /** Show a checkmark next to the item. Supported on all
          * platforms. Defaults to `false`. */
         checked?: boolean;
-        /** File path to a PNG image shown next to the label. Supported
-         * on macOS and Windows; ignored on Linux. On macOS a monochrome
-         * black+alpha PNG is rendered as a template image, tinting to
-         * white when the item is highlighted. */
-        icon?: string;
+        /** PNG-encoded image bytes shown next to the label, like
+         * {@linkcode Tray.setIcon}. Supported on macOS and Windows;
+         * ignored on Linux. On macOS a monochrome black+alpha PNG is
+         * rendered as a template image, tinting to white when the item
+         * is highlighted. */
+        icon?: Uint8Array;
         /** Tooltip shown when hovering over the item. macOS only. */
         tooltip?: string;
       };

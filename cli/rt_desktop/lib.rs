@@ -2141,7 +2141,7 @@ mod tests {
       accelerator: Some("CmdOrCtrl+S".into()),
       enabled: true,
       checked: true,
-      icon: Some("/tmp/save.png".into()),
+      icon: Some(vec![0x89, b'P', b'N', b'G']),
       tooltip: Some("Save the current file".into()),
     };
     match desktop_menu_item_to_laufey_menu_item(item) {
@@ -2159,7 +2159,7 @@ mod tests {
         assert_eq!(accelerator.as_deref(), Some("CmdOrCtrl+S"));
         assert!(enabled);
         assert!(checked);
-        assert_eq!(icon.as_deref(), Some("/tmp/save.png"));
+        assert_eq!(icon.as_deref(), Some(&[0x89, b'P', b'N', b'G'][..]));
         assert_eq!(tooltip.as_deref(), Some("Save the current file"));
       }
       _ => panic!("expected Item"),
