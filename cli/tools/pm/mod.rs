@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
+use deno_graph::JsrPackageReqNotFoundError;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -722,15 +723,6 @@ pub async fn add(
             crate::colors::yellow(format!("deno {cmd_name} jsr:{package_req}"))
           )
         }
-        Some(NotFoundHelp::PreReleaseVersion(version)) => {
-          bail!(
-            "{} has only pre-release versions available. Try specifying a version: `{}`",
-            crate::colors::red(&package_name),
-            crate::colors::yellow(format!(
-              "deno {cmd_name} {package_name}@^{version}"
-            ))
-          )
-        }
         None => bail!("{} was not found.", crate::colors::red(package_name)),
       },
       PackageAndVersion::Selected(selected) => {
@@ -832,7 +824,6 @@ struct SelectedPackage {
 enum NotFoundHelp {
   NpmPackage,
   JsrPackage,
-  PreReleaseVersion(Version),
 }
 
 enum PackageAndVersion {
@@ -957,19 +948,27 @@ async fn find_package_and_select_version_for_req(
       match main_resolver.req_to_nv(req).await {
         Ok(maybe_nv) => maybe_nv,
         Err(err) => {
-          if req.version_req.version_text() == "*"
-            && let Some(pre_release_version) =
+          // A `*` requirement never matches a pre-release version, so a JSR
+          // package that only has pre-release versions fails to resolve. Fall
+          // back to the newest version, mirroring how npm installs the
+          // `latest` dist-tag for packages without a stable release. Versions
+          // excluded by a minimum dependency age stay excluded: in that case
+          // the error carries the date and is surfaced as-is.
+          let prerelease_only_package = req.version_req.version_text() == "*"
+            && err
+              .downcast_ref::<JsrPackageReqNotFoundError>()
+              .is_some_and(|err| err.newest_dependency_date.is_none());
+          if prerelease_only_package
+            && let Some(latest_version) =
               main_resolver.latest_version(&req.name).await
           {
-            return Ok(PackageAndVersion::NotFound {
-              package: prefixed_name,
-              package_req: req.clone(),
-              help: Some(NotFoundHelp::PreReleaseVersion(
-                pre_release_version.clone(),
-              )),
-            });
+            Some(PackageNv {
+              name: req.name.clone(),
+              version: latest_version,
+            })
+          } else {
+            return Err(err);
           }
-          return Err(err);
         }
       }
     };

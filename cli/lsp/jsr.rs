@@ -140,20 +140,33 @@ impl JsrCacheResolver {
       // Find the first matching version of the package which is cached.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
+      let is_cached = |v: &Version| {
+        let nv = PackageNv {
+          name: name.clone(),
+          version: v.clone(),
+        };
+        self.package_version_info(&nv).is_some()
+      };
       let version = versions
-        .into_iter()
+        .iter()
         .rev()
         .find(|v| {
           if req.version_req.tag().is_some() || !req.version_req.matches(v) {
             return false;
           }
-          let nv = PackageNv {
-            name: name.clone(),
-            version: (*v).clone(),
-          };
-          self.package_version_info(&nv).is_some()
+          is_cached(v)
         })
-        .cloned()?;
+        .or_else(|| {
+          // A `*` requirement never matches a pre-release version, so a
+          // package that only has pre-release versions matches nothing
+          // above. Fall back to its newest version, mirroring the CLI.
+          if req.version_req.version_text() == "*" {
+            versions.iter().rev().find(|v| is_cached(v))
+          } else {
+            None
+          }
+        })
+        .map(|v| (*v).clone())?;
       Some(PackageNv {
         name: name.clone(),
         version,
