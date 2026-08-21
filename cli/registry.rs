@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -163,9 +164,21 @@ pub async fn get_package(
   registry_api_url: &Url,
   scope: &str,
   package: &str,
+  authorization: Option<&str>,
 ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package);
-  let response = client.get(package_url.parse()?)?.send().await?;
+  let mut request = client.get(package_url.parse()?)?;
+  // The registry responds with a 404 for private packages unless the request
+  // is authenticated as someone with access, so authenticate when we can.
+  if let Some(authorization) = authorization {
+    request = request.header(
+      http::header::AUTHORIZATION,
+      authorization
+        .parse()
+        .context("Failed to parse authorization header")?,
+    );
+  }
+  let response = request.send().await?;
   Ok(response)
 }
 
