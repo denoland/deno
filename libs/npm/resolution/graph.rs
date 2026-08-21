@@ -80,6 +80,45 @@ pub enum NpmResolutionError {
   DependencyEntry(#[from] Box<NpmDependencyEntryError>),
 }
 
+/// Whether an error resolving an *optional* dependency should be swallowed
+/// (skipping that dependency) rather than aborting the whole install.
+///
+/// Deterministic resolution failures — the package doesn't exist, no version
+/// satisfies the requirement, or every matching version is blocked by the
+/// minimum dependency age — mirror npm/yarn/pnpm, which never fail an install
+/// over an unmet optional dependency. Transient failures (e.g. a registry
+/// load error) are not swallowed so real problems still surface.
+///
+/// Invariant: every variant classified as skippable here must be raised
+/// *before* the dependency's node is created in the graph (in practice, by
+/// `resolve_best_package_version_info`, which `analyze_dependency` calls
+/// before `create_node_from_version_info`). Skipping an error raised after
+/// node creation would leave an orphan node in the graph that no parent
+/// links to, and that node would then be materialized into the snapshot.
+/// If a new variant can be raised post-creation, it must be classified as
+/// non-skippable regardless of how deterministic it is.
+fn is_skippable_optional_error(err: &NpmResolutionError) -> bool {
+  match err {
+    NpmResolutionError::Registry(
+      NpmRegistryPackageInfoLoadError::PackageNotExists { .. },
+    ) => true,
+    NpmResolutionError::Registry(
+      NpmRegistryPackageInfoLoadError::LoadError(_),
+    ) => false,
+    NpmResolutionError::Resolution(
+      NpmPackageVersionResolutionError::DistTagNotFound { .. }
+      | NpmPackageVersionResolutionError::DistTagVersionNotFound { .. }
+      | NpmPackageVersionResolutionError::DistTagVersionTooNew { .. }
+      | NpmPackageVersionResolutionError::VersionNotFound(_)
+      | NpmPackageVersionResolutionError::VersionReqNotMatched { .. },
+    ) => true,
+    NpmResolutionError::Resolution(
+      NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. },
+    ) => false,
+    NpmResolutionError::DependencyEntry(_) => false,
+  }
+}
+
 /// A unique identifier to a node in the graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 struct NodeId(u32);
@@ -1137,6 +1176,10 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   /// don't pollute the root scope. Phase 2 uses these when a required
   /// peer isn't found in scope.
   peer_fallbacks: BTreeMap<StackString, NodeId>,
+  /// `name@version_req` of optional dependencies that have already been
+  /// warned about, so that an optional dep reached via several parent paths
+  /// only produces a single warning.
+  warned_skipped_optional: FxHashSet<String>,
 }
 
 impl<'a, TNpmRegistryApi: NpmRegistryApi>
@@ -1164,7 +1207,33 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       pure_pkgs: FxHashSet::default(),
       peers_cache: FxHashMap::default(),
       peer_fallbacks: BTreeMap::new(),
+      warned_skipped_optional: FxHashSet::default(),
     }
+  }
+
+  /// Warns that an optional dependency was skipped.
+  ///
+  /// Skipping keeps the install from failing, but the dropped package may be
+  /// the very one this system needs (e.g. the host platform's prebuild is the
+  /// one blocked by the minimum dependency age), in which case the failure
+  /// would otherwise resurface at runtime as an opaque "module not found".
+  /// The underlying error is included so a genuinely broken version
+  /// requirement in `optionalDependencies` stays diagnosable.
+  fn warn_skipped_optional_dep(
+    &mut self,
+    dep: &NpmDependencyEntry,
+    err: &dyn std::fmt::Display,
+  ) {
+    let key = format!("{}@{}", dep.name, dep.version_req.version_text());
+    if !self.warned_skipped_optional.insert(key) {
+      return;
+    }
+    log::warn!(
+      "Skipping optional dependency '{}@{}': {}",
+      dep.name,
+      dep.version_req.version_text(),
+      err
+    );
   }
 
   /// Follows the `node_id_mappings` chain to find the canonical (latest)
@@ -2753,10 +2822,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   ) -> Result<bool, NpmResolutionError> {
     let package_info = match result {
       Ok(info) => info,
-      // npm doesn't fail on non-existent optional peer dependencies
-      Err(NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
-        if matches!(dep.kind, NpmDependencyEntryKind::OptionalPeer) =>
+      // npm doesn't fail when an optional dependency (or optional peer
+      // dependency) doesn't exist in the registry — it's simply skipped.
+      Err(err @ NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
+        if dep.optional
+          || matches!(dep.kind, NpmDependencyEntryKind::OptionalPeer) =>
       {
+        // an unmet optional *peer* dep is routine and was always silent, so
+        // only warn for entries from `optionalDependencies`
+        if dep.optional {
+          self.warn_skipped_optional_dep(dep, &err);
+        }
         return Ok(false);
       }
       Err(e) => return Err(e.into()),
@@ -2802,7 +2878,19 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             child_id
           }
           None => {
-            self.analyze_dependency(dep, &version_resolver, parent_path)?
+            match self.analyze_dependency(dep, &version_resolver, parent_path) {
+              Ok(child_id) => child_id,
+              // An optional dependency that can't be resolved (no matching
+              // version, blocked by the minimum dependency age, etc.) is
+              // skipped rather than aborting the whole install, matching
+              // npm/yarn/pnpm. Only version-resolution failures are swallowed;
+              // transient errors (e.g. a registry load failure) still surface.
+              Err(err) if dep.optional && is_skippable_optional_error(&err) => {
+                self.warn_skipped_optional_dep(dep, &err);
+                return Ok(false);
+              }
+              Err(err) => return Err(err),
+            }
           }
         };
 
@@ -3505,7 +3593,9 @@ mod test {
   use crate::resolution::NewestDependencyDate;
   use crate::resolution::NewestDependencyDateOptions;
   use crate::resolution::NpmPackageVersionNotFound;
+  use crate::resolution::NpmTrustPolicy;
   use crate::resolution::SerializedNpmResolutionSnapshot;
+  use crate::resolution::TrustPolicyOptions;
 
   #[test]
   fn resolved_id_tests() {
@@ -6065,6 +6155,255 @@ mod test {
       packages,
       vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string()]
     );
+  }
+
+  #[tokio::test]
+  async fn resolve_skips_unresolvable_optional_deps() {
+    // https://github.com/denoland/deno/issues/36597 and
+    // https://github.com/denoland/deno/issues/29307: an optional dependency
+    // that can't be resolved must be skipped rather than aborting the whole
+    // install, matching npm/yarn/pnpm.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    // a resolvable optional dep — still installed
+    api.add_optional_dep(("package-a", "1.0.0"), ("package-b", "1"));
+    // an optional dep pointing at a version that doesn't exist
+    api.add_optional_dep(("package-a", "1.0.0"), ("package-c", "2"));
+    // an optional dep pointing at a package that doesn't exist at all
+    api.add_optional_dep(("package-a", "1.0.0"), ("package-d", "1"));
+
+    let snapshot =
+      run_resolver_and_get_snapshot(api, vec!["package-a@1.0.0"]).await;
+    let packages = package_names_with_info(
+      &snapshot,
+      &NpmSystemInfo {
+        os: "linux".into(),
+        cpu: "x64".into(),
+      },
+    );
+    assert_eq!(
+      packages,
+      vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string()]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_skips_optional_dep_blocked_by_min_dependency_age() {
+    // https://github.com/denoland/deno/issues/36597: a foreign-platform
+    // optional dep whose only matching version is newer than the minimum
+    // dependency age is skipped instead of failing the install, while a
+    // sibling optional dep that is old enough still installs.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("@scope/linux-x64", "1.0.0");
+    api.ensure_package_version("@scope/android-arm64", "1.0.0");
+    api.add_optional_dep(("package-a", "1.0.0"), ("@scope/linux-x64", "1.0.0"));
+    api.add_optional_dep(
+      ("package-a", "1.0.0"),
+      ("@scope/android-arm64", "1.0.0"),
+    );
+    api.with_package("@scope/linux-x64", |info| {
+      info.time.insert(
+        version("1.0.0"),
+        "2026-08-14T00:00:00.000Z".parse().unwrap(),
+      );
+    });
+    api.with_package("@scope/android-arm64", |info| {
+      // published after the cutoff -> blocked by the minimum dependency age
+      info.time.insert(
+        version("1.0.0"),
+        "2026-08-15T18:00:00.000Z".parse().unwrap(),
+      );
+    });
+
+    let snapshot = run_resolver_with_options_and_get_snapshot(
+      &api,
+      RunResolverOptions {
+        reqs: vec!["package-a@1.0.0"],
+        newest_dependency_date: NewestDependencyDateOptions::from_date(
+          "2026-08-15T00:00:00.000Z".parse().unwrap(),
+        ),
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+    let packages = package_names_with_info(
+      &snapshot,
+      &NpmSystemInfo {
+        os: "linux".into(),
+        cpu: "x64".into(),
+      },
+    );
+    assert_eq!(
+      packages,
+      vec![
+        "@scope/linux-x64@1.0.0".to_string(),
+        "package-a@1.0.0".to_string(),
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_optional_dep_trust_policy_downgrade_still_errors() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.add_optional_dep(("package-a", "1.0.0"), ("package-b", "1.1.0"));
+    api.with_package("package-b", |info| {
+      info.versions.insert(
+        version("1.0.0"),
+        serde_json::from_str(
+          r#"{ "version": "1.0.0", "_npmUser": { "approver": {} } }"#,
+        )
+        .unwrap(),
+      );
+      info.versions.insert(
+        version("1.1.0"),
+        serde_json::from_str(r#"{ "version": "1.1.0" }"#).unwrap(),
+      );
+      info.time.insert(
+        version("1.0.0"),
+        "2026-08-01T00:00:00.000Z".parse().unwrap(),
+      );
+      info.time.insert(
+        version("1.1.0"),
+        "2026-08-02T00:00:00.000Z".parse().unwrap(),
+      );
+    });
+
+    let snapshot = NpmResolutionSnapshot::new(Default::default());
+    let mut graph = Graph::from_snapshot(snapshot);
+    let npm_version_resolver = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    let mut resolver = GraphDependencyResolver::new(
+      &mut graph,
+      &api,
+      &npm_version_resolver,
+      None,
+      GraphDependencyResolverOptions { should_dedup: true },
+    );
+    let req = PackageReq::from_str("package-a@1.0.0").unwrap();
+    resolver
+      .add_package_req(&req, &api.package_info(&req.name).await.unwrap())
+      .unwrap();
+
+    let err = resolver.resolve_pending().await.unwrap_err();
+    assert!(
+      matches!(
+        err,
+        NpmResolutionError::Resolution(
+          NpmPackageVersionResolutionError::TrustPolicyDowngrade { .. }
+        )
+      ),
+      "expected TrustPolicyDowngrade, got {err:?}"
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_required_dep_missing_version_still_errors() {
+    // Regression guard: skipping only applies to *optional* deps. A required
+    // dependency with an unresolvable version must still fail the install.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "2"));
+    let err = run_resolver_and_get_error(api, vec!["package-a@1.0.0"]).await;
+    assert_eq!(
+      err.to_string(),
+      "Could not find npm package 'package-b' matching '2'."
+    );
+  }
+
+  #[test]
+  fn skippable_optional_error_classification() {
+    // Exhaustive table for `is_skippable_optional_error`. Deterministic
+    // resolution failures are skipped for optional deps; anything that could
+    // mask a transient or genuinely dangerous condition is not.
+    let skippable: Vec<NpmResolutionError> = vec![
+      NpmRegistryPackageInfoLoadError::PackageNotExists {
+        package_name: "package-a".to_string(),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::DistTagNotFound {
+        dist_tag: "latest".to_string(),
+        package_name: "package-a".into(),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::DistTagVersionNotFound {
+        package_name: "package-a".into(),
+        dist_tag: "latest".to_string(),
+        version: "1.0.0".to_string(),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::DistTagVersionTooNew {
+        package_name: "package-a".into(),
+        dist_tag: "latest".to_string(),
+        version: "1.0.0".to_string(),
+        publish_date: "2026-08-15T00:00:00.000Z".parse().unwrap(),
+        newest_dependency_date: NewestDependencyDate(
+          "2026-08-01T00:00:00.000Z".parse().unwrap(),
+        ),
+      }
+      .into(),
+      NpmPackageVersionResolutionError::VersionNotFound(
+        NpmPackageVersionNotFound(PackageNv {
+          name: "package-a".into(),
+          version: version("1.0.0"),
+        }),
+      )
+      .into(),
+      NpmPackageVersionResolutionError::VersionReqNotMatched {
+        package_name: "package-a".into(),
+        version_req: VersionReq::parse_from_npm("2").unwrap(),
+        newest_dependency_date: None,
+      }
+      .into(),
+    ];
+    for err in &skippable {
+      assert!(
+        is_skippable_optional_error(err),
+        "expected skippable: {err:?}"
+      );
+    }
+
+    let fatal: Vec<NpmResolutionError> = vec![
+      // transient — a registry hiccup must not silently drop a package
+      NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
+        deno_error::JsErrorBox::generic("connection reset"),
+      ))
+      .into(),
+      // a possible supply chain incident is never worth swallowing
+      NpmPackageVersionResolutionError::TrustPolicyDowngrade {
+        package_name: "package-a".into(),
+        version: version("1.0.0"),
+        past_evidence: "provenance",
+        current_evidence: "nothing",
+      }
+      .into(),
+      // a malformed dependency entry is raised after the node is created,
+      // so skipping it would leave an orphan node in the graph
+      NpmResolutionError::DependencyEntry(Box::new(NpmDependencyEntryError {
+        parent_nv: PackageNv {
+          name: "package-a".into(),
+          version: version("1.0.0"),
+        },
+        key: "package-b".to_string(),
+        value: "not-a-version".to_string(),
+        source: NpmDependencyEntryErrorSource::LocalDependency {
+          specifier: "file:./b".to_string(),
+        },
+      })),
+    ];
+    for err in &fatal {
+      assert!(!is_skippable_optional_error(err), "expected fatal: {err:?}");
+    }
   }
 
   #[tokio::test]
