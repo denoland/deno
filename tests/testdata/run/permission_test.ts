@@ -10,7 +10,10 @@ const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
     Deno.makeTempDirSync();
   },
   envRequired() {
-    Deno.env.get("home");
+    // Use a variable that is not on the default-readable env allowlist so this
+    // still requires --allow-env. ("home" case-folds to the allowlisted "HOME"
+    // on Windows.)
+    Deno.env.get("NOT_ALLOWLISTED_ENV_VAR");
   },
   netRequired() {
     Deno.listen({ transport: "tcp", port: 4541 });
