@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch;
+use deno_semver::jsr::JsrPackageReqReference;
 use serde::de::DeserializeOwned;
 
 use crate::http_util;
@@ -134,8 +135,11 @@ pub fn get_package_api_url(
   registry_api_url: &Url,
   scope: &str,
   package: &str,
-) -> String {
-  format!("{}scopes/{}/packages/{}", registry_api_url, scope, package)
+) -> Result<Url, AnyError> {
+  append_path_segments(
+    registry_api_url,
+    &["scopes", scope, "packages", package],
+  )
 }
 
 pub fn get_package_version_api_url(
@@ -143,19 +147,55 @@ pub fn get_package_version_api_url(
   scope: &str,
   package: &str,
   version: &str,
-  params: Option<&str>,
-) -> String {
-  if let Some(params) = params {
-    format!(
-      "{}scopes/{}/packages/{}/versions/{}?{}",
-      registry_api_url, scope, package, version, params
-    )
-  } else {
-    format!(
-      "{}scopes/{}/packages/{}/versions/{}",
-      registry_api_url, scope, package, version
-    )
+  config_path: Option<&str>,
+) -> Result<Url, AnyError> {
+  let mut url = append_path_segments(
+    registry_api_url,
+    &["scopes", scope, "packages", package, "versions", version],
+  )?;
+  if let Some(config_path) = config_path {
+    url.query_pairs_mut().append_pair("config", config_path);
   }
+  Ok(url)
+}
+
+pub fn get_package_version_provenance_api_url(
+  registry_api_url: &Url,
+  scope: &str,
+  package: &str,
+  version: &str,
+) -> Result<Url, AnyError> {
+  append_path_segments(
+    registry_api_url,
+    &[
+      "scopes",
+      scope,
+      "packages",
+      package,
+      "versions",
+      version,
+      "provenance",
+    ],
+  )
+}
+
+fn append_path_segments(
+  base_url: &Url,
+  segments: &[&str],
+) -> Result<Url, AnyError> {
+  let mut url = base_url.clone();
+  url.set_query(None);
+  url.set_fragment(None);
+  url
+    .path_segments_mut()
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "Registry API URL cannot be used as a base URL"
+      )
+    })?
+    .pop_if_empty()
+    .extend(segments);
+  Ok(url)
 }
 
 pub async fn get_package(
@@ -164,20 +204,41 @@ pub async fn get_package(
   scope: &str,
   package: &str,
 ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
-  let package_url = get_package_api_url(registry_api_url, scope, package);
-  let response = client.get(package_url.parse()?)?.send().await?;
+  let package_url = get_package_api_url(registry_api_url, scope, package)?;
+  let response = client.get(package_url)?.send().await?;
   Ok(response)
 }
 
 /// Splits a fully qualified JSR package name (e.g. `@scope/package`) into its
 /// `(scope, package)` parts.
 pub fn parse_package_name(name: &str) -> Result<(&str, &str), AnyError> {
-  let Some((scope, package)) = name
-    .strip_prefix('@')
-    .and_then(|no_at| no_at.split_once('/'))
+  // Keep the explicit path-safety checks below even if the JSR grammar changes.
+  let reference = JsrPackageReqReference::from_str(&format!("jsr:{name}@*"))
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "package name must use the '@<scope>/<package>' format"
+      )
+    })?;
+  if reference.sub_path().is_some() {
+    bail!("package name must not contain additional path segments");
+  }
+
+  let Some((scope, package)) =
+    name.strip_prefix('@').and_then(|name| name.split_once('/'))
   else {
-    bail!("Invalid package name, use '@<scope_name>/<package_name>' format");
+    bail!("package name must use the '@<scope>/<package>' format");
   };
+  for component in [scope, package] {
+    if component == "." || component == ".." {
+      bail!("package name must not contain dot path segments");
+    }
+    if component
+      .chars()
+      .any(|c| matches!(c, '/' | '\\' | '?' | '#' | '%'))
+    {
+      bail!("package name contains a URL path or delimiter character");
+    }
+  }
   Ok((scope, package))
 }
 
@@ -201,8 +262,8 @@ pub async fn check_version_exists(
     package,
     version,
     None,
-  );
-  let response = client.get(url.parse()?)?.send().await?;
+  )?;
+  let response = client.get(url)?.send().await?;
   Ok(response.status() == 200)
 }
 
@@ -269,8 +330,84 @@ mod test {
   #[test]
   fn test_parse_package_name() {
     assert_eq!(parse_package_name("@deno/doc").unwrap(), ("deno", "doc"));
-    assert!(parse_package_name("deno/doc").is_err());
-    assert!(parse_package_name("@deno").is_err());
+    assert_eq!(
+      parse_package_name("@scope-1/package-2").unwrap(),
+      ("scope-1", "package-2")
+    );
+    assert_eq!(parse_package_name("@a/b").unwrap(), ("a", "b"));
+
+    for invalid_name in [
+      "deno/doc",
+      "@deno",
+      "@deno/../doc",
+      "@deno/doc/other",
+      "@deno/doc?other",
+      "@deno/doc#other",
+      "@deno/doc\\other",
+      "@deno/doc%2Fother",
+    ] {
+      assert!(
+        parse_package_name(invalid_name).is_err(),
+        "{invalid_name} should be invalid"
+      );
+    }
+  }
+
+  #[test]
+  fn package_api_urls_use_path_segments() {
+    let base = Url::parse("https://registry.example/custom/api/").unwrap();
+    let package_url = get_package_api_url(&base, "scope", "package").unwrap();
+    assert_eq!(
+      package_url.as_str(),
+      "https://registry.example/custom/api/scopes/scope/packages/package"
+    );
+
+    let version_url = get_package_version_api_url(
+      &base,
+      "scope",
+      "package",
+      "1.2.3+build.1",
+      Some("/deno.json"),
+    )
+    .unwrap();
+    assert_eq!(
+      version_url.path(),
+      "/custom/api/scopes/scope/packages/package/versions/1.2.3+build.1"
+    );
+    assert_eq!(
+      version_url.query_pairs().collect::<Vec<_>>(),
+      vec![("config".into(), "/deno.json".into())]
+    );
+
+    let provenance_url = get_package_version_provenance_api_url(
+      &base, "scope", "package", "1.2.3",
+    )
+    .unwrap();
+    assert_eq!(
+      provenance_url.as_str(),
+      "https://registry.example/custom/api/scopes/scope/packages/package/versions/1.2.3/provenance"
+    );
+  }
+
+  #[test]
+  fn package_api_url_components_cannot_change_the_endpoint() {
+    let base = Url::parse("https://registry.example/custom/api/").unwrap();
+    let url = get_package_version_api_url(
+      &base,
+      "scope/../../other",
+      "package?mode=other#fragment",
+      "1.0.0/../../other",
+      None,
+    )
+    .unwrap();
+    assert_eq!(
+      url.origin().ascii_serialization(),
+      "https://registry.example"
+    );
+    assert_eq!(
+      url.as_str(),
+      "https://registry.example/custom/api/scopes/scope%2F..%2F..%2Fother/packages/package%3Fmode=other%23fragment/versions/1.0.0%2F..%2F..%2Fother"
+    );
   }
 
   #[test]
