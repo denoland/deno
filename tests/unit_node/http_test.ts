@@ -25,7 +25,13 @@ import { channel } from "node:diagnostics_channel";
 import * as v8 from "node:v8";
 import { runInNewContext } from "node:vm";
 
-import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
 import { retry } from "@std/async/retry";
@@ -290,6 +296,75 @@ Deno.test("[node/http] .writeHead()", async (t) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
       },
+    );
+  });
+
+  await t.step("validates raw header representations", () => {
+    const cases: [unknown, string][] = [
+      [["bad name", "value"], "ERR_INVALID_HTTP_TOKEN"],
+      [["x-test", "value\r\nx-extra: value"], "ERR_INVALID_CHAR"],
+      [[["bad name", "value"]], "ERR_INVALID_HTTP_TOKEN"],
+      [[[
+        "x-test",
+        "value\r\nx-extra: value",
+      ]], "ERR_INVALID_CHAR"],
+      [{ "bad name": "value" }, "ERR_INVALID_HTTP_TOKEN"],
+      [{ "x-test": "value\r\nx-extra: value" }, "ERR_INVALID_CHAR"],
+    ];
+
+    for (const [headers, code] of cases) {
+      const response = new ServerResponse(
+        { method: "GET" } as IncomingMessage,
+      );
+      const error = assertThrows(() => {
+        response.writeHead(200, headers as Record<string, string>);
+      }) as Error & { code: string };
+      assertEquals(error.code, code);
+    }
+  });
+
+  await t.step("rejects odd-length raw header arrays", () => {
+    const response = new ServerResponse(
+      { method: "GET" } as IncomingMessage,
+    );
+    const error = assertThrows(() => {
+      response.writeHead(
+        200,
+        ["x-test", "value", "dangling"] as unknown as Record<string, string>,
+      );
+    }) as Error & { code: string };
+    assertEquals(error.code, "ERR_INVALID_ARG_VALUE");
+  });
+
+  await t.step("preserves repeated and array-valued raw headers", async () => {
+    await testWriteHead(
+      (res) =>
+        res.writeHead(200, [
+          ["x-repeated", "one"],
+          ["x-repeated", "two"],
+        ]),
+      (res) => {
+        assertEquals(res.headers.get("x-repeated"), "one, two");
+      },
+    );
+    await testWriteHead(
+      (res) => res.writeHead(200, { "x-array": ["three", "four"] }),
+      (res) => {
+        assertEquals(res.headers.get("x-array"), "three, four");
+      },
+    );
+  });
+
+  await t.step("preserves setHeader output", () => {
+    const response = new ServerResponse(
+      { method: "GET" } as IncomingMessage,
+    );
+    response.sendDate = false;
+    response.setHeader("x-test", "value");
+    response.writeHead(200);
+    assertStringIncludes(
+      (response as ServerResponse & { _header: string })._header,
+      "x-test: value\r\n",
     );
   });
 });
@@ -3790,6 +3865,138 @@ Deno.test(
       await promise;
       assertEquals(seenUrl, expected);
     }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target normalizes the authority",
+  async () => {
+    // The target goes through the URL parser, like Node's, so the authority
+    // comes out normalized: the host lowercased and an IPv6 address bracketed
+    // exactly once. A protocol-relative path must stay a path - resolving it
+    // as a URL would retarget the request at another authority.
+    for (
+      const { hostname, path, expected } of [
+        {
+          hostname: "EXAMPLE.COM",
+          path: "/foo",
+          expected: "http://example.com:8080/foo",
+        },
+        {
+          hostname: "::1",
+          path: "/foo",
+          expected: "http://[::1]:8080/foo",
+        },
+        {
+          hostname: "[::1]",
+          path: "/foo",
+          expected: "http://[::1]:8080/foo",
+        },
+        {
+          hostname: "example.com",
+          path: "//evil.example/x",
+          expected: "http://example.com:8080//evil.example/x",
+        },
+      ]
+    ) {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let seenUrl: string | undefined;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const proxy = http.createServer((req, res) => {
+        seenUrl = req.url;
+        res.end("via-proxy");
+      });
+      proxy.listen(0, () => {
+        const proxyPort = (proxy.address() as AddressInfo).port;
+        const req = http.request({
+          hostname,
+          port: 8080,
+          path,
+          agent: new http.Agent({
+            proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+          } as ProxyAgentLike),
+        }, (res) => {
+          res.resume();
+          res.on("end", () => {
+            proxy.close();
+            resolve();
+          });
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      await promise;
+      assertEquals(seenUrl, expected);
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target cannot retarget the authority",
+  () => {
+    // The --allow-net check upstream only validated the requested host and
+    // port. An absolute `path` naming a different authority - or a different
+    // port, or embedding credentials - would slip a request past that check
+    // once the proxy forwards it. Reject it in ClientRequest, failing closed
+    // like a denied direct connection, before any bytes reach the proxy.
+    for (
+      const path of [
+        "http://evil.example/x",
+        "http://example.com:9999/x", // same host, but an unchecked port
+        "http://user:pass@example.com:8080/x", // userinfo for the checked one
+      ]
+    ) {
+      const err = assertThrows(
+        () =>
+          http.request({
+            hostname: "example.com",
+            port: 8080,
+            path,
+            agent: new http.Agent({
+              // Never dialed: the rewrite throws before connecting.
+              proxyEnv: { HTTP_PROXY: "http://127.0.0.1:1" },
+            } as ProxyAgentLike),
+          }),
+        Error,
+        "Invalid URL",
+      );
+      assertEquals((err as { code?: string }).code, "ERR_INVALID_URL");
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target matching the authority is honored",
+  async () => {
+    // The authority matches the checked target, so the absolute-form path is
+    // a legitimate request target and is forwarded to the proxy as given.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    let seenUrl: string | undefined;
+    const proxy = http.createServer((req, res) => {
+      seenUrl = req.url;
+      res.end("via-proxy");
+    });
+    proxy.listen(0, () => {
+      const proxyPort = (proxy.address() as AddressInfo).port;
+      const req = http.request({
+        hostname: "example.com",
+        port: 8080,
+        path: "http://example.com:8080/foo",
+        agent: new http.Agent({
+          proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+        } as ProxyAgentLike),
+      }, (res) => {
+        res.resume();
+        res.on("end", () => {
+          proxy.close();
+          resolve();
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+    assertEquals(seenUrl, "http://example.com:8080/foo");
   },
 );
 

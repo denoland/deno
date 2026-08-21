@@ -2652,6 +2652,37 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
+    // Arm a wakeup for the next pending libuv (N-API) timer deadline. The uv
+    // timer phase (Phase 1) fires expired timers at the top of each tick, but
+    // nothing else re-polls the event loop *at* a timer's deadline. A native
+    // `uv_timer_t` that is the only pending work would therefore never fire
+    // until some unrelated event happened to wake the loop. Mirror libuv's
+    // `uv__next_timeout`: schedule a sleep for the earliest deadline and let it
+    // re-poll us. Only re-arm when the earliest deadline changes to avoid
+    // recreating the timer on every tick. See #36454.
+    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      match unsafe { (*uv_inner_ptr).next_timeout() } {
+        Some((deadline, delay)) => {
+          if context_state.uv_timer_wake_deadline.get() != Some(deadline) {
+            context_state.uv_timer_wake.schedule(delay);
+            context_state.uv_timer_wake_deadline.set(Some(deadline));
+          }
+          // Keep this task's waker registered with the sleep. If the deadline
+          // has already elapsed, re-poll immediately so Phase 1 fires it on the
+          // next tick rather than waiting for another wakeup.
+          if context_state.uv_timer_wake.poll_ready(cx).is_ready() {
+            self.inner.state.waker.wake();
+          }
+        }
+        None => {
+          if context_state.uv_timer_wake_deadline.get().is_some() {
+            context_state.uv_timer_wake.clear();
+            context_state.uv_timer_wake_deadline.set(None);
+          }
+        }
+      }
+    }
+
     // Re-wake logic for next iteration
     #[allow(
       clippy::suspicious_else_formatting,
