@@ -17,6 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
+use deno_lib::standalone::binary::CODE_CACHE_GENERATION_ENV_VAR;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
@@ -30,7 +31,9 @@ use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::JavaScriptEngine;
 use crate::args::TypeCheckMode;
+use crate::args::resolve_compile_target;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::standalone::binary::WriteBinOptions;
@@ -639,6 +642,22 @@ pub async fn compile_binary(
   is_desktop: bool,
   watcher_communicator: Option<Arc<WatcherCommunicator>>,
 ) -> Result<PathBuf, AnyError> {
+  if compile_flags.include_code_cache {
+    if is_desktop {
+      bail!("--include-code-cache is not supported for desktop compilation");
+    }
+    let target = resolve_compile_target(&compile_flags);
+    if target != env!("TARGET") {
+      bail!(
+        "--include-code-cache requires the compile target to match the host target ({})",
+        env!("TARGET")
+      );
+    }
+    if compile_flags.engine != JavaScriptEngine::V8 {
+      bail!("--include-code-cache is only supported with the V8 engine");
+    }
+  }
+
   let factory = if let Some(watcher_communicator) = watcher_communicator.clone()
   {
     CliFactory::from_flags_for_watcher(flags, watcher_communicator)
@@ -735,6 +754,106 @@ pub async fn compile_binary(
   ));
   let temp_path = output_path.with_file_name(temp_filename);
 
+  let display_output_filename = output_path
+    .file_name()
+    .unwrap()
+    .to_string_lossy()
+    .into_owned();
+  let exclude_paths = effective_exclude
+    .iter()
+    .map(|p| cli_options.initial_cwd().join(p))
+    .chain(std::iter::once(
+      cli_options.initial_cwd().join(&output_path),
+    ))
+    .chain(std::iter::once(cli_options.initial_cwd().join(&temp_path)))
+    .collect::<Vec<_>>();
+
+  let embedded_code_cache = if compile_flags.include_code_cache {
+    log::info!("Generating V8 code cache for the compiled executable");
+    let generation_dir = tempfile::Builder::new()
+      .prefix(".deno-compile-code-cache-")
+      .tempdir_in(output_path.parent().unwrap_or_else(|| Path::new(".")))
+      .context("Creating temporary code cache generation directory")?;
+    let generation_binary = generation_dir.path().join(if cfg!(windows) {
+      "code-cache-generator.exe"
+    } else {
+      "code-cache-generator"
+    });
+    let generation_cache = generation_dir.path().join("code-cache.bin");
+    let generation_file = std::fs::File::create(&generation_binary)
+      .with_context(|| {
+        format!(
+          "Opening code cache generator '{}'",
+          generation_binary.display()
+        )
+      })?;
+    let mut generation_compile_flags = compile_flags.clone();
+    // The generator never evaluates user code and does not need packaging-only
+    // transformations that could prevent the temporary binary from running.
+    generation_compile_flags.no_terminal = false;
+    generation_compile_flags.icon = None;
+    generation_compile_flags.self_extracting = false;
+
+    binary_writer
+      .write_bin(WriteBinOptions {
+        writer: generation_file,
+        display_output_filename: &display_output_filename,
+        graph: &graph,
+        entrypoint,
+        include_paths: &roots.include_paths,
+        exclude_paths: exclude_paths
+          .iter()
+          .cloned()
+          .chain(std::iter::once(generation_dir.path().to_path_buf()))
+          .collect(),
+        compile_flags: &generation_compile_flags,
+        code_cache_generation: true,
+        embedded_code_cache: None,
+      })
+      .await
+      .context("Writing temporary code cache generator")?;
+
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      std::fs::set_permissions(
+        &generation_binary,
+        std::fs::Permissions::from_mode(0o755),
+      )?;
+    }
+
+    let output = tokio::process::Command::new(&generation_binary)
+      .env(CODE_CACHE_GENERATION_ENV_VAR, &generation_cache)
+      .kill_on_drop(true)
+      .output()
+      .await
+      .with_context(|| {
+        format!(
+          "Running code cache generator '{}'",
+          generation_binary.display()
+        )
+      })?;
+    if !output.status.success() {
+      bail!(
+        "Failed generating embedded code cache (status {}):\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    let code_cache = std::fs::read(&generation_cache).with_context(|| {
+      format!(
+        "The code cache generator did not write '{}'",
+        generation_cache.display()
+      )
+    })?;
+    if code_cache.is_empty() {
+      bail!("The generated V8 code cache was empty");
+    }
+    Some(code_cache)
+  } else {
+    None
+  };
+
   let file = std::fs::File::create(&temp_path).with_context(|| {
     format!("Opening temporary file '{}'", temp_path.display())
   })?;
@@ -742,22 +861,14 @@ pub async fn compile_binary(
   let write_result = binary_writer
     .write_bin(WriteBinOptions {
       writer: file,
-      display_output_filename: &output_path
-        .file_name()
-        .unwrap()
-        .to_string_lossy(),
+      display_output_filename: &display_output_filename,
       graph: &graph,
       entrypoint,
       include_paths: &roots.include_paths,
-      exclude_paths: effective_exclude
-        .iter()
-        .map(|p| cli_options.initial_cwd().join(p))
-        .chain(std::iter::once(
-          cli_options.initial_cwd().join(&output_path),
-        ))
-        .chain(std::iter::once(cli_options.initial_cwd().join(&temp_path)))
-        .collect(),
+      exclude_paths,
       compile_flags: &compile_flags,
+      code_cache_generation: false,
+      embedded_code_cache: embedded_code_cache.as_deref(),
     })
     .await
     .with_context(|| {
@@ -1388,6 +1499,7 @@ mod test {
         args: Vec::new(),
         target: None,
         no_terminal: false,
+        include_code_cache: false,
         icon: Some("favicon.ico".to_string()),
         include: Default::default(),
         exclude: Default::default(),
@@ -1419,6 +1531,7 @@ mod test {
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
         no_terminal: false,
+        include_code_cache: false,
         icon: None,
         include: Default::default(),
         exclude: Default::default(),
@@ -1460,6 +1573,7 @@ mod test {
         exclude: Default::default(),
         icon: None,
         no_terminal: false,
+        include_code_cache: false,
         eszip: true,
         self_extracting: false,
         bundle: false,

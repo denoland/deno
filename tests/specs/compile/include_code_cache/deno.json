@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@std/url/join": "jsr:@std/url@0.220/join"
+  }
+}

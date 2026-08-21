@@ -1813,7 +1813,15 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("no-code-cache")
       .long("no-code-cache")
       .set_true()
+      .conflicts_with(&["include-code-cache"])
 .help("Disable V8 code cache feature"),
+    ArgDef::new("include-code-cache")
+      .long("include-code-cache")
+      .set_true()
+      .conflicts_with(&["no-code-cache"])
+.help("Generate and embed V8 code cache in the executable.
+  Improves first-start performance at the cost of a larger binary.
+  Only supported for native, non-desktop compilation."),
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
