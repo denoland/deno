@@ -1100,8 +1100,16 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
       .extension()
       .unwrap_or_default()
       .to_string_lossy();
-    let sentinel = s.dylib_path.with_extension(format!("{}.update-ok", ext));
-    let _ = std::fs::write(&sentinel, b"ok");
+    // The sentinel only has meaning while a freshly-applied update's
+    // `.backup` exists (backup-without-sentinel on next boot → rollback).
+    // Writing it unconditionally put a stray file inside the app bundle's
+    // `Contents/MacOS/` on every first launch, which invalidates the
+    // bundle's code signature and even blocks re-signing (#36418).
+    let backup = s.dylib_path.with_extension(format!("{}.backup", ext));
+    if backup.exists() {
+      let sentinel = s.dylib_path.with_extension(format!("{}.update-ok", ext));
+      let _ = std::fs::write(&sentinel, b"ok");
+    }
   }
 }
 
