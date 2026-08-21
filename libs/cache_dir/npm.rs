@@ -109,13 +109,14 @@ impl NpmCacheDir {
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
-    let mut dir = self.registry_folder(registry_url);
-    if name.to_lowercase() != name {
+    let dir = self.registry_folder(registry_url);
+    if name.to_lowercase() != name || !is_safe_package_name_path(name) {
       let encoded_name = mixed_case_package_name_encode(name);
       // Using the encoded directory may have a collision with an actual package name
       // so prefix it with an underscore since npm packages can't start with that
       dir.join(format!("_{encoded_name}"))
     } else {
+      let mut dir = dir;
       // ensure backslashes are used on windows
       for part in name.split('/') {
         dir = dir.join(part);
@@ -202,6 +203,32 @@ impl NpmCacheDir {
       version: version.to_string(),
       copy_index,
     })
+  }
+}
+
+fn is_safe_package_name_path(name: &str) -> bool {
+  fn is_safe_component(value: &str) -> bool {
+    !value.is_empty()
+      && value != "."
+      && value != ".."
+      && value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+          || matches!(
+            byte,
+            b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+          )
+      })
+  }
+
+  if let Some(scoped_name) = name.strip_prefix('@') {
+    let Some((scope, package)) = scoped_name.split_once('/') else {
+      return false;
+    };
+    !package.contains('/')
+      && is_safe_component(scope)
+      && is_safe_component(package)
+  } else {
+    !name.contains('/') && is_safe_component(name)
   }
 }
 
@@ -367,6 +394,50 @@ mod test {
         .join("registry.npmjs.org")
         .join("_ib2hs4dfomxuuu2pjy")
         .join("2.1.5"),
+    );
+  }
+
+  #[test]
+  fn should_confine_unsafe_package_names() {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let root_dir = if cfg!(windows) {
+      PathBuf::from("C:\\cache")
+    } else {
+      PathBuf::from("/cache")
+    };
+    sys.fs_create_dir_all(&root_dir).unwrap();
+    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+    let cache =
+      NpmCacheDir::new(&sys, root_dir.clone(), vec![registry_url.clone()]);
+    let registry_dir = root_dir.join("registry.npmjs.org");
+
+    for name in [
+      ".",
+      "..",
+      "../other/package",
+      "..\\other\\package",
+      "/absolute",
+      "C:\\absolute",
+      "C:relative",
+      "package/name",
+      "package//name",
+      "@scope/../package",
+      "MiXeD/../package",
+    ] {
+      assert_eq!(
+        cache.package_name_folder(name, &registry_url),
+        registry_dir.join(format!("_{}", mixed_case_package_name_encode(name))),
+        "{name}",
+      );
+    }
+
+    assert_eq!(
+      cache.package_name_folder("package", &registry_url),
+      registry_dir.join("package"),
+    );
+    assert_eq!(
+      cache.package_name_folder("@scope/package", &registry_url),
+      registry_dir.join("@scope").join("package"),
     );
   }
 

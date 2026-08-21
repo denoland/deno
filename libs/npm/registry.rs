@@ -641,6 +641,8 @@ To work around this, you can use a package.json and install the dependencies via
   /// in the published package tarball. We silently skip them.
   #[error("Unsupported local dependency: {specifier}")]
   LocalDependency { specifier: String },
+  #[error(transparent)]
+  InvalidPackageName(#[from] deno_package_json::InvalidNpmPackageNameError),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -1113,6 +1115,7 @@ fn parse_dep_entry_name_and_raw_version<'a>(
       specifier: version_req.to_string(),
     })
   } else {
+    deno_package_json::validate_npm_package_name(name)?;
     Ok((name, version_req))
   }
 }
@@ -2411,6 +2414,24 @@ mod test {
       let (name, version) =
         parse_dep_entry_name_and_raw_version(&key, &value).unwrap();
       assert_eq!((name, version), expected_result);
+    }
+  }
+
+  #[test]
+  fn test_parse_dep_entry_rejects_invalid_package_names() {
+    for value in [
+      "npm:../package@1",
+      "npm:package/name@1",
+      "npm:package\\name@1",
+      "npm:C:\\package@1",
+      "npm:@scope/../package@1",
+    ] {
+      let err =
+        parse_dep_entry_name_and_raw_version("alias", value).expect_err(value);
+      assert!(
+        matches!(err, NpmDependencyEntryErrorSource::InvalidPackageName(_)),
+        "{value}: {err}",
+      );
     }
   }
 

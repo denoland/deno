@@ -1,0 +1,38 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "tests": {
+    "invalid_alias_name": {
+      "cwd": "invalid",
+      "steps": [
+        {
+          "args": "install --no-lock",
+          "output": "invalid.out",
+          "exitCode": 1
+        },
+        {
+          "args": [
+            "eval",
+            "let exists = true; try { Deno.statSync('../deno_dir/npm/outside/registry.json'); } catch (error) { if (error instanceof Deno.errors.NotFound) exists = false; else throw error; } console.log(exists);"
+          ],
+          "output": "false\n"
+        }
+      ]
+    },
+    "valid_alias_names": {
+      "cwd": "valid",
+      "steps": [
+        {
+          "args": "install --quiet --no-lock",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --quiet --no-lock main.js",
+          "output": "ok 3\n"
+        }
+      ]
+    }
+  }
+}
