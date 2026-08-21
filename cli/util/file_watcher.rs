@@ -376,9 +376,7 @@ where
     // before starting the next run so that module resolution, watched
     // paths, and `Deno.cwd()` all behave as they did on the first run.
     if let Some(initial_cwd) = &initial_cwd {
-      let _ = std::env::set_current_dir(initial_cwd);
-      // The previous run may have populated the cwd cache via `Deno.cwd()`.
-      deno_runtime::deno_fs::invalidate_cwd_cache();
+      let _ = deno_runtime::deno_fs::set_current_dir(initial_cwd);
     }
 
     let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;

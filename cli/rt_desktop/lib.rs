@@ -1326,7 +1326,7 @@ laufey::main!(|| {
     }
     // Frameworks like Next.js look for build output (e.g. .next/)
     // relative to CWD.
-    if let Err(e) = std::env::set_current_dir(&data.root_path) {
+    if let Err(e) = deno_runtime::deno_fs::set_current_dir(&data.root_path) {
       log::error!(
         "[desktop] failed to chdir to {}: {}",
         data.root_path.display(),
@@ -1468,7 +1468,7 @@ fn run_headless_worker() {
       if env::var("DENO_DESKTOP_DEV_URL").is_err()
         && env::var("DENO_DESKTOP_FRAMEWORK_DEV").is_err()
       {
-        let _ = std::env::set_current_dir(&data.root_path);
+        let _ = deno_runtime::deno_fs::set_current_dir(&data.root_path);
       }
       denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
     } else {
@@ -1733,9 +1733,7 @@ async fn run_desktop(
   // In dev mode, restore CWD to the source directory so the framework
   // dev server watches the original source files, not the extracted VFS.
   if is_framework_dev && let Ok(source_dir) = env::var("DENO_DESKTOP_HMR") {
-    std::env::set_current_dir(&source_dir)?;
-    // The runtime thread may already have populated the cwd cache.
-    deno_runtime::deno_fs::invalidate_cwd_cache();
+    deno_runtime::deno_fs::set_current_dir(&source_dir)?;
   }
 
   // Shared initial window ID for navigate_fut and HMR reload.

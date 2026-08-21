@@ -37,9 +37,20 @@ use crate::interface::FsReadDirRc;
 static CWD_CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Clears the cwd cache used by [`RealFs::cwd`]. Call after changing the
-/// working directory by any means other than [`RealFs`]'s `chdir`.
+/// working directory by any means other than [`set_current_dir`].
 pub fn invalidate_cwd_cache() {
   *CWD_CACHE.lock().unwrap() = None;
+}
+
+/// Sets the process working directory, keeping the cwd cache in sync.
+/// The cache is cleared, not set to `path`: getcwd returns the
+/// symlink-resolved physical path. On failure the cwd is unchanged, so
+/// the cache is kept.
+pub fn set_current_dir(path: impl AsRef<Path>) -> io::Result<()> {
+  let mut cache = CWD_CACHE.lock().unwrap();
+  std::env::set_current_dir(path)?;
+  *cache = None;
+  Ok(())
 }
 
 #[derive(Debug, Default, Clone)]
@@ -63,12 +74,7 @@ impl FileSystem for RealFs {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    let mut cache = CWD_CACHE.lock().unwrap();
-    std::env::set_current_dir(path)?;
-    // Clear, don't store `path`: getcwd returns the symlink-resolved
-    // physical path. On failure the cwd is unchanged, so the cache is kept.
-    *cache = None;
-    Ok(())
+    set_current_dir(path).map_err(Into::into)
   }
 
   #[cfg(windows)]

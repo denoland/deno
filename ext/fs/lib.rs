@@ -23,6 +23,7 @@ use crate::ops::*;
 pub use crate::std_fs::RealFs;
 pub use crate::std_fs::invalidate_cwd_cache;
 pub use crate::std_fs::open_options_for_checked_path;
+pub use crate::std_fs::set_current_dir;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "fs";
 
