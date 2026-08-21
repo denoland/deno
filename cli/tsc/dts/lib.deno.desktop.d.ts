@@ -497,6 +497,16 @@ declare namespace Deno {
         id?: string;
         accelerator?: string;
         enabled: boolean;
+        /** Show a checkmark next to the item. Supported on all
+         * platforms. Defaults to `false`. */
+        checked?: boolean;
+        /** File path to a PNG image shown next to the label. Supported
+         * on macOS and Windows; ignored on Linux. On macOS a monochrome
+         * black+alpha PNG is rendered as a template image, tinting to
+         * white when the item is highlighted. */
+        icon?: string;
+        /** Tooltip shown when hovering over the item. macOS only. */
+        tooltip?: string;
       };
     }
     | {
