@@ -785,15 +785,27 @@ struct CreatePackageInfo {
 
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
+///
+/// The check is authenticated when an authorization is available: the
+/// registry answers 404 for a private package unless the caller has access
+/// to it, so an anonymous check would misreport an existing private package
+/// as missing.
 async fn check_if_scope_and_package_exist(
   client: &HttpClient,
   registry_api_url: &Url,
   registry_manage_url: &Url,
   scope: &str,
   package: &str,
+  authorization: Option<&str>,
 ) -> Result<Option<CreatePackageInfo>, AnyError> {
-  let response =
-    registry::get_package(client, registry_api_url, scope, package).await?;
+  let response = registry::get_package(
+    client,
+    registry_api_url,
+    scope,
+    package,
+    authorization,
+  )
+  .await?;
   if response.status() == 404 {
     let create_url = format!(
       "{}new?scope={}&package={}&from=cli",
@@ -814,17 +826,30 @@ async fn ensure_scopes_and_packages_exist(
   registry_api_url: &Url,
   registry_manage_url: &Url,
   packages: &[Rc<PreparedPublishPackage>],
+  authorizations: &HashMap<(String, String, String), Rc<str>>,
 ) -> Result<(), AnyError> {
   let mut futures = FuturesUnordered::new();
 
   for package in packages {
-    let future = check_if_scope_and_package_exist(
-      client,
-      registry_api_url,
-      registry_manage_url,
-      &package.scope,
-      &package.package,
-    );
+    let authorization = authorizations.get(&(
+      package.scope.clone(),
+      package.package.clone(),
+      package.version.clone(),
+    ));
+    let future = async move {
+      let maybe_create_package_info = check_if_scope_and_package_exist(
+        client,
+        registry_api_url,
+        registry_manage_url,
+        &package.scope,
+        &package.package,
+        authorization.map(|a| a.as_ref()),
+      )
+      .await?;
+      Ok::<_, AnyError>(
+        maybe_create_package_info.map(|info| (info, authorization)),
+      )
+    };
     futures.push(future);
   }
 
@@ -839,7 +864,7 @@ async fn ensure_scopes_and_packages_exist(
   if !std::io::stdin().is_terminal() {
     let missing_packages_lines: Vec<_> = missing_packages
       .into_iter()
-      .map(|info| format!("- {}", info.create_url))
+      .map(|(info, _)| format!("- {}", info.create_url))
       .collect();
     if !missing_packages_lines.is_empty() {
       bail!(
@@ -850,7 +875,7 @@ async fn ensure_scopes_and_packages_exist(
     return Ok(());
   }
 
-  for create_package_info in missing_packages {
+  for (create_package_info, authorization) in missing_packages {
     ring_bell();
     log::warn!(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
@@ -861,15 +886,16 @@ async fn ensure_scopes_and_packages_exist(
     log::warn!("{}", colors::gray("Waiting..."));
     let _ = open::that_detached(&create_package_info.create_url);
 
-    let package_api_url = registry::get_package_api_url(
-      registry_api_url,
-      &create_package_info.scope,
-      &create_package_info.package,
-    );
-
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-      let response = client.get(package_api_url.parse()?)?.send().await?;
+      let response = registry::get_package(
+        client,
+        registry_api_url,
+        &create_package_info.scope,
+        &create_package_info.package,
+        authorization.map(|a| a.as_ref()),
+      )
+      .await?;
       if response.status() == 200 {
         let name = format!(
           "@{}/{}",
@@ -899,19 +925,24 @@ async fn perform_publish(
     .cloned()
     .collect::<Vec<_>>();
 
-  ensure_scopes_and_packages_exist(
-    http_client,
-    registry_api_url,
-    registry_url,
-    &packages,
-  )
-  .await?;
-
+  // Authenticate before checking which packages exist: the registry hides
+  // private packages from unauthenticated callers (they 404), so the
+  // existence check must be able to send the authorization the publish will
+  // use.
   let mut authorizations =
     get_auth_headers(http_client, registry_api_url, &packages, auth_method)
       .await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
+
+  ensure_scopes_and_packages_exist(
+    http_client,
+    registry_api_url,
+    registry_url,
+    &packages,
+    &authorizations,
+  )
+  .await?;
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
     Default::default();
   // Collect the errors of any packages that failed to publish so that we can
