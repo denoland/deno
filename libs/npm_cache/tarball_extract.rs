@@ -30,7 +30,7 @@ use tar::Archive;
 use tar::EntryType;
 
 #[cfg(target_arch = "wasm32")]
-mod hashing {
+pub(crate) mod hashing {
   use sha2::Digest;
 
   pub fn sha1(data: &[u8]) -> impl AsRef<[u8]> {
@@ -43,7 +43,7 @@ mod hashing {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-mod hashing {
+pub(crate) mod hashing {
   use aws_lc_rs::digest;
   pub fn sha1(data: &[u8]) -> impl AsRef<[u8]> {
     digest::digest(&digest::SHA1_FOR_LEGACY_USE_ONLY, data)
