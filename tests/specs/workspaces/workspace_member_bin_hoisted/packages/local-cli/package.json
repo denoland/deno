@@ -1,0 +1,8 @@
+{
+  "name": "local-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "local-cli": "./cli.js"
+  }
+}

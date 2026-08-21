@@ -1,0 +1,7 @@
+{
+  "name": "root",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/one-bin": "1.0.0"
+  }
+}
