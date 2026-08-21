@@ -1581,6 +1581,24 @@ pub fn op_get_extras_binding_object<'s, 'i>(
   context.get_extras_binding_object(scope).into()
 }
 
+/// Return the `SharedArrayBuffer` constructor.
+///
+/// V8 always initializes the constructor on the native context, but may hide
+/// it from `globalThis` (`--enable-sharedarraybuffer-per-context`). Callers
+/// should use the global when present. This op recovers the constructor from
+/// a zero-length instance created via the C++ API.
+#[op2]
+pub fn op_get_shared_array_buffer_constructor<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+) -> v8::Local<'s, v8::Value> {
+  let sab = v8::SharedArrayBuffer::new(scope, 0)
+    .expect("Failed to create SharedArrayBuffer");
+  let key = v8_static_strings::CONSTRUCTOR.v8_string(scope).unwrap();
+  sab
+    .get(scope, key.into())
+    .expect("Failed to get SharedArrayBuffer constructor")
+}
+
 /// Toggle whether refed immediates keep the event loop alive.
 /// `true` starts the idle handle (loop stays alive), `false` stops it.
 #[op2(fast)]
