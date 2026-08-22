@@ -1963,7 +1963,14 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
-      (Host::UnixSocket(a), Host::UnixSocket(b)) => a == b,
+      // Compared through `comparison_path` for the same reason filesystem
+      // descriptors are: on case-insensitive filesystems (macOS APFS/HFS+,
+      // Windows NTFS) `/run/app/Control.sock` and `/run/app/control.sock`
+      // name the same socket, so a raw `==` would let a case-variant spelling
+      // slip past a `--deny-net=unix:<path>` rule.
+      (Host::UnixSocket(a), Host::UnixSocket(b)) => {
+        comparison_path(a) == comparison_path(b)
+      }
       (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
     }
@@ -10857,6 +10864,75 @@ mod tests {
     // Unrelated domain should prompt (denied since no-prompt by default
     // in test)
     assert!(perms.check_net(&("other.com", None), "api").is_err());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn test_net_unix_socket_path_equivalence() {
+    // Regression test: on case-insensitive filesystems a case-variant
+    // spelling of a socket path names the same socket, so it must not slip
+    // past a `--deny-net=unix:<path>` rule (nor be treated as ungranted when
+    // an `--allow-net=unix:<path>` rule names it).
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec![]),
+        deny_net: Some(svec!["unix:/run/app/Control.sock"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Exact spelling is denied.
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/Control.sock"), None)
+        .is_err()
+    );
+
+    // A case-variant spelling resolves to the same socket where the
+    // filesystem is case-insensitive, so it must be denied there too. On
+    // case-sensitive platforms it is a genuinely different path.
+    let case_variant_result = perms
+      .check_net_unix_socket(Path::new("/run/app/control.sock"), None)
+      .is_err();
+    if cfg!(any(target_os = "macos", windows)) {
+      assert!(case_variant_result, "case variant must not bypass the deny");
+    }
+
+    // The allow side folds the same way: a scoped grant covers the
+    // case-variant spelling of the socket it names, and nothing else.
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["unix:/run/app/Control.sock"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/Control.sock"), None)
+        .is_ok()
+    );
+    if cfg!(any(target_os = "macos", windows)) {
+      assert!(
+        perms
+          .check_net_unix_socket(Path::new("/run/app/control.sock"), None)
+          .is_ok()
+      );
+    }
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/other.sock"), None)
+        .is_err()
+    );
   }
 
   #[test]
