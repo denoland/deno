@@ -3472,7 +3472,8 @@ impl JsRuntime {
     v8::tc_scope!(let tc_scope, scope);
 
     let process_timers_cb = context_state.js_process_timers_cb.borrow();
-    let process_timers_fn = v8::Local::new(tc_scope, process_timers_cb.as_ref().unwrap());
+    let process_timers_fn =
+      v8::Local::new(tc_scope, process_timers_cb.as_ref().unwrap());
     let now_val = v8::Number::new(tc_scope, now);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
 
