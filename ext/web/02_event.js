@@ -176,7 +176,7 @@ class Event {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(EventPrototype, this),
+        evaluate: this[_attributes] !== undefined,
         keys: EVENT_PROPS,
       }),
       inspectOptions,
