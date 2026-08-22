@@ -13,6 +13,8 @@ use deno_core::OpState;
 pub use deno_runtime::ops::desktop::AutoUpdateState;
 pub use deno_runtime::ops::desktop::DesktopApi;
 pub use deno_runtime::ops::desktop::MenuItem;
+pub use deno_runtime::ops::desktop::auto_update_file_name;
+pub use deno_runtime::ops::desktop::auto_update_state_dir;
 
 /// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
 pub const DESKTOP_JS: &str = r#"
