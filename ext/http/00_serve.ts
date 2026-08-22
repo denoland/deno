@@ -1205,6 +1205,22 @@ function serve(arg1, arg2) {
     switch (overrideKind) {
       case 1: {
         // TCP
+        // Surface the clobber instead of silently ignoring an explicit,
+        // different port: under `deno desktop` (and anything else that sets
+        // DENO_SERVE_ADDRESS) the first server must listen on the
+        // runtime-assigned address, and users passing `{ port }` otherwise
+        // print/expect a URL that nothing is listening on (#36092).
+        if (
+          typeof options.port === "number" && options.port !== 0 &&
+          options.port !== overridePort
+        ) {
+          // deno-lint-ignore no-console
+          console.warn(
+            `%cwarning: %cDeno.serve option \`port: ${options.port}\` is overridden to ${overridePort} by the runtime-assigned serve address (DENO_SERVE_ADDRESS)`,
+            "color: yellow",
+            "color: inherit",
+          );
+        }
         envOptions = {
           ...envOptions,
           hostname: overrideHost,
