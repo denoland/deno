@@ -10,3 +10,19 @@ compile_error!("either feature `v8` or `quickjs` must be enabled");
 pub use rusty_v8::*;
 #[cfg(all(feature = "quickjs", not(feature = "v8")))]
 pub use v8x_backend::*;
+
+/// The `ReturnValue` handed to the named and indexed property *setter* and
+/// *definer* interceptors.
+///
+/// V8 152 changed these two interceptors from `ReturnValue<()>` to
+/// `ReturnValue<Boolean>`, bringing them in line with the deleter interceptor,
+/// which already carried a `Boolean`. The QuickJS backend vendors an older
+/// rusty_v8 and still expects `ReturnValue<()>`, so interceptor callbacks name
+/// this alias rather than writing the payload type out and only compiling
+/// against one backend.
+#[cfg(all(feature = "v8", not(feature = "quickjs")))]
+pub type PropertyInterceptorReturnValue<'cb> =
+  rusty_v8::ReturnValue<'cb, rusty_v8::Boolean>;
+#[cfg(all(feature = "quickjs", not(feature = "v8")))]
+pub type PropertyInterceptorReturnValue<'cb> =
+  v8x_backend::ReturnValue<'cb, ()>;
