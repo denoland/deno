@@ -344,15 +344,55 @@ impl Default for WorkerOptions {
   }
 }
 
+static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
+  OnceLock::new();
+static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+
+fn x_deno_fetch_token_value() -> &'static Option<http::HeaderValue> {
+  X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+    std::env::var("X_DENO_FETCH_TOKEN")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  })
+}
+
+fn cdn_loop_value() -> &'static Option<http::HeaderValue> {
+  CDN_LOOP_VALUE.get_or_init(|| {
+    std::env::var("CDN_LOOP")
+      .ok()
+      .and_then(|v| http::HeaderValue::from_str(&v).ok())
+  })
+}
+
+/// Resolves the operator-provided egress configuration from the environment:
+/// the `DENO_EGRESS_HEADER_POLICY` policy plus the legacy `X_DENO_FETCH_TOKEN`
+/// and `CDN_LOOP` values used by [`request_builder_hook`].
+///
+/// Called at worker construction, before user code runs, so that every one of
+/// these is fixed for the life of the process. Reading the legacy values
+/// lazily on the first fetch instead would let user code choose them with
+/// `Deno.env.set`, which would defeat the anti-spoofing scrub in the hook and
+/// void the guarantee that a policy `default` entry only fills a gap the
+/// operator left.
+pub(crate) fn egress_config_from_env()
+-> Option<Arc<deno_fetch::EgressHeaderPolicyState>> {
+  x_deno_fetch_token_value();
+  cdn_loop_value();
+  egress_header_policy_from_env()
+}
+
 pub(crate) fn request_builder_hook(
   request: &mut http::Request<deno_fetch::ReqBody>,
 ) -> Result<(), JsErrorBox> {
   const X_DENO_FETCH_TOKEN: http::HeaderName =
     http::HeaderName::from_static("x-deno-fetch-token");
   const CDN_LOOP: http::HeaderName = http::HeaderName::from_static("cdn-loop");
-  static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
-    OnceLock::new();
-  static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+  // This hook does not coordinate with the egress header policy. The policy
+  // applies after it (`apply_static`/`apply_dynamic` in `op_fetch`) and scrubs
+  // every header it owns, so whatever is written here for an owned header is
+  // replaced before the request goes out. A `default` entry owns nothing and
+  // only fills a gap, which is exactly the case where the writes below should
+  // still happen.
 
   // Scrub Deno-specific headers to prevent user code from spoofing them.
   if let http::header::Entry::Occupied(entry) =
@@ -361,29 +401,75 @@ pub(crate) fn request_builder_hook(
     entry.remove_entry_mult();
   }
 
-  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
-    std::env::var("X_DENO_FETCH_TOKEN")
-      .ok()
-      .and_then(|v| http::HeaderValue::from_str(&v).ok())
-  });
-
-  if let Some(token) = maybe_x_deno_fetch_token {
+  if let Some(token) = x_deno_fetch_token_value() {
     request
       .headers_mut()
       .insert(X_DENO_FETCH_TOKEN, token.clone());
   }
 
-  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
-    std::env::var("CDN_LOOP")
-      .ok()
-      .and_then(|v| http::HeaderValue::from_str(&v).ok())
-  });
-
-  if let Some(cdn_loop) = cdn_loop_value {
+  if let Some(cdn_loop) = cdn_loop_value() {
     request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
   }
 
   Ok(())
+}
+
+/// The egress header policy from the `DENO_EGRESS_HEADER_POLICY` env var
+/// (see `deno_fetch::EgressHeaderPolicy` for the format), read once per
+/// process at worker construction — before user code runs, so later
+/// `Deno.env.set` calls cannot alter it. The policy applies after
+/// [`request_builder_hook`] and wins for every header it owns
+/// (`remove`/`set`/`forward`/`append`), which the hook skips entirely; a
+/// `default` entry is not owned, so it only fills in a header the hook left
+/// absent. A value that fails to parse is kept as `Invalid`, which fails
+/// every fetch with the parse error rather than proceeding without the
+/// policy.
+pub(crate) fn egress_header_policy_from_env()
+-> Option<Arc<deno_fetch::EgressHeaderPolicyState>> {
+  static POLICY: OnceLock<Option<Arc<deno_fetch::EgressHeaderPolicyState>>> =
+    OnceLock::new();
+  POLICY
+    .get_or_init(|| {
+      egress_header_policy_from_env_value(std::env::var(
+        "DENO_EGRESS_HEADER_POLICY",
+      ))
+      .map(Arc::new)
+    })
+    .clone()
+}
+
+fn egress_header_policy_from_env_value(
+  value: Result<String, std::env::VarError>,
+) -> Option<deno_fetch::EgressHeaderPolicyState> {
+  match value {
+    Ok(json) => Some(deno_fetch::EgressHeaderPolicyState::from_json(&json)),
+    Err(std::env::VarError::NotPresent) => None,
+    Err(std::env::VarError::NotUnicode(_)) => {
+      Some(deno_fetch::EgressHeaderPolicyState::Invalid(
+        "DENO_EGRESS_HEADER_POLICY environment variable is not valid Unicode"
+          .to_string(),
+      ))
+    }
+  }
+}
+
+#[cfg(all(test, unix))]
+mod egress_header_policy_tests {
+  use super::*;
+
+  #[test]
+  fn non_unicode_environment_policy_is_invalid() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let state = egress_header_policy_from_env_value(Err(
+      std::env::VarError::NotUnicode(std::ffi::OsString::from_vec(vec![0xff])),
+    ))
+    .expect("a non-Unicode value must retain a poisoned policy state");
+    let deno_fetch::EgressHeaderPolicyState::Invalid(message) = state else {
+      panic!("expected an invalid policy state");
+    };
+    assert!(message.contains("Unicode"));
+  }
 }
 
 pub fn create_op_metrics(
@@ -626,6 +712,7 @@ impl MainWorker {
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           resolver: services.fetch_dns_resolver,
           request_builder_hook: Some(request_builder_hook),
+          egress_header_policy: egress_config_from_env(),
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),
