@@ -28,7 +28,6 @@ use std::sync::atomic::Ordering;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::v8;
 use deno_lib::util::net::allocate_random_port;
 use deno_lib::util::result::js_error_downcast_ref;
@@ -422,8 +421,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let responses = responses.clone();
         let name = name_owned.clone();
         async move {
-          let args: Vec<serde_json::Value> =
-            js_call.args.iter().map(laufey_value_to_json).collect();
+          let args: Vec<deno_runtime::ops::desktop::DesktopValue> = js_call
+            .args
+            .iter()
+            .cloned()
+            .map(laufey_value_to_desktop_value)
+            .collect();
           let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
           let call_id =
             deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
@@ -437,7 +440,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
             // call. The registration id always matches that map's key.
             window_id,
             name,
-            args: serde_json::Value::Array(args),
+            args,
             call_id,
           };
           if let Err(err) = tx.try_send(event) {
@@ -454,7 +457,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           }
           match resp_rx.await {
             Ok(Ok(result)) => {
-              js_call.resolve(json_to_laufey_value(&result));
+              js_call.resolve(desktop_value_to_laufey_value(result));
             }
             Ok(Err(error)) => {
               js_call.reject(laufey::Value::String(error));
@@ -1577,51 +1580,29 @@ fn laufey_value_to_desktop_value(
   }
 }
 
-/// Convert a laufey::Value to a serde_json::Value for channel transport.
-fn laufey_value_to_json(v: &laufey::Value) -> serde_json::Value {
+/// Convert a DesktopValue back to a laufey::Value for delivery to the
+/// renderer. The inverse of `laufey_value_to_desktop_value`; `Binary` maps to
+/// `laufey::Value::Binary` so binding results carrying byte data arrive in
+/// the webview as a `Uint8Array` (denoland/deno#36498).
+fn desktop_value_to_laufey_value(
+  v: deno_runtime::ops::desktop::DesktopValue,
+) -> laufey::Value {
+  use deno_runtime::ops::desktop::DesktopValue;
   match v {
-    laufey::Value::Null => serde_json::Value::Null,
-    laufey::Value::Bool(b) => serde_json::Value::Bool(*b),
-    laufey::Value::Int(i) => serde_json::json!(*i),
-    laufey::Value::Double(d) => serde_json::json!(*d),
-    laufey::Value::String(s) => serde_json::Value::String(s.clone()),
-    laufey::Value::List(l) => {
-      serde_json::Value::Array(l.iter().map(laufey_value_to_json).collect())
-    }
-    laufey::Value::Dict(d) => {
-      let mut map = serde_json::Map::new();
-      for (k, v) in d {
-        map.insert(k.clone(), laufey_value_to_json(v));
-      }
-      serde_json::Value::Object(map)
-    }
-    laufey::Value::Binary(b) => serde_json::json!(b),
-  }
-}
-
-/// Convert a serde_json::Value to a laufey::Value for the menu template.
-fn json_to_laufey_value(v: &serde_json::Value) -> laufey::Value {
-  match v {
-    serde_json::Value::Null => laufey::Value::Null,
-    serde_json::Value::Bool(b) => laufey::Value::Bool(*b),
-    serde_json::Value::Number(n) => {
-      if let Some(i) = n.as_i64() {
-        laufey::Value::Int(i as i32)
-      } else {
-        laufey::Value::Double(n.as_f64().unwrap_or(0.0))
-      }
-    }
-    serde_json::Value::String(s) => laufey::Value::String(s.clone()),
-    serde_json::Value::Array(arr) => {
-      laufey::Value::List(arr.iter().map(json_to_laufey_value).collect())
-    }
-    serde_json::Value::Object(obj) => {
-      let mut map = std::collections::HashMap::new();
-      for (k, v) in obj {
-        map.insert(k.clone(), json_to_laufey_value(v));
-      }
-      laufey::Value::Dict(map)
-    }
+    DesktopValue::Null => laufey::Value::Null,
+    DesktopValue::Bool(b) => laufey::Value::Bool(b),
+    DesktopValue::Int(i) => laufey::Value::Int(i),
+    DesktopValue::Double(d) => laufey::Value::Double(d),
+    DesktopValue::String(s) => laufey::Value::String(s),
+    DesktopValue::List(l) => laufey::Value::List(
+      l.into_iter().map(desktop_value_to_laufey_value).collect(),
+    ),
+    DesktopValue::Dict(d) => laufey::Value::Dict(
+      d.into_iter()
+        .map(|(k, v)| (k, desktop_value_to_laufey_value(v)))
+        .collect(),
+    ),
+    DesktopValue::Binary(b) => laufey::Value::Binary(b),
   }
 }
 
@@ -2007,10 +1988,9 @@ mod tests {
   use deno_runtime::ops::desktop::PermissionState;
 
   use super::desktop_menu_item_to_laufey_menu_item;
+  use super::desktop_value_to_laufey_value;
   use super::extract_fork_script_path;
-  use super::json_to_laufey_value;
   use super::laufey_value_to_desktop_value;
-  use super::laufey_value_to_json;
   use super::map_permission_status;
   use super::should_show_native_error_dialog;
 
@@ -2245,21 +2225,19 @@ mod tests {
   }
 
   #[test]
-  fn laufey_value_to_json_roundtrip() {
+  fn laufey_desktop_value_roundtrip() {
     use std::collections::HashMap;
     let mut dict = HashMap::new();
     dict.insert("name".to_string(), laufey::Value::String("ada".into()));
     dict.insert("count".to_string(), laufey::Value::Int(42));
     dict.insert("ok".to_string(), laufey::Value::Bool(true));
+    dict.insert("bin".to_string(), laufey::Value::Binary(vec![1, 2, 255]));
     let v = laufey::Value::Dict(dict);
-    let j = laufey_value_to_json(&v);
-    assert_eq!(j["name"], "ada");
-    assert_eq!(j["count"], 42);
-    assert_eq!(j["ok"], true);
 
-    // Round-trip back through json_to_laufey_value to confirm symmetry on
-    // the simple types.
-    let back = json_to_laufey_value(&j);
+    // laufey → DesktopValue → laufey must preserve every variant —
+    // including Binary, which the old serde_json transport dropped
+    // (denoland/deno#36498).
+    let back = desktop_value_to_laufey_value(laufey_value_to_desktop_value(v));
     let laufey::Value::Dict(d) = back else {
       panic!("round-trip must yield Dict")
     };
@@ -2268,25 +2246,17 @@ mod tests {
       _ => panic!("name must round-trip as String"),
     }
     match d.get("count") {
-      // json_to_laufey_value maps integer numbers to Int via as_i64() — so
-      // it should land in the Int branch.
       Some(laufey::Value::Int(42)) => {}
-      _ => panic!("count round-trip should yield laufey::Value::Int(42)"),
+      _ => panic!("count must round-trip as Int(42)"),
     }
-  }
-
-  #[test]
-  fn json_to_laufey_value_distinguishes_int_and_double() {
-    let n_int = serde_json::json!(42);
-    let n_float = serde_json::json!(1.5);
-    assert!(matches!(
-      json_to_laufey_value(&n_int),
-      laufey::Value::Int(42)
-    ));
-    assert!(matches!(
-      json_to_laufey_value(&n_float),
-      laufey::Value::Double(d) if d == 1.5
-    ));
+    match d.get("ok") {
+      Some(laufey::Value::Bool(true)) => {}
+      _ => panic!("ok must round-trip as Bool(true)"),
+    }
+    match d.get("bin") {
+      Some(laufey::Value::Binary(b)) => assert_eq!(b, &vec![1, 2, 255]),
+      _ => panic!("bin must round-trip as Binary"),
+    }
   }
 
   // --- apply_pending_update ---
@@ -2429,13 +2399,27 @@ mod tests {
   }
 
   #[test]
-  fn json_to_laufey_value_handles_nested_arrays_and_objects() {
-    let j = serde_json::json!({
-      "list": [1, 2, 3],
-      "nested": {"key": "value"},
-      "null": null,
-    });
-    let v = json_to_laufey_value(&j);
+  fn desktop_value_to_laufey_handles_nested_arrays_and_objects() {
+    use deno_runtime::ops::desktop::DesktopValue;
+    let dv = DesktopValue::Dict(vec![
+      (
+        "list".into(),
+        DesktopValue::List(vec![
+          DesktopValue::Int(1),
+          DesktopValue::Int(2),
+          DesktopValue::Int(3),
+        ]),
+      ),
+      (
+        "nested".into(),
+        DesktopValue::Dict(vec![(
+          "key".into(),
+          DesktopValue::String("value".into()),
+        )]),
+      ),
+      ("null".into(), DesktopValue::Null),
+    ]);
+    let v = desktop_value_to_laufey_value(dv);
     let laufey::Value::Dict(d) = v else {
       panic!("expected Dict")
     };
