@@ -79,7 +79,7 @@ impl Drop for GPUBuffer {
 impl GPUBuffer {
   fn detach_mapped_js_buffers(&self, scope: &mut v8::PinScope<'_, '_>) {
     for mapped in self.mapped_js_buffers.replace(vec![]) {
-      let ab = mapped.buffer.open(scope);
+      let ab = v8::Local::new(scope, &mapped.buffer);
       ab.detach(None);
     }
   }
@@ -90,7 +90,7 @@ impl GPUBuffer {
   ) -> Result<(), BufferError> {
     let mut first_error = None;
     for mapped in self.mapped_js_buffers.replace(vec![]) {
-      let ab = mapped.buffer.open(scope);
+      let ab = v8::Local::new(scope, &mapped.buffer);
       // A zero `byte_length` means the range is already detached, which can
       // only happen if the caller detached it themselves (e.g. by transferring
       // it to a worker). There is nothing left to read from, so the range is

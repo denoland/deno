@@ -375,7 +375,7 @@ impl HandleWrap {
 
       if let Some(cb) = cb {
         let recv = v8::undefined(scope);
-        cb.open(scope).call(scope, recv.into(), &[]);
+        v8::Local::new(scope, &cb).call(scope, recv.into(), &[]);
       }
     };
 
