@@ -1155,6 +1155,42 @@ fn op_desktop_alert(
   }
 }
 
+/// True while a detached error dialog is on screen; used to show at most one
+/// at a time instead of stacking a dialog per rejection.
+static ERROR_DIALOG_SHOWING: std::sync::atomic::AtomicBool =
+  std::sync::atomic::AtomicBool::new(false);
+
+/// Fire-and-forget variant of `op_desktop_alert` for runtime error reporting.
+///
+/// `DesktopApi::alert` blocks until the dialog is dismissed. Calling it on
+/// the JS thread from the `error`/`unhandledrejection` handlers froze the
+/// entire runtime — timers, servers, signal handlers — until someone clicked
+/// the dialog, and forever if nobody could (hidden window, headless child;
+/// #36393). The dialog is informational, so show it from a detached thread
+/// and let JS continue immediately.
+#[op2(fast)]
+fn op_desktop_alert_detached(
+  state: &mut OpState,
+  #[string] title: &str,
+  #[string] message: &str,
+) {
+  use std::sync::atomic::Ordering;
+  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
+    if ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst) {
+      // A dialog is already up; the message has been logged to stderr by the
+      // JS handler, so dropping the extra dialog loses nothing.
+      return;
+    }
+    let api = api.clone();
+    let title = title.to_string();
+    let message = message.to_string();
+    std::thread::spawn(move || {
+      api.alert(&title, &message);
+      ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
+    });
+  }
+}
+
 struct ErrorReportConfig {
   url: String,
   app_version: Option<String>,
@@ -1754,6 +1790,7 @@ deno_core::extension!(
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
     op_desktop_alert,
+    op_desktop_alert_detached,
     op_desktop_confirm,
     op_desktop_prompt,
     op_desktop_send_error_report,

@@ -1147,11 +1147,17 @@ pub fn desktop_error_reporting_js(
 ) -> String {
   format!(
     r#"(() => {{
-  const {{ op_desktop_alert, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
+  const {{ op_desktop_alert_detached, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
   const _errorReportingUrl = {url};
   const _appVersion = {version};
 
   function handleError(message, stack) {{
+    // Always reach stderr first: the dialog below is best-effort and
+    // fire-and-forget, and in headless/hidden-window runs it's the only
+    // place the error surfaces at all (#36393).
+    console.error("Uncaught (desktop):", String(message));
+    if (stack) console.error(String(stack));
+
     if (_errorReportingUrl) {{
       const body = JSON.stringify({{
         version: 1,
@@ -1169,8 +1175,11 @@ pub fn desktop_error_reporting_js(
       op_desktop_send_error_report(body);
     }}
 
+    // Detached: DesktopApi::alert blocks until dismissed, and calling it on
+    // this (the JS) thread wedged the whole runtime when nobody could click
+    // the dialog (#36393).
     try {{
-      op_desktop_alert("Application Error", String(message));
+      op_desktop_alert_detached("Application Error", String(message));
     }} catch (_) {{}}
   }}
 
@@ -1407,6 +1416,20 @@ mod tests {
     // the alert.
     assert!(js.contains("const _errorReportingUrl = null"));
     assert!(js.contains("const _appVersion = null"));
+  }
+
+  #[test]
+  fn error_reporting_js_never_blocks_the_js_thread() {
+    // The error dialog must go through the detached op: the blocking
+    // `op_desktop_alert` parks the JS thread until the dialog is dismissed,
+    // which wedged the entire runtime (timers, servers, signal handlers)
+    // whenever nobody could click it — hidden window, headless child
+    // (#36393). Errors must also always reach stderr, because in those runs
+    // the dialog is invisible and stderr is the only surface left.
+    let js = desktop_error_reporting_js(None, None);
+    assert!(js.contains("op_desktop_alert_detached"));
+    assert!(!js.contains("op_desktop_alert(\"Application Error\""));
+    assert!(js.contains("console.error"));
   }
 
   #[test]
