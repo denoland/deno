@@ -38,7 +38,9 @@ once_cell.workspace = true
 p256 = { workspace = true, features = ["ecdh", "ecdsa"] }
 p384 = { workspace = true, features = ["ecdsa"] }
 p521.workspace = true
-rand.workspace = true
+# rsa 0.9 takes their RNG through rand_core 0.6, so this crate
+# cannot move to rand 0.9 with the rest of the workspace.
+rand = "=0.8.5"
 rsa.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
