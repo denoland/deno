@@ -471,7 +471,7 @@ impl ContextifyContext {
     let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
 
     let microtask_queue = if own_microtask_queue {
-      v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit).into_raw()
+      new_leaked_microtask_queue(scope, v8::MicrotasksPolicy::Explicit)
     } else {
       std::ptr::null_mut()
     };
@@ -567,7 +567,7 @@ impl ContextifyContext {
     let main_context = scope.get_current_context();
 
     let microtask_queue = if own_microtask_queue {
-      v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit).into_raw()
+      new_leaked_microtask_queue(scope, v8::MicrotasksPolicy::Explicit)
     } else {
       std::ptr::null_mut()
     };
@@ -746,6 +746,23 @@ pub const VM_CONTEXT_INDEX: usize = 0;
 pub enum ContextInitMode {
   ForSnapshot,
   UseSnapshot,
+}
+
+/// Creates a microtask queue and hands ownership of it to the caller as a raw
+/// pointer, for passing to `v8::ContextOptions::microtask_queue`.
+///
+/// The queue has to outlive the context that uses it, and V8 gives us no hook
+/// for when that context goes away, so the handle is leaked. This preserves the
+/// behaviour of `UniqueRef::into_raw`, which earlier versions of the `v8` crate
+/// returned from `MicrotaskQueue::new`.
+fn new_leaked_microtask_queue(
+  scope: &mut v8::Isolate,
+  policy: v8::MicrotasksPolicy,
+) -> *mut v8::MicrotaskQueue {
+  let handle = v8::MicrotaskQueue::new(scope, policy);
+  let ptr = &*handle as *const v8::MicrotaskQueue as *mut v8::MicrotaskQueue;
+  std::mem::forget(handle);
+  ptr
 }
 
 pub fn create_v8_context<'a>(
@@ -998,7 +1015,7 @@ fn property_setter<'s>(
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
-  _rv: v8::ReturnValue<()>,
+  _rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return v8::Intercepted::kNo;
@@ -1114,7 +1131,7 @@ fn property_definer<'s>(
   key: v8::Local<'s, v8::Name>,
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  _: v8::ReturnValue<()>,
+  _: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return v8::Intercepted::kNo;
@@ -1323,7 +1340,7 @@ fn indexed_property_setter<'s>(
   index: u32,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
-  rv: v8::ReturnValue<()>,
+  rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
   property_setter(scope, key, value, args, rv)
@@ -1344,7 +1361,7 @@ fn indexed_property_definer<'s>(
   index: u32,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  rv: v8::ReturnValue<()>,
+  rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
   property_definer(scope, key, descriptor, args, rv)
