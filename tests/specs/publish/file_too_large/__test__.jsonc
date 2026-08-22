@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DISABLE_JSR_PROVENANCE": "true",
+    "DENO_TESTING_DISABLE_GIT_CHECK": "1"
+  },
+  "steps": [{
+    "args": [
+      "eval",
+      "Deno.writeFileSync('./big.bin', new Uint8Array(25 * 1024 * 1024));"
+    ],
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --token 'sadfasdf' --dry-run",
+    "output": "publish.out",
+    "exitCode": 1
+  }]
+}

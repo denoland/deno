@@ -26,6 +26,7 @@ use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_semver::Version;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
+use crate::util::display::human_size;
 
 #[derive(Clone, Default)]
 pub struct PublishDiagnosticsCollector {
@@ -107,6 +108,18 @@ pub enum PublishDiagnostic {
     specifier: Url,
     kind: String,
   },
+  FileTooLarge {
+    specifier: Url,
+    size: u64,
+    max_size: u64,
+  },
+  PackageTooLarge {
+    /// The file that pushed the package over the limit, matching what the
+    /// registry reports.
+    specifier: Url,
+    size: u64,
+    max_size: u64,
+  },
   InvalidExternalImport {
     kind: String,
     imported: Url,
@@ -185,6 +198,8 @@ impl Diagnostic for PublishDiagnostic {
       InvalidPath { .. } => DiagnosticLevel::Error,
       DuplicatePath { .. } => DiagnosticLevel::Error,
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
+      FileTooLarge { .. } => DiagnosticLevel::Error,
+      PackageTooLarge { .. } => DiagnosticLevel::Error,
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
       ExcludedModule { .. } => DiagnosticLevel::Error,
       MissingConstraint { .. } => DiagnosticLevel::Error,
@@ -204,6 +219,8 @@ impl Diagnostic for PublishDiagnostic {
       InvalidPath { .. } => Cow::Borrowed("invalid-path"),
       DuplicatePath { .. } => Cow::Borrowed("case-insensitive-duplicate-path"),
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
+      FileTooLarge { .. } => Cow::Borrowed("file-too-large"),
+      PackageTooLarge { .. } => Cow::Borrowed("package-too-large"),
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
       ExcludedModule { .. } => Cow::Borrowed("excluded-module"),
       MissingConstraint { .. } => Cow::Borrowed("missing-constraint"),
@@ -229,6 +246,16 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedFileType { kind, .. } => {
         Cow::Owned(format!("unsupported file type '{kind}'"))
       }
+      FileTooLarge { size, max_size, .. } => Cow::Owned(format!(
+        "file too large, max size is {}, got {}",
+        human_size(*max_size as f64),
+        human_size(*size as f64)
+      )),
+      PackageTooLarge { size, max_size, .. } => Cow::Owned(format!(
+        "package too large, max size is {}, got {}",
+        human_size(*max_size as f64),
+        human_size(*size as f64)
+      )),
       InvalidExternalImport { kind, .. } => {
         Cow::Owned(format!("invalid import to a {kind} specifier"))
       }
@@ -283,7 +310,9 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { path, .. } => {
         DiagnosticLocation::Path { path: path.clone() }
       }
-      UnsupportedFileType { specifier, .. } => DiagnosticLocation::Module {
+      UnsupportedFileType { specifier, .. }
+      | FileTooLarge { specifier, .. }
+      | PackageTooLarge { specifier, .. } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
       },
       InvalidExternalImport {
@@ -365,7 +394,9 @@ impl Diagnostic for PublishDiagnostic {
       SpecifierUnfurl(d) => d.snippet(),
       InvalidPath { .. }
       | DuplicatePath { .. }
-      | UnsupportedFileType { .. } => None,
+      | UnsupportedFileType { .. }
+      | FileTooLarge { .. }
+      | PackageTooLarge { .. } => None,
       InvalidExternalImport {
         referrer,
         text_info,
@@ -415,6 +446,9 @@ impl Diagnostic for PublishDiagnostic {
       )),
       DuplicatePath { .. } => Some(Cow::Borrowed("rename or remove the file")),
       UnsupportedFileType { .. } => Some(Cow::Borrowed(
+        "remove the file, or add it to 'publish.exclude' in the config file",
+      )),
+      FileTooLarge { .. } | PackageTooLarge { .. } => Some(Cow::Borrowed(
         "remove the file, or add it to 'publish.exclude' in the config file",
       )),
       InvalidExternalImport { .. } => Some(Cow::Borrowed(
@@ -482,6 +516,8 @@ impl Diagnostic for PublishDiagnostic {
       | InvalidPath { .. }
       | DuplicatePath { .. }
       | UnsupportedFileType { .. }
+      | FileTooLarge { .. }
+      | PackageTooLarge { .. }
       | ExcludedModule { .. }
       | MissingConstraint { .. }
       | BannedTripleSlashDirectives { .. }
@@ -505,6 +541,12 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("only files and directories are supported"),
         Cow::Borrowed("the file was ignored and will not be published"),
       ]),
+      FileTooLarge { .. } => Cow::Borrowed(&[Cow::Borrowed(
+        "the registry rejects packages containing a file larger than this",
+      )]),
+      PackageTooLarge { .. } => Cow::Borrowed(&[Cow::Borrowed(
+        "the registry rejects packages whose files total more than this",
+      )]),
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
@@ -558,6 +600,13 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedFileType { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/unsupported-file-type"))
       }
+      // there is no /go/ redirect for these two, so link the docs directly
+      FileTooLarge { .. } => Some(Cow::Borrowed(
+        "https://jsr.io/docs/troubleshooting#filetoolarge",
+      )),
+      PackageTooLarge { .. } => Some(Cow::Borrowed(
+        "https://jsr.io/docs/troubleshooting#packagetoolarge",
+      )),
       InvalidExternalImport { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-external-import"))
       }

@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DISABLE_JSR_PROVENANCE": "true",
+    "DENO_TESTING_DISABLE_GIT_CHECK": "1"
+  },
+  "steps": [{
+    // neither file is over the per file limit, but together they are over the
+    // total package limit
+    "args": [
+      "eval",
+      "for (const n of ['a.bin', 'b.bin']) Deno.writeFileSync(n, new Uint8Array(15 * 1024 * 1024));"
+    ],
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --token 'sadfasdf' --dry-run",
+    "output": "publish.out",
+    "exitCode": 1
+  }]
+}

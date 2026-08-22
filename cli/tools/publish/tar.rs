@@ -11,9 +11,20 @@ use deno_graph::ModuleGraph;
 use sha2::Digest;
 use tar::Header;
 
+use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::module_content::ModuleContentProvider;
 use super::paths::CollectedPublishPath;
+
+/// Maximum size of a single file in a package, as enforced by the registry when
+/// it unpacks the tarball. Kept in sync with `MAX_FILE_SIZE` in the registry's
+/// `api/src/tarball.rs` so that a dry run fails on the same packages a publish
+/// would.
+const MAX_FILE_SIZE: u64 = 20 * 1024 * 1024;
+/// Maximum total size of all (uncompressed) files in a package, as enforced by
+/// the registry. Kept in sync with `MAX_TOTAL_FILE_SIZE` in the registry's
+/// `api/src/tarball.rs`.
+const MAX_TOTAL_FILE_SIZE: u64 = 20 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
@@ -38,6 +49,9 @@ pub fn create_gzipped_tarball(
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
+  let mut total_file_size: u64 = 0;
+  let mut has_file_too_large = false;
+  let mut reported_package_too_large = false;
 
   for path in publish_paths {
     let path_str = &path.relative_path;
@@ -52,6 +66,36 @@ pub fn create_gzipped_tarball(
         specifier,
       )?,
     };
+
+    // mirror the size limits the registry enforces while unpacking the
+    // tarball, so that they surface during a dry run instead of only once the
+    // package has been uploaded
+    let size = content.len() as u64;
+    if size > MAX_FILE_SIZE {
+      has_file_too_large = true;
+      diagnostics_collector.push(PublishDiagnostic::FileTooLarge {
+        specifier: specifier.clone(),
+        size,
+        max_size: MAX_FILE_SIZE,
+      });
+    }
+    total_file_size += size;
+    // report the total only once, on the file that pushed the package over the
+    // limit, which is what the registry reports too. Once a single file has
+    // been found to be too large the total is not worth reporting: the
+    // registry rejects that file before it ever sums the sizes, and the file
+    // is almost certainly what put the package over the limit anyway.
+    if total_file_size > MAX_TOTAL_FILE_SIZE
+      && !has_file_too_large
+      && !reported_package_too_large
+    {
+      reported_package_too_large = true;
+      diagnostics_collector.push(PublishDiagnostic::PackageTooLarge {
+        specifier: specifier.clone(),
+        size: total_file_size,
+        max_size: MAX_TOTAL_FILE_SIZE,
+      });
+    }
 
     files.push(PublishableTarballFile {
       path_str: path_str.clone(),

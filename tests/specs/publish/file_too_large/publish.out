@@ -1,0 +1,11 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+error[file-too-large]: file too large, max size is 20MB, got 25MB
+ --> [WILDLINE]big.bin
+  = hint: remove the file, or add it to 'publish.exclude' in the config file
+
+  info: the registry rejects packages containing a file larger than this
+  docs: https://jsr.io/docs/troubleshooting#filetoolarge
+
+error: Found 1 problem
