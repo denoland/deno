@@ -31,6 +31,8 @@ use std::io::Write;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
@@ -1154,6 +1156,11 @@ struct TLSWrapInner {
   client_hello_servername: Option<String>,
   client_hello_alpn: Vec<Vec<u8>>,
 
+  /// Whether this connection was configured with an explicit session to resume.
+  /// Node.js client connections only attempt session resumption when
+  /// `options.session` is passed (or `setSession()` is called).
+  allow_resumption: Arc<AtomicBool>,
+
   /// User-supplied static read buffer (Node's `onread.buffer`).
   /// When set, decrypted data is copied into this buffer rather than
   /// emitted via a fresh ArrayBuffer; the JS callback receives the same
@@ -1303,6 +1310,7 @@ impl TLSWrapInner {
       accepted: None,
       client_hello_servername: None,
       client_hello_alpn: Vec::new(),
+      allow_resumption: Arc::new(AtomicBool::new(false)),
       user_buffer: None,
       task_spawner,
     }
@@ -2262,10 +2270,12 @@ impl TLSWrap {
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    let client_config = match build_client_config(scope, context, op_state) {
-      Some((c, _)) => c,
-      None => return -1,
-    };
+    let allow_resumption = inner.allow_resumption.clone();
+    let client_config =
+      match build_client_config(scope, context, op_state, allow_resumption) {
+        Some((c, _)) => c,
+        None => return -1,
+      };
     // The verifier in `client_config` writes errors via the per-connection
     // `CURRENT_VERIFY_ERROR` thread-local set by `cycle`, so `inner`'s own
     // pre-allocated `verify_error` slot stays correctly scoped per
@@ -3287,12 +3297,16 @@ impl TLSWrap {
   }
 
   /// Set the serialized TLS session for client resumption.
-  /// With the shared session store, rustls handles resumption
-  /// automatically, so this is a no-op; it only exists because the JS
-  /// layer calls it. isSessionReused() reports resumption based on the
-  /// negotiated handshake kind instead.
+  /// In Node.js, client connections only attempt session resumption when
+  /// `options.session` is provided (or `setSession()` is called).
+  /// This enables resumption on the underlying `NodeClientSessionStoreWrapper`.
   #[fast]
-  fn set_session(&self, #[buffer] _session: &[u8]) {}
+  fn set_session(&self, #[buffer] session: &[u8]) {
+    let inner = unsafe { &*self.inner.as_ptr() };
+    inner
+      .allow_resumption
+      .store(!session.is_empty(), Ordering::Relaxed);
+  }
 
   /// Check if the TLS session was resumed (reused from a previous connection).
   #[fast]
@@ -4053,11 +4067,80 @@ fn normalize_pem_headers(pem: &[u8]) -> std::borrow::Cow<'_, [u8]> {
   std::borrow::Cow::Owned(s.into_bytes())
 }
 
+#[derive(Debug)]
+struct NodeClientSessionStoreWrapper {
+  inner: Arc<dyn rustls::client::ClientSessionStore>,
+  allow_resumption: Arc<AtomicBool>,
+}
+
+impl rustls::client::ClientSessionStore for NodeClientSessionStoreWrapper {
+  fn set_kx_hint(
+    &self,
+    server_name: rustls::pki_types::ServerName<'static>,
+    group: rustls::NamedGroup,
+  ) {
+    self.inner.set_kx_hint(server_name, group);
+  }
+
+  fn kx_hint(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'_>,
+  ) -> Option<rustls::NamedGroup> {
+    self.inner.kx_hint(server_name)
+  }
+
+  fn set_tls12_session(
+    &self,
+    server_name: rustls::pki_types::ServerName<'static>,
+    value: rustls::client::Tls12ClientSessionValue,
+  ) {
+    self.inner.set_tls12_session(server_name, value);
+  }
+
+  fn tls12_session(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'_>,
+  ) -> Option<rustls::client::Tls12ClientSessionValue> {
+    if self.allow_resumption.load(Ordering::Relaxed) {
+      self.inner.tls12_session(server_name)
+    } else {
+      None
+    }
+  }
+
+  fn remove_tls12_session(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'static>,
+  ) {
+    self.inner.remove_tls12_session(server_name);
+  }
+
+  fn insert_tls13_ticket(
+    &self,
+    server_name: rustls::pki_types::ServerName<'static>,
+    value: rustls::client::Tls13ClientSessionValue,
+  ) {
+    self.inner.insert_tls13_ticket(server_name, value);
+  }
+
+  fn take_tls13_ticket(
+    &self,
+    server_name: &rustls::pki_types::ServerName<'static>,
+  ) -> Option<rustls::client::Tls13ClientSessionValue> {
+    if self.allow_resumption.load(Ordering::Relaxed) {
+      self.inner.take_tls13_ticket(server_name)
+    } else {
+      None
+    }
+  }
+}
+
 /// Build a rustls ClientConfig from a SecureContext JS object.
 fn build_client_config(
   scope: &mut v8::PinScope,
   context: v8::Local<v8::Object>,
   op_state: &mut OpState,
+  allow_resumption: Arc<AtomicBool>,
 ) -> Option<(rustls::ClientConfig, VerifyErrorStore)> {
   use deno_net::DefaultTlsOptions;
   use deno_tls::TlsKeys;
@@ -4235,13 +4318,25 @@ fn build_client_config(
   // first handshake cannot be picked up by a later strict connection
   // (which would resume without re-running verification and bypass
   // checkServerIdentity in JS).
+  //
+  // In Node.js, client session resumption is opt-in per connection:
+  // connections only offer cached sessions when `options.session` was
+  // explicitly provided (or `setSession()` was called). `NodeClientSessionStoreWrapper`
+  // saves newly issued sessions unconditionally (so getSession / 'session'
+  // events work), but only offers them for resumption when `allow_resumption`
+  // is true.
   if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>() {
     let store = if reject_unauthorized {
       node_tls_state.client_session_store.clone()
     } else {
       node_tls_state.client_session_store_insecure.clone()
     };
-    config.resumption = rustls::client::Resumption::store(store);
+    config.resumption = rustls::client::Resumption::store(Arc::new(
+      NodeClientSessionStoreWrapper {
+        inner: store,
+        allow_resumption,
+      },
+    ));
   }
 
   // Install NodeServerCertVerifier to store verification errors for
