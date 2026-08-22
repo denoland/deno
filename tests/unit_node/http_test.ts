@@ -1740,6 +1740,52 @@ Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
   await promise;
 });
 
+Deno.test("[node/http] server close shuts down an accepted idle socket", async () => {
+  const server = http.createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("unexpected server address");
+  }
+
+  const socket = net.connect(address.port, "127.0.0.1");
+  socket.on("error", () => {});
+  await once(socket, "connect");
+
+  const serverClosed = once(server, "close");
+  const socketClosed = once(socket, "close");
+  const { promise: closeCallback, resolve: resolveCloseCallback, reject } =
+    Promise.withResolvers<void>();
+  const { promise: timeout, reject: rejectTimeout } = Promise.withResolvers<
+    never
+  >();
+  const timeoutId = setTimeout(
+    () => rejectTimeout(new Error("server.close() did not close idle socket")),
+    500,
+  );
+
+  try {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolveCloseCallback();
+      }
+    });
+    await Promise.race([
+      Promise.all([closeCallback, socketClosed]),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+    socket.destroy();
+    server.closeAllConnections();
+    await serverClosed;
+  }
+});
+
 Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
   let interval: NodeJS.Timeout;
   const server = http.createServer((req, res) => {

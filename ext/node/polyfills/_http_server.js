@@ -196,7 +196,7 @@ const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 class ConnectionsList {
   constructor() {
     this._all = new SafeSet();
-    this._active = new SafeMap(); // socket -> { headersCompleted, startTime, req }
+    this._active = new SafeMap(); // socket -> { hasActiveRequest, headersCompleted, startTime, req }
   }
 
   add(socket) {
@@ -208,8 +208,9 @@ class ConnectionsList {
     this._active.delete(socket);
   }
 
-  pushActive(socket) {
+  pushActive(socket, hasActiveRequest = false) {
     this._active.set(socket, {
+      hasActiveRequest,
       headersCompleted: false,
       startTime: performance.now(),
       req: null,
@@ -704,7 +705,7 @@ function onParserMessageBegin(server, socket) {
   const connections = server[kConnectionsKey];
   if (connections) {
     connections.popActive(socket);
-    connections.pushActive(socket);
+    connections.pushActive(socket, true);
   }
 }
 
@@ -1637,11 +1638,14 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
     for (const socket of new SafeSetIterator(connections._all)) {
-      // A socket is idle if it completed a request-response cycle and
-      // currently has no active HTTP response being written. Sockets
-      // that have never finished a response (e.g. still receiving
-      // headers) are not idle.
-      if (!socket._httpMessage && socket._httpMessageDetached) {
+      const active = connections._active.get(socket);
+      // A socket is idle if it completed a request-response cycle, or it
+      // accepted a connection that has not started an HTTP request. Sockets
+      // with a request in progress (e.g. still receiving headers) are not idle.
+      if (
+        !socket._httpMessage &&
+        (socket._httpMessageDetached || !active?.hasActiveRequest)
+      ) {
         socket.destroy();
       }
     }
