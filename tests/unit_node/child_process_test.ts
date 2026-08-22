@@ -1706,3 +1706,26 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "spawnSyncWithNumericFdStdin",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      Deno.writeTextFileSync(tmpFile, "hello-from-fd\n");
+      const fd = fs.openSync(tmpFile, "r");
+      const out = execFileSync(Deno.execPath(), [
+        "eval",
+        "import fs from 'node:fs'; process.stdout.write(fs.readFileSync(0,'utf8'));",
+      ], {
+        stdio: [fd, "pipe", "inherit"],
+      });
+      fs.closeSync(fd);
+      assertEquals(out.toString(), "hello-from-fd\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
+});
