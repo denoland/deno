@@ -4877,7 +4877,11 @@ async fn serve_http11_raw(
         RawResponseBody::Stream(body) => {
           let response_context = RawH1ResponseContext {
             version: response_context.version,
-            keep_alive: response_context.keep_alive && !parsed.has_body,
+            keep_alive: response_context.keep_alive
+              && (!parsed.has_body
+                || request_body_for_cancel
+                  .as_ref()
+                  .is_some_and(|b| !b.reader_owns_connection())),
             head: response_context.head,
           };
           write_h1_stream_response_shared(
