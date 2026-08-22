@@ -4732,7 +4732,10 @@ async fn serve_http11_raw(
         if let Some(state) = state {
           let mut local_conn = state.conn;
           let mut local_scratch = state.scratch;
-          let keep_alive = keep_alive && !parsed.has_body;
+          let body_consumed = request_body_for_cancel
+            .as_ref()
+            .is_some_and(|b| !b.reader_owns_connection());
+          let keep_alive = keep_alive && (!parsed.has_body || body_consumed);
           match body {
             RawResponseBody::Flat(body) => {
               write_h1_flat_response(
@@ -4857,7 +4860,10 @@ async fn serve_http11_raw(
       }
       match body {
         RawResponseBody::Flat(body) => {
-          let keep_alive = keep_alive && !parsed.has_body;
+          let body_consumed = request_body_for_cancel
+            .as_ref()
+            .is_some_and(|b| !b.reader_owns_connection());
+          let keep_alive = keep_alive && (!parsed.has_body || body_consumed);
           write_h1_flat_response_shared(
             body_conn.clone(),
             parsed.version,
@@ -4871,7 +4877,11 @@ async fn serve_http11_raw(
         RawResponseBody::Stream(body) => {
           let response_context = RawH1ResponseContext {
             version: response_context.version,
-            keep_alive: response_context.keep_alive && !parsed.has_body,
+            keep_alive: response_context.keep_alive
+              && (!parsed.has_body
+                || request_body_for_cancel
+                  .as_ref()
+                  .is_some_and(|b| !b.reader_owns_connection())),
             head: response_context.head,
           };
           write_h1_stream_response_shared(
