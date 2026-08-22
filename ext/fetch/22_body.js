@@ -62,6 +62,11 @@ const { TextDecoderStream } = core.loadExtScript(
 const noop = () => {};
 const noopAsync = async () => {};
 
+function isUint8Array(value) {
+  return value !== null &&
+    TypedArrayPrototypeGetSymbolToStringTag(value) === "Uint8Array";
+}
+
 /** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
 const staticBodyLength = new SafeWeakMap();
 
@@ -243,22 +248,36 @@ class InnerBody {
    */
   clone() {
     let second;
+    // Byte-backed sources need an O(n) snapshot so cloned bodies cannot expose
+    // each other's storage. Immutable sources can remain shared.
     if (
       !ObjectPrototypeIsPrototypeOf(
         ReadableStreamPrototype,
         this.streamOrStatic,
       ) && !this.streamOrStatic.consumed
     ) {
+      let body = this.streamOrStatic.body;
+      let source = this.source;
+      if (typeof body !== "string") {
+        body = TypedArrayPrototypeSlice(body);
+        if (isUint8Array(source)) {
+          source = body;
+        }
+      }
       second = new InnerBody({
-        body: this.streamOrStatic.body,
+        body,
         consumed: false,
       });
+      second.source = source;
     } else {
+      const secondSource = isUint8Array(this.source)
+        ? TypedArrayPrototypeSlice(this.source)
+        : this.source;
       const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
       this.streamOrStatic = out1;
       second = new InnerBody(out2);
+      second.source = secondSource;
     }
-    second.source = this.source;
     second.length = this.length;
     return second;
   }
@@ -606,7 +625,7 @@ function extractBody(object) {
     // no observable side-effect for users so far, but could change
     stream = { body: source, consumed: false };
     length = null; // NOTE: string length != byte length
-  } else if (TypedArrayPrototypeGetSymbolToStringTag(source) === "Uint8Array") {
+  } else if (isUint8Array(source)) {
     stream = { body: source, consumed: false };
     length = TypedArrayPrototypeGetByteLength(source);
   }
