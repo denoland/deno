@@ -2091,7 +2091,7 @@ impl JsRuntime {
   ) -> impl Future<Output = Result<v8::Global<v8::Value>, Box<JsError>>> + use<>
   {
     v8::tc_scope!(let scope, scope);
-    let cb = function.open(scope);
+    let cb = v8::Local::new(scope, function);
     let this = v8::undefined(scope).into();
     let promise = if args.is_empty() {
       cb.call(scope, this, &[])
@@ -3402,7 +3402,7 @@ impl JsRuntime {
     let run_immediate_callbacks_cb =
       context_state.run_immediate_callbacks_cb.borrow();
     let run_immediate_callbacks_cb =
-      run_immediate_callbacks_cb.as_ref().unwrap().open(tc_scope);
+      v8::Local::new(tc_scope, run_immediate_callbacks_cb.as_ref().unwrap());
 
     run_immediate_callbacks_cb.call(tc_scope, undefined, &[]);
 
@@ -3472,7 +3472,7 @@ impl JsRuntime {
     v8::tc_scope!(let tc_scope, scope);
 
     let process_timers_cb = context_state.js_process_timers_cb.borrow();
-    let process_timers_fn = process_timers_cb.as_ref().unwrap().open(tc_scope);
+    let process_timers_fn = v8::Local::new(tc_scope, process_timers_cb.as_ref().unwrap());
     let now_val = v8::Number::new(tc_scope, now);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
 
@@ -3583,7 +3583,7 @@ impl JsRuntime {
     v8::tc_scope!(let tc_scope, scope);
 
     let tick_cb = context_state.js_event_loop_tick_cb.borrow();
-    let tick_fn = tick_cb.as_ref().unwrap().open(tc_scope);
+    let tick_fn = v8::Local::new(tc_scope, tick_cb.as_ref().unwrap());
     tick_fn.call(tc_scope, undefined, args.as_slice());
 
     if let Some(exception) = tc_scope.exception() {
@@ -3615,7 +3615,7 @@ impl JsRuntime {
         .borrow()
         .as_ref()
       {
-        let function = handler.open(scope);
+        let function = v8::Local::new(scope, handler);
         let args = [
           v8::Local::new(scope, promise).into(),
           v8::Local::new(scope, result),
@@ -3661,7 +3661,7 @@ impl JsRuntime {
 
     let handle_rejections_cb = context_state.js_handle_rejections_cb.borrow();
     let handle_rejections_fn =
-      handle_rejections_cb.as_ref().unwrap().open(tc_scope);
+      v8::Local::new(tc_scope, handle_rejections_cb.as_ref().unwrap());
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     handle_rejections_fn.call(tc_scope, undefined, args.as_slice());
 
@@ -3708,7 +3708,7 @@ impl JsRuntime {
     v8::tc_scope!(let tc_scope, scope);
 
     let drain_cb = context_state.js_drain_next_tick_and_macrotasks_cb.borrow();
-    let drain_fn = drain_cb.as_ref().unwrap().open(tc_scope);
+    let drain_fn = v8::Local::new(tc_scope, drain_cb.as_ref().unwrap());
     drain_fn.call(tc_scope, undefined, &[]);
 
     if let Some(exception) = tc_scope.exception() {

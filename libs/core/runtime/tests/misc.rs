@@ -47,13 +47,13 @@ fn test_execute_script_return_value() {
   let value_global = runtime.execute_script("a.js", "a = 1 + 2").unwrap();
   {
     deno_core::scope!(scope, runtime);
-    let value = value_global.open(scope);
+    let value = v8::Local::new(scope, &value_global);
     assert_eq!(value.integer_value(scope).unwrap(), 3);
   }
   let value_global = runtime.execute_script("b.js", "b = 'foobar'").unwrap();
   {
     deno_core::scope!(scope, runtime);
-    let value = value_global.open(scope);
+    let value = v8::Local::new(scope, &value_global);
     assert!(value.is_string());
     assert_eq!(
       value.to_string(scope).unwrap().to_rust_string_lossy(scope),
@@ -280,13 +280,13 @@ async fn test_resolve_value_generic(
     }
     Ok(Some(v)) => {
       let value = result_global.unwrap();
-      let value = value.open(scope);
+      let value = v8::Local::new(scope, &value);
       assert_eq!(value.integer_value(scope).unwrap(), v as i64);
     }
     Err(e) => {
       let Err(err) = result_global else {
         let value = result_global.unwrap();
-        let value = value.open(scope);
+        let value = v8::Local::new(scope, &value);
         panic!(
           "Expected an error, got {}",
           value.to_rust_string_lossy(scope)
@@ -418,7 +418,7 @@ async fn wasm_streaming_op_invocation_in_import() {
   #[allow(deprecated, reason = "test code")]
   let value = runtime.resolve_value(promise).await.unwrap();
   deno_core::scope!(scope, runtime);
-  let val = value.open(scope);
+  let val = v8::Local::new(scope, &value);
   assert!(val.is_object());
 }
 
@@ -564,7 +564,7 @@ fn test_heap_limits() {
     .unwrap();
   let _guard = tokio.enter();
   let create_params =
-    v8::Isolate::create_params().heap_limits(0, 5 * 1024 * 1024);
+    v8::Isolate::create_params().heap_limits(0, 20 * 1024 * 1024);
   let mut runtime = JsRuntime::new(RuntimeOptions {
     create_params: Some(create_params),
     ..Default::default()
@@ -613,7 +613,7 @@ fn test_heap_limit_cb_multiple() {
     .unwrap();
   let _guard = tokio.enter();
   let create_params =
-    v8::Isolate::create_params().heap_limits(0, 5 * 1024 * 1024);
+    v8::Isolate::create_params().heap_limits(0, 20 * 1024 * 1024);
   let mut runtime = JsRuntime::new(RuntimeOptions {
     create_params: Some(create_params),
     ..Default::default()
@@ -1339,7 +1339,7 @@ async fn generic_in_extension_middleware() {
 
   // Check the result
   deno_core::scope!(scope, &mut runtime);
-  let value = value_global.open(scope);
+  let value = v8::Local::new(scope, &value_global);
 
   let result = value.to_rust_string_lossy(scope);
   assert_eq!(result, "Hello World and Hello World");
@@ -1559,7 +1559,7 @@ async fn global_template_middleware() {
     _key: v8::Local<'s, v8::Name>,
     _value: v8::Local<'s, v8::Value>,
     _args: v8::PropertyCallbackArguments<'s>,
-    _rv: v8::ReturnValue<()>,
+    _rv: v8::ReturnValue<v8::Boolean>,
   ) -> v8::Intercepted {
     CALLS.lock().push("setter".to_string());
     v8::Intercepted::kNo
@@ -1570,7 +1570,7 @@ async fn global_template_middleware() {
     _key: v8::Local<'s, v8::Name>,
     _descriptor: &v8::PropertyDescriptor,
     _args: v8::PropertyCallbackArguments<'s>,
-    _rv: v8::ReturnValue<()>,
+    _rv: v8::ReturnValue<v8::Boolean>,
   ) -> v8::Intercepted {
     CALLS.lock().push("definer".to_string());
     v8::Intercepted::kNo

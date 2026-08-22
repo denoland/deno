@@ -193,7 +193,7 @@ fn test_op_high_arity() {
     .execute_script("test.js", "Deno.core.ops.op_add_4(1, 2, 3, 4)")
     .unwrap();
   deno_core::scope!(scope, runtime);
-  assert_eq!(r.open(scope).integer_value(scope), Some(10));
+  assert_eq!(v8::Local::new(scope, &r).integer_value(scope), Some(10));
 }
 
 #[test]
