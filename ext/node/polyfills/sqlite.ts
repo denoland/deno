@@ -4,7 +4,10 @@
 const { core, primordials } = __bootstrap;
 const {
   DatabaseSync: DatabaseSyncOp,
-  op_node_database_backup,
+  op_node_database_backup_finish,
+  op_node_database_backup_init,
+  op_node_database_backup_run,
+  op_node_database_backup_step,
   Session,
   StatementSync,
 } = core.ops;
@@ -168,42 +171,63 @@ function DatabaseSync(
 ObjectSetPrototypeOf(DatabaseSync.prototype, DatabaseSyncOp.prototype);
 ObjectSetPrototypeOf(DatabaseSync, DatabaseSyncOp);
 
-function validateBackupOptions(options) {
-  if (options === undefined) {
-    return;
+function parseBackupOptions(path, options) {
+  const parsedPath = parsePath(path);
+
+  let source = "main";
+  let target = "main";
+  let rate = 100;
+  let progress;
+
+  if (options !== undefined) {
+    if (
+      options === null ||
+      (typeof options !== "object" && typeof options !== "function")
+    ) {
+      throw new InvalidArgTypeError(
+        'The "options" argument must be an object.',
+      );
+    }
+    if (options.source !== undefined) {
+      if (typeof options.source !== "string") {
+        throw new InvalidArgTypeError(
+          'The "options.source" argument must be a string.',
+        );
+      }
+      source = options.source;
+    }
+    if (options.target !== undefined) {
+      if (typeof options.target !== "string") {
+        throw new InvalidArgTypeError(
+          'The "options.target" argument must be a string.',
+        );
+      }
+      target = options.target;
+    }
+    if (options.rate !== undefined) {
+      if (
+        !NumberIsInteger(options.rate) ||
+        options.rate < -2147483648 || options.rate > 2147483647
+      ) {
+        throw new InvalidArgTypeError(
+          'The "options.rate" argument must be an integer.',
+        );
+      }
+      rate = options.rate;
+    }
+    if (options.progress !== undefined) {
+      if (typeof options.progress !== "function") {
+        throw new InvalidArgTypeError(
+          'The "options.progress" argument must be a function.',
+        );
+      }
+      progress = options.progress;
+    }
   }
-  if (typeof options !== "object" || options === null) {
-    throw new InvalidArgTypeError(
-      'The "options" argument must be an object.',
-    );
-  }
-  if (options.rate !== undefined && !NumberIsInteger(options.rate)) {
-    throw new InvalidArgTypeError(
-      'The "options.rate" argument must be an integer.',
-    );
-  }
-  if (options.source !== undefined && typeof options.source !== "string") {
-    throw new InvalidArgTypeError(
-      'The "options.source" argument must be a string.',
-    );
-  }
-  if (options.target !== undefined && typeof options.target !== "string") {
-    throw new InvalidArgTypeError(
-      'The "options.target" argument must be a string.',
-    );
-  }
-  if (
-    options.progress !== undefined && typeof options.progress !== "function"
-  ) {
-    throw new InvalidArgTypeError(
-      'The "options.progress" argument must be a function.',
-    );
-  }
+
+  return { parsedPath, source, target, rate, progress };
 }
 
-// Argument validation happens synchronously (mirroring Node.js, where invalid
-// arguments throw rather than reject), while the backup itself is performed by
-// `backupExec` so that runtime failures reject the returned promise.
 function backup(
   sourceDb,
   path,
@@ -214,23 +238,46 @@ function backup(
       'The "sourceDb" argument must be an object.',
     );
   }
+
+  const {
+    parsedPath,
+    source,
+    target,
+    rate,
+    progress,
+  } = parseBackupOptions(path, options);
+
   if (!sourceDb.isOpen) {
     throw new InvalidStateError("database is not open");
   }
-  const parsedPath = parsePath(path);
-  validateBackupOptions(options);
 
-  return backupExec(sourceDb, parsedPath, options);
-}
+  return (async () => {
+    const rid = op_node_database_backup_init(
+      sourceDb,
+      parsedPath,
+      source,
+      target,
+    );
+    try {
+      // Fast path
+      if (progress === undefined) {
+        return await op_node_database_backup_run(rid, rate);
+      }
 
-// deno-lint-ignore require-await
-async function backupExec(sourceDb, parsedPath, options) {
-  // TODO(Tango992): Implement async op
-  return op_node_database_backup(
-    sourceDb,
-    parsedPath,
-    options,
-  );
+      while (true) {
+        const { done, totalPages, remainingPages } =
+          await op_node_database_backup_step(rid, rate);
+        if (done) {
+          return totalPages;
+        }
+        if (remainingPages !== 0) {
+          progress({ totalPages, remainingPages });
+        }
+      }
+    } finally {
+      op_node_database_backup_finish(rid);
+    }
+  })();
 }
 ObjectDefineProperty(backup, "length", {
   __proto__: null,
