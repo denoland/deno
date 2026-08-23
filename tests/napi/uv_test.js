@@ -211,3 +211,19 @@ uvPollTest("napi uv poll allows one active handle per fd", (done) => {
 uvPollTest("napi uv poll close suppresses subsequent callback", (done) => {
   uv.test_uv_poll_close_suppresses_ready_callback(done);
 });
+
+uvPollTest("napi uv poll delivers two independent fds", (done) => {
+  uv.test_uv_poll_delivers_two_fds(done);
+});
+
+uvPollTest("napi uv poll callback can stop itself", (done) => {
+  uv.test_uv_poll_self_stops(done);
+});
+
+uvPollTest("napi uv poll callback can restart itself", (done) => {
+  uv.test_uv_poll_restarts_in_callback(done);
+});
+
+uvPollTest("napi uv poll callback can close itself", (done) => {
+  uv.test_uv_poll_closes_in_callback(done);
+});
