@@ -2,6 +2,58 @@
 
 import { assertEquals } from "./common.js";
 
+function waitForMessage(worker, expected) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (event) => {
+      if (event.data === expected) {
+        resolve();
+      } else {
+        reject(
+          new Error(
+            `expected worker message ${JSON.stringify(expected)}, got ${
+              JSON.stringify(event.data)
+            }`,
+          ),
+        );
+      }
+    };
+    worker.onerror = (event) => {
+      event.preventDefault();
+      reject(event.error ?? new Error(event.message));
+    };
+  });
+}
+
+async function testActivePollTerminationProtocol(message) {
+  const worker = new Worker(
+    new URL("./worker_termination_worker.js", import.meta.url),
+    { type: "module" },
+  );
+  await waitForMessage(worker, "ready");
+  worker.postMessage(message);
+  await waitForMessage(worker, "armed");
+  // The worker sends "armed" only after registering cleanup for the ready
+  // active poll. This test exercises that protocol but does not await shutdown.
+  worker.terminate();
+}
+
+// Unix-only: this fixture uses POSIX pipes through the Unix poll bridge.
+Deno.test({
+  name: "napi uv poll worker termination arms a refed poll",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    await testActivePollTerminationProtocol("arm_refed_poll");
+  },
+});
+
+Deno.test({
+  name: "napi uv poll worker termination arms an unrefed poll",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    await testActivePollTerminationProtocol("arm_unrefed_poll");
+  },
+});
+
 Deno.test("napi addon survives worker termination", async () => {
   // Spawn a worker that loads the NAPI addon and does work.
   // Terminate it and verify no crash occurs.
