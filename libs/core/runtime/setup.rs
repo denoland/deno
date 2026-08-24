@@ -164,7 +164,6 @@ fn v8_init(
   }
 
   let base_flags = concat!(
-    " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-temporal",
     " --js-float16array",

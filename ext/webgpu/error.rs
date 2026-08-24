@@ -154,7 +154,7 @@ impl DeviceErrorHandler {
           .unwrap();
 
         let recv = v8::Local::new(scope, device);
-        func.open(scope).call(scope, recv, &[event.into()]);
+        v8::Local::new(scope, &func).call(scope, recv, &[event.into()]);
       });
     }
   }

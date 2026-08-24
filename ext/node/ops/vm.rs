@@ -353,7 +353,12 @@ impl ContextifyScript {
 }
 
 pub struct ContextifyContext {
-  microtask_queue: *mut v8::MicrotaskQueue,
+  /// Owns the queue for contexts created with `microtaskMode: "afterEvaluate"`,
+  /// and is `None` otherwise (the context then uses the isolate's default
+  /// queue). Dropping the handle releases a root into the isolate's heap; the
+  /// associated context keeps the queue itself alive for as long as it needs
+  /// it, so there is nothing else to tear down by hand.
+  microtask_queue: Option<v8::OwnedMicrotaskQueue>,
   context: v8::TracedReference<v8::Context>,
   sandbox: v8::TracedReference<v8::Object>,
   allow_code_gen_wasm: bool,
@@ -368,17 +373,6 @@ unsafe impl deno_core::GarbageCollected for ContextifyContext {
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ContextifyContext"
-  }
-}
-
-impl Drop for ContextifyContext {
-  fn drop(&mut self) {
-    if !self.microtask_queue.is_null() {
-      // SAFETY: If this isn't null, it is a valid MicrotaskQueue.
-      unsafe {
-        std::ptr::drop_in_place(self.microtask_queue);
-      }
-    }
   }
 }
 
@@ -470,17 +464,14 @@ impl ContextifyContext {
 
     let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
 
-    let microtask_queue = if own_microtask_queue {
-      v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit).into_raw()
-    } else {
-      std::ptr::null_mut()
-    };
+    let microtask_queue = own_microtask_queue
+      .then(|| v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit));
 
     let context = create_v8_context(
       scope,
       tmp,
       ContextInitMode::UseSnapshot,
-      microtask_queue,
+      microtask_queue_ptr(&microtask_queue),
     );
 
     let context_state = main_context.get_aligned_pointer_from_embedder_data(
@@ -566,20 +557,18 @@ impl ContextifyContext {
   ) -> v8::Local<'s, v8::Object> {
     let main_context = scope.get_current_context();
 
-    let microtask_queue = if own_microtask_queue {
-      v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit).into_raw()
-    } else {
-      std::ptr::null_mut()
-    };
+    let microtask_queue = own_microtask_queue
+      .then(|| v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit));
 
     // Create a vanilla V8 context without global template (no interceptors)
     let context = {
+      let queue_ptr = microtask_queue_ptr(&microtask_queue);
       let esc_scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
       let esc_scope = &mut esc_scope.init();
       let ctx = v8::Context::new(
         esc_scope,
         v8::ContextOptions {
-          microtask_queue: Some(microtask_queue),
+          microtask_queue: Some(queue_ptr),
           ..Default::default()
         },
       );
@@ -714,12 +703,14 @@ impl ContextifyContext {
   }
 
   fn microtask_queue(&self) -> Option<&v8::MicrotaskQueue> {
-    if self.microtask_queue.is_null() {
-      None
-    } else {
-      // SAFETY: If this isn't null, it is a valid MicrotaskQueue.
-      Some(unsafe { &*self.microtask_queue })
-    }
+    self.microtask_queue.as_deref()
+  }
+
+  /// A non-owning alias of the queue, for the callers that still need to hand
+  /// it to V8 as a raw pointer. Null when this context uses the isolate's
+  /// default queue.
+  fn microtask_queue_ptr(&self) -> *mut v8::MicrotaskQueue {
+    microtask_queue_ptr(&self.microtask_queue)
   }
 
   fn get<'a, 'c>(
@@ -746,6 +737,21 @@ pub const VM_CONTEXT_INDEX: usize = 0;
 pub enum ContextInitMode {
   ForSnapshot,
   UseSnapshot,
+}
+
+/// A non-owning alias of `handle`'s queue, for passing to
+/// `v8::ContextOptions::microtask_queue`, which still takes a raw pointer.
+/// Null when there is no handle, which tells V8 to use the isolate's default
+/// queue.
+///
+/// The queue is only borrowed here: whoever holds the [`v8::OwnedMicrotaskQueue`]
+/// keeps it alive, and must outlive every context created with the pointer.
+fn microtask_queue_ptr(
+  handle: &Option<v8::OwnedMicrotaskQueue>,
+) -> *mut v8::MicrotaskQueue {
+  handle.as_ref().map_or(std::ptr::null_mut(), |queue| {
+    &**queue as *const v8::MicrotaskQueue as *mut v8::MicrotaskQueue
+  })
 }
 
 pub fn create_v8_context<'a>(
@@ -998,7 +1004,7 @@ fn property_setter<'s>(
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
-  _rv: v8::ReturnValue<()>,
+  _rv: v8::PropertyInterceptorReturnValue<'_>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return v8::Intercepted::kNo;
@@ -1114,7 +1120,7 @@ fn property_definer<'s>(
   key: v8::Local<'s, v8::Name>,
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  _: v8::ReturnValue<()>,
+  _: v8::PropertyInterceptorReturnValue<'_>,
 ) -> v8::Intercepted {
   let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return v8::Intercepted::kNo;
@@ -1323,7 +1329,7 @@ fn indexed_property_setter<'s>(
   index: u32,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
-  rv: v8::ReturnValue<()>,
+  rv: v8::PropertyInterceptorReturnValue<'_>,
 ) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
   property_setter(scope, key, value, args, rv)
@@ -1344,7 +1350,7 @@ fn indexed_property_definer<'s>(
   index: u32,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  rv: v8::ReturnValue<()>,
+  rv: v8::PropertyInterceptorReturnValue<'_>,
 ) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
   property_definer(scope, key, descriptor, args, rv)
@@ -1635,13 +1641,11 @@ pub fn op_vm_script_create_cached_data<'s>(
 pub struct ContextifyModule {
   module: v8::TracedReference<v8::Module>,
   context: v8::TracedReference<v8::Context>,
-  // SAFETY invariant: `microtask_queue` aliases the `MicrotaskQueue` owned
-  // by the `ContextifyContext` of `context`. The queue is a separate C++
-  // allocation, but `ContextifyContext` keeps it alive for as long as the
-  // context is reachable, and the `TracedReference<v8::Context>` above
-  // keeps the context reachable for this module's lifetime. Dereferencing
-  // is therefore safe as long as no code path drops the `ContextifyContext`
-  // while a `ContextifyModule` is still live.
+  // SAFETY invariant: `microtask_queue` aliases the queue whose handle is held
+  // by the `ContextifyContext` of `context`. The `TracedReference<v8::Context>`
+  // above keeps that context reachable for this module's lifetime, and a
+  // context keeps its queue alive independently of the handle, so the alias
+  // stays valid even if the owning `ContextifyContext` is collected first.
   microtask_queue: *mut v8::MicrotaskQueue,
   identifier: String,
   /// Map of import specifier -> resolved ContextifyModule wrapper object.
@@ -1845,7 +1849,7 @@ fn resolve_module_context<'s>(
   if let Some(context_object) = context_object {
     let contextify =
       ContextifyContext::from_sandbox_obj(scope, context_object)?;
-    Some((contextify.context(scope), contextify.microtask_queue))
+    Some((contextify.context(scope), contextify.microtask_queue_ptr()))
   } else {
     Some((scope.get_current_context(), std::ptr::null_mut()))
   }

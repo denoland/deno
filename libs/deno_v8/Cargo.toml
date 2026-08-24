@@ -37,5 +37,5 @@ v8_enable_v8_checks = [
 ]
 
 [dependencies]
-rusty_v8 = { package = "v8", version = "150.4.0", optional = true, default-features = false }
+rusty_v8 = { package = "v8", version = "152.2.0", optional = true, default-features = false }
 v8x_backend = { package = "v8x", version = "=149.4.0-rc.4", optional = true, default-features = false }

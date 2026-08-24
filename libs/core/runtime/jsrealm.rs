@@ -356,7 +356,7 @@ impl JsRealmInner {
     std::mem::take(&mut *state.js_wasm_streaming_cb.borrow_mut());
 
     {
-      let ctx = self.context().open(scope);
+      let ctx = v8::Local::new(scope, self.context());
       // SAFETY: Clear all embedder data
       unsafe {
         let ctx_state =
