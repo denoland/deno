@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(deprecated)] // impls for the deprecated type itself
 
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -9,6 +10,9 @@ use super::transl8::impl_magic;
 use crate::Error;
 
 #[derive(PartialEq, Eq, Clone, Debug, Default)]
+#[deprecated(
+  note = "use String or Vec<u16> directly; slated for removal"
+)]
 pub struct U16String(Vec<u16>);
 impl_magic!(U16String);
 

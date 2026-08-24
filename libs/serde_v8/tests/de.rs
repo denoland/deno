@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(deprecated)] // exercises deprecated magic types until removal
 
 use serde::Deserialize;
 use serde::Deserializer;
@@ -374,7 +375,7 @@ detest!(de_unit_struct, StructUnit, "'StructUnit'", StructUnit);
 #[test]
 fn de_struct() {
   dedo("({ a: 1, b: 2 })", |scope, v| {
-    let mut de = serde_v8::Deserializer::new(scope, v, None);
+    let mut de = serde_v8::Deserializer::new(scope, v);
     let payload = de
       .deserialize_struct("StructPayload", &[], StructVisitor)
       .unwrap();
@@ -385,7 +386,7 @@ fn de_struct() {
 #[test]
 fn de_struct_hint() {
   dedo("({ a: 1, b: 2 })", |scope, v| {
-    let mut de = serde_v8::Deserializer::new(scope, v, None);
+    let mut de = serde_v8::Deserializer::new(scope, v);
     let payload = de
       .deserialize_struct("StructPayload", &["a", "b"], StructVisitor)
       .unwrap();
