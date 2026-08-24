@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 
-use capacity_builder::StringBuilder;
 use indexmap::IndexMap;
 use wasm_dep_analyzer::WasmDeps;
 
@@ -117,6 +116,62 @@ fn is_wasm_global_import(import_type: &wasm_dep_analyzer::ImportType) -> bool {
   matches!(import_type, wasm_dep_analyzer::ImportType::Global(_))
 }
 
+/// Values that [`StringBuilder::append`] knows how to write.
+trait AppendToString {
+  fn append_to(self, out: &mut String);
+}
+
+impl AppendToString for &str {
+  fn append_to(self, out: &mut String) {
+    out.push_str(self);
+  }
+}
+
+impl AppendToString for &String {
+  fn append_to(self, out: &mut String) {
+    out.push_str(self);
+  }
+}
+
+impl AppendToString for &Cow<'_, str> {
+  fn append_to(self, out: &mut String) {
+    out.push_str(self);
+  }
+}
+
+impl AppendToString for char {
+  fn append_to(self, out: &mut String) {
+    out.push(self);
+  }
+}
+
+impl AppendToString for usize {
+  fn append_to(self, out: &mut String) {
+    // Cold path (module rendering), so the temporary allocation is fine.
+    out.push_str(&self.to_string());
+  }
+}
+
+/// Append-only string builder over a preallocated [`String`].
+///
+/// Just enough of an API to render the synthetic Wasm wrapper module below
+/// without depending on a proc-macro string-building crate.
+struct StringBuilder(String);
+
+impl StringBuilder {
+  fn with_capacity(capacity: usize) -> Self {
+    Self(String::with_capacity(capacity))
+  }
+
+  fn append(&mut self, value: impl AppendToString) {
+    value.append_to(&mut self.0);
+  }
+
+  fn build(self) -> String {
+    self.0
+  }
+}
+
 fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
   struct NamedImport {
     escaped_name: String,
@@ -169,7 +224,12 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
     .collect::<Vec<_>>();
   let has_global_export = exports.iter().any(|(_, is_global)| *is_global);
 
-  StringBuilder::build(|builder| {
+  // Rough starting capacity; the builder grows as needed.
+  let mut builder = StringBuilder::with_capacity(
+    256 + 128 * (aggregated_imports.len() + exports.len()),
+  );
+  {
+    let builder = &mut builder;
     builder.append("import source wasmMod from \"");
     builder.append(specifier);
     builder.append("\";\n");
@@ -193,7 +253,9 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
           builder.append("\";\n");
         }
         builder.append("import { ");
-        for (name_index, named_import) in import_info.named_imports.iter().enumerate() {
+        for (name_index, named_import) in
+          import_info.named_imports.iter().enumerate()
+        {
           if name_index > 0 {
             builder.append(", ");
           }
@@ -235,7 +297,9 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
         builder.append(&import_info.key_escaped);
         builder.append("\": {\n");
 
-        for (name_index, named_import) in import_info.named_imports.iter().enumerate() {
+        for (name_index, named_import) in
+          import_info.named_imports.iter().enumerate()
+        {
           builder.append("    \"");
           builder.append(&named_import.escaped_name);
           builder.append("\": ");
@@ -267,9 +331,8 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
 
       builder.append("const modInstance = new import.meta.WasmInstance(wasmMod, importsObject);\n");
     } else {
-      builder.append(
-        "const modInstance = new import.meta.WasmInstance(wasmMod);\n"
-      );
+      builder
+        .append("const modInstance = new import.meta.WasmInstance(wasmMod);\n");
     }
 
     if has_global_export {
@@ -316,7 +379,8 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
         builder.append("\" };\n");
       }
     }
-  }).unwrap()
+  }
+  builder.build()
 }
 
 #[test]
