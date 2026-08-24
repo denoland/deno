@@ -15,6 +15,7 @@ use crate::*;
 
 #[test]
 fn will_snapshot() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let snapshot = {
     let mut runtime = JsRuntimeForSnapshot::new(Default::default());
     runtime.execute_script("a.js", "a = 1 + 2").unwrap();
@@ -33,6 +34,7 @@ fn will_snapshot() {
 
 #[test]
 fn will_snapshot2() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let startup_data = {
     let mut runtime = JsRuntimeForSnapshot::new(Default::default());
     runtime.execute_script("a.js", "let a = 1 + 2").unwrap();
@@ -70,6 +72,7 @@ fn will_snapshot2() {
 
 #[test]
 fn test_snapshot_callbacks() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let snapshot = {
     let mut runtime = JsRuntimeForSnapshot::new(Default::default());
     runtime
@@ -106,6 +109,7 @@ fn test_snapshot_callbacks() {
 
 #[test]
 fn test_from_snapshot() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let snapshot = {
     let mut runtime = JsRuntimeForSnapshot::new(Default::default());
     runtime.execute_script("a.js", "a = 1 + 2").unwrap();
@@ -125,6 +129,7 @@ fn test_from_snapshot() {
 /// Smoke test for create_snapshot.
 #[test]
 fn test_snapshot_creator() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let output = create_snapshot(
     CreateSnapshotOptions {
       cargo_manifest_dir: "",
@@ -153,6 +158,7 @@ fn test_snapshot_creator() {
 
 #[test]
 fn test_snapshot_creator_warmup() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let counter = Rc::new(RefCell::new(0));
 
   let c = counter.clone();
@@ -190,6 +196,7 @@ fn test_snapshot_creator_warmup() {
 
 #[test]
 fn es_snapshot() {
+  let _snapshot_lock = super::snapshot_test_lock();
   fn create_module(
     runtime: &mut JsRuntime,
     i: usize,
@@ -333,6 +340,7 @@ fn es_snapshot() {
 
 #[test]
 pub(crate) fn es_snapshot_without_runtime_module_loader() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let startup_data = {
     deno_core::extension!(
       module_snapshot,
@@ -405,6 +413,7 @@ pub(crate) fn es_snapshot_without_runtime_module_loader() {
 
 #[test]
 pub fn snapshot_with_additional_extensions() {
+  let _snapshot_lock = super::snapshot_test_lock();
   #[op2]
   #[string]
   fn op_before() -> String {
@@ -465,6 +474,7 @@ pub fn snapshot_with_additional_extensions() {
 
 #[test]
 fn lazy_loaded_esm_not_snapshotted_but_metadata_survives() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let snapshot = {
     deno_core::extension!(
       test_ext,
