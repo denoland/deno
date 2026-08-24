@@ -294,6 +294,7 @@ async fn run_bundle_for_compile(
     bundle_flags.clone(),
     compile_flags.source_file.clone(),
     compile_flags.minify,
+    compile_flags.keep_names,
   )
   .await?;
   let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
@@ -319,6 +320,7 @@ async fn run_bundle_for_compile(
       bundle_flags.clone(),
       worker_abs.display().to_string(),
       compile_flags.minify,
+      compile_flags.keep_names,
     )
     .await?;
     let worker_rewrite =
@@ -373,13 +375,14 @@ async fn bundle_one_for_compile(
   flags: Arc<Flags>,
   entrypoint: String,
   minify: bool,
+  keep_names: bool,
 ) -> Result<Vec<u8>, AnyError> {
   // Always leave `.node` files external. esbuild has no loader for them
   // and would error if it tried to inline a native binary; with this
   // pattern the require() calls are emitted verbatim and resolved at
   // runtime against the embedded VFS by the native addon loader.
   let external = vec!["*.node".to_string()];
-  super::bundle::bundle_for_compile(flags, entrypoint, external, minify)
+  super::bundle::bundle_for_compile(flags, entrypoint, external, minify, keep_names)
     .boxed_local()
     .await
 }
@@ -1396,6 +1399,7 @@ mod test {
         bundle: false,
         app_name: None,
         minify: false,
+        keep_names: false,
         exclude_unused_npm: false,
         engine: Default::default(),
       },
@@ -1427,6 +1431,7 @@ mod test {
         bundle: false,
         app_name: None,
         minify: false,
+        keep_names: false,
         exclude_unused_npm: false,
         engine: Default::default(),
       },
@@ -1465,6 +1470,7 @@ mod test {
         bundle: false,
         app_name: None,
         minify: false,
+        keep_names: false,
         exclude_unused_npm: false,
         engine: Default::default(),
       },
