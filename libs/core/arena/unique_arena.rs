@@ -191,6 +191,16 @@ impl<T> ArenaUnique<T> {
     }
   }
 
+  /// The number of slots in this arena that [`reserve_space`](Self::reserve_space)
+  /// can still hand out without falling back to the system allocator.
+  ///
+  /// Note that this only tracks the arena's own block: allocations made by
+  /// [`allocate`](Self::allocate) once the arena is full come from the system
+  /// allocator and are not counted here.
+  pub fn remaining(&self) -> usize {
+    unsafe { (*self.ptr.as_ptr()).raw_arena.remaining() }
+  }
+
   #[cold]
   #[inline(never)]
   unsafe fn drop_data(data: NonNull<ArenaUniqueData<T>>) {
