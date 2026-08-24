@@ -1386,6 +1386,52 @@ extern "C" fn test_uv_poll_dispatches_hangup_only(
   null_mut()
 }
 
+#[cfg(target_os = "linux")]
+extern "C" fn test_uv_poll_reports_disconnect(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let mut fds = [0; 2];
+    assert_eq!(
+      libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr(),),
+      0
+    );
+    let poll_socket = OwnedFd::from_raw_fd(fds[0]);
+    let peer_socket = OwnedFd::from_raw_fd(fds[1]);
+    let state = new_poll_test_with_fds(
+      env,
+      poll_callback_arg(env, info),
+      poll_socket,
+      peer_socket,
+    );
+    let disconnect = libuv_sys_lite::uv_poll_event::UV_DISCONNECT.0 as i32;
+    poll_test_expect(state, 0, disconnect, true, false);
+    poll_test_start(state, disconnect, Some(poll_expected_cb));
+
+    // Linux reports POLLRDHUP when the peer closes its write side. Other Unix
+    // poll backends do not guarantee an equivalent raw event, so the JavaScript
+    // test runs this production-path assertion on Linux only.
+    assert_eq!(
+      libc::shutdown((*state).other_fd.as_raw_fd(), libc::SHUT_WR),
+      0
+    );
+  }
+  null_mut()
+}
+
+#[cfg(not(target_os = "linux"))]
+extern "C" fn test_uv_poll_reports_disconnect(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut undefined = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
 #[cfg(unix)]
 extern "C" fn test_uv_poll_invalid_fd_reports_ebadf(
   env: napi_env,
@@ -1819,6 +1865,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_uv_poll_dispatches_hangup_only",
       test_uv_poll_dispatches_hangup_only
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_reports_disconnect",
+      test_uv_poll_reports_disconnect
     ),
     napi_new_property!(
       env,

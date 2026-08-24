@@ -173,6 +173,17 @@ uvPollTest("napi uv poll dispatches hangup-only readiness", (done) => {
   uv.test_uv_poll_dispatches_hangup_only(done);
 });
 
+Deno.test({
+  name: "napi uv poll reports peer disconnect",
+  ignore: Deno.build.os !== "linux",
+  async fn() {
+    const passed = await new Promise((resolve) => {
+      uv.test_uv_poll_reports_disconnect(resolve);
+    });
+    assertEquals(passed, true);
+  },
+});
+
 uvPollTest("napi uv poll reports invalid fd error", (done) => {
   uv.test_uv_poll_invalid_fd_reports_ebadf(done);
 });
