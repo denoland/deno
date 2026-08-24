@@ -330,12 +330,35 @@ impl ModuleMap {
     self.data.borrow().get_handle(id)
   }
 
+  /// For each module id, whether its V8 module has already been instantiated
+  /// (or evaluated). Used to decide which import edges are dead weight in the
+  /// snapshot — see [`ModuleMapData::serialize_for_snapshotting`].
+  pub(crate) fn instantiated_flags(
+    &self,
+    scope: &mut v8::PinScope,
+  ) -> Vec<bool> {
+    self
+      .data
+      .borrow()
+      .handles
+      .iter()
+      .map(|handle| {
+        let module = v8::Local::new(scope, handle);
+        !matches!(
+          module.get_status(),
+          v8::ModuleStatus::Uninstantiated | v8::ModuleStatus::Instantiating
+        )
+      })
+      .collect()
+  }
+
   pub(crate) fn serialize_for_snapshotting(
     &self,
     data_store: &mut SnapshotStoreDataStore,
+    instantiated: &[bool],
   ) -> ModuleMapSnapshotData {
     let data = std::mem::take(&mut *self.data.borrow_mut());
-    data.serialize_for_snapshotting(data_store)
+    data.serialize_for_snapshotting(data_store, instantiated)
   }
 
   #[cfg(test)]
@@ -352,8 +375,15 @@ impl ModuleMap {
   }
 
   #[cfg(test)]
-  pub fn assert_module_map(&self, modules: &Vec<super::ModuleInfo>) {
-    self.data.borrow().assert_module_map(modules);
+  pub fn assert_module_map(
+    &self,
+    modules: &Vec<super::ModuleInfo>,
+    restored_from_snapshot: usize,
+  ) {
+    self
+      .data
+      .borrow()
+      .assert_module_map(modules, restored_from_snapshot);
   }
 
   #[cfg(all(test, not(miri)))]
