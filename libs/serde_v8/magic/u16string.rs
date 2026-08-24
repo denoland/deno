@@ -10,9 +10,7 @@ use super::transl8::impl_magic;
 use crate::Error;
 
 #[derive(PartialEq, Eq, Clone, Debug, Default)]
-#[deprecated(
-  note = "use String or Vec<u16> directly; slated for removal"
-)]
+#[deprecated(note = "use String or Vec<u16> directly; slated for removal")]
 pub struct U16String(Vec<u16>);
 impl_magic!(U16String);
 

@@ -163,4 +163,3 @@ fn magic_byte_string() {
     assert!(eq.is_true());
   })
 }
-

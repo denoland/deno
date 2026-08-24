@@ -578,11 +578,8 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
         .get_index(self.scope, self.pos)
         .ok_or(Error::V8Exception)?;
       self.pos += 1;
-      let mut deserializer = Deserializer::with_depth(
-        self.scope,
-        v8_key,
-        self.remaining_depth,
-      );
+      let mut deserializer =
+        Deserializer::with_depth(self.scope, v8_key, self.remaining_depth);
       let k = seed.deserialize(&mut deserializer)?;
       Ok(Some(k))
     } else {
@@ -719,11 +716,8 @@ impl<'de, 'b, 's, 'i> de::EnumAccess<'de> for EnumAccess<'b, 's, 'i> {
     seed: V,
   ) -> Result<(V::Value, Self::Variant)> {
     let seed = {
-      let mut dtag = Deserializer::with_depth(
-        self.scope,
-        self.tag,
-        self.remaining_depth,
-      );
+      let mut dtag =
+        Deserializer::with_depth(self.scope, self.tag, self.remaining_depth);
       seed.deserialize(&mut dtag)
     };
     let dpayload = VariantDeserializer::<'b, 's, 'i> {
@@ -746,11 +740,8 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
   type Error = Error;
 
   fn unit_variant(self) -> Result<()> {
-    let mut d = Deserializer::with_depth(
-      self.scope,
-      self.value,
-      self.remaining_depth,
-    );
+    let mut d =
+      Deserializer::with_depth(self.scope, self.value, self.remaining_depth);
     de::Deserialize::deserialize(&mut d)
   }
 
@@ -758,11 +749,8 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
     self,
     seed: T,
   ) -> Result<T::Value> {
-    let mut d = Deserializer::with_depth(
-      self.scope,
-      self.value,
-      self.remaining_depth,
-    );
+    let mut d =
+      Deserializer::with_depth(self.scope, self.value, self.remaining_depth);
     seed.deserialize(&mut d)
   }
 
@@ -771,11 +759,8 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
     len: usize,
     visitor: V,
   ) -> Result<V::Value> {
-    let mut d = Deserializer::with_depth(
-      self.scope,
-      self.value,
-      self.remaining_depth,
-    );
+    let mut d =
+      Deserializer::with_depth(self.scope, self.value, self.remaining_depth);
     de::Deserializer::deserialize_tuple(&mut d, len, visitor)
   }
 
@@ -784,11 +769,8 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
     fields: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value> {
-    let mut d = Deserializer::with_depth(
-      self.scope,
-      self.value,
-      self.remaining_depth,
-    );
+    let mut d =
+      Deserializer::with_depth(self.scope, self.value, self.remaining_depth);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
   }
 }
