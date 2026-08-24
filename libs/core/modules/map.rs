@@ -35,6 +35,7 @@ use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
 use crate::ascii_str;
 use crate::error::CoreErrorKind;
+#[cfg(debug_assertions)]
 use crate::error::JsError;
 use crate::error::exception_to_err_result;
 use crate::modules::ImportAttributesKind;
