@@ -783,9 +783,9 @@ pub(crate) struct ModuleInfo {
   pub name: ModuleName,
   pub requests: Vec<ModuleRequest>,
   pub module_type: ModuleType,
-  /// Whether `name` is an internal (`ext:`/`node:`) specifier. Computed once
-  /// at registration so the instantiate path doesn't have to clone the name
-  /// and re-`Url::parse` it on every module.
+  /// Whether `name` is an internal (`ext:`/`node:`/`checkin:`) specifier.
+  /// Computed once at registration so the instantiate path doesn't have to
+  /// clone the name and re-`Url::parse` it on every module.
   pub is_internal: bool,
 }
 
