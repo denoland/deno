@@ -33,23 +33,83 @@ pub enum SourceMapApplication {
 
 pub type SourceMapData = Cow<'static, [u8]>;
 
+/// A tiny bounded cache with least-recently-used eviction.
+///
+/// The source-map caches used to be unbounded `HashMap`s that also memoized
+/// *negative* lookups, so a long-lived process throwing errors from many
+/// distinct files grew them forever. Eviction is a linear scan for the oldest
+/// entry, which is fine at these capacities and only runs when full.
+struct LruCache<K, V> {
+  entries: HashMap<K, (V, u64)>,
+  capacity: usize,
+  clock: u64,
+}
+
+impl<K: std::hash::Hash + Eq + Clone, V> LruCache<K, V> {
+  fn new(capacity: usize) -> Self {
+    debug_assert!(capacity > 0);
+    Self {
+      entries: HashMap::with_capacity(capacity.min(16)),
+      capacity,
+      clock: 0,
+    }
+  }
+
+  fn get<Q>(&mut self, key: &Q) -> Option<&V>
+  where
+    K: std::borrow::Borrow<Q>,
+    Q: std::hash::Hash + Eq + ?Sized,
+  {
+    self.clock += 1;
+    let tick = self.clock;
+    let entry = self.entries.get_mut(key)?;
+    entry.1 = tick;
+    Some(&entry.0)
+  }
+
+  fn insert(&mut self, key: K, value: V) {
+    self.clock += 1;
+    if self.entries.len() >= self.capacity && !self.entries.contains_key(&key) {
+      let oldest = self
+        .entries
+        .iter()
+        .min_by_key(|(_, (_, tick))| *tick)
+        .map(|(k, _)| k.clone());
+      if let Some(oldest) = oldest {
+        self.entries.remove(&oldest);
+      }
+    }
+    self.entries.insert(key, (value, self.clock));
+  }
+}
+
+/// How many decoded source maps to keep. Stack traces walk a handful of
+/// distinct files, so this is generous.
+const MAX_CACHED_SOURCE_MAPS: usize = 64;
+/// How many `(file, line)` source lines to keep.
+const MAX_CACHED_SOURCE_LINES: usize = 256;
+
 pub struct SourceMapper {
-  // TODO(bartlomieju): I feel like these two should be cleared when Isolate
-  // reaches "near heap limit" to free up some space. This needs to be confirmed though.
-  maps: HashMap<String, Option<Arc<SourceMap>>>,
-  source_lines: HashMap<(String, i64), Option<String>>,
+  /// Decoded source maps, bounded and positive-only: a file with no source
+  /// map is not memoized, so a pathological error loop re-asks the loader
+  /// instead of pinning an entry per file forever.
+  maps: LruCache<String, Arc<SourceMap>>,
+  source_lines: LruCache<(String, i64), String>,
 
   loader: Rc<dyn ModuleLoader>,
 
   ext_source_maps: HashMap<ModuleName, SourceMapData>,
+  /// Source map URL as reported by V8 at compile time, resolved against the
+  /// module URL. May be a `data:` URL carrying the map inline — it is kept
+  /// *undecoded* here and only parsed if a stack trace actually needs it.
   source_map_urls: HashMap<ModuleName, String>,
 }
 
 impl SourceMapper {
   pub fn new(loader: Rc<dyn ModuleLoader>) -> Self {
     Self {
-      maps: Default::default(),
-      source_lines: Default::default(),
+      maps: LruCache::new(MAX_CACHED_SOURCE_MAPS),
+      source_lines: LruCache::new(MAX_CACHED_SOURCE_LINES),
       ext_source_maps: Default::default(),
       source_map_urls: Default::default(),
       loader,
@@ -71,23 +131,62 @@ impl SourceMapper {
     std::mem::take(&mut self.ext_source_maps)
   }
 
-  /// Add a source map extracted from V8 for a module.
-  pub(crate) fn add_source_map(
-    &mut self,
-    module_name: ModuleName,
-    source_map: SourceMap,
-  ) {
-    self
-      .maps
-      .insert(module_name.to_string(), Some(Arc::new(source_map)));
-  }
-
+  /// Records the source map URL V8 reported for a module. This is either an
+  /// external URL (already resolved against the module URL) or an inline
+  /// `data:` URL. Either way it is stored verbatim and decoded lazily — most
+  /// modules never appear in a stack trace, and decoding eagerly used to
+  /// keep a fully parsed [`SourceMap`] alive for every compiled module.
   pub(crate) fn add_source_map_url(
     &mut self,
     module_name: ModuleName,
     source_map_url: String,
   ) {
     self.source_map_urls.insert(module_name, source_map_url);
+  }
+
+  /// Returns the decoded source map for `file_name`, decoding (and caching)
+  /// it on first use. Misses are deliberately *not* cached.
+  fn source_map_for(&mut self, file_name: &str) -> Option<Arc<SourceMap>> {
+    if let Some(source_map) = self.maps.get(file_name) {
+      return Some(source_map.clone());
+    }
+    let source_map = Arc::new(self.decode_source_map(file_name)?);
+    self.maps.insert(file_name.to_owned(), source_map.clone());
+    Some(source_map)
+  }
+
+  fn decode_source_map(&self, file_name: &str) -> Option<SourceMap> {
+    // Inline `ext:` source maps.
+    if let Some(data) = self.ext_source_maps.get(file_name)
+      && let Ok(source_map) = SourceMap::from_slice(data)
+    {
+      return Some(source_map);
+    }
+
+    // The URL V8 reported at compile time: either inline data or external.
+    if let Some(source_map_url) = self.source_map_urls.get(file_name) {
+      if source_map_url.starts_with("data:") {
+        if let Ok(sourcemap::DecodedMap::Regular(source_map)) =
+          sourcemap::decode_data_url(source_map_url)
+        {
+          return Some(source_map);
+        }
+      } else if let Some(data) =
+        self.loader.load_external_source_map(source_map_url)
+        && let Ok(source_map) = SourceMap::from_slice(&data)
+      {
+        return Some(source_map);
+      }
+    }
+
+    // The loader's own inline source maps.
+    if let Some(data) = self.loader.get_source_map(file_name)
+      && let Ok(source_map) = SourceMap::from_slice(&data)
+    {
+      return Some(source_map);
+    }
+
+    None
   }
 
   /// Apply a source map to the passed location. If there is no source map for
@@ -105,33 +204,7 @@ impl SourceMapper {
     let line_number = line_number - 1;
     let column_number = column_number - 1;
 
-    let maybe_source_map =
-      self.maps.entry(file_name.to_owned()).or_insert_with(|| {
-        None
-          // Try ext: source maps (inline)
-          .or_else(|| {
-            SourceMap::from_slice(self.ext_source_maps.get(file_name)?)
-              .ok()
-              .map(Arc::new)
-          })
-          // Try external source maps via ModuleLoader
-          .or_else(|| {
-            // Check if we have an external source map URL for this file
-            let source_map_url = self.source_map_urls.get(file_name)?;
-            // Request the external source map from the loader
-            let source_map_data =
-              self.loader.load_external_source_map(source_map_url)?;
-            SourceMap::from_slice(&source_map_data).ok().map(Arc::new)
-          })
-          // Try loader's inline source maps
-          .or_else(|| {
-            SourceMap::from_slice(&self.loader.get_source_map(file_name)?)
-              .ok()
-              .map(Arc::new)
-          })
-      });
-
-    let Some(source_map) = maybe_source_map.as_ref() else {
+    let Some(source_map) = self.source_map_for(file_name) else {
       return SourceMapApplication::Unchanged;
     };
 
@@ -194,23 +267,18 @@ impl SourceMapper {
     file_name: &str,
     line_number: i64,
   ) -> Option<String> {
-    if let Some(maybe_source_line) =
-      self.source_lines.get(&(file_name.to_string(), line_number))
-    {
-      return maybe_source_line.clone();
+    let key = (file_name.to_string(), line_number);
+    if let Some(source_line) = self.source_lines.get(&key) {
+      return Some(source_line.clone());
     }
 
-    let maybe_source_line = self
+    let source_line = self
       .loader
       .get_source_mapped_source_line(file_name, (line_number - 1) as usize)
-      .filter(|s| s.len() <= Self::MAX_SOURCE_LINE_LENGTH);
+      .filter(|s| s.len() <= Self::MAX_SOURCE_LINE_LENGTH)?;
 
-    // Cache and return
-    self.source_lines.insert(
-      (file_name.to_string(), line_number),
-      maybe_source_line.clone(),
-    );
-    maybe_source_line
+    self.source_lines.insert(key, source_line.clone());
+    Some(source_line)
   }
 }
 

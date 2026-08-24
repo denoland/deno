@@ -450,25 +450,27 @@ impl RecursiveModuleLoad {
       // resolve bare specifiers via the package's `package.json`. Using the
       // original specifier (e.g. `npm:foo@^1`) here strands intra-package
       // imports without resolution context.
-      let canonical_specifier = self
-        .module_map_rc
-        .get_name_by_id(module_id)
-        .and_then(|n| ModuleSpecifier::parse(&n).ok())
-        .unwrap_or_else(|| module_reference.specifier.clone());
-      let referrer = &canonical_specifier;
-      let imports = self
-        .module_map_rc
-        .get_requested_modules(module_id)
-        .unwrap()
-        .clone();
-      for module_request in imports {
+      let module_map_rc = self.module_map_rc.clone();
+      let canonical_specifier = module_map_rc.canonical_specifier_if_different(
+        module_id,
+        &module_reference.specifier,
+      );
+      let referrer = canonical_specifier
+        .as_ref()
+        .unwrap_or(&module_reference.specifier);
+      // Borrowed for the whole walk: the requests of an already-registered
+      // module used to be cloned wholesale here (every `Url` + specifier
+      // string), even though only the not-yet-registered edges need an owned
+      // copy. Nothing in this loop mutates the module map.
+      let imports = module_map_rc.get_requested_modules(module_id).unwrap();
+      for module_request in imports.iter() {
         if !self.visited.contains(&module_request.reference)
           && !self
             .visited_as_alias
             .borrow()
             .contains(module_request.reference.specifier.as_str())
         {
-          match self.module_map_rc.get_id(
+          match module_map_rc.get_id(
             module_request.reference.specifier.as_str(),
             &module_request.reference.requested_module_type,
           ) {
@@ -522,6 +524,26 @@ impl RecursiveModuleLoad {
                     None,
                   ))
                 } else if module_map_rc
+                  .has_lazy_esm_source(resolved_specifier.as_str())
+                  && module_map_rc
+                    .get_id(
+                      resolved_specifier.as_str(),
+                      &request.reference.requested_module_type,
+                    )
+                    .is_some()
+                {
+                  // A concurrent load registered this lazy module while this
+                  // future was queued, which frees the source (see
+                  // `ModuleMapData::create_module_info`). Hand back a sentinel
+                  // source: `new_module_with_pending` dedups on the already
+                  // registered module before it ever looks at the code.
+                  Ok(ModuleSource::new(
+                    crate::ModuleType::JavaScript,
+                    ModuleSourceCode::String("".to_string().into()),
+                    &resolved_specifier,
+                    None,
+                  ))
+                } else if module_map_rc
                   .has_synthetic_esm_module(resolved_specifier.as_str())
                   && !loader
                     .should_load_synthetic_esm(resolved_specifier.as_str())
@@ -563,7 +585,7 @@ impl RecursiveModuleLoad {
               self.pending.push(fut.boxed_local());
             }
           }
-          self.visited.insert(module_request.reference);
+          self.visited.insert(module_request.reference.clone());
         }
       }
     }

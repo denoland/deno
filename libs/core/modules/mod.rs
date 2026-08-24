@@ -321,6 +321,13 @@ pub(crate) fn parse_import_attributes<'s, 'i>(
   attributes: v8::Local<'s, v8::FixedArray>,
   kind: ImportAttributesKind,
 ) -> HashMap<String, String> {
+  // The overwhelmingly common case: an import with no attributes at all.
+  // Every static import edge goes through here (twice — once at compile and
+  // once in `module_resolve_callback`), so skip the work entirely.
+  if attributes.length() == 0 {
+    return HashMap::default();
+  }
+
   let mut assertions: HashMap<String, String> = HashMap::default();
 
   let assertions_per_line = match kind {
@@ -353,6 +360,9 @@ pub(crate) fn parse_import_attributes<'s, 'i>(
 pub(crate) fn get_requested_module_type_from_attributes(
   attributes: &HashMap<String, String>,
 ) -> RequestedModuleType {
+  if attributes.is_empty() {
+    return RequestedModuleType::None;
+  }
   let Some(ty) = attributes.get("type") else {
     return RequestedModuleType::None;
   };
@@ -773,6 +783,10 @@ pub(crate) struct ModuleInfo {
   pub name: ModuleName,
   pub requests: Vec<ModuleRequest>,
   pub module_type: ModuleType,
+  /// Whether `name` is an internal (`ext:`/`node:`) specifier. Computed once
+  /// at registration so the instantiate path doesn't have to clone the name
+  /// and re-`Url::parse` it on every module.
+  pub is_internal: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
