@@ -265,7 +265,7 @@ monch = "=0.6.0"
 msi = "0.10.0"
 netif = "0.1.6"
 notify = "8.2.0"
-num-bigint = { version = "0.4", features = ["rand"] }
+num-bigint = "0.4"
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.19"
