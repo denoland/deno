@@ -36,6 +36,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+#[allow(deprecated)]
 use deno_core::StringOrBuffer;
 use deno_core::convert::ByteString;
 use deno_core::futures::FutureExt;
@@ -1273,6 +1274,7 @@ fn req_headers(
   headers
 }
 
+#[allow(deprecated)]
 #[op2]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
@@ -1368,6 +1370,7 @@ fn op_http_headers(
   }
 }
 
+#[allow(deprecated)]
 fn http_response(
   data: Option<StringOrBuffer>,
   compressing: bool,
