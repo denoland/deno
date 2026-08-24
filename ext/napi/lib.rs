@@ -39,6 +39,8 @@ use std::path::Path;
 use std::path::PathBuf;
 pub use std::ptr;
 use std::rc::Rc;
+#[cfg(unix)]
+use std::sync::Arc;
 use std::thread_local;
 
 use deno_core::ExternalOpsTracker;
@@ -495,6 +497,13 @@ impl Drop for NapiState {
       crate::js_native_api::detach_external_string_env(*env_ptr);
     }
 
+    // Suppress queued core-poll callbacks before addon cleanup hooks can stop
+    // or close their ABI handles. The worker knows only the owner token.
+    #[cfg(unix)]
+    for env_ptr in &self.env_ptrs {
+      unsafe { (*(*env_ptr)).poll_owner.invalidate() };
+    }
+
     let hooks = {
       let h = self.env_cleanup_hooks.borrow_mut();
       h.clone()
@@ -620,13 +629,12 @@ pub struct Env {
   pub async_hooks_after: v8::Global<v8::Function>,
   pub async_hooks_destroy: v8::Global<v8::Function>,
   pub next_async_id: i64,
-  // Models libuv's uv__fd_exists registry by recording which handle has an
-  // active I/O watcher for each fd. Only poll handles currently participate
-  // here, while libuv uses the registry for other I/O watcher types as well.
-  // Addons must stop or close a poll handle before closing its fd; otherwise a
-  // reused fd number can remain registered and cause an unexpected UV_EEXIST.
   #[cfg(unix)]
-  fd_watchers: HashMap<i32, usize>,
+  pub(crate) uv_loop: *mut deno_core::uv_compat::uv_loop_t,
+  #[cfg(unix)]
+  pub(crate) uv_loop_liveness: Arc<deno_core::uv_compat::UvLoopLiveness>,
+  #[cfg(unix)]
+  pub(crate) poll_owner: deno_core::uv_compat::UvPollOwner,
 }
 
 unsafe impl Send for Env {}
@@ -649,6 +657,9 @@ impl Env {
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
     ref_tracker: Rc<RefCell<RefTracker>>,
     external_ops_tracker: ExternalOpsTracker,
+    #[cfg(unix)] uv_loop: *mut deno_core::uv_compat::uv_loop_t,
+    #[cfg(unix)] uv_loop_liveness: Arc<deno_core::uv_compat::UvLoopLiveness>,
+    #[cfg(unix)] poll_owner: deno_core::uv_compat::UvPollOwner,
   ) -> Self {
     Self {
       isolate_ptr,
@@ -662,7 +673,11 @@ impl Env {
       async_hooks_destroy,
       next_async_id: 1,
       #[cfg(unix)]
-      fd_watchers: HashMap::new(),
+      uv_loop,
+      #[cfg(unix)]
+      uv_loop_liveness,
+      #[cfg(unix)]
+      poll_owner,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       open_callback_scopes: 0,
@@ -878,35 +893,6 @@ fn drain_gc_finalizers(
       report_finalizer_exception(tc, exception);
     }
   }
-
-  #[cfg(unix)]
-  pub(crate) fn get_fd_watcher(&self, fd: i32) -> Option<usize> {
-    self.fd_watchers.get(&fd).copied()
-  }
-
-  // Registration is idempotent for the same watcher and refuses to replace a
-  // different watcher already registered for the fd.
-  #[cfg(unix)]
-  pub(crate) fn register_fd_watcher(
-    &mut self,
-    fd: i32,
-    watcher_addr: usize,
-  ) -> bool {
-    match self.fd_watchers.get(&fd) {
-      Some(current) => *current == watcher_addr,
-      None => {
-        self.fd_watchers.insert(fd, watcher_addr);
-        true
-      }
-    }
-  }
-
-  #[cfg(unix)]
-  pub(crate) fn unregister_fd_watcher(&mut self, fd: i32, watcher_addr: usize) {
-    if self.fd_watchers.get(&fd) == Some(&watcher_addr) {
-      self.fd_watchers.remove(&fd);
-    }
-  }
 }
 
 fn report_finalizer_exception(
@@ -992,6 +978,19 @@ fn op_napi_open<'scope>(
     )
   };
 
+  #[cfg(unix)]
+  let (uv_loop, uv_loop_liveness, poll_owner) = {
+    let op_state = op_state.borrow();
+    let uv_loop = &**op_state.borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      as *const deno_core::uv_compat::UvLoop
+      as *mut deno_core::uv_compat::uv_loop_t;
+    (
+      uv_loop,
+      unsafe { deno_core::uv_compat::uv_loop_liveness(uv_loop) },
+      unsafe { deno_core::uv_compat::new_poll_owner(uv_loop) },
+    )
+  };
+
   // Register the uv_compat loop so that our libuv-ABI `uv_timer_*`
   // polyfills bridge onto Deno's event loop instead of degrading to
   // no-ops. The loop pointer is opaque to addons — they only pass it
@@ -1061,6 +1060,12 @@ fn op_napi_open<'scope>(
     cleanup_hooks,
     ref_tracker,
     external_ops_tracker,
+    #[cfg(unix)]
+    uv_loop,
+    #[cfg(unix)]
+    uv_loop_liveness,
+    #[cfg(unix)]
+    poll_owner,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
   // Track the EnvShared pointer so we can call instance data finalize
