@@ -460,12 +460,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "az"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
-
-[[package]]
 name = "backhand"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2246,7 +2240,6 @@ name = "deno_core"
 version = "0.410.0"
 dependencies = [
  "anyhow",
- "az",
  "base64 0.22.1",
  "bencher",
  "bincode",
@@ -2254,7 +2247,6 @@ dependencies = [
  "bit-vec 0.8.0",
  "boxed_error",
  "bytes",
- "capacity_builder",
  "cooked-waker",
  "criterion",
  "deno_ast",
