@@ -971,7 +971,7 @@ unsafe extern "C" fn uv_poll_init_socket(
       // liveness is invalidated, teardown no longer dispatches registry
       // pointers.
       let _ = Box::into_raw(bridge_box);
-      return 0;
+      0
     }
 
     #[cfg(windows)]
@@ -1044,7 +1044,7 @@ unsafe extern "C" fn uv_poll_start(
           (&mut *(*poll).r#loop).external_ops_tracker.ref_op();
         }
       }
-      return 0;
+      0
     }
 
     #[cfg(windows)]
@@ -1128,7 +1128,7 @@ unsafe extern "C" fn uv_poll_stop(poll: *mut uv_poll_t) -> c_int {
         0
       };
       napi_poll_mark_stopped(poll);
-      return result;
+      result
     }
     #[cfg(windows)]
     {
@@ -1953,7 +1953,13 @@ mod tests {
     let core_loop = runtime
       .uv_loop_ptr()
       .expect("N-API-enabled JsRuntime should have a uv loop");
-    let (sender, cleanup_hooks, ref_tracker, external_ops_tracker) = {
+    let (
+      sender,
+      gc_finalizer_spawner,
+      cleanup_hooks,
+      ref_tracker,
+      external_ops_tracker,
+    ) = {
       let op_state = runtime.op_state();
       let op_state = op_state.borrow();
       let napi_state = op_state.borrow::<NapiState>();
@@ -1961,6 +1967,7 @@ mod tests {
         op_state
           .borrow::<deno_core::V8CrossThreadTaskSpawner>()
           .clone(),
+        op_state.borrow::<deno_core::V8TaskSpawner>().clone(),
         napi_state.env_cleanup_hooks.clone(),
         napi_state.ref_tracker.clone(),
         op_state.external_ops_tracker.clone(),
@@ -1994,6 +2001,7 @@ mod tests {
         v8::Global::new(scope, callback),
         v8::Global::new(scope, callback),
         sender,
+        gc_finalizer_spawner,
         cleanup_hooks,
         ref_tracker,
         external_ops_tracker,

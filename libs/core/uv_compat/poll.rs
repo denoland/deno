@@ -960,6 +960,7 @@ mod tests {
       .expect("JsRuntime should have a uv loop")
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
   async fn poll_callback_back_pressure_is_handle_local() {
     let (first_read, first_write) = pipe();
@@ -1040,6 +1041,7 @@ mod tests {
     };
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
   async fn poll_restart_invalidates_queued_generation() {
     let (read_fd, write_fd) = pipe();
@@ -1079,6 +1081,7 @@ mod tests {
     unsafe { uv_poll_close(handle.as_mut_ptr()) };
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
   async fn poll_stop_suppresses_queued_callback() {
     let (read_fd, write_fd) = pipe();
@@ -1116,6 +1119,7 @@ mod tests {
     unsafe { uv_poll_close(handle.as_mut_ptr()) };
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
   async fn poll_owner_invalidation_wakes_a_pending_loop() {
     let (read_fd, _write_fd) = pipe();
@@ -1159,6 +1163,7 @@ mod tests {
     unsafe { uv_poll_close(handle.as_mut_ptr()) };
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
   async fn poll_start_rejects_owner_invalidated_at_upsert_boundary() {
     let (read_fd, _write_fd) = pipe();
@@ -1211,6 +1216,7 @@ mod tests {
     invalidator.join().expect("invalidation thread panicked");
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
   async fn poll_permanent_failure_after_callback_releases_pending_handle() {
     let (read_fd, _write_fd) = pipe();
@@ -1293,6 +1299,7 @@ mod tests {
     unsafe { uv_poll_close(handle.as_mut_ptr()) };
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn poll_owner_invalidation_does_not_blacklist_reused_id() {
     let (first_read, _first_write) = pipe();
@@ -1334,6 +1341,7 @@ mod tests {
     driver.shutdown();
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn one_worker_for_many_handles() {
     const HANDLE_COUNT: usize = 64;
@@ -1383,6 +1391,7 @@ mod tests {
     drop(runtime);
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn control_interrupts_indefinite_poll() {
     let (read_a, _write_a) = pipe();
@@ -1416,6 +1425,7 @@ mod tests {
     driver.shutdown();
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn ready_watch_waits_for_rearm() {
     let (read_fd, write_fd) = pipe();
@@ -1434,6 +1444,7 @@ mod tests {
     driver.shutdown();
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn stop_discards_old_generation() {
     let (old_read, old_write) = pipe();
@@ -1486,6 +1497,7 @@ mod tests {
     driver.shutdown();
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn permanent_poll_error_fails_all_watches_once() {
     let (read_a, _write_a) = pipe();
@@ -1536,6 +1548,7 @@ mod tests {
     driver.shutdown();
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn upsert_reports_failure_if_poll_fails_before_command_enqueue() {
     let (read_fd, _write_fd) = pipe();
@@ -1582,6 +1595,7 @@ mod tests {
     );
   }
 
+  #[cfg(not(miri))] // needs I/O
   #[test]
   fn shutdown_joins_worker() {
     let (read_fd, _write_fd) = pipe();
