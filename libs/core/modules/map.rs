@@ -67,11 +67,10 @@ mod ext_script;
 mod tracked;
 mod wasm;
 
-pub use ext_script::wrap_lazy_ext_script;
-
 use dynamic::DynImportModEvaluate;
 use dynamic::DynImportState;
 use dynamic::PrepareLoadFuture;
+pub use ext_script::wrap_lazy_ext_script;
 use tracked::TrackedFutures;
 use tracked::TrackedVec;
 
