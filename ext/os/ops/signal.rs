@@ -43,6 +43,12 @@ impl Resource for SignalStreamResource {
   }
 }
 
+impl Drop for SignalStreamResource {
+  fn drop(&mut self) {
+    deno_signals::unregister(self.signo, self.id);
+  }
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_signal_bind(

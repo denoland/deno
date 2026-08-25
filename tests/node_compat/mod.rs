@@ -157,9 +157,18 @@ fn main() {
     return;
   }
 
-  // Partition into sequential and parallel tests
-  let (sequential_category, parallel_category) =
-    category.partition(|test| test.data.test_path.starts_with("sequential/"));
+  // Partition into sequential and parallel tests.
+  //
+  // `pummel/` is upstream Node's stress suite: several of its tests allocate
+  // multi-gigabyte buffers or spin the CPU deliberately. Running a handful of
+  // them concurrently starves a CI runner badly enough that the machine stops
+  // responding, so they get the same one-at-a-time treatment as `sequential/`.
+  const SEQUENTIAL_TEST_DIRS: &[&str] = &["sequential/", "pummel/"];
+  let (sequential_category, parallel_category) = category.partition(|test| {
+    SEQUENTIAL_TEST_DIRS
+      .iter()
+      .any(|dir| test.data.test_path.starts_with(dir))
+  });
 
   let parallelism = Parallelism::default();
   let flaky_test_tracker = Arc::new(FlakyTestTracker::default());

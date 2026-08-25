@@ -21,7 +21,6 @@ deno_core_testing.workspace = true
 # TODO(bartlomieju): dedup with workspace dependencies
 [dependencies]
 anyhow.workspace = true
-clap = "4.5.32"
 deno_core.workspace = true
 deno_core_testing.workspace = true
 fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] }

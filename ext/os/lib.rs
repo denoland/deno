@@ -6,6 +6,9 @@ use std::env;
 use std::ffi::OsString;
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 
@@ -160,7 +163,95 @@ fn op_exec_path() -> Result<String, OsError> {
     .map_err(OsError::InvalidUtf8)
 }
 
-fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
+static PROCESS_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
+
+/// A guard for coordinated runtime access to the process environment.
+///
+/// Runtime environment ops, Node dotenv loading, and watched dotenv reloads
+/// use this guard. It cannot synchronize other native code that accesses the
+/// process environment directly.
+pub struct ProcessEnvGuard {
+  _guard: MutexGuard<'static, ()>,
+}
+
+impl ProcessEnvGuard {
+  pub fn lock() -> Self {
+    Self {
+      _guard: PROCESS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner),
+    }
+  }
+
+  pub fn var(&self, key: &str) -> Result<String, env::VarError> {
+    env::var(key)
+  }
+
+  pub fn var_os(&self, key: impl AsRef<std::ffi::OsStr>) -> Option<OsString> {
+    env::var_os(key)
+  }
+
+  pub fn vars_os(&self) -> Vec<(OsString, OsString)> {
+    env::vars_os().collect()
+  }
+
+  pub fn set_var(
+    &self,
+    key: impl AsRef<std::ffi::OsStr>,
+    value: impl AsRef<std::ffi::OsStr>,
+  ) {
+    let key = key.as_ref();
+    // SAFETY: Deno exposes process environment mutation for compatibility.
+    // This guard coordinates the runtime mutation paths with the native
+    // timezone refresh below, but cannot coordinate arbitrary native readers.
+    unsafe {
+      env::set_var(key, value);
+    }
+    if key == "TZ" {
+      refresh_timezone_from_process_env();
+    }
+  }
+
+  pub fn set_var_and_notify_timezone(
+    &self,
+    key: impl AsRef<std::ffi::OsStr>,
+    value: impl AsRef<std::ffi::OsStr>,
+    notify: impl FnOnce(),
+  ) {
+    let key = key.as_ref();
+    self.set_var(key, value);
+    if key == "TZ" {
+      notify();
+    }
+  }
+
+  pub fn remove_var(&self, key: impl AsRef<std::ffi::OsStr>) {
+    let key = key.as_ref();
+    // SAFETY: Deno exposes process environment mutation for compatibility.
+    // This guard coordinates the runtime mutation paths with the native
+    // timezone refresh below, but cannot coordinate arbitrary native readers.
+    unsafe {
+      env::remove_var(key);
+    }
+    if key == "TZ" {
+      refresh_timezone_from_process_env();
+    }
+  }
+
+  pub fn remove_var_and_notify_timezone(
+    &self,
+    key: impl AsRef<std::ffi::OsStr>,
+    notify: impl FnOnce(),
+  ) {
+    let key = key.as_ref();
+    self.remove_var(key);
+    if key == "TZ" {
+      notify();
+    }
+  }
+}
+
+fn refresh_timezone_from_process_env() {
   unsafe extern "C" {
     #[cfg(unix)]
     fn tzset();
@@ -169,20 +260,21 @@ fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
     fn _tzset();
   }
 
-  if key == "TZ" {
-    // SAFETY: tzset/_tzset (libc) is called to update the timezone information
-    unsafe {
-      #[cfg(unix)]
-      tzset();
+  // SAFETY: The process environment guard is held while libc reloads its
+  // timezone configuration.
+  unsafe {
+    #[cfg(unix)]
+    tzset();
 
-      #[cfg(windows)]
-      _tzset();
-    }
-
-    isolate.date_time_configuration_change_notification(
-      v8::TimeZoneDetection::Redetect,
-    );
+    #[cfg(windows)]
+    _tzset();
   }
+}
+
+fn notify_date_time_configuration_change(isolate: &mut v8::Isolate) {
+  isolate.date_time_configuration_change_notification(
+    v8::TimeZoneDetection::Redetect,
+  );
 }
 
 #[op2(fast, stack_trace)]
@@ -205,14 +297,10 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  #[allow(
-    clippy::undocumented_unsafe_blocks,
-    reason = "env::set_var is unsafe since Rust 1.66"
-  )]
-  unsafe {
-    env::set_var(key, value)
-  };
-  dt_change_notif(scope, key);
+  let process_env = ProcessEnvGuard::lock();
+  process_env.set_var_and_notify_timezone(key, value, || {
+    notify_date_time_configuration_change(scope);
+  });
   Ok(())
 }
 
@@ -262,8 +350,11 @@ fn op_env(
     },
     Err(err) => return Err(err),
   };
+  let process_env = ProcessEnvGuard::lock();
   Ok(
-    env::vars_os()
+    process_env
+      .vars_os()
+      .into_iter()
       .filter_map(|kv| {
         let (k, v) = map_kv(kv)?;
         let state = if grant_all {
@@ -294,7 +385,8 @@ fn get_env_var(key: &str) -> Result<Option<String>, OsError> {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  let r = match env::var(key) {
+  let process_env = ProcessEnvGuard::lock();
+  let r = match process_env.var(key) {
     Err(env::VarError::NotPresent) => None,
     v => Some(v?),
   };
@@ -329,6 +421,7 @@ fn op_get_env(
 #[op2(fast, stack_trace)]
 fn op_delete_env(
   state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] key: &str,
 ) -> Result<(), OsError> {
   if check_env_with_maybe_exit(state, key)?.is_break() {
@@ -338,13 +431,10 @@ fn op_delete_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  #[allow(
-    clippy::undocumented_unsafe_blocks,
-    reason = "env::remove_var is unsafe since Rust 1.66"
-  )]
-  unsafe {
-    env::remove_var(key)
-  };
+  let process_env = ProcessEnvGuard::lock();
+  process_env.remove_var_and_notify_timezone(key, || {
+    notify_date_time_configuration_change(scope);
+  });
   Ok(())
 }
 
@@ -388,6 +478,47 @@ fn op_exit(state: &mut OpState) {
   }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
     exit(exit_code.get())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::mpsc;
+
+  use super::PROCESS_ENV_LOCK;
+  use super::ProcessEnvGuard;
+
+  #[test]
+  fn process_env_lock_is_held_through_timezone_notification() {
+    let original_tz = ProcessEnvGuard::lock().var_os("TZ");
+    let (callback_started_tx, callback_started_rx) = mpsc::channel();
+    let (finish_callback_tx, finish_callback_rx) = mpsc::channel();
+
+    let setter = std::thread::spawn(move || {
+      let process_env = ProcessEnvGuard::lock();
+      process_env.set_var_and_notify_timezone("TZ", "UTC", || {
+        callback_started_tx.send(()).unwrap();
+        finish_callback_rx.recv().unwrap();
+      });
+    });
+
+    callback_started_rx.recv().unwrap();
+    let (reader_started_tx, reader_started_rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+      reader_started_tx.send(()).unwrap();
+      ProcessEnvGuard::lock().var("TZ").unwrap()
+    });
+    reader_started_rx.recv().unwrap();
+    assert!(PROCESS_ENV_LOCK.try_lock().is_err());
+    finish_callback_tx.send(()).unwrap();
+    setter.join().unwrap();
+    assert_eq!(reader.join().unwrap(), "UTC");
+
+    let process_env = ProcessEnvGuard::lock();
+    match original_tz {
+      Some(value) => process_env.set_var("TZ", value),
+      None => process_env.remove_var("TZ"),
+    }
   }
 }
 
