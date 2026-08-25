@@ -1155,40 +1155,56 @@ fn op_desktop_alert(
   }
 }
 
-/// True while a detached error dialog is on screen; used to show at most one
-/// at a time instead of stacking a dialog per rejection.
-static ERROR_DIALOG_SHOWING: std::sync::atomic::AtomicBool =
-  std::sync::atomic::AtomicBool::new(false);
-
-/// Fire-and-forget variant of `op_desktop_alert` for runtime error reporting.
+/// Non-blocking variant of `op_desktop_alert` for runtime error reporting.
 ///
-/// `DesktopApi::alert` blocks until the dialog is dismissed. Calling it on
-/// the JS thread from the `error`/`unhandledrejection` handlers froze the
-/// entire runtime — timers, servers, signal handlers — until someone clicked
-/// the dialog, and forever if nobody could (hidden window, headless child;
-/// #36393). The dialog is informational, so show it from a detached thread
-/// and let JS continue immediately.
-#[op2(fast)]
-fn op_desktop_alert_detached(
-  state: &mut OpState,
-  #[string] title: &str,
-  #[string] message: &str,
+/// `DesktopApi::alert` blocks its calling thread until the dialog is
+/// dismissed. Calling it straight from the `error`/`unhandledrejection`
+/// handlers parked the JS thread, freezing the whole runtime — timers,
+/// servers, signal handlers — until someone clicked the dialog, and forever
+/// if nobody could (hidden window, headless child; #36393). SIGTERM was
+/// ignored too, since its handler is JS on the parked thread.
+///
+/// Showing the dialog on a separate thread and awaiting it keeps the event
+/// loop running while it is up. The returned promise is load-bearing: it is
+/// what holds the process open until the dialog is dismissed. The JS caller
+/// `preventDefault()`s the event and exits once this resolves — a
+/// fire-and-forget op would instead let the runtime tear down the instant
+/// the handler returned, cutting the dialog off before it appeared.
+///
+/// Thread-safety: `DesktopApi::alert` may be called from any thread. In a
+/// packaged desktop app the Deno runtime already runs on its own
+/// `deno-desktop-runtime` thread (`run_on_runtime_thread` in
+/// `cli/rt_desktop`), never the laufey UI thread, so every existing
+/// `op_desktop_alert` call is already an off-UI-thread call; the backend
+/// marshals the dialog onto the UI thread and blocks the caller until it is
+/// dismissed (the core dump in #36393 shows exactly that — JS thread parked
+/// in `ShowDialog`, GTK thread in `gtk_dialog_run`). The thread spawned here
+/// is in the same position the JS thread was, not a new kind of caller.
+#[op2]
+async fn op_desktop_alert_async(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+  #[string] title: String,
+  #[string] message: String,
 ) {
-  use std::sync::atomic::Ordering;
-  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
-    if ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst) {
-      // A dialog is already up; the message has been logged to stderr by the
-      // JS handler, so dropping the extra dialog loses nothing.
-      return;
-    }
-    let api = api.clone();
-    let title = title.to_string();
-    let message = message.to_string();
-    std::thread::spawn(move || {
-      api.alert(&title, &message);
-      ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
-    });
-  }
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    // No backend wired up (snapshot build or non-desktop runtime). There is
+    // no dialog to wait for, so resolve immediately and let the caller get
+    // on with exiting.
+    return;
+  };
+  let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+  std::thread::spawn(move || {
+    api.alert(&title, &message);
+    let _ = tx.send(());
+  });
+  // A dropped sender resolves this too, so a backend that panics inside
+  // `alert` can't leave the caller waiting on a dialog that will never
+  // appear — the process still gets to exit.
+  let _ = rx.await;
 }
 
 struct ErrorReportConfig {
@@ -1790,7 +1806,7 @@ deno_core::extension!(
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
     op_desktop_alert,
-    op_desktop_alert_detached,
+    op_desktop_alert_async,
     op_desktop_confirm,
     op_desktop_prompt,
     op_desktop_send_error_report,
