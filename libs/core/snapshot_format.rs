@@ -306,16 +306,16 @@ impl Decoder {
 mod tests {
   use super::*;
 
-  /// Hands out a `'static` view of the buffer while keeping the box
-  /// reachable from a static, so miri's leak check stays clean.
+  /// Leaks the buffer but records the pointer in a static, so the
+  /// allocation stays reachable and miri's leak check stays clean.
   fn leak(b: Box<[u8]>) -> &'static [u8] {
-    static KEEP: std::sync::Mutex<Vec<Box<[u8]>>> =
-      std::sync::Mutex::new(Vec::new());
-    let ptr: *const [u8] = &*b;
-    KEEP.lock().unwrap().push(b);
-    // SAFETY: the box now lives in KEEP for the rest of the process, and
-    // its heap buffer does not move when the box itself is moved.
-    unsafe { &*ptr }
+    struct Keep(std::sync::Mutex<Vec<*const [u8]>>);
+    // SAFETY: the pointers are only stored, never dereferenced.
+    unsafe impl Sync for Keep {}
+    static KEEP: Keep = Keep(std::sync::Mutex::new(Vec::new()));
+    let r: &'static [u8] = Box::leak(b);
+    KEEP.0.lock().unwrap().push(r as *const [u8]);
+    r
   }
 
   #[test]
