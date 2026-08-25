@@ -1469,7 +1469,7 @@ pub fn op_op_names(scope: &mut v8::PinScope<'_, '_>) -> Vec<String> {
   state
     .op_ctxs
     .iter()
-    .map(|o| o.decl.name.to_string())
+    .map(|o| o.decl().name.to_string())
     .collect()
 }
 

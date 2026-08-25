@@ -111,7 +111,7 @@ pub unsafe extern "C" fn slow_metrics_dispatch(
       as *const OpCtx)
   };
 
-  let source = if opctx.decl.is_async {
+  let source = if opctx.decl().is_async {
     OpMetricsSource::Async
   } else {
     OpMetricsSource::Slow
@@ -121,9 +121,9 @@ pub unsafe extern "C" fn slow_metrics_dispatch(
   let metrics_fn = unsafe { opctx.metrics_fn.as_ref().unwrap_unchecked() };
 
   metrics_fn(opctx, OpMetricsEvent::Dispatched, source);
-  let res = (opctx.decl.slow_fn_impl)(info);
+  let res = (opctx.decl().slow_fn_impl)(info);
 
-  if opctx.decl.is_async {
+  if opctx.decl().is_async {
     if res == 0 {
       metrics_fn(opctx, OpMetricsEvent::Completed, source);
     } else if res == 1 {
