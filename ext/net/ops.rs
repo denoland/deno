@@ -1172,7 +1172,10 @@ fn format_dns_records<'a>(
       } else {
         record_type
       };
-      let r = format_rdata(effective_type)(rec.data()).transpose();
+      let r = match format_rdata(effective_type)(rec.data()) {
+        Err(NetError::UnsupportedRecordType) if is_any => None,
+        result => result.transpose(),
+      };
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
@@ -1333,6 +1336,7 @@ mod tests {
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
   use hickory_proto::rr::Name;
+  use hickory_proto::rr::rdata::NULL;
   use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
   use hickory_proto::rr::rdata::aaaa::AAAA;
@@ -1426,6 +1430,51 @@ mod tests {
         ttl: 60,
       }]
     );
+  }
+
+  #[test]
+  fn dns_records_any_skips_unsupported_record_types() {
+    let name = Name::parse("www.iana.org.", None).unwrap();
+    let cname = Record::from_rdata(
+      name.clone(),
+      60,
+      RData::CNAME(CNAME(Name::parse("target.example.", None).unwrap())),
+    );
+    let rrsig = Record::from_rdata(
+      name,
+      60,
+      RData::Unknown {
+        code: RecordType::RRSIG,
+        rdata: NULL::with(vec![1]),
+      },
+    );
+    let records = [cname, rrsig];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Cname("target.example.".to_string()),
+        record_type: Some("CNAME".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
+  fn dns_records_explicit_unsupported_type_still_errors() {
+    let rrsig = Record::from_rdata(
+      Name::new(),
+      60,
+      RData::Unknown {
+        code: RecordType::RRSIG,
+        rdata: NULL::with(vec![1]),
+      },
+    );
+
+    assert!(matches!(
+      format_dns_records(&[rrsig], RecordType::RRSIG),
+      Err(NetError::UnsupportedRecordType)
+    ));
   }
 
   #[test]
