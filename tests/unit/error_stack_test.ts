@@ -10,6 +10,7 @@ import {
 async function runDeno(args: string[]) {
   const command = new Deno.Command(Deno.execPath(), {
     args,
+    clearEnv: true,
     stdout: "piped",
     stderr: "piped",
   });
