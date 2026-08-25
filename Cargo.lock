@@ -2242,7 +2242,6 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bencher",
- "bincode",
  "bit-set 0.8.0",
  "bit-vec 0.8.0",
  "boxed_error",
