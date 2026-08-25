@@ -132,7 +132,10 @@ pub struct InvalidNpmPackageNameError {
 }
 
 /// Validates an npm package name using npm's compatibility rules for existing
-/// packages. In particular, legacy mixed-case package names remain valid.
+/// packages. Legacy mixed-case, special-character, and over-214-character
+/// names remain valid because npm treats them as publication warnings. Scoped
+/// package components starting with `.` are rejected, matching npm's scoped
+/// package handling.
 pub fn validate_npm_package_name(
   name: &str,
 ) -> Result<(), InvalidNpmPackageNameError> {
@@ -1016,6 +1019,11 @@ mod test {
     ] {
       assert_eq!(validate_npm_package_name(name), Ok(()), "{name}");
     }
+
+    // npm's 214-character publication limit remains a warning for legacy
+    // packages, so it is accepted by these compatibility rules.
+    let legacy_long_name = "a".repeat(215);
+    assert_eq!(validate_npm_package_name(&legacy_long_name), Ok(()));
 
     for name in [
       "",
