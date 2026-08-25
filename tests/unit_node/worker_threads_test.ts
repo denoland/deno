@@ -1370,6 +1370,44 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/worker_threads] terminate during module loading",
+  async fn() {
+    let markRequest!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequest = resolve;
+    });
+    let finishRequest!: () => void;
+    const response = new Promise<Response>((resolve) => {
+      finishRequest = () => resolve(new Response("export {};"));
+    });
+    const server = Deno.serve(
+      {
+        hostname: "127.0.0.1",
+        port: 0,
+        onListen() {},
+      },
+      () => {
+        markRequest();
+        return response;
+      },
+    );
+    const dependency = `http://127.0.0.1:${server.addr.port}/dependency.js`;
+    const source = `import ${JSON.stringify(dependency)};`;
+    const worker = new workerThreads.Worker(
+      new URL(`data:text/javascript,${encodeURIComponent(source)}`),
+    );
+
+    try {
+      await requestStarted;
+      assertEquals(await worker.terminate(), 1);
+    } finally {
+      finishRequest();
+      await server.shutdown();
+    }
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] terminate interrupts busy loop",
   async fn() {
     const worker = new workerThreads.Worker(

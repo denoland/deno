@@ -1274,8 +1274,23 @@ pub async fn run_web_worker(
   } else {
     // TODO(bartlomieju): add "type": "classic", ie. ability to load
     // script instead of module
-    match worker.preload_main_module(&specifier).await {
-      Ok(id) => {
+    let wait_for_termination = poll_fn(|cx| {
+      internal_handle.terminate_waker.register(cx.waker());
+      if internal_handle.termination_signal.load(Ordering::SeqCst) {
+        Poll::Ready(())
+      } else {
+        Poll::Pending
+      }
+    });
+    let preload_result = tokio::select! {
+      biased;
+      _ = wait_for_termination => None,
+      result = worker.preload_main_module(&specifier) => Some(result),
+    };
+
+    match preload_result {
+      None => Ok(()),
+      Some(Ok(id)) => {
         worker.start_polling_for_messages();
         if worker.internal_handle.allow_isolate_interrupt() {
           Ok(())
@@ -1283,7 +1298,7 @@ pub async fn run_web_worker(
           worker.execute_main_module(id).await
         }
       }
-      Err(e) => Err(e),
+      Some(Err(e)) => Err(e),
     }
   };
 
