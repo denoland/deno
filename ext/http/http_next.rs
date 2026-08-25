@@ -1606,6 +1606,13 @@ impl<I> RawH1RequestBody<I> {
     self.taken.get() && !self.reader_done.get()
   }
 
+  /// Whether JS is finished with the body and the connection can be reclaimed.
+  /// A cancelled connection or failed read is not reusable, even though it also
+  /// marks the reader done.
+  fn reader_finished_for_reuse(&self) -> bool {
+    self.taken.get() && self.reader_done.get() && !self.canceled.get()
+  }
+
   fn try_take_full(&self) -> Option<Vec<u8>> {
     if self.canceled.get() {
       return None;
@@ -1653,11 +1660,13 @@ where
       )));
     }
     let result = conn.poll_read_body(cx, this.limit);
-    // An empty read is end-of-stream: the reader is finished with the body.
-    if let Poll::Ready(Ok(buf)) = &result
-      && buf.is_empty()
-    {
-      this.body.mark_reader_done();
+    if let Poll::Ready(result) = &result {
+      match result {
+        // An empty read is end-of-stream: the reader is finished with the body.
+        Ok(buf) if buf.is_empty() => this.body.mark_reader_done(),
+        Err(_) => this.body.cancel(),
+        Ok(_) => {}
+      }
     }
     result
   }
@@ -1691,7 +1700,13 @@ where
       )));
     }
     let buf = this.buf.as_mut().unwrap();
-    let read = ready!(conn.poll_read_body_byob(cx, buf))?;
+    let read = match ready!(conn.poll_read_body_byob(cx, buf)) {
+      Ok(read) => read,
+      Err(error) => {
+        this.body.cancel();
+        return Poll::Ready(Err(error));
+      }
+    };
     // A zero-length read is end-of-stream: the reader is finished with the body.
     if read == 0 {
       this.body.mark_reader_done();
@@ -3743,7 +3758,7 @@ async fn wait_raw_response_ready(
 /// still owns the request body, once the response has been written.
 ///
 /// The request-body reader and the response writer share a single connection.
-/// A request whose body was not fully read never reuses its connection, so
+/// A request whose body reader is still active cannot reuse its connection, so
 /// rather than reclaiming it here -- which would fail an in-flight read with a
 /// spurious "resource unavailable" error and truncate the body -- ownership is
 /// handed to the body resource. The socket is then closed when JS reaches
@@ -3825,6 +3840,20 @@ async fn write_direct_response_for_reader(
     let _ = conn.discard_body_with_scratch(&mut scratch).await;
   }
   Ok(())
+}
+
+async fn drain_raw_h1_request_body<I>(
+  mut state: RawH1ConnectionState<I>,
+) -> Option<RawH1ConnectionState<I>>
+where
+  I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  state
+    .conn
+    .discard_body_with_scratch(&mut state.scratch)
+    .await
+    .ok()?;
+  Some(state)
 }
 
 async fn wait_raw_response_ready_or_closed<I>(
@@ -4855,15 +4884,19 @@ async fn serve_http11_raw(
           continue;
         }
       }
+      let request_body_finished = request_body_for_cancel
+        .as_ref()
+        .is_some_and(|body| body.reader_finished_for_reuse());
+      let response_keep_alive =
+        keep_alive && (!parsed.has_body || request_body_finished);
       match body {
         RawResponseBody::Flat(body) => {
-          let keep_alive = keep_alive && !parsed.has_body;
           write_h1_flat_response_shared(
             body_conn.clone(),
             parsed.version,
             response_parts,
             body,
-            keep_alive,
+            response_keep_alive,
             head,
           )
           .await?;
@@ -4871,7 +4904,7 @@ async fn serve_http11_raw(
         RawResponseBody::Stream(body) => {
           let response_context = RawH1ResponseContext {
             version: response_context.version,
-            keep_alive: response_context.keep_alive && !parsed.has_body,
+            keep_alive: response_keep_alive,
             head: response_context.head,
           };
           write_h1_stream_response_shared(
@@ -4911,17 +4944,24 @@ async fn serve_http11_raw(
       let Some(state) = body_conn.borrow_mut().take() else {
         return Err(raw_h1_connection_closed());
       };
+      if response_keep_alive && !cancel.is_canceled() {
+        let Some(state) = Box::pin(drain_raw_h1_request_body(state)).await
+        else {
+          record_cancel_guard.disarm();
+          return Ok(());
+        };
+        conn = state.conn;
+        scratch = state.scratch;
+        record_cancel_guard.disarm();
+        continue;
+      }
       conn = state.conn;
       scratch = state.scratch;
-      if !keep_alive || parsed.has_body || cancel.is_canceled() {
-        if parsed.has_body {
-          let _ = conn.discard_body_with_scratch(&mut scratch).await;
-        }
-        record_cancel_guard.disarm();
-        return Ok(());
+      if parsed.has_body {
+        let _ = conn.discard_body_with_scratch(&mut scratch).await;
       }
       record_cancel_guard.disarm();
-      continue;
+      return Ok(());
     }
 
     let record = RawHttpRecord::new(
