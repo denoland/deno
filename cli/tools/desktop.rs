@@ -3237,10 +3237,23 @@ fn render_macos_info_plist(
   has_icon: bool,
   config_version: Option<&str>,
 ) -> String {
-  // deno.json `version` when configured (#36503); the defaults match the
-  // Linux/Windows packaging defaults.
-  let short_version = config_version.unwrap_or("1.0");
-  let bundle_version = config_version.unwrap_or("1.0.0");
+  // deno.json `version` when configured (#36503), reduced to the numeric
+  // `major.minor.build` form both version keys accept — a semver prerelease
+  // carried through verbatim is rejected by notarization and App Store
+  // validation (macOS only tolerates it for locally-distributed apps). The
+  // defaults match the Linux/Windows packaging defaults.
+  let numeric_version =
+    config_version
+      .and_then(numeric_version_fields)
+      .map(|fields| {
+        fields
+          .iter()
+          .map(u64::to_string)
+          .collect::<Vec<_>>()
+          .join(".")
+      });
+  let short_version = numeric_version.as_deref().unwrap_or("1.0");
+  let bundle_version = numeric_version.as_deref().unwrap_or("1.0.0");
   format!(
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -3688,7 +3701,7 @@ fn linux_package_meta(
   app_dir: &Path,
   desktop_flags: &DesktopFlags,
   config_version: Option<&str>,
-) -> LinuxPackageMeta {
+) -> Result<LinuxPackageMeta, AnyError> {
   let app_name = app_dir
     .file_name()
     .map(|s| s.to_string_lossy().into_owned())
@@ -3698,20 +3711,50 @@ fn linux_package_meta(
     .identifier
     .clone()
     .unwrap_or_else(|| format!("com.deno.desktop.{package}"));
-  LinuxPackageMeta {
+  Ok(LinuxPackageMeta {
     summary: format!("{app_name} desktop application"),
     maintainer: format!("{app_name} <noreply@deno.com>"),
-    // deno.json `version` when configured (#36503); neither deb nor rpm
-    // versions may contain `-` in the upstream-version position with the
-    // meaning users expect from semver prereleases, so map it to `~`, which
-    // both formats order as "less than the release" — the semver intent.
-    version: config_version
-      .map(|v| v.replace('-', "~"))
-      .unwrap_or_else(|| LINUX_PACKAGE_VERSION.to_string()),
+    version: linux_package_version(config_version)?,
     package,
     app_name,
     identifier,
+  })
+}
+
+/// The `.deb`/`.rpm` version string for a configured deno.json `version`.
+///
+/// Both formats constrain the version tag, and outside of publishing
+/// `version` is a free-form string, so an unusable value has to be rejected
+/// here: the package would build fine and only fail at `dpkg -i`/`rpm -i`
+/// time with an opaque "invalid version" error. Debian policy 5.6.12 requires
+/// the upstream version to start with a digit and restricts it to
+/// alphanumerics plus `. + - ~` (`:` and `-` being reserved as the epoch and
+/// revision separators, neither of which we emit); RPM's Version tag is
+/// similarly restricted and additionally forbids `-`.
+///
+/// The one transformation applied is `-` → `~`: neither format reads `-` in
+/// the upstream-version position with the meaning users expect from a semver
+/// prerelease, while both order `~` as "less than the release" — the semver
+/// intent.
+fn linux_package_version(
+  config_version: Option<&str>,
+) -> Result<String, AnyError> {
+  let Some(version) = config_version else {
+    return Ok(LINUX_PACKAGE_VERSION.to_string());
+  };
+  if !version.starts_with(|c: char| c.is_ascii_digit()) {
+    bail!(
+      "deno.json `version` \"{version}\" cannot be used as a Debian/RPM package version: it must start with a digit"
+    );
   }
+  if let Some(c) = version.chars().find(|c| {
+    !(c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '~'))
+  }) {
+    bail!(
+      "deno.json `version` \"{version}\" cannot be used as a Debian/RPM package version: the character '{c}' is not allowed (only alphanumerics, '.', '+', '-' and '~')"
+    );
+  }
+  Ok(version.replace('-', "~"))
 }
 
 /// Map a target triple (or the host arch when `target` is None) to a Debian
@@ -3787,7 +3830,7 @@ fn create_linux_deb(
   target: Option<&str>,
   config_version: Option<&str>,
 ) -> Result<(), AnyError> {
-  let meta = linux_package_meta(app_dir, desktop_flags, config_version);
+  let meta = linux_package_meta(app_dir, desktop_flags, config_version)?;
   let arch = debian_arch_for_target(target)?;
 
   let data_tar_gz = build_deb_data_tar(app_dir, &meta)?;
@@ -4083,7 +4126,7 @@ fn create_linux_rpm(
   config_version: Option<&str>,
   config_license: Option<&str>,
 ) -> Result<(), AnyError> {
-  let meta = linux_package_meta(app_dir, desktop_flags, config_version);
+  let meta = linux_package_meta(app_dir, desktop_flags, config_version)?;
   let arch = rpm_arch_for_target(target)?;
 
   // Zstd payload (see Cargo.toml: gzip would pull flate2's zlib-rs shim, which
@@ -4294,22 +4337,51 @@ struct MsiFile {
 /// ```
 /// Reduce a configured version to the numeric `major.minor.build` form MSI's
 /// ProductVersion accepts, dropping semver prerelease/build suffixes. Returns
-/// the packaging default when nothing numeric is configured.
-fn msi_product_version(config_version: Option<&str>) -> String {
-  let Some(v) = config_version else {
-    return "1.0.0".to_string();
+/// the packaging default when nothing numeric is configured, and errors when
+/// a field exceeds the range MSI encodes.
+fn msi_product_version(
+  config_version: Option<&str>,
+) -> Result<String, AnyError> {
+  let Some(version) = config_version else {
+    return Ok("1.0.0".to_string());
   };
-  let core = v.split(['-', '+']).next().unwrap_or(v);
-  let parts: Vec<&str> = core
+  let Some(fields) = numeric_version_fields(version) else {
+    return Ok("1.0.0".to_string());
+  };
+  // Windows Installer packs ProductVersion into 8/8/16 bits, so a field that
+  // overflows either makes the package fail validation or, worse, silently
+  // compares wrong against an installed build. Truncating would ship a
+  // version the user didn't write, so a CalVer-style `2026.8.26` has to be
+  // reported rather than mangled.
+  const LIMITS: [(u64, &str); 3] =
+    [(255, "major"), (255, "minor"), (65535, "build")];
+  for (field, (limit, name)) in fields.iter().zip(LIMITS) {
+    if *field > limit {
+      bail!(
+        "deno.json `version` \"{version}\" cannot be used as an MSI ProductVersion: the {name} field {field} exceeds the maximum of {limit}"
+      );
+    }
+  }
+  Ok(
+    fields
+      .iter()
+      .map(u64::to_string)
+      .collect::<Vec<_>>()
+      .join("."),
+  )
+}
+
+/// The leading numeric `major[.minor[.build]]` fields of a version, dropping
+/// any semver prerelease/build suffix. `None` when the version isn't numeric
+/// at all (`weird`, `1.beta.2`) — the packagers that need a numeric version
+/// fall back to their default in that case.
+fn numeric_version_fields(version: &str) -> Option<Vec<u64>> {
+  let core = version.split(['-', '+']).next().unwrap_or(version);
+  core
     .split('.')
     .take(3)
-    .take_while(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
-    .collect();
-  if parts.is_empty() {
-    "1.0.0".to_string()
-  } else {
-    parts.join(".")
-  }
+    .map(|p| p.parse::<u64>().ok())
+    .collect::<Option<Vec<_>>>()
 }
 
 fn create_windows_msi(
@@ -4335,7 +4407,7 @@ fn create_windows_msi(
   // prerelease/build suffix would fail MSI validation); the default matches
   // the macOS bundle's CFBundleVersion and the Linux package default
   // (#36503).
-  let version = msi_product_version(config_version);
+  let version = msi_product_version(config_version)?;
   let version = version.as_str();
   let identifier = desktop_flags
     .identifier
@@ -7064,24 +7136,94 @@ def456  other.zip
     assert_eq!(pkg.metadata.get_version().unwrap(), "2.3.4~beta.1");
     assert_eq!(pkg.metadata.get_license().unwrap(), "Apache-2.0");
 
-    // The plist carries the version verbatim.
+    // The plist keys accept period-separated integers only, so the prerelease
+    // is dropped there rather than carried through to notarization.
     let plist = render_macos_info_plist(
       "A",
       "com.a",
       "laufey_webview",
       false,
-      Some("2.3.4"),
+      Some("2.3.4-beta.1"),
     );
+    assert!(plist.contains(
+      "<key>CFBundleShortVersionString</key>
+  <string>2.3.4</string>"
+    ));
     assert!(plist.contains(
       "<key>CFBundleVersion</key>
   <string>2.3.4</string>"
     ));
 
-    // MSI's ProductVersion must stay numeric.
-    assert_eq!(msi_product_version(Some("2.3.4-beta.1")), "2.3.4");
-    assert_eq!(msi_product_version(Some("2.3")), "2.3");
-    assert_eq!(msi_product_version(Some("weird")), "1.0.0");
-    assert_eq!(msi_product_version(None), "1.0.0");
+    // A version that isn't numeric at all leaves the defaults in place.
+    let plist =
+      render_macos_info_plist("A", "com.a", "laufey_webview", false, None);
+    assert!(plist.contains(
+      "<key>CFBundleShortVersionString</key>
+  <string>1.0</string>"
+    ));
+    assert!(plist.contains(
+      "<key>CFBundleVersion</key>
+  <string>1.0.0</string>"
+    ));
+  }
+
+  #[test]
+  fn linux_package_version_rejects_unusable_versions() {
+    // `version` is free-form outside of publishing, and a value deb/rpm can't
+    // parse builds fine but fails at install time — so it has to be caught
+    // here (#36503).
+    assert_eq!(linux_package_version(None).unwrap(), "1.0.0");
+    assert_eq!(linux_package_version(Some("2.3.4")).unwrap(), "2.3.4");
+    assert_eq!(
+      linux_package_version(Some("2.3.4-beta.1")).unwrap(),
+      "2.3.4~beta.1",
+      "semver prereleases map to the `~` both formats order before the release"
+    );
+
+    let err = linux_package_version(Some("v1.2.3"))
+      .unwrap_err()
+      .to_string();
+    assert!(
+      err.contains("must start with a digit"),
+      "a leading `v` is the common case Debian policy 5.6.12 rejects, got: {err}"
+    );
+    for bad in ["1.0.0_alpha", "1.0.0 rc1", "1.0.0:x"] {
+      let err = linux_package_version(Some(bad)).unwrap_err().to_string();
+      assert!(
+        err.contains("is not allowed"),
+        "`{bad}` must be rejected, got: {err}"
+      );
+    }
+  }
+
+  #[test]
+  fn msi_product_version_reduces_to_numeric_fields() {
+    assert_eq!(msi_product_version(Some("2.3.4-beta.1")).unwrap(), "2.3.4");
+    assert_eq!(msi_product_version(Some("2.3")).unwrap(), "2.3");
+    assert_eq!(msi_product_version(Some("1.2.3.4")).unwrap(), "1.2.3");
+    assert_eq!(msi_product_version(None).unwrap(), "1.0.0");
+    // Not numeric at all: fall back rather than emit a partial version.
+    assert_eq!(msi_product_version(Some("weird")).unwrap(), "1.0.0");
+    assert_eq!(
+      msi_product_version(Some("1.beta.2")).unwrap(),
+      "1.0.0",
+      "a non-numeric field must fall back, not truncate to the numeric prefix"
+    );
+
+    // ProductVersion is packed into 8/8/16 bits; truncating a CalVer-style
+    // version would silently ship one the user didn't write.
+    let err = msi_product_version(Some("2026.8.26"))
+      .unwrap_err()
+      .to_string();
+    assert!(err.contains("major field 2026"), "got: {err}");
+    let err = msi_product_version(Some("1.256.0"))
+      .unwrap_err()
+      .to_string();
+    assert!(err.contains("minor field 256"), "got: {err}");
+    let err = msi_product_version(Some("1.0.65536"))
+      .unwrap_err()
+      .to_string();
+    assert!(err.contains("build field 65536"), "got: {err}");
   }
 
   // --- Windows .msi packaging ---
