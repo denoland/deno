@@ -2964,7 +2964,13 @@ impl JsRuntimeForSnapshot {
       let mut data_store = SnapshotStoreDataStore::default();
       let module_map_data = {
         let module_map = realm.0.module_map();
-        module_map.serialize_for_snapshotting(&mut data_store)
+        // Modules already instantiated in the snapshot don't need their import
+        // edges persisted; nothing reads them after rehydration.
+        let instantiated = {
+          jsrealm::context_scope!(scope, realm, self.v8_isolate());
+          module_map.instantiated_flags(scope)
+        };
+        module_map.serialize_for_snapshotting(&mut data_store, &instantiated)
       };
       let function_templates_data = {
         let function_templates = realm.0.function_templates();
