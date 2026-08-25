@@ -236,12 +236,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -464,12 +458,6 @@ dependencies = [
  "dunce",
  "fs_extra",
 ]
-
-[[package]]
-name = "az"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
 
 [[package]]
 name = "backhand"
@@ -2252,15 +2240,12 @@ name = "deno_core"
 version = "0.410.0"
 dependencies = [
  "anyhow",
- "az",
  "base64 0.22.1",
  "bencher",
- "bincode",
  "bit-set 0.8.0",
  "bit-vec 0.8.0",
  "boxed_error",
  "bytes",
- "capacity_builder",
  "cooked-waker",
  "criterion",
  "deno_ast",
@@ -2350,9 +2335,9 @@ dependencies = [
  "ctr",
  "curve25519-dalek",
  "deno_core",
+ "deno_crypto_provider",
  "deno_error",
  "ecdsa",
- "ed448-goldilocks",
  "elliptic-curve 0.13.8",
  "fips203",
  "fips205",
@@ -2372,6 +2357,7 @@ dependencies = [
  "sha3 0.10.8",
  "signature 2.2.0",
  "spki 0.7.3",
+ "subtle",
  "thiserror 2.0.12",
  "tiny-keccak",
  "tokio",
@@ -2384,6 +2370,7 @@ name = "deno_crypto_provider"
 version = "0.51.0"
 dependencies = [
  "aws-lc-sys",
+ "ed448-goldilocks",
 ]
 
 [[package]]
@@ -3007,7 +2994,6 @@ dependencies = [
 name = "deno_npm"
 version = "0.69.0"
 dependencies = [
- "arrayref",
  "async-trait",
  "bytemuck",
  "capacity_builder",
@@ -3380,6 +3366,7 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
+ "serde_bytes",
  "sha2",
  "sys_traits",
  "test_util",
@@ -6389,9 +6376,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a9149a6c84f22c936d2b6ff1ba3392de20f9ee76eb65e5aebfdca4c8621ba3f"
+checksum = "8a2a04490eb866f17dcbbb44c8277b45964eeb0f68bb17c444e69c2feff0db94"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",

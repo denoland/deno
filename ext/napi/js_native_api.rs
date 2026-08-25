@@ -113,13 +113,21 @@ impl Reference {
 
   /// Drops this reference's finalizer, deregistering it from the env's
   /// shutdown finalizer list so that it cannot be called (again) there.
-  fn reset(&mut self) {
-    if let Some(id) = self.finalizer_id.take() {
-      unsafe { &*self.env }.remove_ref_finalizer(id);
-    }
+  ///
+  /// Returns `true` if the finalizer was still registered on the shutdown
+  /// list. A `false` result means env teardown (`run_napi_ref_finalizers`)
+  /// already consumed and ran it, so callers must not run it again.
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  fn reset(&mut self) -> bool {
+    let was_pending = match self.finalizer_id.take() {
+      Some(id) => unsafe { &*self.env }.remove_ref_finalizer(id),
+      None => false,
+    };
     self.finalize_cb = None;
     self.finalize_data = std::ptr::null_mut();
     self.finalize_hint = std::ptr::null_mut();
+    was_pending
   }
 
   fn set_strong(&mut self) {
@@ -153,29 +161,47 @@ impl Reference {
     let finalize_hint = reference.finalize_hint;
     let ownership = reference.ownership;
     let env_ptr = reference.env;
-    reference.reset();
+    let was_pending = reference.reset();
 
-    // Note: we are NOT inside a V8 GC pause here. `v8::Weak::with_finalizer`
-    // (rusty_v8) schedules this closure as V8's *second-pass* weak callback,
-    // which V8 invokes after the GC cycle completes, with the isolate in a
-    // fully usable state. This is rusty_v8's equivalent of Node.js's
-    // `node_napi_env__::DrainFinalizerQueue` (driven by SetImmediate): both
-    // amount to "run the finalizer after GC, with a live Isolate." Calling
-    // user-provided `napi_finalize` callbacks here is therefore safe.
+    // `v8::Weak::with_finalizer` (rusty_v8) schedules this closure as V8's
+    // *second-pass* weak callback, which V8 runs after the GC cycle completes.
+    // The isolate can allocate here, but JavaScript execution is still
+    // forbidden: V8 keeps a `DisallowJavascriptExecutionScope` active, so a
+    // `napi_finalize` callback that calls into JS (e.g. `napi_call_function`)
+    // would abort the process (#36568). Node.js never runs finalizers from the
+    // GC pass for the same reason — it drains them from a `SetImmediate`. We
+    // mirror that by deferring the callback to the next JS-safe point via
+    // `Env::defer_gc_finalizer` instead of invoking it here.
     //
-    // History: a previous attempt (#33260) deferred this work through
-    // `V8CrossThreadTaskSpawner::spawn` under the (incorrect) belief that
-    // rusty_v8 invoked us inside a GC pause. The cross-thread spawner takes a
-    // `Mutex` and pokes a tokio `AtomicWaker` synchronously on every
-    // finalizer; doing that from V8's second-pass callback is what produced
-    // the intermittent `napi_unwrap` failure reported in #33924 / #34008
-    // ("Failed to unwrap exclusive reference of `...` type from napi value").
+    // `defer_gc_finalizer` schedules the callback on the same-thread
+    // event-loop task queue, which runs it during an event-loop poll at a
+    // genuinely JS-safe point. An earlier attempt (#33260, reverted in #34023)
+    // used the *cross-thread* spawner and reintroduced a double-run
+    // (#33924 / #34008: "Failed to unwrap exclusive reference of `...` type
+    // from napi value"); that failure mode is now prevented independently by
+    // the `reset()` / `was_pending` run-once handshake below, and the
+    // same-thread spawner only touches an isolate-local queue on this thread.
+    //
     // `reset()` above already deregistered the shutdown finalizer entry, so it
     // is not called again at env shutdown (matches Node's `Unlink` ordering in
-    // `Reference::Finalize`).
-    if let Some(finalize_cb) = finalize_cb {
+    // `Reference::Finalize`). It also reports whether the entry was still
+    // pending: if env teardown (`run_napi_ref_finalizers`) already drained the
+    // list and ran this finalizer, `was_pending` is `false` and we must not run
+    // it a second time. GC and teardown are separate paths here, so the tracker
+    // is what enforces "run exactly once" — whichever removes the entry first
+    // wins. Without this guard, a wrapped object finalized at teardown but
+    // garbage-collected afterwards (e.g. the test runner keeps polling the
+    // event loop) would have its finalizer invoked twice. See #36499.
+    if was_pending && let Some(finalize_cb) = finalize_cb {
+      // SAFETY: `env_ptr` is a live `Env`, a separate allocation from this
+      // Reference, owned by this (the isolate's) thread.
       unsafe {
-        finalize_cb(env_ptr as _, finalize_data, finalize_hint);
+        Env::defer_gc_finalizer(
+          env_ptr,
+          finalize_cb,
+          finalize_data,
+          finalize_hint,
+        );
       }
     }
 
@@ -183,6 +209,13 @@ impl Reference {
       // Runtime-owned: free the Reference now. Userland-owned references are
       // freed by the addon via `napi_delete_reference` (or by napi-rs's
       // REFERENCE_MAP overwrite path).
+      //
+      // Note that with the deferral above this now happens *before* the
+      // finalizer runs, where Node deletes the Reference after. The finalizer
+      // only receives the (already copied) env/data/hint, and a runtime-owned
+      // Reference is by definition one the addon holds no `napi_ref` to — it
+      // passed a null `result` to `napi_wrap` / `napi_add_finalizer` — so it
+      // has no way to observe or touch the freed Reference.
       unsafe { drop(Reference::from_raw(reference)) }
     }
   }
@@ -198,7 +231,10 @@ impl Reference {
   unsafe fn remove(r: *mut Reference) {
     let r = unsafe { &mut *r };
     if r.ownership == ReferenceOwnership::Userland {
-      r.reset();
+      // `napi_delete_reference` drops the finalizer without running it (Node
+      // does the same in `~Reference`), so the "was it still pending" answer
+      // is deliberately ignored here.
+      let _ = r.reset();
     } else {
       unsafe { drop(Reference::from_raw(r)) }
     }
@@ -211,7 +247,9 @@ impl Drop for Reference {
     // `napi_delete_reference`) must not leave a dangling entry behind: Node
     // unlinks the reference from the env's list in `~RefTracker`.
     if let Some(id) = self.finalizer_id.take() {
-      unsafe { &*self.env }.remove_ref_finalizer(id);
+      // Nothing left to run once the reference is gone, so whether the entry
+      // was still pending does not matter here.
+      let _ = unsafe { &*self.env }.remove_ref_finalizer(id);
     }
   }
 }
@@ -1220,6 +1258,7 @@ fn napi_create_string_latin1(
   result: *mut napi_value,
 ) -> napi_status {
   let env = check_env!(env_ptr);
+  check_arg!(env, result);
   if length > 0 {
     check_arg!(env, string);
   }
@@ -1266,6 +1305,7 @@ pub(crate) fn napi_create_string_utf8(
   result: *mut napi_value,
 ) -> napi_status {
   let env = check_env!(env_ptr);
+  check_arg!(env, result);
   if length > 0 {
     check_arg!(env, string);
   }
@@ -1312,6 +1352,7 @@ fn napi_create_string_utf16(
   result: *mut napi_value,
 ) -> napi_status {
   let env = check_env!(env_ptr);
+  check_arg!(env, result);
   if length > 0 {
     check_arg!(env, string);
   }
@@ -1801,6 +1842,7 @@ fn node_api_create_property_key_latin1(
   result: *mut napi_value,
 ) -> napi_status {
   let env = check_env!(env_ptr);
+  check_arg!(env, result);
   if length > 0 {
     check_arg!(env, string);
   }
@@ -1851,6 +1893,7 @@ fn node_api_create_property_key_utf8(
   result: *mut napi_value,
 ) -> napi_status {
   let env = check_env!(env_ptr);
+  check_arg!(env, result);
   if length > 0 {
     check_arg!(env, string);
   }
@@ -1897,6 +1940,7 @@ fn node_api_create_property_key_utf16(
   result: *mut napi_value,
 ) -> napi_status {
   let env = check_env!(env_ptr);
+  check_arg!(env, result);
   if length > 0 {
     check_arg!(env, string);
   }
@@ -3751,6 +3795,19 @@ fn napi_create_typedarray<'s>(
     return napi_arraybuffer_expected;
   };
 
+  // v8 150.4.0 provides the `Local<T> -> Local<Value>` upcast (`impl_from!`)
+  // for every typed array except `Float16Array`, so go through the unchecked
+  // cast uniformly instead. The `Local<'s, T>: TryFrom<Local<'s, Value>>` bound
+  // keeps this honest: it only accepts types V8 can downcast a `Value` back to,
+  // which is exactly the set for which the upcast is infallible.
+  fn to_value<'s, T>(ta: v8::Local<'s, T>) -> v8::Local<'s, v8::Value>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>>,
+  {
+    // SAFETY: every typed array IS-A Value.
+    unsafe { v8::Local::cast_unchecked(ta) }
+  }
+
   macro_rules! create {
     ($TypedArray:ident, $size_of_element:expr) => {{
       v8::callback_scope!(unsafe scope, env.context());
@@ -3785,7 +3842,7 @@ fn napi_create_typedarray<'s>(
       else {
         return napi_generic_failure;
       };
-      ta.into()
+      to_value(ta)
     }};
   }
 
@@ -3797,6 +3854,7 @@ fn napi_create_typedarray<'s>(
     napi_int16_array => create!(Int16Array, 2),
     napi_uint32_array => create!(Uint32Array, 4),
     napi_int32_array => create!(Int32Array, 4),
+    napi_float16_array => create!(Float16Array, 2),
     napi_float32_array => create!(Float32Array, 4),
     napi_float64_array => create!(Float64Array, 8),
     napi_bigint64_array => create!(BigInt64Array, 8),
@@ -3847,6 +3905,8 @@ fn napi_get_typedarray_info(
       napi_int32_array
     } else if array.is_uint32_array() {
       napi_uint32_array
+    } else if array.is_float16_array() {
+      napi_float16_array
     } else if array.is_float32_array() {
       napi_float32_array
     } else if array.is_float64_array() {
@@ -3856,7 +3916,10 @@ fn napi_get_typedarray_info(
     } else if array.is_big_uint64_array() {
       napi_biguint64_array
     } else {
-      unreachable!();
+      // Every typed-array element type V8 can produce is handled above, but a
+      // future V8 could add another. Return an error instead of aborting the
+      // process on a value plain JavaScript can hand to an addon.
+      return napi_set_last_error(env_ptr, napi_invalid_arg);
     };
 
     unsafe {
