@@ -25,7 +25,9 @@ import {
   gzip,
   gzipSync,
   unzipSync,
+  zstdCompress,
   zstdCompressSync,
+  zstdDecompressSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -328,6 +330,47 @@ Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
   });
 
   await promise;
+});
+
+function deterministicZstdInput(length: number): Buffer {
+  const input = Buffer.allocUnsafe(length);
+  let state = 0x12345678;
+  for (let index = 0; index < input.length; index++) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    input[index] = state >>> 24;
+  }
+  return input;
+}
+
+function assertSingleZstdFrame(compressed: Buffer, input: Buffer): void {
+  const result = zstdDecompressSync(compressed, {
+    info: true,
+  }) as unknown as {
+    buffer: Buffer;
+    engine: { bytesWritten: number };
+  };
+  assertEquals(result.buffer, input);
+  assertEquals(result.engine.bytesWritten, compressed.byteLength);
+}
+
+Deno.test("zstd compression spans output chunks without trailing frames", async () => {
+  const input = deterministicZstdInput(128);
+  const chunkSize = constants.Z_MIN_CHUNK;
+  const syncCompressed = zstdCompressSync(input, { chunkSize });
+  const asyncCompressed = await new Promise<Buffer>((resolve, reject) => {
+    zstdCompress(input, { chunkSize }, (error, result) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(result);
+    });
+  });
+
+  for (const compressed of [syncCompressed, asyncCompressed]) {
+    assert(compressed.byteLength > chunkSize);
+    assertSingleZstdFrame(compressed, input);
+  }
 });
 
 // Every compression/decompression backend whose native handle writes the
