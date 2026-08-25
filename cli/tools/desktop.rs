@@ -3150,25 +3150,6 @@ async fn package_macos_app_bundle(
   // identifier we just wrote into the main plist.
   rewrite_cef_helper_bundle_ids(&contents_dir, &bundle_id)?;
 
-  // Codesign the assembled bundle. Helpers must be signed before the
-  // main bundle (Gatekeeper / CEF verify them in that order), and the
-  // main bundle's signature seals the helpers' signatures into its
-  // CodeDirectory.
-  //
-  // When the user provides an identity we use it (path to a real
-  // Developer ID for distribution). Otherwise — on a macOS host — we
-  // ad-hoc sign with `-`. Ad-hoc is required for the bundle to receive
-  // a stable code identity from the OS, which gates:
-  //   - UNUserNotificationCenter authorization (without signing,
-  //     `requestAuthorization` silently fails and the user sees
-  //     "denied" with no prompt — this is why Notification.permission
-  //     stays "denied" for unsigned dev builds);
-  //   - LaunchServices registration under a stable bundle id;
-  //   - TCC entries (microphone/camera/automation) attaching to a
-  //     persistent identity rather than re-prompting on every rebuild.
-  // We skip on non-macOS hosts (cross-build) since `codesign(1)` only
-  // exists on macOS.
-  //
   // Handle icon. Must land before codesigning: the bundle signature seals
   // `Contents/Resources`, so an icon copied in afterwards makes a fresh
   // build fail `codesign --verify --strict` on arrival (#36418).
@@ -3207,6 +3188,24 @@ async fn package_macos_app_bundle(
   // the signature and the app would be rejected on launch.
   register_deep_links(&app_bundle, desktop_flags)?;
 
+  // Codesign the assembled bundle. Helpers must be signed before the
+  // main bundle (Gatekeeper / CEF verify them in that order), and the
+  // main bundle's signature seals the helpers' signatures into its
+  // CodeDirectory.
+  //
+  // When the user provides an identity we use it (path to a real
+  // Developer ID for distribution). Otherwise — on a macOS host — we
+  // ad-hoc sign with `-`. Ad-hoc is required for the bundle to receive
+  // a stable code identity from the OS, which gates:
+  //   - UNUserNotificationCenter authorization (without signing,
+  //     `requestAuthorization` silently fails and the user sees
+  //     "denied" with no prompt — this is why Notification.permission
+  //     stays "denied" for unsigned dev builds);
+  //   - LaunchServices registration under a stable bundle id;
+  //   - TCC entries (microphone/camera/automation) attaching to a
+  //     persistent identity rather than re-prompting on every rebuild.
+  // We skip on non-macOS hosts (cross-build) since `codesign(1)` only
+  // exists on macOS.
   let codesign_identity = desktop_flags.codesign_identity.as_deref().or(
     if cfg!(target_os = "macos") {
       Some("-")
