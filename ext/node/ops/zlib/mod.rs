@@ -1040,6 +1040,7 @@ use zstd::zstd_safe;
 struct ZstdCompressCtx {
   encoder: zstd_safe::CCtx<'static>,
   callback: v8::Global<v8::Function>,
+  end_complete: bool,
 }
 
 impl ZstdCompressCtx {
@@ -1057,11 +1058,22 @@ impl ZstdCompressCtx {
       _ => (ZSTD_EndDirective::ZSTD_e_continue, "compress"),
     };
 
+    // processChunk retries when the output buffer is exactly full. If the
+    // frame already ended, that retry must not start a new empty frame.
+    if self.end_complete
+      && end_op == ZSTD_EndDirective::ZSTD_e_end
+      && input.is_empty()
+    {
+      self.end_complete = false;
+      return Ok((output.len(), input.len()));
+    }
+    self.end_complete = false;
+
     let input_len = input.len();
     let output_len = output.len();
     let mut input = zstd_safe::InBuffer::around(input);
     let mut output = zstd_safe::OutBuffer::around(output);
-    self
+    let remaining = self
       .encoder
       .compress_stream2(&mut output, &mut input, end_op)
       .map_err(|code| {
@@ -1072,6 +1084,11 @@ impl ZstdCompressCtx {
       })?;
     let avail_in = input_len - input.pos();
     let avail_out = output_len - output.pos();
+
+    self.end_complete = end_op == ZSTD_EndDirective::ZSTD_e_end
+      && remaining == 0
+      && avail_in == 0
+      && avail_out == 0;
 
     Ok((avail_out, avail_in))
   }
@@ -1178,10 +1195,11 @@ impl ZstdCompress {
       }
     }
 
-    self
-      .ctx
-      .borrow_mut()
-      .replace(ZstdCompressCtx { encoder, callback });
+    self.ctx.borrow_mut().replace(ZstdCompressCtx {
+      encoder,
+      callback,
+      end_complete: false,
+    });
     true
   }
 
@@ -1195,6 +1213,7 @@ impl ZstdCompress {
     let mut ctx = self.ctx.borrow_mut();
     if let Some(ctx) = ctx.as_mut() {
       let _ = ctx.encoder.reset(zstd_safe::ResetDirective::SessionOnly);
+      ctx.end_complete = false;
     }
   }
 

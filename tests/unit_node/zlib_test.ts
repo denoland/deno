@@ -373,6 +373,18 @@ Deno.test("zstd compression spans output chunks without trailing frames", async 
   }
 });
 
+Deno.test("zstd exact output chunk does not append an empty frame", () => {
+  const input = deterministicZstdInput(128);
+  const reference = zstdCompressSync(input);
+  assert(reference.byteLength > constants.Z_MIN_CHUNK);
+
+  const compressed = zstdCompressSync(input, {
+    chunkSize: reference.byteLength,
+  });
+  assertEquals(compressed.byteLength, reference.byteLength);
+  assertSingleZstdFrame(compressed, input);
+});
+
 // Every compression/decompression backend whose native handle writes the
 // post-write avail_out/avail_in pair back into `_writeState`. Decoders are
 // paired with valid compressed input so the write reaches the result buffer
