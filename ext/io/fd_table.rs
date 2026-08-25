@@ -143,16 +143,10 @@ impl FdTable {
   /// Returns `Some(replace_registration)` if adoption may proceed (pass the
   /// flag to `finish_uv_adopt` on success), or `None` if the fd may not be
   /// adopted and the caller should reject it.
-  pub fn begin_uv_adopt(
-    &self,
-    fd: i32,
-    allow_untracked: bool,
-  ) -> Option<bool> {
+  pub fn begin_uv_adopt(&self, fd: i32, allow_untracked: bool) -> Option<bool> {
     if self.is_inherited_extra_stdio(fd) || self.is_uv_adoptable(fd) {
       Some(true)
-    } else if (0..=2).contains(&fd)
-      || (allow_untracked && !self.contains(fd))
-    {
+    } else if (0..=2).contains(&fd) || (allow_untracked && !self.contains(fd)) {
       Some(false)
     } else {
       None

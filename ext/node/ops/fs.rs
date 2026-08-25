@@ -816,9 +816,7 @@ fn register_created_pipe(
 #[cfg(unix)]
 #[op2]
 #[serde]
-pub fn op_node_create_pipe(
-  state: &mut OpState,
-) -> Result<(i32, i32), FsError> {
+pub fn op_node_create_pipe(state: &mut OpState) -> Result<(i32, i32), FsError> {
   let mut fds = [0i32; 2];
   // SAFETY: pipe() writes two valid fds into the array on success.
   let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
@@ -832,9 +830,7 @@ pub fn op_node_create_pipe(
 #[cfg(windows)]
 #[op2]
 #[serde]
-pub fn op_node_create_pipe(
-  state: &mut OpState,
-) -> Result<(i32, i32), FsError> {
+pub fn op_node_create_pipe(state: &mut OpState) -> Result<(i32, i32), FsError> {
   use windows_sys::Win32::Foundation::CloseHandle;
   use windows_sys::Win32::System::Pipes::CreatePipe;
 

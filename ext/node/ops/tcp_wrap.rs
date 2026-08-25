@@ -387,8 +387,7 @@ impl TCPWrap {
     // Descriptors explicitly associated with this isolate may be adopted
     // directly. Preserve Node compatibility for an untracked raw descriptor
     // only when the isolate has all permissions.
-    let untracked =
-      fd > 2 && !state.borrow::<deno_io::FdTable>().contains(fd);
+    let untracked = fd > 2 && !state.borrow::<deno_io::FdTable>().contains(fd);
     let allow_untracked = untracked
       && state
         .borrow::<PermissionsContainer>()
