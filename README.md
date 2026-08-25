@@ -59,6 +59,12 @@ winget install --id=DenoLand.Deno
 scoop install main/deno
 ```
 
+[Cargo](https://crates.io/crates/deno):
+
+```sh
+cargo install deno --locked
+```
+
 ### Build and install from source
 
 Complete instructions for building Deno from source can be found
