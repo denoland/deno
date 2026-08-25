@@ -287,7 +287,11 @@ fn es_snapshot() {
 
   modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));
 
-  runtime.module_map().assert_module_map(&modules);
+  runtime.module_map().assert_module_map(&modules, 0);
+
+  // Everything in `modules` (plus the builtins) is instantiated in this
+  // snapshot, so `runtime2` will see them without their import edges.
+  let snapshotted_module_count = modules.len() + NO_OF_BUILTIN_MODULES;
 
   let snapshot = runtime.snapshot();
   let snapshot = Box::leak(snapshot);
@@ -302,13 +306,18 @@ fn es_snapshot() {
     ..Default::default()
   });
 
-  runtime2.module_map().assert_module_map(&modules);
+  runtime2
+    .module_map()
+    .assert_module_map(&modules, snapshotted_module_count);
 
   modules.extend((200..400).map(|i| create_module(&mut runtime2, i, false)));
   modules.push(create_module(&mut runtime2, 400, true));
 
-  runtime2.module_map().assert_module_map(&modules);
+  runtime2
+    .module_map()
+    .assert_module_map(&modules, snapshotted_module_count);
 
+  let snapshotted_module_count2 = modules.len() + NO_OF_BUILTIN_MODULES;
   let snapshot2 = runtime2.snapshot();
   let snapshot2 = Box::leak(snapshot2);
 
@@ -323,7 +332,9 @@ fn es_snapshot() {
     ..Default::default()
   });
 
-  runtime3.module_map().assert_module_map(&modules);
+  runtime3
+    .module_map()
+    .assert_module_map(&modules, snapshotted_module_count2);
 
   let source_code = r#"(async () => {
     const mod = await import("file:///400.js");

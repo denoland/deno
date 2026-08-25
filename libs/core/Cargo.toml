@@ -30,7 +30,6 @@ v8 = ["v8/v8", "serde_v8/v8"]
 [dependencies]
 anyhow.workspace = true
 base64 = { workspace = true }
-bincode.workspace = true
 bit-set.workspace = true
 bit-vec.workspace = true
 boxed_error.workspace = true

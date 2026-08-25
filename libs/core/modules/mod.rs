@@ -15,6 +15,9 @@ use crate::error::CoreErrorKind;
 use crate::error::exception_to_err;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
+use crate::snapshot_format::Decoder;
+use crate::snapshot_format::Encoder;
+use crate::snapshot_format::SnapshotResult;
 
 mod import_graph;
 mod loaders;
@@ -787,6 +790,151 @@ pub(crate) struct ModuleInfo {
   /// Computed once at registration so the instantiate path doesn't have to
   /// clone the name and re-`Url::parse` it on every module.
   pub is_internal: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot sidecar encoding
+//
+// See `crate::snapshot_format` for the wire format. Decoding is on the hot
+// `JsRuntime::new` path and is written to borrow the snapshot blob rather than
+// copy out of it; encoding only runs at snapshot-creation time.
+// ---------------------------------------------------------------------------
+
+impl RequestedModuleType {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    match self {
+      Self::None => e.u8(0),
+      Self::Json => e.u8(1),
+      Self::Text => e.u8(2),
+      Self::Bytes => e.u8(3),
+      Self::Other(ty) => {
+        e.u8(4);
+        e.str(ty);
+      }
+    }
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(match d.u8()? {
+      0 => Self::None,
+      1 => Self::Json,
+      2 => Self::Text,
+      3 => Self::Bytes,
+      4 => Self::Other(d.cow_str()?),
+      n => {
+        return Decoder::invalid_discriminant("RequestedModuleType", n as u32);
+      }
+    })
+  }
+}
+
+impl ModuleType {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    match self {
+      Self::JavaScript => e.u8(0),
+      Self::Wasm => e.u8(1),
+      Self::Json => e.u8(2),
+      Self::Text => e.u8(3),
+      Self::Bytes => e.u8(4),
+      Self::Other(ty) => {
+        e.u8(5);
+        e.str(ty);
+      }
+    }
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(match d.u8()? {
+      0 => Self::JavaScript,
+      1 => Self::Wasm,
+      2 => Self::Json,
+      3 => Self::Text,
+      4 => Self::Bytes,
+      5 => Self::Other(d.cow_str()?),
+      n => return Decoder::invalid_discriminant("ModuleType", n as u32),
+    })
+  }
+}
+
+impl ModuleImportPhase {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    e.u8(match self {
+      Self::Evaluation => 0,
+      Self::Source => 1,
+      Self::Defer => 2,
+    });
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(match d.u8()? {
+      0 => Self::Evaluation,
+      1 => Self::Source,
+      2 => Self::Defer,
+      n => return Decoder::invalid_discriminant("ModuleImportPhase", n as u32),
+    })
+  }
+}
+
+impl ModuleReference {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    e.str(self.specifier.as_str());
+    self.requested_module_type.encode(e);
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    // `url::Url` owns its buffer and cannot borrow, so this re-parses. That's
+    // acceptable because only modules that were *not* instantiated in the
+    // snapshot carry requests (see `ModuleMapData::serialize_for_snapshotting`)
+    // — for a normal snapshot this decodes zero references.
+    let raw = d.str()?.0;
+    let specifier = ModuleSpecifier::parse(raw).map_err(|_| {
+      crate::snapshot_format::SnapshotDecodeError::InvalidUrl(raw.to_owned())
+    })?;
+    Ok(Self {
+      specifier,
+      requested_module_type: RequestedModuleType::decode(d)?,
+    })
+  }
+}
+
+impl ModuleRequest {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    self.reference.encode(e);
+    e.option(self.specifier_key.as_deref(), |e, v| e.str(v));
+    e.option(self.referrer_source_offset, |e, v| e.i32(v));
+    self.phase.encode(e);
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(Self {
+      reference: ModuleReference::decode(d)?,
+      specifier_key: d.option(|d| Ok(d.str()?.0.to_owned()))?,
+      referrer_source_offset: d.option(|d| d.i32())?,
+      phase: ModuleImportPhase::decode(d)?,
+    })
+  }
+}
+
+impl ModuleInfo {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    e.usize(self.id);
+    e.bool(self.main);
+    e.str(self.name.as_str());
+    e.seq(self.requests.iter(), |e, r| r.encode(e));
+    self.module_type.encode(e);
+    e.bool(self.is_internal);
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(Self {
+      id: d.usize()?,
+      main: d.bool()?,
+      name: d.fast_string()?,
+      requests: d.seq(ModuleRequest::decode)?,
+      module_type: ModuleType::decode(d)?,
+      is_internal: d.bool()?,
+    })
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
