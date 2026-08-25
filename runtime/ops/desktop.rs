@@ -82,6 +82,14 @@ impl<'a> ToV8<'a> for DesktopValue {
 // Unlike `serde_json::Value`, `Binary` maps to serde bytes, which serde_v8
 // materializes as a `Uint8Array` — this is what lets binding arguments and
 // return values carry binary data (see denoland/deno#36498).
+//
+// The view type is not preserved. serde_v8 routes every `ArrayBufferView`
+// and `ArrayBuffer` to `visit_byte_buf`, so a `Float64Array`, `Int32Array`,
+// `DataView` or bare `ArrayBuffer` arrives on the other side as raw bytes
+// (a `Uint8Array` going out, an `ArrayBuffer` in the renderer's own glue).
+// Callers that need the original view must carry the type themselves. This
+// is lossy, but only relative to a transport that never worked: before
+// #36498 any of these was a hard `invalid type: byte array` error.
 impl serde::Serialize for DesktopValue {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
@@ -119,7 +127,26 @@ impl<'de> serde::Deserialize<'de> for DesktopValue {
   where
     D: serde::Deserializer<'de>,
   {
-    struct ValueVisitor;
+    struct ValueVisitor {
+      depth: usize,
+    }
+
+    /// Threads the current nesting depth through nested values, which a
+    /// bare `Deserialize` impl has nowhere to carry.
+    struct ValueSeed {
+      depth: usize,
+    }
+
+    impl<'de> serde::de::DeserializeSeed<'de> for ValueSeed {
+      type Value = DesktopValue;
+
+      fn deserialize<D>(self, deserializer: D) -> Result<DesktopValue, D::Error>
+      where
+        D: serde::Deserializer<'de>,
+      {
+        deserializer.deserialize_any(ValueVisitor { depth: self.depth })
+      }
+    }
 
     impl<'de> serde::de::Visitor<'de> for ValueVisitor {
       type Value = DesktopValue;
@@ -178,15 +205,20 @@ impl<'de> serde::Deserialize<'de> for DesktopValue {
       where
         D: serde::Deserializer<'de>,
       {
-        serde::Deserialize::deserialize(deserializer)
+        use serde::de::DeserializeSeed;
+        ValueSeed { depth: self.depth }.deserialize(deserializer)
       }
 
       fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
       where
         A: serde::de::SeqAccess<'de>,
       {
+        let depth = self.depth.checked_add(1).filter(|d| *d <= MAX_DEPTH);
+        let Some(depth) = depth else {
+          return Err(nesting_too_deep());
+        };
         let mut list = Vec::new();
-        while let Some(v) = seq.next_element()? {
+        while let Some(v) = seq.next_element_seed(ValueSeed { depth })? {
           list.push(v);
         }
         Ok(DesktopValue::List(list))
@@ -196,16 +228,33 @@ impl<'de> serde::Deserialize<'de> for DesktopValue {
       where
         A: serde::de::MapAccess<'de>,
       {
+        let depth = self.depth.checked_add(1).filter(|d| *d <= MAX_DEPTH);
+        let Some(depth) = depth else {
+          return Err(nesting_too_deep());
+        };
         let mut dict = Vec::new();
-        while let Some((k, v)) = map.next_entry::<String, DesktopValue>()? {
-          dict.push((k, v));
+        while let Some(k) = map.next_key::<String>()? {
+          dict.push((k, map.next_value_seed(ValueSeed { depth })?));
         }
         Ok(DesktopValue::Dict(dict))
       }
     }
 
-    deserializer.deserialize_any(ValueVisitor)
+    deserializer.deserialize_any(ValueVisitor { depth: 0 })
   }
+}
+
+/// Nesting depth accepted when deserializing a `DesktopValue`. The visitor
+/// recurses once per level, so without a bound a self-referential value
+/// returned from a binding handler (`const o = {}; o.self = o; return o`)
+/// walks the runtime thread off the end of its stack instead of surfacing
+/// an error to the caller. Matches `serde_json`'s own recursion limit.
+const MAX_DEPTH: usize = 128;
+
+fn nesting_too_deep<E: serde::de::Error>() -> E {
+  serde::de::Error::custom(format!(
+    "binding value nested deeper than {MAX_DEPTH} levels (cyclic?)"
+  ))
 }
 
 /// Wraps a `Result<DesktopValue, DesktopValue>` from `execute_js`.
@@ -2413,6 +2462,55 @@ mod tests {
     let bin: DesktopValue =
       serde::Deserialize::deserialize(Bytes(vec![9, 8, 7])).unwrap();
     assert_eq!(bin, DesktopValue::Binary(vec![9, 8, 7]));
+  }
+
+  #[test]
+  fn desktop_value_rejects_nesting_past_the_depth_limit() {
+    // The visitor recurses per level, so an unbounded value — a cyclic
+    // object returned from a binding handler is the realistic source —
+    // would run the runtime thread out of stack. It must surface an error
+    // to the caller instead.
+    //
+    // Built as a `Value` rather than parsed from text: serde_json's own
+    // parser has a recursion limit that would fire first and mask the
+    // guard under test. `from_value` applies no limit of its own.
+    fn nest_lists(depth: usize) -> serde_json::Value {
+      let mut v = json!(1);
+      for _ in 0..depth {
+        v = serde_json::Value::Array(vec![v]);
+      }
+      v
+    }
+
+    let err =
+      serde_json::from_value::<DesktopValue>(nest_lists(super::MAX_DEPTH + 1))
+        .unwrap_err();
+    assert!(
+      err.to_string().contains("nested deeper than"),
+      "expected the depth guard to reject, got: {err}"
+    );
+
+    // Nesting within the limit still deserializes, so the guard isn't
+    // simply rejecting anything structured.
+    serde_json::from_value::<DesktopValue>(nest_lists(super::MAX_DEPTH))
+      .expect("nesting within the limit must still deserialize");
+  }
+
+  #[test]
+  fn desktop_value_depth_limit_counts_maps_too() {
+    // `visit_map` carries its own guard; a value nested through objects
+    // rather than arrays must be bounded the same way.
+    let mut v = json!(1);
+    for _ in 0..super::MAX_DEPTH + 1 {
+      let mut obj = serde_json::Map::new();
+      obj.insert("a".to_string(), v);
+      v = serde_json::Value::Object(obj);
+    }
+    let err = serde_json::from_value::<DesktopValue>(v).unwrap_err();
+    assert!(
+      err.to_string().contains("nested deeper than"),
+      "expected the depth guard to reject, got: {err}"
+    );
   }
 
   // --- permission_state_to_web_string ---

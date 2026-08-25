@@ -416,17 +416,21 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let name_owned = name.to_string();
     laufey::Window::from_id(window_id).add_binding_async(
       name,
-      move |js_call| {
+      move |mut js_call| {
         let tx = tx.clone();
         let responses = responses.clone();
         let name = name_owned.clone();
         async move {
-          let args: Vec<deno_runtime::ops::desktop::DesktopValue> = js_call
-            .args
-            .iter()
-            .cloned()
-            .map(laufey_value_to_desktop_value)
-            .collect();
+          // `mem::take` rather than `.iter().cloned()`: `js_call.resolve`
+          // below consumes `js_call`, so the args can't simply be moved out
+          // of the field, and cloning would deep-copy every argument —
+          // binary payloads included — on the exact path this transport is
+          // meant to make cheap for large buffers (#36498).
+          let args: Vec<deno_runtime::ops::desktop::DesktopValue> =
+            std::mem::take(&mut js_call.args)
+              .into_iter()
+              .map(laufey_value_to_desktop_value)
+              .collect();
           let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
           let call_id =
             deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
