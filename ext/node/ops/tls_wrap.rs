@@ -4178,6 +4178,12 @@ fn build_client_config(
     }
   }
 
+  // Whether the SecureContext itself carries `ca` certs, as opposed to
+  // CA certs inherited from the process (default store or
+  // setDefaultCACertificates). Only explicit per-context certs disqualify
+  // the connection from the cached-verifier path below.
+  let has_explicit_ca = !ca_certs.is_empty();
+
   let mut root_cert_store = op_state
     .borrow::<DefaultTlsOptions>()
     .root_cert_store()
@@ -4257,17 +4263,17 @@ fn build_client_config(
 
   // The default-config fast path applies when the caller has not supplied
   // any of the per-connection knobs that would change cert validation or
-  // client auth: no extra `ca` certs, no explicit client cert/key, and no
-  // process-level custom CA set by `setDefaultCACertificates`.  In that
-  // case we cache the verifier and the "no client cert" resolver in
-  // `NodeTlsState` so successive `tls.connect()` calls hand rustls the
-  // same `Arc`s and session resumption is allowed to proceed (rustls keys
-  // its `compatible_config` check on `Arc::downgrade(&verifier)` identity).
-  let is_default_path = ca_certs.is_empty()
+  // client auth: no per-context `ca` certs and no explicit client
+  // cert/key.  In that case we cache the verifier and the "no client
+  // cert" resolver in `NodeTlsState` so successive `tls.connect()` calls
+  // hand rustls the same `Arc`s and session resumption is allowed to
+  // proceed (rustls keys its `compatible_config` check on
+  // `Arc::downgrade(&verifier)` identity).  A process-level custom CA set
+  // by `setDefaultCACertificates` stays on this path: it is shared by all
+  // default-CA connections, and `op_set_default_ca_certificates` drops the
+  // cached verifiers whenever it changes.
+  let is_default_path = !has_explicit_ca
     && use_default_ca
-    && op_state
-      .try_borrow::<NodeTlsState>()
-      .is_none_or(|s| s.custom_ca_certs.is_none())
     && matches!(maybe_cert_chain_and_key, TlsKeys::Null);
 
   // Always build with root certs so NodeServerCertVerifier can check them.
