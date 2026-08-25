@@ -1391,18 +1391,24 @@ Deno.test({
         return response;
       },
     );
-    const dependency = `http://127.0.0.1:${server.addr.port}/dependency.js`;
-    const source = `import ${JSON.stringify(dependency)};`;
-    const worker = new workerThreads.Worker(
-      new URL(`data:text/javascript,${encodeURIComponent(source)}`),
-    );
-
+    let worker: workerThreads.Worker | undefined;
     try {
+      const dependency = `http://127.0.0.1:${server.addr.port}/dependency.js`;
+      const source = `import ${JSON.stringify(dependency)};`;
+      worker = new workerThreads.Worker(
+        new URL(`data:text/javascript,${encodeURIComponent(source)}`),
+      );
       await requestStarted;
-      assertEquals(await worker.terminate(), 1);
+      const exitCode = await worker.terminate();
+      worker = undefined;
+      assertEquals(exitCode, 1);
     } finally {
-      finishRequest();
-      await server.shutdown();
+      try {
+        await worker?.terminate();
+      } finally {
+        finishRequest();
+        await server.shutdown();
+      }
     }
   },
 });
