@@ -518,7 +518,10 @@ TLSSocket.prototype[kReinitializeHandle] = function (handle) {
   if (options.ALPNProtocols) {
     this._handle.setAlpnProtocols(options.ALPNProtocols);
   }
-  if (this._session) {
+  // Only re-apply a session that already passed setSession()'s
+  // host:port validation; an invalid buffer must not enable
+  // resumption on the new handle.
+  if (this._session && this._sessionReused) {
     this._handle.setSession(this._session);
   }
 
@@ -855,11 +858,10 @@ TLSSocket.prototype._init = function (socket, wrap) {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = onhandshakedone;
 
-    if (options.session) {
-      if (syntheticSessionMatches(options.session, options)) {
-        ssl.setSession(options.session);
-      }
-    }
+    // options.session is not applied here: it can't be validated against
+    // the destination yet (kConnectOptions isn't set until after
+    // construction). tls.connect() applies it via setSession(), which
+    // validates against the connect options.
   }
 
   if (options.ALPNProtocols) {
