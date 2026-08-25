@@ -1107,11 +1107,11 @@ Deno.test("X509Certificate decodes name string types", async function () {
 
   assertEquals(x509.subject, "C=US\nCN=BMP Testé");
   assertEquals(x509.issuer, "C=US\nCN=T61 Testé");
-  assertEquals(x509.toLegacyObject().subject, {
+  assertEquals(x509.toLegacyObject().subject as any, {
     C: "US",
     CN: "BMP Testé",
   });
-  assertEquals(x509.toLegacyObject().issuer, {
+  assertEquals(x509.toLegacyObject().issuer as any, {
     C: "US",
     CN: "T61 Testé",
   });
@@ -1122,7 +1122,7 @@ Deno.test("X509Certificate decodes name string types", async function () {
     "C=US\nST=CA\nL=SF\nO=Joyent\nOU=Node.js\nCN=agent1\n" +
       "emailAddress=ry@tinyclouds.org",
   );
-  assertEquals(utf8.toLegacyObject().subject, {
+  assertEquals(utf8.toLegacyObject().subject as any, {
     C: "US",
     ST: "CA",
     L: "SF",

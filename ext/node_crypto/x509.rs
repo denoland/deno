@@ -463,14 +463,14 @@ fn attribute_value_to_string(
       if !attr.data.len().is_multiple_of(2) {
         return Err(X509Error::InvalidAttributes);
       }
-      std::char::decode_utf16(
-        attr
-          .data
-          .chunks_exact(2)
-          .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]])),
-      )
-      .collect::<Result<String, _>>()
-      .map_err(|_| X509Error::InvalidAttributes)
+      attr
+        .data
+        .chunks_exact(2)
+        .map(|chunk| {
+          char::from_u32(u16::from_be_bytes([chunk[0], chunk[1]]) as u32)
+            .ok_or(X509Error::InvalidAttributes)
+        })
+        .collect()
     }
     Tag::UniversalString => {
       if !attr.data.len().is_multiple_of(4) {
@@ -1447,6 +1447,16 @@ r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
     assert!(
       attribute_value_to_string(
         &malformed,
+        &x509_parser::oid_registry::OID_X509_COMMON_NAME,
+      )
+      .is_err()
+    );
+
+    let bmp_surrogate_pair =
+      Any::from_tag_and_data(Tag::BmpString, b"\xd8\x3d\xde\x00");
+    assert!(
+      attribute_value_to_string(
+        &bmp_surrogate_pair,
         &x509_parser::oid_registry::OID_X509_COMMON_NAME,
       )
       .is_err()
