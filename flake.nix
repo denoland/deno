@@ -106,7 +106,7 @@
             function update() {
               sys=$1
               target=$2
-              url="https://github.com/denoland/rusty_v8/releases/download/v${rustyV8Version}/librusty_v8_release_$target.a.gz"
+              url="https://github.com/denoland/rusty_v8/releases/download/v${rustyV8Version}/librusty_v8_simdutf_release_$target.a.gz"
               hash=$(nix store prefetch-file --json "$url" | ${pkgs.lib.getExe pkgs.jq} -r '.hash')
               sed -i "s|\"$sys\" = \"sha256-[^\"]*\";|\"$sys\" = \"$hash\";|" flake.nix
             }

@@ -87,6 +87,7 @@ regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
+serde_bytes.workspace = true
 sha2.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true

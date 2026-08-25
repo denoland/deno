@@ -33,6 +33,7 @@ use rusqlite::limits::Limit;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
+use super::session::InnerSessionPtr;
 use super::session::SessionOptions;
 use super::sql_tag_store::SQLTagStore;
 use super::statement::InnerStatementPtr;
@@ -572,6 +573,7 @@ impl<'a> ApplyChangesetOptions<'a> {
 pub struct DatabaseSync {
   pub conn: Rc<RefCell<Option<rusqlite::Connection>>>,
   statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
+  sessions: Rc<RefCell<Vec<InnerSessionPtr>>>,
   options: DatabaseSyncOptions,
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
@@ -873,6 +875,7 @@ impl DatabaseSync {
     Ok(DatabaseSync {
       conn: Rc::new(RefCell::new(db)),
       statements: Rc::new(RefCell::new(Vec::new())),
+      sessions: Rc::new(RefCell::new(Vec::new())),
       location,
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
@@ -945,6 +948,18 @@ impl DatabaseSync {
           stmt.set(None);
         }
       };
+    }
+
+    // Delete all sessions while their database connection is still valid.
+    for session in self.sessions.borrow_mut().drain(..) {
+      if let Some(ptr) = session.take() {
+        // SAFETY: `ptr` is a valid session handle associated with the open
+        // connection. Taking it first prevents stale Session objects from
+        // deleting or using it after the connection is reopened.
+        unsafe {
+          libsqlite3_sys::sqlite3session_delete(ptr);
+        }
+      }
     }
 
     {
@@ -1605,10 +1620,13 @@ impl DatabaseSync {
       return Err(SqliteError::SessionCreateFailed);
     }
 
+    let session = Rc::new(Cell::new(Some(raw_session)));
+    self.sessions.borrow_mut().push(Rc::clone(&session));
+
     Ok(Session {
-      inner: raw_session,
-      freed: Cell::new(false),
+      inner: session,
       db: self.conn.clone(),
+      sessions: Rc::clone(&self.sessions),
     })
   }
 
