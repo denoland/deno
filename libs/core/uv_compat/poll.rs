@@ -329,21 +329,33 @@ impl Drop for PollDriver {
 
 fn control_pipe() -> Result<(OwnedFd, OwnedFd), c_int> {
   let mut fds = [0; 2];
-  if unsafe { libc::pipe(fds.as_mut_ptr()) } == -1 {
-    return Err(last_errno());
+  #[cfg(target_os = "linux")]
+  {
+    // Atomically set CLOEXEC to avoid a concurrent fork/exec inheritance race.
+    if unsafe {
+      libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK)
+    } == -1
+    {
+      return Err(last_errno());
+    }
+    let read = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    let write = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    Ok((read, write))
   }
-  let read = unsafe { OwnedFd::from_raw_fd(fds[0]) };
-  let write = unsafe { OwnedFd::from_raw_fd(fds[1]) };
-  configure_control_fd(read.as_raw_fd())?;
-  configure_control_fd(write.as_raw_fd())?;
-  Ok((read, write))
-}
-
-fn configure_control_fd(fd: c_int) -> Result<(), c_int> {
-  set_fd_nonblocking(fd)?;
-  let flags = fcntl_retry(fd, libc::F_GETFD, 0)?;
-  fcntl_retry(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC)?;
-  Ok(())
+  #[cfg(not(target_os = "linux"))]
+  {
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } == -1 {
+      return Err(last_errno());
+    }
+    let read = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    let write = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    for fd in fds {
+      set_fd_nonblocking(fd)?;
+      let flags = fcntl_retry(fd, libc::F_GETFD, 0)?;
+      fcntl_retry(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC)?;
+    }
+    Ok((read, write))
+  }
 }
 
 pub(crate) fn set_fd_nonblocking(fd: c_int) -> Result<(), c_int> {
