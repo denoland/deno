@@ -1738,7 +1738,7 @@ export class REPLServer extends (Interface as any) {
             errStack = this.writer(e);
           } finally {
             for (const { key, desc } of new SafeArrayIterator(hidden)) {
-              ObjectDefineProperty(e, key, desc);
+              ObjectDefineProperty(e, key, { __proto__: null, ...desc });
             }
           }
         }
@@ -1846,7 +1846,12 @@ export class REPLServer extends (Interface as any) {
         if (SetPrototypeHas(builtinNames, name)) continue;
         try {
           const desc = ObjectGetOwnPropertyDescriptor(globalThis, name);
-          if (desc) ObjectDefineProperty(context, name, desc);
+          if (desc) {
+            ObjectDefineProperty(context, name, {
+              __proto__: null,
+              ...desc,
+            });
+          }
         } catch {
           // Non-configurable / non-writable props just get skipped.
         }

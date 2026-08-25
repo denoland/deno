@@ -1028,6 +1028,15 @@ pub enum MenuItem {
     id: Option<String>,
     accelerator: Option<String>,
     enabled: bool,
+    /// Checkmark next to the item. All platforms.
+    #[serde(default)]
+    checked: bool,
+    /// PNG-encoded image bytes shown next to the label. macOS and
+    /// Windows only.
+    #[serde(with = "serde_bytes", default)]
+    icon: Option<Vec<u8>>,
+    /// Tooltip shown on hover. macOS only.
+    tooltip: Option<String>,
   },
   Submenu {
     label: String,
@@ -1902,6 +1911,7 @@ mod tests {
   use super::BrowserWindow;
   use super::DesktopEvent;
   use super::DesktopValue;
+  use super::MenuItem;
   use super::PendingBindResponses;
   use super::PermissionState;
   use super::Tray;
@@ -1950,6 +1960,53 @@ mod tests {
           "native method must not collide with the public {name} wrapper"
         );
       }
+    }
+  }
+
+  #[test]
+  fn menu_item_wire_shape_new_fields_are_optional() {
+    // Pre-existing callers only pass label/enabled (+ optional id and
+    // accelerator); checked/icon/tooltip must default rather than error.
+    let item: MenuItem = serde_json::from_value(json!({
+      "item": { "label": "Save", "enabled": true }
+    }))
+    .unwrap();
+    match item {
+      MenuItem::Item {
+        checked,
+        icon,
+        tooltip,
+        ..
+      } => {
+        assert!(!checked);
+        assert!(icon.is_none());
+        assert!(tooltip.is_none());
+      }
+      _ => panic!("expected Item"),
+    }
+
+    let item: MenuItem = serde_json::from_value(json!({
+      "item": {
+        "label": "Mute",
+        "enabled": true,
+        "checked": true,
+        "icon": [0x89, 0x50, 0x4E, 0x47],
+        "tooltip": "Silence notifications",
+      }
+    }))
+    .unwrap();
+    match item {
+      MenuItem::Item {
+        checked,
+        icon,
+        tooltip,
+        ..
+      } => {
+        assert!(checked);
+        assert_eq!(icon.as_deref(), Some(&[0x89u8, 0x50, 0x4E, 0x47][..]));
+        assert_eq!(tooltip.as_deref(), Some("Silence notifications"));
+      }
+      _ => panic!("expected Item"),
     }
   }
 

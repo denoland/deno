@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-//! Head-to-head microbenchmark of the legacy clap flag parser vs the
-//! hand-written `deno_cli_parser`, built into the same binary (same profile /
-//! LTO) so the comparison is free of the runtime-startup and build confounders
+//! Microbenchmark of the CLI flag-parsing entry point (`deno_cli_parser` plus
+//! the CLI-side bare-run fast path), built into the same binary (same profile /
+//! LTO) so the numbers are free of the runtime-startup and build confounders
 //! that a `deno run` wall-clock benchmark has.
 
 use std::ffi::OsString;
@@ -48,32 +48,17 @@ fn benches(c: &mut Criterion) {
     ("complex", &complex),
   ];
 
-  // Legacy clap parser (note: `bare_run` still hits clap's fast-path, which
-  // skips building the command tree; the other two build clap_root()).
-  let mut g = c.benchmark_group("clap");
+  let mut g = c.benchmark_group("flags_from_vec");
   for (name, input) in inputs {
     g.bench_function(name, |b| {
       b.iter_batched(
         || input.clone(),
         |args| {
-          black_box(deno::clap_flags_from_vec_with_initial_cwd(
+          black_box(deno::flags_from_vec_with_initial_cwd(
             black_box(args),
             None,
           ))
         },
-        BatchSize::SmallInput,
-      );
-    });
-  }
-  g.finish();
-
-  // Hand-written parser (production path).
-  let mut g = c.benchmark_group("new_parser");
-  for (name, input) in inputs {
-    g.bench_function(name, |b| {
-      b.iter_batched(
-        || input.clone(),
-        |args| black_box(deno::flags_from_vec_new(black_box(args), None)),
         BatchSize::SmallInput,
       );
     });

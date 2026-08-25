@@ -323,10 +323,25 @@ async fn compile_desktop(
   let desktop_entrypoint_file = if desktop_flags.source_file == "." {
     let cwd = &detection_cwd;
     if let Some(detection) = detected_framework.as_ref() {
-      let use_framework_hmr =
-        desktop_flags.hmr && detection.hmr_command.is_some();
+      let use_framework_hmr = desktop_flags.hmr
+        && (detection.hmr_entrypoint_code().is_some()
+          || detection.hmr_command.is_some());
       let entrypoint_code = if use_framework_hmr {
-        NOOP_ENTRYPOINT.to_string()
+        match detection.hmr_entrypoint_code() {
+          Some(code) => {
+            // The generated dev shim imports the framework's dev-server API
+            // (e.g. Vite's); type-checking it would demand the project ship
+            // `@types/node` and checks nothing user-authored, so skip it.
+            flags.type_check_mode = TypeCheckMode::None;
+            // The dev server used to run as an unsandboxed `deno task dev`
+            // subprocess; now that it runs inside the desktop runtime, keep
+            // that behavior — a sandboxed Vite immediately dies on env reads
+            // (e.g. NAPI_RS_WASI_FLAVOR from its napi loader).
+            flags.permissions.allow_all = true;
+            code.to_string()
+          }
+          None => NOOP_ENTRYPOINT.to_string(),
+        }
       } else {
         detection.entrypoint_code.clone()
       };
@@ -1325,7 +1340,20 @@ async fn run_desktop_hmr(
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
 
+  // In-runtime framework dev: the compiled entrypoint boots the framework's
+  // dev server inside the desktop runtime (see `hmr_entrypoint_code`), so
+  // server-side code keeps access to `Deno.desktop` (#35899). Signal
+  // rt_desktop to restore CWD to the source dir and leave hot reloading to
+  // the framework; the webview finds the server via the regular
+  // DENO_SERVE_ADDRESS poll, so no external process and no URL scraping.
+  let in_runtime_dev = desktop_flags.hmr
+    && framework.is_some_and(|f| f.hmr_entrypoint_code().is_some());
+  if in_runtime_dev {
+    cmd.env("DENO_DESKTOP_FRAMEWORK_DEV", "1");
+  }
+
   let _dev_server_child = if desktop_flags.hmr
+    && !in_runtime_dev
     && let Some(fw) = framework
     && let Some(dev_cmd) = &fw.hmr_command
   {

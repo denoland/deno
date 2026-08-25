@@ -1,0 +1,24 @@
+{
+  "spans": [
+[WILDCARD]
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://example.com/foo?a=1"
+          }
+        },
+[WILDCARD]
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/foo"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": "a=1"
+          }
+        },
+[WILDCARD]
+}
