@@ -244,12 +244,28 @@ impl<'de> serde::Deserialize<'de> for DesktopValue {
   }
 }
 
-/// Nesting depth accepted when deserializing a `DesktopValue`. The visitor
-/// recurses once per level, so without a bound a self-referential value
-/// returned from a binding handler (`const o = {}; o.self = o; return o`)
-/// walks the runtime thread off the end of its stack instead of surfacing
-/// an error to the caller. Matches `serde_json`'s own recursion limit.
-const MAX_DEPTH: usize = 128;
+/// Nesting depth accepted anywhere a `DesktopValue` is built from data the
+/// runtime didn't produce itself.
+///
+/// Every conversion in and out of `DesktopValue` recurses once per level, so
+/// without a bound a deeply nested value walks the runtime thread off the end
+/// of its stack instead of surfacing an error to the caller. Matches
+/// `serde_json`'s own recursion limit.
+///
+/// Two paths have to honour it, in opposite directions:
+///
+/// - JS → Rust, enforced by the `Deserialize` impl below. A self-referential
+///   value returned from a binding handler (`const o = {}; o.self = o; return
+///   o`) is the realistic source.
+/// - renderer → Rust, enforced by `laufey_value_to_desktop_value` in
+///   `cli/rt_desktop`, which converts renderer-supplied binding *arguments*
+///   before the deserializer is ever involved. A `laufey::Value` can't be
+///   cyclic — something upstream would have had to resolve the cycle to build
+///   it — but its depth is still whatever the renderer sent.
+///
+/// Bounding both entry points is what makes `DesktopValue::to_v8` safe: it
+/// recurses too, and only ever walks a value that arrived through one of them.
+pub const MAX_DEPTH: usize = 128;
 
 fn nesting_too_deep<E: serde::de::Error>() -> E {
   serde::de::Error::custom(format!(

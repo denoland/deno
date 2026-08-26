@@ -402,9 +402,15 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     laufey::Window::from_id(window_id).execute_js(
       script,
       Some(move |result: Result<laufey::Value, laufey::Value>| {
+        // A value too deep to convert is reported to the caller as a
+        // rejection rather than taken as a successful result.
         callback(match result {
-          Ok(val) => Ok(laufey_value_to_desktop_value(val)),
-          Err(err) => Err(laufey_value_to_desktop_value(err)),
+          Ok(val) => laufey_value_to_desktop_value(val)
+            .map_err(deno_runtime::ops::desktop::DesktopValue::String),
+          Err(err) => Err(
+            laufey_value_to_desktop_value(err)
+              .unwrap_or_else(deno_runtime::ops::desktop::DesktopValue::String),
+          ),
         });
       }),
     );
@@ -426,11 +432,19 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           // of the field, and cloning would deep-copy every argument —
           // binary payloads included — on the exact path this transport is
           // meant to make cheap for large buffers (#36498).
-          let args: Vec<deno_runtime::ops::desktop::DesktopValue> =
-            std::mem::take(&mut js_call.args)
-              .into_iter()
-              .map(laufey_value_to_desktop_value)
-              .collect();
+          let args = match std::mem::take(&mut js_call.args)
+            .into_iter()
+            .map(laufey_value_to_desktop_value)
+            .collect::<Result<Vec<_>, _>>()
+          {
+            Ok(args) => args,
+            Err(err) => {
+              // Too deeply nested to convert without risking the runtime
+              // thread's stack. Reject this call; the app keeps running.
+              js_call.reject(laufey::Value::String(err));
+              return;
+            }
+          };
           let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
           let call_id =
             deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
@@ -1567,23 +1581,61 @@ fn extract_fork_script_path(
 /// Convert a laufey::Value to a DesktopValue for direct V8 conversion.
 fn laufey_value_to_desktop_value(
   v: laufey::Value,
-) -> deno_runtime::ops::desktop::DesktopValue {
+) -> Result<deno_runtime::ops::desktop::DesktopValue, String> {
+  laufey_value_to_desktop_value_at(v, 0)
+}
+
+/// Depth-bounded body of [`laufey_value_to_desktop_value`].
+///
+/// The value comes from the renderer — binding arguments, or an `execute_js`
+/// result — so its nesting is whatever the page sent. This conversion recurses
+/// once per level, and `DesktopValue::to_v8` recurses over the result again,
+/// so an unbounded value would walk the runtime thread off the end of its
+/// stack. A `laufey::Value` can't be cyclic (the backend would have had to
+/// resolve the cycle to build it), but depth alone is enough.
+///
+/// Bounded by the same `MAX_DEPTH` the `DesktopValue` deserializer uses, so
+/// both directions agree on what is too deep.
+fn laufey_value_to_desktop_value_at(
+  v: laufey::Value,
+  depth: usize,
+) -> Result<deno_runtime::ops::desktop::DesktopValue, String> {
   use deno_runtime::ops::desktop::DesktopValue;
-  match v {
+  Ok(match v {
     laufey::Value::Null => DesktopValue::Null,
     laufey::Value::Bool(b) => DesktopValue::Bool(b),
     laufey::Value::Int(i) => DesktopValue::Int(i),
     laufey::Value::Double(d) => DesktopValue::Double(d),
     laufey::Value::String(s) => DesktopValue::String(s),
-    laufey::Value::List(l) => DesktopValue::List(
-      l.into_iter().map(laufey_value_to_desktop_value).collect(),
-    ),
-    laufey::Value::Dict(d) => DesktopValue::Dict(
-      d.into_iter()
-        .map(|(k, v)| (k, laufey_value_to_desktop_value(v)))
-        .collect(),
-    ),
+    laufey::Value::List(l) => {
+      let depth = nested_depth(depth)?;
+      DesktopValue::List(
+        l.into_iter()
+          .map(|v| laufey_value_to_desktop_value_at(v, depth))
+          .collect::<Result<Vec<_>, _>>()?,
+      )
+    }
+    laufey::Value::Dict(d) => {
+      let depth = nested_depth(depth)?;
+      DesktopValue::Dict(
+        d.into_iter()
+          .map(|(k, v)| {
+            laufey_value_to_desktop_value_at(v, depth).map(|v| (k, v))
+          })
+          .collect::<Result<Vec<_>, _>>()?,
+      )
+    }
     laufey::Value::Binary(b) => DesktopValue::Binary(b),
+  })
+}
+
+fn nested_depth(depth: usize) -> Result<usize, String> {
+  use deno_runtime::ops::desktop::MAX_DEPTH;
+  match depth.checked_add(1).filter(|d| *d <= MAX_DEPTH) {
+    Some(d) => Ok(d),
+    None => Err(format!(
+      "binding value nested deeper than {MAX_DEPTH} levels"
+    )),
   }
 }
 
@@ -2195,27 +2247,22 @@ mod tests {
   #[test]
   fn laufey_value_to_desktop_value_covers_every_variant() {
     use deno_runtime::ops::desktop::DesktopValue;
+    let conv = |v| laufey_value_to_desktop_value(v).unwrap();
+    assert!(matches!(conv(laufey::Value::Null), DesktopValue::Null));
     assert!(matches!(
-      laufey_value_to_desktop_value(laufey::Value::Null),
-      DesktopValue::Null
-    ));
-    assert!(matches!(
-      laufey_value_to_desktop_value(laufey::Value::Bool(true)),
+      conv(laufey::Value::Bool(true)),
       DesktopValue::Bool(true)
     ));
+    assert!(matches!(conv(laufey::Value::Int(7)), DesktopValue::Int(7)));
     assert!(matches!(
-      laufey_value_to_desktop_value(laufey::Value::Int(7)),
-      DesktopValue::Int(7)
-    ));
-    assert!(matches!(
-      laufey_value_to_desktop_value(laufey::Value::Double(1.5)),
+      conv(laufey::Value::Double(1.5)),
       DesktopValue::Double(d) if d == 1.5
     ));
-    match laufey_value_to_desktop_value(laufey::Value::String("hi".into())) {
+    match conv(laufey::Value::String("hi".into())) {
       DesktopValue::String(s) => assert_eq!(s, "hi"),
       _ => panic!(),
     }
-    match laufey_value_to_desktop_value(laufey::Value::Binary(vec![1, 2, 3])) {
+    match conv(laufey::Value::Binary(vec![1, 2, 3])) {
       DesktopValue::Binary(b) => assert_eq!(b, vec![1, 2, 3]),
       _ => panic!(),
     }
@@ -2228,7 +2275,7 @@ mod tests {
       laufey::Value::Int(1),
       laufey::Value::List(vec![laufey::Value::String("nested".into())]),
     ]);
-    let dv = laufey_value_to_desktop_value(v);
+    let dv = laufey_value_to_desktop_value(v).unwrap();
     let DesktopValue::List(outer) = dv else {
       panic!("outer must be List")
     };
@@ -2240,6 +2287,41 @@ mod tests {
       DesktopValue::String(s) => assert_eq!(s, "nested"),
       _ => panic!("inner element should be String"),
     }
+  }
+
+  #[test]
+  fn laufey_value_to_desktop_value_bounds_renderer_depth() {
+    use deno_runtime::ops::desktop::MAX_DEPTH;
+    // Binding arguments come from the renderer, so their nesting is whatever
+    // the page sent. This conversion recurses per level and `to_v8` recurses
+    // over the result again, so an unbounded value would walk the runtime
+    // thread off its stack. The deserializer's MAX_DEPTH doesn't cover this
+    // direction — it never sees these values.
+    fn nest(depth: usize) -> laufey::Value {
+      let mut v = laufey::Value::Int(1);
+      for _ in 0..depth {
+        v = laufey::Value::List(vec![v]);
+      }
+      v
+    }
+
+    let err = laufey_value_to_desktop_value(nest(MAX_DEPTH + 1)).unwrap_err();
+    assert!(err.contains("nested deeper than"), "got: {err}");
+
+    // Objects nest through a separate arm, so they need their own guard.
+    let mut v = laufey::Value::Int(1);
+    for _ in 0..MAX_DEPTH + 1 {
+      let mut dict = std::collections::HashMap::new();
+      dict.insert("a".to_string(), v);
+      v = laufey::Value::Dict(dict);
+    }
+    let err = laufey_value_to_desktop_value(v).unwrap_err();
+    assert!(err.contains("nested deeper than"), "got: {err}");
+
+    // At the limit it still converts, so the guard isn't just rejecting
+    // anything structured.
+    laufey_value_to_desktop_value(nest(MAX_DEPTH))
+      .expect("nesting within the limit must still convert");
   }
 
   #[test]
@@ -2255,7 +2337,8 @@ mod tests {
     // laufey → DesktopValue → laufey must preserve every variant —
     // including Binary, which the old serde_json transport dropped
     // (denoland/deno#36498).
-    let back = desktop_value_to_laufey_value(laufey_value_to_desktop_value(v));
+    let back =
+      desktop_value_to_laufey_value(laufey_value_to_desktop_value(v).unwrap());
     let laufey::Value::Dict(d) = back else {
       panic!("round-trip must yield Dict")
     };
