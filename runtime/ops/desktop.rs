@@ -615,6 +615,14 @@ pub trait DesktopApi: Send + Sync + 'static {
     default_value: &str,
   ) -> Option<String>;
 
+  /// Read the system clipboard's plain-text content. Returns `None` if the
+  /// clipboard is empty, holds no text, or the backend has no clipboard
+  /// support.
+  fn read_clipboard_text(&self) -> Option<String>;
+  /// Replace the system clipboard's content with `text`. An empty string
+  /// clears the clipboard.
+  fn write_clipboard_text(&self, text: &str);
+
   /// Set a short text badge on the app's dock / taskbar icon. An empty
   /// string clears the badge.
   fn set_dock_badge(&self, text: &str);
@@ -1638,6 +1646,129 @@ fn op_desktop_prompt(
   }
 }
 
+/// How long to wait on a clipboard call before giving up.
+///
+/// On X11 and Wayland there is no central clipboard store: the call is
+/// serviced by whichever application owns the selection, and
+/// `gtk_clipboard_wait_for_text` has no timeout of its own. The blocking pool
+/// these calls run on is shared and bounded, so an unbounded wait turns one
+/// unresponsive peer into starvation for every other blocking task in the
+/// runtime. Short enough not to strand a caller, long enough that a merely
+/// slow owner still succeeds.
+const CLIPBOARD_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_secs(5);
+
+/// Read the clipboard's text off the JS thread.
+///
+/// `DesktopApi::read_clipboard_text` is synchronous, and on X11/Wayland the
+/// clipboard has no central store: the read is serviced by whichever
+/// application currently owns the selection, and `gtk_clipboard_wait_for_text`
+/// has no timeout. An unresponsive owner therefore blocks the caller for as
+/// long as it likes. Running that on the JS thread would freeze the entire
+/// runtime — timers, servers, signal handlers — which is the same failure
+/// mode as the error dialog in #36393, and the `Promise` this op returns to
+/// `navigator.clipboard.readText()` would have made it look impossible.
+///
+/// Thread-safety: in a packaged desktop app the runtime already runs on its
+/// own `deno-desktop-runtime` thread (`run_on_runtime_thread` in
+/// `cli/rt_desktop`), never the laufey UI thread, so the existing call was
+/// already an off-UI-thread one that the backend marshals; the pool thread
+/// used here is in the same position, not a new kind of caller.
+#[op2]
+#[string]
+async fn op_desktop_read_clipboard_text(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> Result<Option<String>, deno_error::JsErrorBox> {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    return Ok(None);
+  };
+  // The runtime's bounded blocking pool, not a fresh thread per call:
+  // `readText()` is an ordinary API an app may poll on an interval, and
+  // nothing here rate-limits it.
+  //
+  // The pool being bounded is also why the timeout matters. A read is
+  // serviced by whichever app owns the selection and can block for as long
+  // as that app likes, and a `spawn_blocking` task can't be cancelled — so
+  // without a bound on the wait, enough hung reads would occupy pool threads
+  // permanently and starve every other blocking task in the runtime, not
+  // just the caller. Timing out doesn't reclaim the thread, but it stops the
+  // caller adding more of them behind an unbounded await.
+  //
+  // A join error (a backend that panics mid-read) yields `None` too, rather
+  // than leaving the caller's promise pending forever.
+  let read =
+    deno_core::unsync::spawn_blocking(move || api.read_clipboard_text());
+  // Reject rather than resolve on either failure. Resolving would hand back
+  // `""`, which is exactly what a genuinely empty clipboard returns, so a
+  // caller could not tell "nothing was copied" from "the owning app is
+  // wedged" — and `if (await navigator.clipboard.readText())` would quietly
+  // take the empty branch. The spec rejects here too.
+  //
+  // The two failures get different messages: a panic inside the backend has
+  // nothing to do with a timeout or with another application, and pointing
+  // someone at their window manager for it would be an actively wrong
+  // diagnosis.
+  match tokio::time::timeout(CLIPBOARD_TIMEOUT, read).await {
+    Ok(Ok(text)) => Ok(text),
+    Ok(Err(_join)) => Err(clipboard_failed("read")),
+    Err(_elapsed) => Err(clipboard_unavailable("read")),
+  }
+}
+
+/// The error a clipboard op rejects with when the backend call itself failed
+/// — i.e. it panicked, so the blocking task's join returned an error. Kept
+/// distinct from [`clipboard_unavailable`]: nothing timed out and no other
+/// application was involved.
+fn clipboard_failed(op: &str) -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::generic(format!("clipboard {op} failed"))
+}
+
+/// The error a clipboard op rejects with when the call didn't finish in time.
+///
+/// Names the unresponsive-owner case specifically: on X11/Wayland the call is
+/// serviced by whichever application owns the selection, and that being stuck
+/// is the one thing a user can actually act on. Only for the timeout — see
+/// [`clipboard_failed`] for a backend that failed outright.
+fn clipboard_unavailable(op: &str) -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::generic(format!(
+    "clipboard {op} did not complete within {}s - the application that owns \
+     the clipboard may be unresponsive",
+    CLIPBOARD_TIMEOUT.as_secs()
+  ))
+}
+
+/// Write the clipboard's text off the JS thread. Blocking semantics — and the
+/// reason for going through the blocking pool — as
+/// `op_desktop_read_clipboard_text`.
+#[op2]
+async fn op_desktop_write_clipboard_text(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+  #[string] text: String,
+) -> Result<(), deno_error::JsErrorBox> {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    return Ok(());
+  };
+  let write = deno_core::unsync::spawn_blocking(move || {
+    api.write_clipboard_text(&text);
+  });
+  // `writeText()`'s whole contract is that resolution means the write
+  // happened, so discarding the timeout here would make an app report
+  // "Copied!" in precisely the case the timeout exists to catch.
+  match tokio::time::timeout(CLIPBOARD_TIMEOUT, write).await {
+    Ok(Ok(())) => Ok(()),
+    Ok(Err(_join)) => Err(clipboard_failed("write")),
+    Err(_elapsed) => Err(clipboard_unavailable("write")),
+  }
+}
+
 fn permission_state_to_web_string(state: PermissionState) -> &'static str {
   // Web Permissions API state values; `Notification.requestPermission`
   // additionally maps `Prompt` → `"default"` per the Notifications spec.
@@ -2067,6 +2198,8 @@ deno_core::extension!(
     op_desktop_alert_async,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_read_clipboard_text,
+    op_desktop_write_clipboard_text,
     op_desktop_send_error_report,
     op_desktop_request_notification_permission,
     op_desktop_query_notification_permission,

@@ -30,6 +30,8 @@ pub const DESKTOP_JS: &str = r#"
     op_desktop_alert,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_read_clipboard_text,
+    op_desktop_write_clipboard_text,
     op_desktop_request_notification_permission,
     op_desktop_query_notification_permission,
   } = internals.core.ops;
@@ -696,6 +698,75 @@ pub const DESKTOP_JS: &str = r#"
     console.error("[deno desktop] failed to install navigator.permissions:", e);
   }
 
+  // --- navigator.clipboard (text only) ---
+  //
+  // Spec surface: `navigator.clipboard` is a `Clipboard` (extends EventTarget)
+  // exposing async `readText()` / `writeText()`. The ops behind them are
+  // genuinely async: laufey's clipboard calls block their calling thread, and
+  // on X11/Wayland a read is serviced by whichever app owns the selection, so
+  // an unresponsive owner would otherwise freeze the whole runtime behind a
+  // Promise that looks like it couldn't. They reject rather than resolve if
+  // that owner never answers — `""` is indistinguishable from an empty
+  // clipboard, and a resolved `writeText()` has to mean the write happened.
+  //
+  // The richer `read()` / `write()` (`ClipboardItem` / arbitrary MIME types)
+  // aren't backed by laufey, so they're omitted rather than stubbed. Per spec
+  // the read/write are gated on the `clipboard-read` / `clipboard-write`
+  // permissions, but laufey has no clipboard permission model, so access
+  // isn't gated here (mirroring how the desktop Notification surface
+  // degrades).
+  const webidl = internals.webidl;
+  class Clipboard extends EventTarget {
+    constructor() {
+      super();
+      webidl.illegalConstructor();
+    }
+
+    async readText() {
+      webidl.assertBranded(this, ClipboardPrototype);
+      return (await op_desktop_read_clipboard_text()) ?? "";
+    }
+
+    async writeText(data) {
+      webidl.assertBranded(this, ClipboardPrototype);
+      const prefix = "Failed to execute 'writeText' on 'Clipboard'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      data = webidl.converters["DOMString"](data, prefix, "Argument 1");
+      await op_desktop_write_clipboard_text(data);
+    }
+  }
+  webidl.configureInterface(Clipboard);
+  const ClipboardPrototype = Clipboard.prototype;
+
+  try {
+    const clipboard = webidl.createBranded(Clipboard);
+    // createBranded skips the constructor, so initialize the EventTarget
+    // internal slots explicitly (see ext/web/02_event.js setEventTargetData).
+    internals.setEventTargetData(clipboard);
+
+    if (typeof navigator === "object" && navigator != null) {
+      // Install as a prototype getter (as in browsers) rather than an own
+      // data property, asserting the receiver is a real Navigator.
+      const NavigatorPrototype = Object.getPrototypeOf(navigator);
+      Object.defineProperty(NavigatorPrototype, "clipboard", {
+        get() {
+          webidl.assertBranded(this, NavigatorPrototype);
+          return clipboard;
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    Object.defineProperty(globalThis, "Clipboard", {
+      value: Clipboard,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch (e) {
+    console.error("[deno desktop] failed to install navigator.clipboard:", e);
+  }
+
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
   // tick used by HMR, or module evaluation with top-level await).
@@ -1333,6 +1404,57 @@ mod tests {
     assert!(DESKTOP_JS.contains("navigator"));
     assert!(DESKTOP_JS.contains("permissions"));
     assert!(DESKTOP_JS.contains("PermissionStatus"));
+  }
+
+  #[test]
+  fn desktop_js_installs_navigator_clipboard() {
+    // Assert on code, not prose: every one of "navigator", "clipboard",
+    // "readText" and "writeText" also appears in the comment block above the
+    // implementation, so substring checks on those words alone would still
+    // pass with the whole class deleted.
+    assert!(
+      DESKTOP_JS.contains("class Clipboard extends EventTarget"),
+      "Clipboard must be a real EventTarget subclass"
+    );
+    assert!(
+      DESKTOP_JS.contains("async readText()"),
+      "readText must be defined on the class"
+    );
+    assert!(
+      DESKTOP_JS.contains("async writeText(data)"),
+      "writeText must be defined on the class"
+    );
+    // Installed as a prototype getter on Navigator, as in browsers, rather
+    // than an own data property on the instance.
+    assert!(
+      DESKTOP_JS.contains("defineProperty(NavigatorPrototype, \"clipboard\""),
+      "clipboard must be installed on Navigator.prototype"
+    );
+    // The constructor is not reachable, and the receiver is checked.
+    assert!(
+      DESKTOP_JS.contains("webidl.illegalConstructor()"),
+      "Clipboard must not be constructible"
+    );
+    assert!(
+      DESKTOP_JS.contains("webidl.assertBranded(this, ClipboardPrototype)"),
+      "the text methods must assert a branded receiver"
+    );
+  }
+
+  #[test]
+  fn desktop_js_clipboard_awaits_the_ops() {
+    // The ops are async so a slow clipboard owner can't freeze the runtime
+    // (see op_desktop_read_clipboard_text). That only holds if the JS side
+    // actually awaits them — dropping the `await` would return a pending
+    // promise as the text and silently break `readText()`.
+    assert!(
+      DESKTOP_JS.contains("await op_desktop_read_clipboard_text()"),
+      "readText must await the op"
+    );
+    assert!(
+      DESKTOP_JS.contains("await op_desktop_write_clipboard_text(data)"),
+      "writeText must await the op"
+    );
   }
 
   #[test]
