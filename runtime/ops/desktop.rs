@@ -1164,6 +1164,38 @@ fn op_desktop_alert(
   }
 }
 
+/// True while an error dialog is on screen. Single-flight at the native
+/// boundary: this op sits on `core.ops` and survives `removeImportedOps()`,
+/// so it is reachable by any code in the runtime, not only the error handler
+/// that respects its own `_exiting` flag. Without a guard here, a loop
+/// calling it directly would park an unbounded number of pool threads, each
+/// in a modal dialog nobody may ever dismiss.
+static ERROR_DIALOG_SHOWING: std::sync::atomic::AtomicBool =
+  std::sync::atomic::AtomicBool::new(false);
+
+/// Clears [`ERROR_DIALOG_SHOWING`] on every exit path, including a panic
+/// inside `DesktopApi::alert` — a plain `store` after the call would leave
+/// the flag stuck at `true` for the rest of the process, suppressing every
+/// later error dialog.
+struct ErrorDialogGuard;
+
+impl Drop for ErrorDialogGuard {
+  fn drop(&mut self) {
+    ERROR_DIALOG_SHOWING.store(false, std::sync::atomic::Ordering::SeqCst);
+  }
+}
+
+/// How long to wait for the error dialog before exiting anyway.
+///
+/// The wait is what holds the process open long enough for the dialog to be
+/// read, but it must not be unbounded: when the dialog can't be seen or
+/// clicked (hidden window, no display, a CI runner) nothing would ever
+/// resolve it, and an unhandled rejection would leave the process up for
+/// good. The message reaches stderr before the dialog is ever requested, so
+/// timing out loses nothing except the click.
+const ERROR_DIALOG_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_secs(60);
+
 /// Non-blocking variant of `op_desktop_alert` for runtime error reporting.
 ///
 /// `DesktopApi::alert` blocks its calling thread until the dialog is
@@ -1173,7 +1205,7 @@ fn op_desktop_alert(
 /// if nobody could (hidden window, headless child; #36393). SIGTERM was
 /// ignored too, since its handler is JS on the parked thread.
 ///
-/// Showing the dialog on a separate thread and awaiting it keeps the event
+/// Running the dialog on the blocking pool and awaiting it keeps the event
 /// loop running while it is up. The returned promise is load-bearing: it is
 /// what holds the process open until the dialog is dismissed. The JS caller
 /// `preventDefault()`s the event and exits once this resolves — a
@@ -1187,14 +1219,15 @@ fn op_desktop_alert(
 /// `op_desktop_alert` call is already an off-UI-thread call; the backend
 /// marshals the dialog onto the UI thread and blocks the caller until it is
 /// dismissed (the core dump in #36393 shows exactly that — JS thread parked
-/// in `ShowDialog`, GTK thread in `gtk_dialog_run`). The thread spawned here
-/// is in the same position the JS thread was, not a new kind of caller.
+/// in `ShowDialog`, GTK thread in `gtk_dialog_run`). The pool thread used
+/// here is in the same position the JS thread was, not a new kind of caller.
 #[op2]
 async fn op_desktop_alert_async(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
   #[string] title: String,
   #[string] message: String,
 ) {
+  use std::sync::atomic::Ordering;
   let api = {
     let s = state.borrow();
     s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
@@ -1205,15 +1238,19 @@ async fn op_desktop_alert_async(
     // on with exiting.
     return;
   };
-  let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-  std::thread::spawn(move || {
+  if ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst) {
+    // A dialog is already up. The message has already reached stderr, so
+    // dropping this one loses nothing — and resolving rather than queueing
+    // keeps a caller in a loop from parking a thread per call.
+    return;
+  }
+  let dialog = deno_core::unsync::spawn_blocking(move || {
+    let _guard = ErrorDialogGuard;
     api.alert(&title, &message);
-    let _ = tx.send(());
   });
-  // A dropped sender resolves this too, so a backend that panics inside
-  // `alert` can't leave the caller waiting on a dialog that will never
-  // appear — the process still gets to exit.
-  let _ = rx.await;
+  // Three ways out, all of which must let the caller exit: dismissed, the
+  // backend panicked (join error), or nobody could click it.
+  let _ = tokio::time::timeout(ERROR_DIALOG_TIMEOUT, dialog).await;
 }
 
 struct ErrorReportConfig {
@@ -2268,6 +2305,57 @@ mod tests {
     assert_eq!(v["args"][0]["n"], 42);
     assert_eq!(v["callId"], 7);
     assert_eq!(v["windowId"], 1);
+  }
+
+  // --- error dialog single-flight ---
+
+  #[test]
+  fn error_dialog_guard_clears_the_flag_on_panic() {
+    use std::sync::atomic::Ordering;
+
+    use super::ERROR_DIALOG_SHOWING;
+    use super::ErrorDialogGuard;
+
+    // The flag is what stops a caller in a loop parking a pool thread per
+    // call. If a panic inside `DesktopApi::alert` could leave it set, no
+    // error dialog would ever show again for the life of the process, so
+    // the guard has to clear it while unwinding rather than after the call.
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
+    let panicked = std::panic::catch_unwind(|| {
+      let _guard = ErrorDialogGuard;
+      assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+      panic!("backend blew up mid-dialog");
+    });
+    assert!(
+      panicked.is_err(),
+      "the panic must propagate, not be swallowed"
+    );
+    assert!(
+      !ERROR_DIALOG_SHOWING.load(Ordering::SeqCst),
+      "the flag must be clear again so later errors can still show a dialog"
+    );
+  }
+
+  #[test]
+  fn error_dialog_flag_is_single_flight() {
+    use std::sync::atomic::Ordering;
+
+    use super::ERROR_DIALOG_SHOWING;
+    use super::ErrorDialogGuard;
+
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
+    // First caller takes the slot...
+    assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    // ...and every caller while it is held is turned away rather than
+    // spawning a second dialog.
+    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    {
+      let _guard = ErrorDialogGuard;
+    }
+    // Once the dialog is done the slot frees up for the next error.
+    assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
   }
 
   // --- permission_state_to_web_string ---

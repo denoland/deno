@@ -1156,12 +1156,23 @@ pub fn desktop_error_reporting_js(
   // stacking one per rejection.
   let _exiting = false;
 
-  function handleError(ev, message, stack) {{
+  function handleError(ev, err, message, stack) {{
     // Always reach stderr first: the dialog below is best-effort, and in
     // headless/hidden-window runs it's the only place the error surfaces
     // at all (#36393).
-    console.error("Uncaught (desktop):", String(message));
-    if (stack) console.error(String(stack));
+    //
+    // Log the error object itself when there is one. `preventDefault()`
+    // below suppresses Deno's own uncaught-error output, and passing the
+    // object keeps that path's formatting (console.error inspects an Error
+    // into its formatted stack); flattening to `String(message)` plus a raw
+    // stack string would hand a developer watching a terminal strictly less
+    // than they get today.
+    if (err !== null && err !== undefined) {{
+      console.error("Uncaught (desktop):", err);
+    }} else {{
+      console.error("Uncaught (desktop):", String(message));
+      if (stack) console.error(String(stack));
+    }}
 
     if (_errorReportingUrl) {{
       const body = JSON.stringify({{
@@ -1206,6 +1217,7 @@ pub fn desktop_error_reporting_js(
     const err = ev.error;
     handleError(
       ev,
+      err,
       err?.message ?? ev.message ?? "Unknown error",
       err?.stack ?? null,
     );
@@ -1216,6 +1228,7 @@ pub fn desktop_error_reporting_js(
     const err = ev.reason;
     handleError(
       ev,
+      err,
       err?.message ?? String(err ?? "Unhandled promise rejection"),
       err?.stack ?? null,
     );
@@ -1469,11 +1482,23 @@ mod tests {
       "having prevented the default, the handler owns the exit"
     );
     // Both listeners must pass the event through, or `preventDefault` above
-    // is unreachable for one of them.
+    // is unreachable for one of them. Counting `addEventListener` and
+    // `handleError(` separately rather than matching an indented literal:
+    // the previous form pinned the exact whitespace inside the template and
+    // would have broken on a reformat that changed nothing real.
     assert_eq!(
-      js.matches("handleError(\n      ev,").count(),
+      js.matches("addEventListener(").count(),
       2,
-      "both the `error` and `unhandledrejection` listeners must pass `ev`"
+      "both the `error` and `unhandledrejection` listeners must be installed"
+    );
+    assert_eq!(
+      js.matches("handleError(").count(),
+      3,
+      "one definition plus one call from each listener"
+    );
+    assert!(
+      js.contains("function handleError(ev, err, message, stack)"),
+      "the handler must receive the event so it can prevent the default"
     );
   }
 
