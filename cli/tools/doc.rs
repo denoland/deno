@@ -191,9 +191,9 @@ async fn generate_doc_nodes_for_builtin_types(
         reporter: None,
         resolver: None,
         unstable_bytes_imports: false,
-        unstable_text_imports: true,
         unstable_css_imports: false,
         unstable_config_imports: false,
+        prefer_cached_jsr_versions: false,
       },
     )
     .await;
@@ -600,6 +600,7 @@ fn generate_docs_directory(
       )
     })),
     id_prefix: None,
+    symbol_listing_limit: None,
   };
 
   if let Some(built_in_types) = built_in_types {
@@ -626,6 +627,7 @@ fn generate_docs_directory(
         markdown_stripper: Arc::new(deno_doc::html::comrak::strip),
         head_inject: None,
         id_prefix: None,
+        symbol_listing_limit: None,
       },
       IndexMap::from([(
         ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
