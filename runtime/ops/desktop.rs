@@ -1345,19 +1345,61 @@ fn op_desktop_prompt(
   }
 }
 
+/// Read the clipboard's text off the JS thread.
+///
+/// `DesktopApi::read_clipboard_text` is synchronous, and on X11/Wayland the
+/// clipboard has no central store: the read is serviced by whichever
+/// application currently owns the selection, and `gtk_clipboard_wait_for_text`
+/// has no timeout. An unresponsive owner therefore blocks the caller for as
+/// long as it likes. Running that on the JS thread would freeze the entire
+/// runtime — timers, servers, signal handlers — which is the same failure
+/// mode as the error dialog in #36393, and the `Promise` this op returns to
+/// `navigator.clipboard.readText()` would have made it look impossible.
+///
+/// Thread-safety: in a packaged desktop app the runtime already runs on its
+/// own `deno-desktop-runtime` thread (`run_on_runtime_thread` in
+/// `cli/rt_desktop`), never the laufey UI thread, so the existing call was
+/// already an off-UI-thread one that the backend marshals; the thread spawned
+/// here is in the same position, not a new kind of caller.
 #[op2]
 #[string]
-fn op_desktop_read_clipboard_text(state: &mut OpState) -> Option<String> {
-  state
-    .try_borrow::<Arc<dyn DesktopApi>>()
-    .and_then(|api| api.read_clipboard_text())
+async fn op_desktop_read_clipboard_text(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> Option<String> {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let api = api?;
+  let (tx, rx) = tokio::sync::oneshot::channel();
+  std::thread::spawn(move || {
+    let _ = tx.send(api.read_clipboard_text());
+  });
+  // A dropped sender (a backend that panics mid-read) resolves to `None`
+  // rather than leaving the caller's promise pending forever.
+  rx.await.ok().flatten()
 }
 
-#[op2(fast)]
-fn op_desktop_write_clipboard_text(state: &mut OpState, #[string] text: &str) {
-  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
-    api.write_clipboard_text(text);
-  }
+/// Write the clipboard's text off the JS thread. Blocking semantics — and the
+/// reason for the extra thread — as `op_desktop_read_clipboard_text`.
+#[op2]
+async fn op_desktop_write_clipboard_text(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+  #[string] text: String,
+) {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    return;
+  };
+  let (tx, rx) = tokio::sync::oneshot::channel();
+  std::thread::spawn(move || {
+    api.write_clipboard_text(&text);
+    let _ = tx.send(());
+  });
+  let _ = rx.await;
 }
 
 fn permission_state_to_web_string(state: PermissionState) -> &'static str {

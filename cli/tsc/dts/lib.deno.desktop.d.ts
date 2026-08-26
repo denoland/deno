@@ -252,9 +252,10 @@ declare interface Clipboard extends EventTarget {
   writeText(data: string): Promise<void>;
 }
 
+/** `Clipboard` has no constructor: the only instance is
+ * {@linkcode Navigator.clipboard}. */
 declare var Clipboard: {
   prototype: Clipboard;
-  new (): Clipboard;
 };
 
 /** Extends the {@linkcode Navigator} provided by `deno.window` with the

@@ -1645,18 +1645,25 @@ function setlikeObjectWrap(objPrototype, readonly) {
 }
 
 internals.webidlBrand = brand;
-// Expose the subset of webidl needed by post-bootstrap classic scripts that
-// can't `import` this module (e.g. the `deno desktop` init script, which
-// defines web interfaces like `navigator.clipboard`).
-internals.webidl = {
+// The subset of webidl needed by post-bootstrap classic scripts that can't
+// `import` this module (e.g. the `deno desktop` init script, which defines
+// web interfaces like `navigator.clipboard`).
+//
+// `converters` is deliberately NOT exposed. It is the live registry backing
+// argument coercion for every web API in the process, and this object lands
+// in every Deno runtime rather than just desktop, so handing it out would
+// let anything with `internals` access rewrite how any API coerces its
+// arguments. Only the individual converters a consumer needs belong here.
+internals.webidl = ObjectFreeze({
   assertBranded,
-  brand,
   configureInterface,
-  converters,
   createBranded,
   illegalConstructor,
   requiredArguments,
-};
+  converters: ObjectFreeze({
+    DOMString: converters["DOMString"],
+  }),
+});
 
 return {
   assertBranded,

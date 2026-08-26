@@ -701,9 +701,11 @@ pub const DESKTOP_JS: &str = r#"
   // --- navigator.clipboard (text only) ---
   //
   // Spec surface: `navigator.clipboard` is a `Clipboard` (extends EventTarget)
-  // exposing async `readText()` / `writeText()`. The underlying laufey ops are
-  // synchronous (serviced on the UI thread); the methods are `async` so the
-  // web-facing Promise shape is preserved. The richer `read()` / `write()`
+  // exposing async `readText()` / `writeText()`. The ops behind them are
+  // genuinely async: laufey's clipboard calls block their calling thread, and
+  // on X11/Wayland a read is serviced by whichever app owns the selection, so
+  // an unresponsive owner would otherwise freeze the whole runtime behind a
+  // Promise that looks like it couldn't. The richer `read()` / `write()`
   // (`ClipboardItem` / arbitrary MIME types) aren't backed by laufey, so
   // they're omitted rather than stubbed. Per spec the read/write are gated on
   // the `clipboard-read` / `clipboard-write` permissions, but laufey has no
@@ -718,7 +720,7 @@ pub const DESKTOP_JS: &str = r#"
 
     async readText() {
       webidl.assertBranded(this, ClipboardPrototype);
-      return op_desktop_read_clipboard_text() ?? "";
+      return (await op_desktop_read_clipboard_text()) ?? "";
     }
 
     async writeText(data) {
@@ -726,7 +728,7 @@ pub const DESKTOP_JS: &str = r#"
       const prefix = "Failed to execute 'writeText' on 'Clipboard'";
       webidl.requiredArguments(arguments.length, 1, prefix);
       data = webidl.converters["DOMString"](data, prefix, "Argument 1");
-      op_desktop_write_clipboard_text(data);
+      await op_desktop_write_clipboard_text(data);
     }
   }
   webidl.configureInterface(Clipboard);
@@ -1360,10 +1362,53 @@ mod tests {
 
   #[test]
   fn desktop_js_installs_navigator_clipboard() {
-    assert!(DESKTOP_JS.contains("navigator"));
-    assert!(DESKTOP_JS.contains("clipboard"));
-    assert!(DESKTOP_JS.contains("readText"));
-    assert!(DESKTOP_JS.contains("writeText"));
+    // Assert on code, not prose: every one of "navigator", "clipboard",
+    // "readText" and "writeText" also appears in the comment block above the
+    // implementation, so substring checks on those words alone would still
+    // pass with the whole class deleted.
+    assert!(
+      DESKTOP_JS.contains("class Clipboard extends EventTarget"),
+      "Clipboard must be a real EventTarget subclass"
+    );
+    assert!(
+      DESKTOP_JS.contains("async readText()"),
+      "readText must be defined on the class"
+    );
+    assert!(
+      DESKTOP_JS.contains("async writeText(data)"),
+      "writeText must be defined on the class"
+    );
+    // Installed as a prototype getter on Navigator, as in browsers, rather
+    // than an own data property on the instance.
+    assert!(
+      DESKTOP_JS.contains("defineProperty(NavigatorPrototype, \"clipboard\""),
+      "clipboard must be installed on Navigator.prototype"
+    );
+    // The constructor is not reachable, and the receiver is checked.
+    assert!(
+      DESKTOP_JS.contains("webidl.illegalConstructor()"),
+      "Clipboard must not be constructible"
+    );
+    assert!(
+      DESKTOP_JS.contains("webidl.assertBranded(this, ClipboardPrototype)"),
+      "the text methods must assert a branded receiver"
+    );
+  }
+
+  #[test]
+  fn desktop_js_clipboard_awaits_the_ops() {
+    // The ops are async so a slow clipboard owner can't freeze the runtime
+    // (see op_desktop_read_clipboard_text). That only holds if the JS side
+    // actually awaits them — dropping the `await` would return a pending
+    // promise as the text and silently break `readText()`.
+    assert!(
+      DESKTOP_JS.contains("await op_desktop_read_clipboard_text()"),
+      "readText must await the op"
+    );
+    assert!(
+      DESKTOP_JS.contains("await op_desktop_write_clipboard_text(data)"),
+      "writeText must await the op"
+    );
   }
 
   #[test]
