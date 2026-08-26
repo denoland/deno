@@ -41,7 +41,7 @@ hmac.workspace = true
 k256.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
-num-bigint.workspace = true
+num-bigint = { workspace = true, features = ["rand"] }
 num-bigint-dig.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true

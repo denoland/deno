@@ -726,6 +726,8 @@ const NOT_IMPORTED_OPS = [
   "op_desktop_alert",
   "op_desktop_confirm",
   "op_desktop_prompt",
+  "op_desktop_read_clipboard_text",
+  "op_desktop_write_clipboard_text",
   "op_desktop_send_error_report",
   "op_desktop_request_notification_permission",
   "op_desktop_query_notification_permission",
@@ -736,10 +738,28 @@ const NOT_IMPORTED_OPS = [
   "op_deploy_token_delete",
 ];
 
-function removeImportedOps() {
+// Ops from NOT_IMPORTED_OPS that stay out of worker scope.
+//
+// The Clipboard API is `partial interface Navigator` in the spec, so the web
+// exposes `navigator.clipboard` on Window only; `WorkerNavigator` has no
+// clipboard. The desktop init script installs the JS API in the main scope
+// for the same reason, so leaving the raw ops reachable in workers would give
+// a plain `new Worker(...)` the ability to read whatever the user last copied
+// with no matching API and no way to ask for it. The other desktop ops are
+// dialogs, notifications and update plumbing: either user-visible or inert.
+const WORKER_EXCLUDED_OPS = [
+  "op_desktop_read_clipboard_text",
+  "op_desktop_write_clipboard_text",
+];
+
+function removeImportedOps(isWorker = false) {
   const allOpNames = ObjectKeys(ops);
   for (let i = 0; i < allOpNames.length; i++) {
     const opName = allOpNames[i];
+    if (isWorker && ArrayPrototypeIncludes(WORKER_EXCLUDED_OPS, opName)) {
+      delete ops[opName];
+      continue;
+    }
     if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
       delete ops[opName];
     }
@@ -1189,7 +1209,7 @@ function bootstrapWorkerRuntime(
 
     closeOnIdle = runtimeOptions[14];
 
-    removeImportedOps();
+    removeImportedOps(true);
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
