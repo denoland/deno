@@ -17401,7 +17401,19 @@ fn lsp_node_modules_dir() {
     "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
-  let diagnostics = cache(&mut client);
+  // The npm package requirements are registered with the resolver lazily, when
+  // a document module is created. That can happen concurrently on the tsc
+  // thread, in which case the requirements are recorded before they've actually
+  // been resolved and the diagnostics for this request can still see the
+  // package as not installed. Caching again rebuilds the resolver, so retry a
+  // few times before giving up.
+  let mut diagnostics = cache(&mut client);
+  for _ in 0..5 {
+    if diagnostics.all().is_empty() {
+      break;
+    }
+    diagnostics = cache(&mut client);
+  }
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
   // the declaration should be found in the node_modules directory
