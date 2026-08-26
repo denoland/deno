@@ -17,8 +17,8 @@ use self::internal as i;
 pub type AsyncRef<T> = i::AsyncBorrowImpl<T, i::Shared>;
 pub type AsyncMut<T> = i::AsyncBorrowImpl<T, i::Exclusive>;
 
-pub type AsyncRefFuture<T> = i::AsyncBorrowFutureImpl<T, i::Shared>;
-pub type AsyncMutFuture<T> = i::AsyncBorrowFutureImpl<T, i::Exclusive>;
+pub type AsyncRefFuture<T> = i::FastAsyncBorrowFuture<T, i::Shared>;
+pub type AsyncMutFuture<T> = i::FastAsyncBorrowFuture<T, i::Exclusive>;
 
 pub struct AsyncRefCell<T> {
   value: UnsafeCell<T>,
@@ -274,27 +274,53 @@ mod internal {
     pub fn borrow_sync<M: BorrowModeTrait, R: RcLike<AsyncRefCell<T>>>(
       cell: R,
     ) -> Option<AsyncBorrowImpl<T, M>> {
-      let cell_ref = cell.as_ref();
-      // Don't allow synchronous borrows to cut in line; if there are any
-      // enqueued waiters, return `None`, even if the current borrow is a shared
-      // one and the requested borrow is too.
+      if cell.as_ref().try_take_borrow::<M>() {
+        Some(AsyncBorrowImpl::<T, M>::new(cell.into()))
+      } else {
+        None
+      }
+    }
+
+    /// The admission test for taking a borrow *without* going through the
+    /// waiter queue. Returns `true` — having already charged the borrow to
+    /// `borrow_count` — if and only if the borrow can be granted right now.
+    ///
+    /// This is the single definition of "uncontended". Both [`Self::borrow_sync`]
+    /// and the fast path in [`FastAsyncBorrowFuture::new`] go through it, so
+    /// they cannot drift apart. It is also exactly the condition under which
+    /// `create_waiter()` + `wake_waiters()` would have reserved the borrow
+    /// immediately anyway (queue empty => the new waiter lands at index 0 =>
+    /// `wake_waiters()` runs and admits it iff `try_add()` succeeds).
+    ///
+    /// A `true` return transfers ownership of one borrow to the caller, which
+    /// *must* hand it to an `AsyncBorrowImpl` (whose `Drop` releases it).
+    // `#[inline]` alone is not enough here: LLVM declines to inline this into
+    // `borrow_sync()` and the exclusive `try_borrow_mut()` measurably
+    // regresses (8.8 -> 10.7 ns) versus having the body written inline.
+    #[inline(always)]
+    fn try_take_borrow<M: BorrowModeTrait>(&self) -> bool {
+      // Don't allow borrows to cut in line; if there are any enqueued waiters,
+      // fail, even if the current borrow is a shared one and the requested
+      // borrow is too.
       // TODO(piscisaureus): safety comment
       #[allow(
         clippy::undocumented_unsafe_blocks,
         reason = "safety comment on the containing block"
       )]
-      let waiters = unsafe { &mut *cell_ref.waiters.as_ptr() };
-      if waiters.is_empty() {
-        // There are no enqueued waiters, but it is still possible that the cell
-        // is currently borrowed. If there are no current borrows, or both the
-        // existing and requested ones are shared, `try_add()` returns the
-        // adjusted borrow count.
-        let new_borrow_count =
-          cell_ref.borrow_count.get().try_add(M::borrow_mode())?;
-        cell_ref.borrow_count.set(new_borrow_count);
-        Some(AsyncBorrowImpl::<T, M>::new(cell.into()))
-      } else {
-        None
+      let waiters = unsafe { &mut *self.waiters.as_ptr() };
+      if !waiters.is_empty() {
+        return false;
+      }
+      // There are no enqueued waiters, but it is still possible that the cell
+      // is currently borrowed. If there are no current borrows, or both the
+      // existing and requested ones are shared, `try_add()` returns the
+      // adjusted borrow count.
+      match self.borrow_count.get().try_add(M::borrow_mode()) {
+        Some(new_borrow_count) => {
+          self.borrow_count.set(new_borrow_count);
+          true
+        }
+        None => false,
       }
     }
 
@@ -450,6 +476,72 @@ mod internal {
     }
   }
 
+  /// The future returned by `AsyncRefCell::borrow{,_mut}()`.
+  ///
+  /// Splits the uncontended case out of the waiter queue. When the cell can be
+  /// borrowed at the moment the future is constructed, the borrow is taken
+  /// right there and the future is trivially `Ready`; otherwise this is just a
+  /// thin wrapper around [`AsyncBorrowFutureImpl`], unchanged.
+  ///
+  /// # Why taking the borrow at construction is not a semantic change
+  ///
+  /// It looks like one — the borrow moves from "granted at first poll" to
+  /// "granted at construction" — but the queueing path already behaved that
+  /// way. `AsyncBorrowFutureImpl::new()` calls `create_waiter()`, which pushes
+  /// the waiter and, *if it landed at index 0*, immediately runs
+  /// `wake_waiters()`. `wake_waiters()` charges the borrow to `borrow_count`
+  /// ("reserving" it) before any poll happens. So a borrow future built when
+  /// the queue was empty and the count admitted the mode has always held the
+  /// borrow from construction; `poll()` only converted the reservation into an
+  /// `AsyncBorrowImpl`.
+  ///
+  /// [`AsyncRefCell::try_take_borrow`] is exactly the condition under which
+  /// that reservation would have happened, and it is the same condition the
+  /// long-public `try_borrow{,_mut}()` uses. When it fails we fall through to
+  /// the queue, so a contended borrow is enqueued in FIFO order exactly as
+  /// before. This matters for code that reserves a place in line without
+  /// awaiting (`ext/websocket`'s `reserve_lock()`): a second reservation on an
+  /// already-borrowed cell still queues rather than being granted.
+  pub enum FastAsyncBorrowFuture<T: 'static, M: BorrowModeTrait> {
+    /// The borrow was uncontended and has already been taken. The `Option` is
+    /// emptied by `poll()`; if the future is dropped before it is ever polled,
+    /// the `AsyncBorrowImpl` drops with it and releases the borrow.
+    Ready(Option<AsyncBorrowImpl<T, M>>),
+    /// The borrow was contended; wait in line.
+    Queued(AsyncBorrowFutureImpl<T, M>),
+  }
+
+  impl<T, M: BorrowModeTrait> FastAsyncBorrowFuture<T, M> {
+    #[inline]
+    pub fn new<R: RcLike<AsyncRefCell<T>>>(cell: R) -> Self {
+      if cell.as_ref().try_take_borrow::<M>() {
+        // `try_take_borrow()` charged the borrow to the cell; handing it to an
+        // `AsyncBorrowImpl` makes its `Drop` responsible for releasing it.
+        Self::Ready(Some(AsyncBorrowImpl::<T, M>::new(cell.into())))
+      } else {
+        Self::Queued(AsyncBorrowFutureImpl::new(cell))
+      }
+    }
+  }
+
+  impl<T: 'static, M: BorrowModeTrait> Future for FastAsyncBorrowFuture<T, M> {
+    type Output = AsyncBorrowImpl<T, M>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+      // Both variants are `Unpin` (every field is a pointer, an index or a
+      // `PhantomData`), so this needs no `unsafe` and nothing is structurally
+      // pinned.
+      match self.get_mut() {
+        // Panics on a second poll, matching `AsyncBorrowFutureImpl`, which
+        // unwraps its already-taken `cell` field. Polling a future after it
+        // returned `Ready` is a contract violation either way.
+        Self::Ready(borrow) => {
+          Poll::Ready(borrow.take().expect("polled after completion"))
+        }
+        Self::Queued(fut) => Pin::new(fut).poll(cx),
+      }
+    }
+  }
+
   impl<T: 'static, M: BorrowModeTrait> Future for AsyncBorrowFutureImpl<T, M> {
     type Output = AsyncBorrowImpl<T, M>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -556,7 +648,11 @@ mod internal {
     Exclusive,
   }
 
-  pub trait BorrowModeTrait: Copy {
+  /// Borrow modes are zero-sized markers used only through `PhantomData`, so
+  /// requiring `Unpin` costs nothing and lets the futures parameterized by them
+  /// be `Unpin` too — which is what lets `FastAsyncBorrowFuture::poll()` avoid
+  /// `unsafe` pin projection.
+  pub trait BorrowModeTrait: Copy + Unpin {
     fn borrow_mode() -> BorrowMode;
   }
 
@@ -785,6 +881,282 @@ mod tests {
       assert!(cell.try_borrow_mut().is_none());
       assert!(cell.try_borrow().is_some());
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Fast-path (borrow granted at construction) regression tests.
+  //
+  // `AsyncRefCell::borrow{,_mut}()` take the borrow when the future is
+  // *constructed* if the cell is uncontended at that moment, instead of at the
+  // first poll. These tests pin down the consequences.
+  // ---------------------------------------------------------------------
+
+  fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+      .build()
+      .unwrap()
+      .block_on(fut)
+  }
+
+  /// A waker that counts how many times it was woken, so tests can assert the
+  /// fast path never needs one.
+  #[derive(Default)]
+  struct WakerProbe {
+    woken: std::sync::atomic::AtomicUsize,
+  }
+
+  impl std::task::Wake for WakerProbe {
+    fn wake(self: std::sync::Arc<Self>) {
+      self.woken.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    fn wake_by_ref(self: &std::sync::Arc<Self>) {
+      self.woken.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+  }
+
+  /// Risk 1: a borrow future that is constructed and then dropped without ever
+  /// being polled must release its borrow — exactly once, not zero times (leak,
+  /// the cell would be permanently locked) and not twice (panic in
+  /// `BorrowCount::remove`).
+  #[test]
+  fn fast_path_drop_without_poll_releases_borrow() {
+    let cell = AsyncRefCell::<Thing>::default_rc();
+
+    // Exclusive: construct, never poll, drop.
+    for _ in 0..3 {
+      let fut = cell.borrow_mut();
+      // The borrow is held right now, so the cell is unavailable...
+      assert!(cell.try_borrow().is_none());
+      assert!(cell.try_borrow_mut().is_none());
+      drop(fut);
+      // ...and available again immediately after the drop.
+      assert!(cell.try_borrow_mut().is_some());
+    }
+
+    // Shared: two concurrent constructed-but-unpolled shared borrows.
+    let s1 = cell.borrow();
+    let s2 = cell.borrow();
+    assert!(cell.try_borrow_mut().is_none());
+    assert!(cell.try_borrow().is_some(), "shared borrows should coexist");
+    drop(s1);
+    assert!(cell.try_borrow_mut().is_none(), "s2 still holds it");
+    drop(s2);
+    assert!(cell.try_borrow_mut().is_some());
+
+    // And the cell is still fully functional afterwards.
+    block_on(async {
+      assert_eq!(cell.borrow_mut().await.touch(), 1);
+    });
+  }
+
+  /// Risk 1b: a *queued* (contended) future dropped without a poll must also
+  /// release its queue slot, and must not release a borrow it never got.
+  #[test]
+  fn fast_path_drop_queued_without_poll() {
+    let cell = AsyncRefCell::<Thing>::default_rc();
+
+    let held = cell.borrow_mut(); // fast path: borrow taken now
+    let queued = cell.borrow_mut(); // contended: enqueued
+    let queued2 = cell.borrow_mut(); // also enqueued
+
+    drop(queued); // leaves a hole in the queue
+    drop(held); // releases the borrow, wakes the queue
+    // `queued2` inherited the borrow via wake_waiters(); the cell is busy.
+    assert!(cell.try_borrow_mut().is_none());
+    drop(queued2);
+    assert!(cell.try_borrow_mut().is_some());
+  }
+
+  /// Risk 2: construct two borrow futures on the SAME cell before awaiting
+  /// either, then await them in each order. The second construction must queue
+  /// rather than be granted, and both orders must behave the way they did when
+  /// the borrow was granted lazily.
+  ///
+  /// The `ext/websocket` `reserve_lock()` pattern is exactly this: reserve a
+  /// place in line synchronously inside an op, then `.await` it on a spawned
+  /// task.
+  #[test]
+  fn fast_path_construct_two_then_await_in_order() {
+    block_on(async {
+      let cell = AsyncRefCell::<Thing>::default_rc();
+      let fut1 = cell.borrow_mut();
+      let fut2 = cell.borrow_mut();
+      // Constructing `fut2` must not have granted it anything.
+      assert!(cell.try_borrow_mut().is_none());
+
+      {
+        let mut r1 = fut1.await;
+        assert_eq!(r1.touch(), 1);
+      }
+      {
+        let mut r2 = fut2.await;
+        assert_eq!(r2.touch(), 2);
+      }
+    });
+  }
+
+  /// Same construction, awaited in the *reverse* order. `fut2` cannot complete
+  /// until `fut1` releases, and `fut1` holds its borrow from construction, so
+  /// awaiting `fut2` first deadlocks. That is not a regression: with a lazily
+  /// granted borrow it deadlocked identically, because `create_waiter()` runs
+  /// `wake_waiters()` at construction and reserves the borrow for `fut1` there.
+  ///
+  /// The test asserts the deadlock is a *pend*, not a panic or a spurious
+  /// grant, and that dropping `fut1` unblocks `fut2`.
+  #[test]
+  fn fast_path_construct_two_then_await_reversed() {
+    block_on(async {
+      let cell = AsyncRefCell::<Thing>::default_rc();
+      let fut1 = cell.borrow_mut();
+      let fut2 = cell.borrow_mut();
+
+      let probe = std::sync::Arc::new(WakerProbe::default());
+      let waker = std::task::Waker::from(probe.clone());
+      let mut cx = std::task::Context::from_waker(&waker);
+      let mut fut2 = Box::pin(fut2);
+
+      assert!(
+        fut2.as_mut().poll(&mut cx).is_pending(),
+        "fut2 must not be granted a borrow fut1 is holding"
+      );
+      assert_eq!(probe.woken.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+      // Releasing fut1 without ever polling it hands the borrow to fut2.
+      drop(fut1);
+      assert_eq!(
+        probe.woken.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "dropping fut1 must wake the queued waiter"
+      );
+      let mut r2 = fut2.await;
+      assert_eq!(r2.touch(), 1);
+    });
+  }
+
+  /// Risk 2c: mixed shared/exclusive interleaving across the fast/queued
+  /// boundary keeps FIFO order.
+  #[test]
+  fn fast_path_mixed_modes_keep_fifo() {
+    block_on(async {
+      let cell = AsyncRefCell::<Thing>::default_rc();
+      let shared1 = cell.borrow(); // fast: Shared(1)
+      let shared2 = cell.borrow(); // fast: Shared(2), still uncontended
+      let excl = cell.borrow_mut(); // queued behind the shared borrows
+      let shared3 = cell.borrow(); // queued behind `excl`, NOT granted early
+
+      // `shared3` must not cut in line ahead of `excl` even though a shared
+      // borrow is currently active and would admit it.
+      assert!(cell.try_borrow().is_none(), "queue is non-empty");
+
+      assert_eq!(shared1.await.look(), 0);
+      assert_eq!(shared2.await.look(), 0);
+      let mut e = excl.await;
+      assert_eq!(e.touch(), 1);
+      drop(e);
+      assert_eq!(shared3.await.look(), 1);
+    });
+  }
+
+  /// Risk 3: a fast-granted borrow wrapped in `try_or_cancel()` and cancelled
+  /// before it is ever polled must still release the borrow when the wrapper is
+  /// dropped.
+  #[test]
+  fn fast_path_cancelled_before_poll_releases_borrow() {
+    use crate::CancelFuture;
+    use crate::CancelHandle;
+
+    block_on(async {
+      let cell = AsyncRefCell::<Thing>::default_rc();
+      let handle = CancelHandle::new_rc();
+
+      {
+        let guarded = cell.borrow_mut().or_cancel(&handle);
+        assert!(cell.try_borrow_mut().is_none(), "borrow is held");
+        handle.cancel();
+        // Never polled; dropped while cancelled.
+        drop(guarded);
+      }
+      assert!(
+        cell.try_borrow_mut().is_some(),
+        "cancelling before the first poll must not leak the borrow"
+      );
+
+      // And cancelling a borrow that *is* polled still yields Canceled without
+      // leaking.
+      let handle2 = CancelHandle::new_rc();
+      handle2.cancel();
+      let res = cell.borrow_mut().or_cancel(&handle2).await;
+      assert!(
+        res.is_err(),
+        "already-cancelled handle should short-circuit"
+      );
+      assert!(cell.try_borrow_mut().is_some());
+    });
+  }
+
+  /// Risk 4: the fast path must complete on its first poll without ever
+  /// touching the `Waker` — no clone, no wake. Anything that requires a waker
+  /// before the first poll would be a real semantic change.
+  #[test]
+  fn fast_path_needs_no_waker() {
+    let cell = AsyncRefCell::<Thing>::default_rc();
+    let probe = std::sync::Arc::new(WakerProbe::default());
+    let waker = std::task::Waker::from(probe.clone());
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    let mut fut = Box::pin(cell.borrow_mut());
+    match fut.as_mut().poll(&mut cx) {
+      std::task::Poll::Ready(mut b) => assert_eq!(b.touch(), 1),
+      std::task::Poll::Pending => {
+        panic!("uncontended borrow must be ready on first poll")
+      }
+    }
+    assert_eq!(
+      probe.woken.load(std::sync::atomic::Ordering::SeqCst),
+      0,
+      "fast path must not wake anything"
+    );
+  }
+
+  /// The fast path must be *entered* when uncontended and *skipped* when not.
+  /// Asserted through the observable proxy `try_borrow()`: the queued path
+  /// leaves a waiter behind, which makes `try_borrow()` fail even for a mode
+  /// the borrow count would admit.
+  #[test]
+  fn fast_path_engages_only_when_uncontended() {
+    let cell = AsyncRefCell::<Thing>::default_rc();
+
+    // Uncontended shared borrow => fast path => queue stays empty => another
+    // shared `try_borrow()` succeeds.
+    let fast = cell.borrow();
+    assert!(
+      cell.try_borrow().is_some(),
+      "fast path must not enqueue a waiter"
+    );
+
+    // Exclusive borrow while a shared one is out => queued => the queue is now
+    // non-empty, so even a shared `try_borrow()` must fail.
+    let queued = cell.borrow_mut();
+    assert!(
+      cell.try_borrow().is_none(),
+      "queued path must enqueue a waiter"
+    );
+    drop(queued);
+    assert!(cell.try_borrow().is_some(), "queue drained again");
+    drop(fast);
+  }
+
+  /// Polling the fast path a second time is a contract violation and panics,
+  /// matching what the queued path does.
+  #[test]
+  #[should_panic(expected = "polled after completion")]
+  fn fast_path_double_poll_panics() {
+    let cell = AsyncRefCell::<Thing>::default_rc();
+    let waker = std::task::Waker::noop();
+    let mut cx = std::task::Context::from_waker(waker);
+    let mut fut = Box::pin(cell.borrow_mut());
+    assert!(fut.as_mut().poll(&mut cx).is_ready());
+    let _ = fut.as_mut().poll(&mut cx);
   }
 
   #[derive(Default)]
