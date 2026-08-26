@@ -1654,20 +1654,24 @@ async fn package_windows_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib (denort.dll) alongside the backend binary. Both
-  // that name and the launcher name below come from the app name, so either can
-  // land on a file the backend shipped (`libcef.dll`, `d3dcompiler_47.dll`, the
-  // helper executables) — the copy and the rename would clobber it and ship an
-  // app that can't start, so check before writing anything.
-  validate_launcher_name(&app_name, "app name")?;
-  let dylib_filename = parts.file_name;
-  let dest_dylib = app_dir.join(dylib_filename);
-  let launcher_path = app_dir.join(format!("{}.exe", app_name));
-  let staged_backend = app_dir.join(&laufey_binary_name);
-  reject_backend_file_collision(&dest_dylib, &app_name, "runtime library")?;
-  if launcher_path != staged_backend {
-    reject_backend_file_collision(&launcher_path, &app_name, "launcher")?;
-  }
+  // Copy the compiled dylib (denort.dll) alongside the backend binary.
+  //
+  // No `linux_colocated_runtime_name` equivalent is needed here: the Windows
+  // launcher is `<app>.exe`, so the same chop-at-the-last-dot lookup removes a
+  // real `.exe` extension and lands on `<app>.dll` for any app name, dotted or
+  // not. Linux launchers have no extension for the chop to consume, which is
+  // why only that side has to pre-truncate.
+  let AppDirTargets {
+    dest_dylib,
+    launcher_path,
+    staged_backend,
+  } = resolve_app_dir_targets(
+    &app_dir,
+    &app_name,
+    &parts.file_name.to_string_lossy(),
+    &format!("{}.exe", app_name),
+    &laufey_binary_name,
+  )?;
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Rename the LAUFEY backend binary to the app name (`<app>.exe`) so it sits
@@ -1788,23 +1792,18 @@ async fn package_linux_app_dir(
   // next to the binary. It reads the real path via `/proc/self/exe`, which
   // follows the `/usr/bin/<pkg>` -> `/usr/lib/<pkg>/<app>` symlink that
   // `.deb`/`.rpm` install (issue #35623), so no wrapper script is needed.
-  validate_launcher_name(&app_name, "app name")?;
   let runtime_name = linux_colocated_runtime_name(&app_name);
-  let dest_dylib = app_dir.join(&runtime_name);
-  let launcher_path = app_dir.join(&app_name);
-  let staged_backend = app_dir.join(&laufey_binary_name);
-  // Both names are derived from the app name, so either can land on a file the
-  // backend shipped — or, for an app name like `foo.so`, on each other.
-  reject_backend_file_collision(&dest_dylib, &app_name, "runtime library")?;
-  if dest_dylib == launcher_path {
-    bail!(
-      "app name {app_name:?} resolves its runtime library to {runtime_name}, \
-       which is the launcher itself. Choose a different --output name.",
-    );
-  }
-  if launcher_path != staged_backend {
-    reject_backend_file_collision(&launcher_path, &app_name, "launcher")?;
-  }
+  let AppDirTargets {
+    dest_dylib,
+    launcher_path,
+    staged_backend,
+  } = resolve_app_dir_targets(
+    &app_dir,
+    &app_name,
+    &runtime_name,
+    &app_name,
+    &laufey_binary_name,
+  )?;
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
@@ -3035,14 +3034,86 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
 /// and appends `.so`. So a launcher named `MyApp-2.9.2` opens `MyApp-2.9.so`,
 /// not `MyApp-2.9.2.so` (issue #35971). Mirror that here so the library we ship
 /// is the one the launcher actually opens.
+///
+/// # This is coupled to laufey's behaviour, across a repo boundary
+///
+/// Mirrored against **laufey 0.7.0** (see `cli/rt_desktop/Cargo.toml`), whose
+/// lookup this reproduces; it is verified only by apps starting, since the
+/// chop lives in laufey's C++ backend and nothing here can assert on it.
+///
+/// The coupling is two-way and silent. If laufey changes
+/// `LaufeyFindColocatedRuntime` to strip only a known extension, every app
+/// built by this version of Deno stops starting: the launcher would begin
+/// looking for `MyApp-2.9.2.so`, which we deliberately do not ship. **Re-check
+/// this function when bumping laufey**, and if the lookup has changed, ship
+/// the library under the name the new lookup resolves.
 fn linux_colocated_runtime_name(app_name: &str) -> String {
-  // A dot at index 0 is part of the name (`.hidden`), not an extension — the
-  // launcher treats it that way too.
+  // A dot at index 0 is treated as part of the name (`.hidden`) rather than an
+  // extension. Unlike the truncation itself, this carve-out has NOT been
+  // verified against the backend — a plain `strrchr(name, '.')` there would
+  // find the dot at index 0 and look for `.so` instead. Reaching it requires
+  // `--output .hidden`, so it is theoretical, but if a dotfile-named app ever
+  // fails to start this is the first thing to check.
   let base = match app_name.rfind('.') {
     Some(dot) if dot > 0 => &app_name[..dot],
     _ => app_name,
   };
   format!("{base}.so")
+}
+
+/// The three app-dir paths a packager writes, resolved and checked together.
+#[derive(Debug)]
+struct AppDirTargets {
+  /// Where the compiled runtime library is copied to.
+  dest_dylib: PathBuf,
+  /// Where the backend binary ends up after being renamed to the app name.
+  launcher_path: PathBuf,
+  /// Where the backend binary currently sits, under its own name.
+  staged_backend: PathBuf,
+}
+
+/// Resolve the app-named files a packager is about to write, refusing any that
+/// would clobber something already in the app dir.
+///
+/// Both the runtime library and the launcher take their names from the app
+/// name, so either can land on a file the backend shipped (`libcef.so`,
+/// `libcef.dll`, `d3dcompiler_47.dll`, the helper executables) or — for a Linux
+/// app name like `myapp.so`, whose library truncates back onto the launcher —
+/// on each other.
+///
+/// `fs::copy` and `fs::rename` both replace silently, so every check has to run
+/// before either does. Returning the paths only on success is what keeps that
+/// ordering intact: a caller cannot reach the paths without having passed the
+/// checks, so a later refactor can't reorder them apart.
+fn resolve_app_dir_targets(
+  app_dir: &Path,
+  app_name: &str,
+  runtime_name: &str,
+  launcher_name: &str,
+  laufey_binary_name: &str,
+) -> Result<AppDirTargets, AnyError> {
+  validate_launcher_name(app_name, "app name")?;
+  let dest_dylib = app_dir.join(runtime_name);
+  let launcher_path = app_dir.join(launcher_name);
+  let staged_backend = app_dir.join(laufey_binary_name);
+
+  reject_backend_file_collision(&dest_dylib, app_name, "runtime library")?;
+  if dest_dylib == launcher_path {
+    bail!(
+      "app name {app_name:?} resolves its runtime library to {runtime_name}, \
+       which is the launcher itself. Choose a different --output name.",
+    );
+  }
+  // The staged backend is the file we are about to rename *into* the launcher
+  // path, so it colliding with itself is the normal case, not a clash.
+  if launcher_path != staged_backend {
+    reject_backend_file_collision(&launcher_path, app_name, "launcher")?;
+  }
+  Ok(AppDirTargets {
+    dest_dylib,
+    launcher_path,
+    staged_backend,
+  })
 }
 
 /// Refuse an app-derived file name that lands on a file the backend shipped.
@@ -5917,6 +5988,180 @@ def456  other.zip
     // The launcher only treats a dot past position 0 as an extension, so a
     // dotfile name keeps its whole name.
     assert_eq!(linux_colocated_runtime_name(".hidden"), ".hidden.so");
+  }
+
+  // --- resolve_app_dir_targets ---
+
+  /// An app dir as the packagers find it: a copy of the backend directory,
+  /// holding the backend's own files and its binary, and nothing else.
+  fn fake_backend_app_dir(
+    root: &std::path::Path,
+    backend_files: &[&str],
+  ) -> PathBuf {
+    let app_dir = root.join("app");
+    std::fs::create_dir_all(&app_dir).unwrap();
+    for f in backend_files {
+      std::fs::write(app_dir.join(f), b"backend").unwrap();
+    }
+    app_dir
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_linux_happy_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_backend_app_dir(tmp.path(), &["libcef.so", "laufey"]);
+    let targets = resolve_app_dir_targets(
+      &app_dir,
+      "MyApp-2.9.2",
+      &linux_colocated_runtime_name("MyApp-2.9.2"),
+      "MyApp-2.9.2",
+      "laufey",
+    )
+    .unwrap();
+    // The dotted name keeps every dot in the launcher, while the library is
+    // pre-truncated to what the launcher's own chop will look for (#35971).
+    assert_eq!(targets.launcher_path, app_dir.join("MyApp-2.9.2"));
+    assert_eq!(targets.dest_dylib, app_dir.join("MyApp-2.9.so"));
+    assert_eq!(targets.staged_backend, app_dir.join("laufey"));
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_rejects_library_landing_on_the_launcher() {
+    // `--output myapp.so`: the library truncates back to `myapp.so`, which is
+    // the launcher path. Covers the `dest_dylib == launcher_path` bail that
+    // `package_linux_app_dir` reaches.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_backend_app_dir(tmp.path(), &["libcef.so", "laufey"]);
+    let err = resolve_app_dir_targets(
+      &app_dir,
+      "myapp.so",
+      &linux_colocated_runtime_name("myapp.so"),
+      "myapp.so",
+      "laufey",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("which is the launcher itself"), "got: {err}");
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_rejects_clobbering_a_backend_library() {
+    // `deno desktop --output libcef` on Linux, `--output libcef` on Windows:
+    // the runtime library copy would replace a file CEF ships.
+    let tmp = tempfile::tempdir().unwrap();
+
+    let linux_dir = fake_backend_app_dir(tmp.path(), &["libcef.so", "laufey"]);
+    let err = resolve_app_dir_targets(
+      &linux_dir,
+      "libcef",
+      &linux_colocated_runtime_name("libcef"),
+      "libcef",
+      "laufey",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("runtime library"), "got: {err}");
+    assert!(err.contains("libcef.so"), "got: {err}");
+
+    let win_root = tmp.path().join("win");
+    std::fs::create_dir_all(&win_root).unwrap();
+    let win_dir = fake_backend_app_dir(
+      &win_root,
+      &["libcef.dll", "d3dcompiler_47.dll", "laufey.exe"],
+    );
+    let err = resolve_app_dir_targets(
+      &win_dir,
+      "d3dcompiler_47",
+      "d3dcompiler_47.dll",
+      "d3dcompiler_47.exe",
+      "laufey.exe",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("runtime library"), "got: {err}");
+    assert!(err.contains("d3dcompiler_47.dll"), "got: {err}");
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_rejects_clobbering_a_backend_executable() {
+    // The launcher rename is the other write. An app named after one of the
+    // backend's helper executables would replace it — Windows-shaped here,
+    // since that is the path #36006 added the guard to.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_backend_app_dir(
+      tmp.path(),
+      &["libcef.dll", "laufey_helper.exe", "laufey.exe"],
+    );
+    let err = resolve_app_dir_targets(
+      &app_dir,
+      "laufey_helper",
+      "laufey_helper.dll",
+      "laufey_helper.exe",
+      "laufey.exe",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("launcher"), "got: {err}");
+    assert!(err.contains("laufey_helper.exe"), "got: {err}");
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_allows_the_backend_binary_as_launcher() {
+    // When the app name already matches the backend binary, the rename is a
+    // no-op rather than a clobber — the staged backend IS the launcher.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_backend_app_dir(tmp.path(), &["libcef.dll", "app.exe"]);
+    let targets =
+      resolve_app_dir_targets(&app_dir, "app", "app.dll", "app.exe", "app.exe")
+        .unwrap();
+    assert_eq!(targets.launcher_path, targets.staged_backend);
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_checks_before_returning_any_path() {
+    // The guards exist to run before `fs::copy`/`fs::rename`. Returning the
+    // paths only on success is what enforces that, so a rejected app name
+    // must yield no paths at all for a caller to write through.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_backend_app_dir(tmp.path(), &["libcef.so", "laufey"]);
+    assert!(
+      resolve_app_dir_targets(
+        &app_dir,
+        "libcef",
+        &linux_colocated_runtime_name("libcef"),
+        "libcef",
+        "laufey",
+      )
+      .is_err()
+    );
+    // Nothing was written or renamed on the way to that error.
+    assert_eq!(
+      std::fs::read(app_dir.join("libcef.so")).unwrap(),
+      b"backend",
+      "the rejected build must not have touched the backend file"
+    );
+    assert!(
+      app_dir.join("laufey").exists(),
+      "backend binary still staged"
+    );
+  }
+
+  #[test]
+  fn resolve_app_dir_targets_rejects_an_invalid_app_name() {
+    // `validate_launcher_name` runs first, so a name that could never be a
+    // safe file name is refused before any collision check.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_backend_app_dir(tmp.path(), &["laufey"]);
+    let err = resolve_app_dir_targets(
+      &app_dir,
+      "my/app",
+      "my/app.so",
+      "my/app",
+      "laufey",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("invalid app name"), "got: {err}");
   }
 
   // --- reject_backend_file_collision ---
