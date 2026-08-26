@@ -1147,11 +1147,33 @@ pub fn desktop_error_reporting_js(
 ) -> String {
   format!(
     r#"(() => {{
-  const {{ op_desktop_alert, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
+  const {{ op_desktop_alert_async, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
   const _errorReportingUrl = {url};
   const _appVersion = {version};
+  // Set once the first error has taken over the exit. The dialog it shows
+  // is what keeps the process alive, so later errors only log and report —
+  // which also keeps at most one error dialog on screen rather than
+  // stacking one per rejection.
+  let _exiting = false;
 
-  function handleError(message, stack) {{
+  function handleError(ev, err, message, stack) {{
+    // Always reach stderr first: the dialog below is best-effort, and in
+    // headless/hidden-window runs it's the only place the error surfaces
+    // at all (#36393).
+    //
+    // Log the error object itself when there is one. `preventDefault()`
+    // below suppresses Deno's own uncaught-error output, and passing the
+    // object keeps that path's formatting (console.error inspects an Error
+    // into its formatted stack); flattening to `String(message)` plus a raw
+    // stack string would hand a developer watching a terminal strictly less
+    // than they get today.
+    if (err !== null && err !== undefined) {{
+      console.error("Uncaught (desktop):", err);
+    }} else {{
+      console.error("Uncaught (desktop):", String(message));
+      if (stack) console.error(String(stack));
+    }}
+
     if (_errorReportingUrl) {{
       const body = JSON.stringify({{
         version: 1,
@@ -1169,15 +1191,33 @@ pub fn desktop_error_reporting_js(
       op_desktop_send_error_report(body);
     }}
 
+    // Take over the default handling. Letting this listener return without
+    // preventing it tears the runtime down immediately, which would cut the
+    // dialog off before it appeared — the old blocking `alert` was what held
+    // the process open. Instead the dialog goes up on its own thread, the
+    // event loop keeps running (timers, servers and the SIGTERM handler stay
+    // live, which is the #36393 fix), and we exit once it's dismissed.
+    ev.preventDefault();
+    if (_exiting) return;
+    _exiting = true;
+
+    let shown;
     try {{
-      op_desktop_alert("Application Error", String(message));
-    }} catch (_) {{}}
+      shown = op_desktop_alert_async("Application Error", String(message));
+    }} catch (_) {{
+      Deno.exit(1);
+      return;
+    }}
+    // Exit on rejection too: a dialog we can't show must not strand the app.
+    shown.then(() => Deno.exit(1), () => Deno.exit(1));
   }}
 
   addEventListener("error", (ev) => {{
     if (ev.defaultPrevented) return;
     const err = ev.error;
     handleError(
+      ev,
+      err,
       err?.message ?? ev.message ?? "Unknown error",
       err?.stack ?? null,
     );
@@ -1187,6 +1227,8 @@ pub fn desktop_error_reporting_js(
     if (ev.defaultPrevented) return;
     const err = ev.reason;
     handleError(
+      ev,
+      err,
       err?.message ?? String(err ?? "Unhandled promise rejection"),
       err?.stack ?? null,
     );
@@ -1407,6 +1449,57 @@ mod tests {
     // the alert.
     assert!(js.contains("const _errorReportingUrl = null"));
     assert!(js.contains("const _appVersion = null"));
+  }
+
+  #[test]
+  fn error_reporting_js_never_blocks_the_js_thread() {
+    // The error dialog must go through the async op: the blocking
+    // `op_desktop_alert` parks the JS thread until the dialog is dismissed,
+    // which wedged the entire runtime (timers, servers, signal handlers)
+    // whenever nobody could click it — hidden window, headless child
+    // (#36393). Errors must also always reach stderr, because in those runs
+    // the dialog is invisible and stderr is the only surface left.
+    let js = desktop_error_reporting_js(None, None);
+    assert!(js.contains("op_desktop_alert_async"));
+    assert!(!js.contains("op_desktop_alert(\"Application Error\""));
+    assert!(js.contains("console.error"));
+  }
+
+  #[test]
+  fn error_reporting_js_holds_the_process_open_for_the_dialog() {
+    // The dialog is only reached by awaiting the op, so the handler has to
+    // stop the runtime tearing down the moment it returns — otherwise the
+    // dialog (and the exit that follows it) races process teardown and the
+    // user sees nothing. `preventDefault()` hands us the default handling;
+    // the exit below is then ours to perform.
+    let js = desktop_error_reporting_js(None, None);
+    assert!(
+      js.contains("ev.preventDefault()"),
+      "handler must prevent the runtime from terminating before the dialog"
+    );
+    assert!(
+      js.contains("Deno.exit(1)"),
+      "having prevented the default, the handler owns the exit"
+    );
+    // Both listeners must pass the event through, or `preventDefault` above
+    // is unreachable for one of them. Counting `addEventListener` and
+    // `handleError(` separately rather than matching an indented literal:
+    // the previous form pinned the exact whitespace inside the template and
+    // would have broken on a reformat that changed nothing real.
+    assert_eq!(
+      js.matches("addEventListener(").count(),
+      2,
+      "both the `error` and `unhandledrejection` listeners must be installed"
+    );
+    assert_eq!(
+      js.matches("handleError(").count(),
+      3,
+      "one definition plus one call from each listener"
+    );
+    assert!(
+      js.contains("function handleError(ev, err, message, stack)"),
+      "the handler must receive the event so it can prevent the default"
+    );
   }
 
   #[test]
