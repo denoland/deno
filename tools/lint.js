@@ -6,7 +6,6 @@
 import {
   buildMode,
   dirname,
-  getPrebuilt,
   getSources,
   gitLsFiles,
   join,
@@ -34,8 +33,8 @@ if (rs) {
 }
 
 if (js) {
-  promises.push(dlint());
-  promises.push(dlintPreferPrimordials());
+  promises.push(lintJS());
+  promises.push(lintBootstraps());
   promises.push(lintNodePolyfillDenoApis());
   promises.push(ensureWorkflowYmlsUpToDate());
   promises.push(ensureNoUnusedOutFiles());
@@ -54,107 +53,174 @@ for (const result of results) {
   }
 }
 
-async function dlint() {
-  const configFile = join(ROOT_PATH, ".dlint.json");
-  const execPath = await getPrebuilt("dlint");
-
-  const sourceFiles = await getSources(ROOT_PATH, [
-    "*.js",
-    "*.ts",
-    ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/npm/**",
-    ":!:cli/bench/testdata/express-router.js",
-    ":!:cli/bench/testdata/react-dom.js",
-    ":!:cli/compilers/wasm_wrap.js",
-    ":!:cli/tools/coverage/script.js",
-    ":!:runtime/cpu_profiler/flamegraph.js",
-    ":!:cli/tools/doc/prism.css",
-    ":!:cli/tools/doc/prism.js",
-    ":!:cli/tsc/dts/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
-    ":!:ext/node/polyfills/deps/**",
-    ":!:runtime/examples/",
-    ":!:libs/eszip/testdata/**",
-    ":!:target/",
-    ":!:tests/bench/testdata/npm/*",
-    ":!:tests/bench/testdata/express-router.js",
-    ":!:tests/bench/testdata/react-dom.js",
-    ":!:tests/ffi/testdata/test.js",
-    ":!:tests/registry/**",
-    ":!:tests/specs/**",
-    ":!:tests/testdata/**",
-    ":!:tests/unit_node/testdata/**",
-    ":!:tests/wpt/runner/**",
-    ":!:tests/wpt/suite/**",
-    ":!:libs/**",
-  ]);
-
-  if (!sourceFiles.length) {
-    return;
-  }
-
-  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
-  const pending = [];
-  for (const chunk of chunks) {
-    const cmd = new Deno.Command(execPath, {
-      cwd: ROOT_PATH,
-      args: ["run", "--config=" + configFile, ...chunk],
-      // capture to not conflict with clippy output
-      stderr: "piped",
-    });
-    pending.push(
-      cmd.output().then(({ stderr, code }) => {
-        if (code > 0) {
-          const decoder = new TextDecoder();
-          console.log("\n------ dlint ------");
-          console.log(decoder.decode(stderr));
-          throw new Error("dlint failed");
-        }
+async function lintJS() {
+  const configPath = await Deno.makeTempFile({ suffix: ".json" });
+  try {
+    await Deno.writeTextFile(
+      configPath,
+      JSON.stringify({
+        lint: {
+          rules: {
+            tags: ["recommended"],
+            include: [
+              "ban-untagged-todo",
+              "camelcase",
+              "no-console",
+              "guard-for-in",
+            ],
+            exclude: [
+              "no-invalid-triple-slash-reference",
+            ],
+          },
+        },
       }),
     );
-  }
-  const results = await Promise.allSettled(pending);
-  for (const result of results) {
-    if (result.status === "rejected") {
-      throw new Error(result.reason);
+
+    const sourceFiles = await getSources(ROOT_PATH, [
+      "*.js",
+      "*.ts",
+      ":!:.github/mtime_cache/action.js",
+      ":!:cli/bench/testdata/npm/**",
+      ":!:cli/bench/testdata/express-router.js",
+      ":!:cli/bench/testdata/react-dom.js",
+      ":!:cli/compilers/wasm_wrap.js",
+      ":!:cli/tools/coverage/script.js",
+      ":!:cli/tools/doc/prism.css",
+      ":!:cli/tools/doc/prism.js",
+      ":!:cli/tsc/dts/**",
+      ":!:cli/tsc/*typescript.js",
+      ":!:cli/tsc/compiler.d.ts",
+      ":!:ext/**",
+      ":!:runtime/**",
+      ":!:libs/eszip/testdata/**",
+      ":!:target/",
+      ":!:tests/bench/testdata/npm/*",
+      ":!:tests/bench/testdata/express-router.js",
+      ":!:tests/bench/testdata/react-dom.js",
+      ":!:tests/ffi/testdata/test.js",
+      ":!:tests/registry/**",
+      ":!:tests/specs/**",
+      ":!:tests/testdata/**",
+      ":!:tests/unit_node/testdata/**",
+      ":!:tests/wpt/runner/**",
+      ":!:tests/wpt/suite/**",
+      ":!:libs/**",
+    ]);
+
+    if (!sourceFiles.length) {
+      return;
     }
+
+    const chunks = splitToChunks(
+      sourceFiles,
+      `${Deno.execPath()} lint --config=`.length + configPath.length,
+    );
+    const pending = [];
+    for (const chunk of chunks) {
+      const cmd = new Deno.Command(Deno.execPath(), {
+        cwd: ROOT_PATH,
+        args: ["lint", "--config=" + configPath, ...chunk],
+        // capture to not conflict with clippy output
+        stderr: "piped",
+      });
+      pending.push(
+        cmd.output().then(({ stderr, code }) => {
+          if (code > 0) {
+            const decoder = new TextDecoder();
+            console.log("\n------ deno lint ------");
+            console.log(decoder.decode(stderr));
+            throw new Error("deno lint failed");
+          }
+        }),
+      );
+    }
+    const results = await Promise.allSettled(pending);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        throw new Error(result.reason);
+      }
+    }
+  } finally {
+    await Deno.remove(configPath);
   }
 }
 
-// `prefer-primordials` has to apply only to files related to bootstrapping,
-// which is different from other lint rules. This is why this dedicated function
-// is needed.
-async function dlintPreferPrimordials() {
-  const execPath = await getPrebuilt("dlint");
-  const sourceFiles = await getSources(ROOT_PATH, [
-    "runtime/**/*.js",
-    "runtime/**/*.ts",
-    "ext/**/*.js",
-    "ext/**/*.ts",
-    ":!:ext/**/*.d.ts",
-    "ext/node/polyfills/*.mjs",
-    ":!:ext/node/polyfills/deps/**",
-    ":!:runtime/cpu_profiler/flamegraph.js",
-  ]);
+// Bootstrap files need a separate lint run because prefer-primordials applies
+// only to them. Implemented as an internal Deno lint plugin (not the public
+// deno_lint rule) — see tools/lint_plugins/prefer_primordials.ts.
+async function lintBootstraps() {
+  const pluginPath = import.meta.resolve(
+    "./lint_plugins/prefer_primordials.ts",
+  );
 
-  if (!sourceFiles.length) {
-    return;
-  }
+  // Create a temp deno.json config that only enables our plugin.
+  const configPath = await Deno.makeTempFile({ suffix: ".json" });
+  try {
+    await Deno.writeTextFile(
+      configPath,
+      JSON.stringify({
+        lint: {
+          plugins: [pluginPath],
+          rules: {
+            tags: ["recommended"],
+            include: [
+              "ban-untagged-todo",
+              "camelcase",
+              "no-console",
+              "guard-for-in",
+            ],
+            exclude: ["no-invalid-triple-slash-reference"],
+          },
+        },
+      }),
+    );
 
-  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
-  for (const chunk of chunks) {
-    const cmd = new Deno.Command(execPath, {
-      cwd: ROOT_PATH,
-      args: ["run", "--rule", "prefer-primordials", ...chunk],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cmd.output();
+    const sourceFiles = await getSources(ROOT_PATH, [
+      "runtime/**/*.js",
+      "runtime/**/*.ts",
+      "ext/**/*.js",
+      "ext/**/*.ts",
+      "ext/node/polyfills/*.mjs",
+      ":!:ext/**/*.d.ts",
+      ":!:ext/node/polyfills/deps/**",
+      ":!:runtime/cpu_profiler/flamegraph.js",
+    ]);
 
-    if (code > 0) {
-      throw new Error("prefer-primordials failed");
+    if (!sourceFiles.length) {
+      return;
     }
+
+    const chunks = splitToChunks(
+      sourceFiles,
+      `${Deno.execPath()} lint --config=`.length + configPath.length,
+    );
+    const pending = [];
+    for (const chunk of chunks) {
+      const cmd = new Deno.Command(Deno.execPath(), {
+        cwd: ROOT_PATH,
+        args: ["lint", "--config=" + configPath, ...chunk],
+        // capture to not conflict with clippy output
+        stderr: "piped",
+      });
+      pending.push(
+        cmd.output().then(({ stderr, code }) => {
+          if (code > 0) {
+            const decoder = new TextDecoder();
+            console.log("\n------ deno lint bootstraps ------");
+            console.log(decoder.decode(stderr));
+            throw new Error("deno lint bootstraps failed");
+          }
+        }),
+      );
+    }
+    const results = await Promise.allSettled(pending);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        throw new Error(result.reason);
+      }
+    }
+  } finally {
+    await Deno.remove(configPath);
   }
 }
 
@@ -376,14 +442,40 @@ async function clippy() {
     }
   }
 
-  // Run clippy for the whole workspace except deno_core with --all-features.
-  // deno_core is excluded because --all-features enables
-  // v8_enable_pointer_compression which is not available on all platforms.
+  // Cargo's --all-features cannot represent mutually exclusive engine
+  // backends. Enable every workspace feature explicitly except QuickJS and
+  // platform-specific V8 modes, then check deno_core separately below.
   {
+    const metadataCommand = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: ["metadata", "--no-deps", "--format-version", "1"],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const metadataOutput = await metadataCommand.output();
+    if (!metadataOutput.success) {
+      throw new Error(new TextDecoder().decode(metadataOutput.stderr));
+    }
+    const metadata = JSON.parse(
+      new TextDecoder().decode(metadataOutput.stdout),
+    );
+    const workspaceMembers = new Set(metadata.workspace_members);
+    const workspaceFeatures = metadata.packages
+      .filter((pkg) => workspaceMembers.has(pkg.id) && pkg.name !== "deno_core")
+      .flatMap((pkg) =>
+        Object.keys(pkg.features).map((feature) => `${pkg.name}/${feature}`)
+      )
+      .filter((feature) =>
+        !feature.endsWith("/quickjs") &&
+        !feature.startsWith("deno_v8/v8_enable_")
+      )
+      .sort();
+
     const cmd = [
       "clippy",
       "--all-targets",
-      "--all-features",
+      "--features",
+      workspaceFeatures.join(","),
       "--locked",
       "--workspace",
       "--exclude",
@@ -404,6 +496,7 @@ async function clippy() {
       "default",
       "unsafe_runtime_options",
       "unsafe_use_unprotected_platform",
+      "v8",
     ].join(",");
 
     const cmd = [
@@ -469,9 +562,13 @@ async function ensureWorkflowYmlsUpToDate() {
  * this convention.
  */
 async function ensureNoNonPermissionCapitalLetterShortFlags() {
-  const text = await Deno.readTextFile(join(ROOT_PATH, "cli/args/flags.rs"));
+  const text = await Deno.readTextFile(
+    join(ROOT_PATH, "libs/cli_parser/src/defs.rs"),
+  );
   const shortFlags = text.matchAll(/\.short\('([A-Z])'\)/g);
-  const values = Array.from(shortFlags.map((flag) => flag[1])).sort();
+  // Deduplicated: unlike the old clap builders, the command tree declares each
+  // arg per-command, so a flag like `-I` appears once per command that takes it.
+  const values = [...new Set(shortFlags.map((flag) => flag[1]))].sort();
   // DO NOT update this list with a non-permission short flag without
   // discussion--there needs to be precedence to add to this list.
   const expected = [
@@ -487,6 +584,9 @@ async function ensureNoNonPermissionCapitalLetterShortFlags() {
     "L",
     // --allow-net
     "N",
+    // --save-optional flag for `deno add`/`deno install`
+    // (precedence: `npm install -O <package>`)
+    "O",
     // --permission-set
     "P",
     // --allow-read
@@ -727,7 +827,6 @@ async function ensureNoNewTopLevelEntries() {
     "runtime",
     "tests",
     "tools",
-    ".dlint.json",
     ".dprint.json",
     ".editorconfig",
     ".gitattributes",

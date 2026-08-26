@@ -29,23 +29,10 @@ mod report;
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
 
-const RUN_ARGS: &[&str] = &[
-  "run",
-  "-A",
-  "--quiet",
-  "--unstable-unsafe-proto",
-  "--unstable-bare-node-builtins",
-];
+const RUN_ARGS: &[&str] = &["run", "-A", "--quiet", "--unsafe-proto"];
 
-const TEST_ARGS: &[&str] = &[
-  "test",
-  "-A",
-  "--quiet",
-  "--unstable-unsafe-proto",
-  "--unstable-bare-node-builtins",
-  "--no-check",
-  "--unstable-detect-cjs",
-];
+const TEST_ARGS: &[&str] =
+  &["test", "-A", "--quiet", "--unsafe-proto", "--no-check"];
 
 /// Per-platform value: either a boolean (true = enabled, false = disabled)
 /// or an object describing an expected failure.
@@ -170,9 +157,18 @@ fn main() {
     return;
   }
 
-  // Partition into sequential and parallel tests
-  let (sequential_category, parallel_category) =
-    category.partition(|test| test.data.test_path.starts_with("sequential/"));
+  // Partition into sequential and parallel tests.
+  //
+  // `pummel/` is upstream Node's stress suite: several of its tests allocate
+  // multi-gigabyte buffers or spin the CPU deliberately. Running a handful of
+  // them concurrently starves a CI runner badly enough that the machine stops
+  // responding, so they get the same one-at-a-time treatment as `sequential/`.
+  const SEQUENTIAL_TEST_DIRS: &[&str] = &["sequential/", "pummel/"];
+  let (sequential_category, parallel_category) = category.partition(|test| {
+    SEQUENTIAL_TEST_DIRS
+      .iter()
+      .any(|dir| test.data.test_path.starts_with(dir))
+  });
 
   let parallelism = Parallelism::default();
   let flaky_test_tracker = Arc::new(FlakyTestTracker::default());

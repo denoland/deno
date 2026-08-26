@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "tests": {
+    "does_not_modify_config": {
+      "steps": [
+        {
+          "args": "add --no-save npm:@denotest/esm-basic",
+          "output": "add.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "package.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "deno.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.statSync('node_modules/@denotest/esm-basic').isDirectory)"
+          ],
+          "output": "true\n"
+        }
+      ]
+    }
+  }
+}

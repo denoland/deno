@@ -1193,20 +1193,37 @@ pub fn op_node_x509_verify(
     AsymmetricPublicKey::Ec(ec_key) => {
       use crate::keys::EcPublicKey;
 
+      // The ECDSA digest is determined by the certificate's `signatureAlgorithm`
+      // (e.g. ecdsa-with-SHA256), not by the issuer key's curve. Using the
+      // curve's default hash (P-256 -> SHA-256, P-384 -> SHA-384) breaks
+      // cross-curve chains where, for example, a P-384 issuer signs with
+      // SHA-256 (as Apple App Attest certificates do). See #36309.
+      let prehash = match sig_alg_oid.as_str() {
+        // ecdsa-with-SHA1
+        "1.2.840.10045.4.1" => sha1::Sha1::digest(tbs_raw).to_vec(),
+        // ecdsa-with-SHA256
+        "1.2.840.10045.4.3.2" => sha2::Sha256::digest(tbs_raw).to_vec(),
+        // ecdsa-with-SHA384
+        "1.2.840.10045.4.3.3" => sha2::Sha384::digest(tbs_raw).to_vec(),
+        // ecdsa-with-SHA512
+        "1.2.840.10045.4.3.4" => sha2::Sha512::digest(tbs_raw).to_vec(),
+        _ => return Ok(false),
+      };
+
       match ec_key {
         EcPublicKey::P256(key) => {
-          use p256::ecdsa::signature::Verifier;
+          use p256::ecdsa::signature::hazmat::PrehashVerifier;
           let verifying_key = p256::ecdsa::VerifyingKey::from(key);
-          let sig = p256::ecdsa::DerSignature::try_from(sig_value)
+          let sig = p256::ecdsa::Signature::from_der(sig_value)
             .map_err(|_| X509VerifyError::ParseFailed)?;
-          Ok(verifying_key.verify(tbs_raw, &sig).is_ok())
+          Ok(verifying_key.verify_prehash(&prehash, &sig).is_ok())
         }
         EcPublicKey::P384(key) => {
-          use p384::ecdsa::signature::Verifier;
+          use p384::ecdsa::signature::hazmat::PrehashVerifier;
           let verifying_key = p384::ecdsa::VerifyingKey::from(key);
-          let sig = p384::ecdsa::DerSignature::try_from(sig_value)
+          let sig = p384::ecdsa::Signature::from_der(sig_value)
             .map_err(|_| X509VerifyError::ParseFailed)?;
-          Ok(verifying_key.verify(tbs_raw, &sig).is_ok())
+          Ok(verifying_key.verify_prehash(&prehash, &sig).is_ok())
         }
         _ => Err(X509VerifyError::UnsupportedEcCurve),
       }

@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // populate node_modules + deno.lock (marks the package as deprecated) and
+    // cache the packument
+    "args": "install",
+    "output": "install.out"
+  }, {
+    // drop the cached packument so the deprecated package's registry info is no
+    // longer available
+    "args": "run -A remove_registry.ts $DENO_DIR",
+    "output": ""
+  }, {
+    // should not error even though the deprecated package's registry info is
+    // missing from the cache. Regression test for
+    // https://github.com/denoland/deno/issues/35901
+    "args": "run --cached-only main.ts",
+    "output": "run.out"
+  }]
+}

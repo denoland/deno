@@ -460,6 +460,11 @@ impl TCPWrap {
       // number.
       self.base.set_fd(-1);
     }
+    // Stop any active read before clearing the JS handle so the read-callback
+    // registry drops its strong `Global<this>` and the wrapper can be GC'd
+    // after close. The stream pointer is still valid here (close_handle runs
+    // afterwards).
+    self.base.read_stop_internal();
     self.base.clear_js_handle();
     self
       .base

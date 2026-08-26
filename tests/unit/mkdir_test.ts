@@ -25,7 +25,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   function mkdirSyncMode() {
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
@@ -49,7 +49,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   async function mkdirMode() {
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
@@ -96,7 +96,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   function mkdirSyncRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
     const path = nested + "/dir";
@@ -107,7 +107,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   async function mkdirRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
     const path = nested + "/dir";
@@ -118,7 +118,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   function mkdirSyncRecursiveIfExists() {
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
@@ -136,7 +136,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   async function mkdirRecursiveIfExists() {
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });

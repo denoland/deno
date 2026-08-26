@@ -998,6 +998,7 @@ declare module "url" {
         interface URLPatternInit extends _URLPatternInit {}
         interface URLPatternResult extends _URLPatternResult {}
         interface URLPattern extends _URLPattern {}
+        var URLPattern: typeof _URLPattern;
     }
 }
 declare module "node:url" {

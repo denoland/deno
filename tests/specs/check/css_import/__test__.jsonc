@@ -1,4 +1,7 @@
 {
+  // ignored: tsc no longer reports the missing-CSS-module error that deno's
+  // graph expects. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "steps": [
     {
       "args": "check exists.ts",

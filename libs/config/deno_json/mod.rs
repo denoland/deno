@@ -2640,10 +2640,7 @@ impl ConfigFile {
     ) -> Result<chrono::DateTime<chrono::Utc>, MinimumDependencyAgeParseError>
     {
       match minutes.as_i64() {
-        Some(minutes) => {
-          let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
-          Ok(now - chrono::Duration::minutes(minutes))
-        }
+        Some(minutes) => Ok(crate::util::date_from_minutes(sys, minutes)?),
         None => Err(MinimumDependencyAgeParseError::InvalidNumber),
       }
     }
@@ -3309,6 +3306,21 @@ mod tests {
     assert!(matches!(
       err,
       MinimumDependencyAgeParseError::UnsupportedObject(_)
+    ));
+
+    // Out-of-range numeric values should return an error instead of panicking.
+    let specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file =
+      ConfigFile::new(r#"{ "minimumDependencyAge": 138939752218 }"#, specifier)
+        .unwrap();
+    let err = config_file
+      .to_minimum_dependency_age_config(&TestEnv)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      MinimumDependencyAgeParseError::ParseDateOrDuration(
+        crate::ParseDateOrDurationError::OutOfRange
+      )
     ));
   }
 

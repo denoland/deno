@@ -670,6 +670,49 @@ Deno.test({
 
 Deno.test({
   name:
+    "[node/child_process spawn] concurrent spawns with extra pipe fds keep handles valid (#35994)",
+  async fn() {
+    // Playwright launches Firefox/WebKit with two extra pipe fds (3 and 4)
+    // for its "pipe" browser-protocol transport. On Windows the child end of
+    // each extra pipe used to be closed twice, which - under concurrent
+    // spawns - raced with handle-value reuse and intermittently failed a
+    // sibling spawn with "The handle is invalid. (os error 6)". Spawn a batch
+    // concurrently to stress handle reuse and assert none of them fail.
+    const isWindows = Deno.build.os === "windows";
+    const command = isWindows ? "cmd.exe" : "/bin/sh";
+    const args = isWindows ? ["/c", "exit 0"] : ["-c", "exit 0"];
+
+    const spawnOne = () =>
+      new Promise<void>((resolve, reject) => {
+        const cp = spawn(command, args, {
+          stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+        });
+        cp.on("error", reject);
+        // Drain every piped stream so the child's exit is observed promptly
+        // and no pipe keeps the process from closing.
+        for (const stream of cp.stdio) {
+          // deno-lint-ignore no-explicit-any
+          const s = stream as any;
+          if (s && typeof s.resume === "function") {
+            s.resume();
+          }
+        }
+        cp.on("close", (code) => {
+          if (code !== 0) {
+            reject(new Error(`child exited with code ${code}`));
+          } else {
+            resolve();
+          }
+        });
+      });
+
+    const BATCH = 24;
+    await Promise.all(Array.from({ length: BATCH }, () => spawnOne()));
+  },
+});
+
+Deno.test({
+  name:
     "[node/child_process spawn] Deno child fd 3 stays claimable by net.Socket",
   ignore: Deno.build.os === "windows",
   async fn() {
@@ -1577,6 +1620,55 @@ Deno.test(function spawnSyncShellMetacharactersEscaped() {
   );
   assertEquals(ret.status, 0);
   assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test({
+  name: "spawn shell preserves pre-quoted arguments",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    for (const quote of ["'", '"']) {
+      const deferred = withTimeout<number | null>();
+      const child = spawn(
+        "printf",
+        [`${quote}<%s>\\n${quote}`, `${quote}hello world${quote}`],
+        { shell: true },
+      );
+      let stdout = "";
+      child.stdout!.setEncoding("utf-8");
+      child.stdout!.on("data", (chunk) => stdout += chunk);
+      child.on("error", deferred.reject);
+      child.on("close", deferred.resolve);
+      assertEquals(await deferred.promise, 0);
+      assertEquals(stdout, "<hello world>\n");
+    }
+  },
+});
+
+Deno.test({
+  name: "spawnSync shell preserves pre-quoted arguments",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    for (const quote of ["'", '"']) {
+      const ret = spawnSync(
+        "printf",
+        [`${quote}<%s>\\n${quote}`, `${quote}hello world${quote}`],
+        { shell: true, encoding: "utf-8" },
+      );
+      assertEquals(ret.status, 0);
+      assertEquals(ret.stdout, "<hello world>\n");
+    }
+
+    const breakout = spawnSync(
+      "printf",
+      ["'%s\\n'", "'safe'; printf injected; 'still-safe'"],
+      { shell: true, encoding: "utf-8" },
+    );
+    assertEquals(breakout.status, 0);
+    assertEquals(
+      breakout.stdout,
+      "safe'; printf injected; 'still-safe\n",
+    );
+  },
 });
 
 Deno.test(function spawnSyncReturnsPid() {

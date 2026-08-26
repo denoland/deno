@@ -141,8 +141,6 @@ const _path = Symbol("[[path]]");
 
 class Event {
   constructor(type, eventInitDict = { __proto__: null }) {
-    // TODO(lucacasonato): remove when this interface is spec aligned
-    this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
     this[_stopPropagationFlag] = false;
     this[_stopImmediatePropagationFlag] = false;
@@ -423,6 +421,14 @@ ObjectDefineProperty(Event, "BUBBLING_PHASE", {
 });
 
 const EventPrototype = Event.prototype;
+
+ObjectDefineProperty(EventPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "Event",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
@@ -781,11 +787,7 @@ function innerInvokeEventListeners(
     }
 
     if (once) {
-      ArrayPrototypeSplice(
-        targetListeners[type],
-        ArrayPrototypeIndexOf(targetListeners[type], listener),
-        1,
-      );
+      removeListener(targetListeners, type, listener);
     }
 
     if (passive) {
@@ -865,6 +867,24 @@ function normalizeEventHandlerOptions(
     return {
       capture: Boolean(options.capture),
     };
+  }
+}
+
+function removeListener(
+  targetListeners,
+  type,
+  listener,
+  index = ArrayPrototypeIndexOf(targetListeners[type], listener),
+) {
+  if (index === -1) {
+    return;
+  }
+
+  ArrayPrototypeSplice(targetListeners[type], index, 1);
+  if (listener.abortListener) {
+    listener.signal.removeEventListener("abort", listener.abortListener);
+    listener.signal = undefined;
+    listener.abortListener = undefined;
   }
 }
 
@@ -1014,21 +1034,29 @@ class EventTarget {
         return;
       }
     }
+    let signal;
+    let abortListener;
     if (options?.signal) {
-      const signal = options?.signal;
+      signal = options.signal;
       if (signal.aborted) {
         // If signal is not null and its aborted flag is set, then return.
         return;
       } else {
         // If listener's signal is not null, then add the following abort
         // abort steps to it: Remove an event listener.
-        signal.addEventListener("abort", () => {
+        abortListener = () => {
           self.removeEventListener(type, callback, options);
-        });
+        };
+        signal.addEventListener("abort", abortListener);
       }
     }
 
-    ArrayPrototypePush(listeners[type], { callback, options });
+    ArrayPrototypePush(listeners[type], {
+      callback,
+      options,
+      signal,
+      abortListener,
+    });
   }
 
   removeEventListener(
@@ -1061,7 +1089,7 @@ class EventTarget {
             listener.options.capture === options.capture)) &&
         listener.callback === callback
       ) {
-        ArrayPrototypeSplice(listeners[type], i, 1);
+        removeListener(listeners, type, listener, i);
         break;
       }
     }
@@ -1337,7 +1365,7 @@ class MessageEvent extends Event {
       // by WPT's no-regexp-special-casing test) still produce the
       // expected `ports` array. SafeArrayIterator can't be used here
       // because it walks the value as if it were an Array.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       for (const p of ports) {
         if (
           p === null || typeof p !== "object" ||

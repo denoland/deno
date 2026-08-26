@@ -24,13 +24,20 @@ const {
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const {
+  validateBoolean,
   validateFunction,
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { errorOrDestroy } = core.loadExtScript(
   "ext:deno_node/internal/streams/destroy.js",
 );
-const lazyFs = core.createLazyLoader("node:fs");
+// Resolve the CJS `node:fs` exports object (fs.ts) rather than the ESM
+// namespace (fs_esm.ts, whose `export const fsync = mod.fsync` bindings are a
+// static snapshot). This mirrors Node's `const fs = require('fs')` and ensures
+// monkey-patches/mocks on the `node:fs` namespace (e.g. the `flush` option's
+// fsync) are observed. `loadExtScript` caches, so repeat calls are cheap; all
+// call sites invoke `lazyFs()` at runtime, never at module-eval time.
+const lazyFs = () => core.loadExtScript("ext:deno_node/fs.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   copyObject,
@@ -76,7 +83,7 @@ function _construct(callback) {
     stream.open();
   } else {
     const streamPath = Buffer.isBuffer(stream.path)
-      // deno-lint-ignore prefer-primordials uses `toString` method from `node:buffer`
+      // deno-lint-ignore deno-internal/prefer-primordials -- uses `toString` method from `node:buffer`
       ? stream.path.toString()
       : StringPrototypeToString(stream.path);
     stream[kFs].open(
@@ -114,7 +121,7 @@ const FileHandleOperations = (handle) => {
     read: (_fd, buf, offset, length, pos, cb) => {
       PromisePrototypeThen(
         handle.read(buf, offset, length, pos),
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         (r) => cb(null, r.bytesRead, r.buffer),
         (err) => cb(err, 0, buf),
       );
@@ -122,7 +129,7 @@ const FileHandleOperations = (handle) => {
     write: (_fd, buf, offset, length, pos, cb) => {
       PromisePrototypeThen(
         handle.write(buf, offset, length, pos),
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         (r) => cb(null, r.bytesWritten, r.buffer),
         (err) => cb(err, 0, buf),
       );
@@ -140,12 +147,21 @@ const FileHandleOperations = (handle) => {
 function close(stream, err, cb) {
   if (!stream.fd) {
     cb(err);
-  } else {
-    stream[kFs].close(stream.fd, (er) => {
-      cb(er || err);
+  } else if (stream.flush) {
+    // The `flush` option fsyncs the descriptor before closing it.
+    stream[kFs].fsync(stream.fd, (flushErr) => {
+      _closeFd(stream, err || flushErr, cb);
     });
-    stream.fd = null;
+  } else {
+    _closeFd(stream, err, cb);
   }
+}
+
+function _closeFd(stream, err, cb) {
+  stream[kFs].close(stream.fd, (er) => {
+    cb(er || err);
+  });
+  stream.fd = null;
 }
 
 function importFd(stream, options) {
@@ -277,7 +293,7 @@ ReadStream.prototype._read = async function (n) {
 
   if (n <= 0) {
     // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
     return;
   }
@@ -337,11 +353,11 @@ ReadStream.prototype._read = async function (n) {
     }
 
     // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(buffer);
   } else {
     // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
   }
 };
@@ -428,6 +444,14 @@ export function WriteStream(path, options) {
   }
   if (!this[kFs].writev) {
     this._writev = null;
+  }
+
+  this.flush = options.flush;
+  if (this.flush == null) {
+    this.flush = false;
+  } else {
+    validateBoolean(this.flush, "options.flush");
+    validateFunction(this[kFs].fsync, "options.fs.fsync");
   }
 
   this.start = options.start;

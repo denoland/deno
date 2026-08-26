@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": ["add", "jsr:@denotest/add@^1.0.0"],
+    "output": "blocked.out",
+    "exitCode": 1
+  }, {
+    "args": ["add", "jsr:@denotest/add@^1.0.0", "--min-dep-age=0"],
+    "output": "disabled.out"
+  }]
+}

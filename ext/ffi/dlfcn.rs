@@ -285,20 +285,21 @@ fn make_sync_fn<'s>(
     None
   };
 
-  let c_function = turbocall.as_ref().map(|turbocall| {
-    v8::fast_api::CFunction::new(
-      turbocall.trampoline.ptr(),
-      &turbocall.c_function_info,
-    )
-  });
+  // SAFETY: the overload slice is backed by boxes owned by `turbocall`, which
+  // is moved into the cppgc `FunctionData` set as this function's data below and
+  // therefore outlives the function. V8 150.x retains the raw pointer, so the
+  // slice must be `'static`.
+  let overloads = turbocall
+    .as_ref()
+    .map(|turbocall| unsafe { turbocall.overloads() });
 
   let data = FunctionData { symbol, turbocall };
   let data = deno_core::cppgc::make_cppgc_object(scope, data);
 
   let builder = v8::FunctionTemplate::builder(sync_fn_impl).data(data.into());
 
-  let func = if let Some(c_function) = c_function {
-    builder.build_fast(scope, &[c_function])
+  let func = if let Some(overloads) = overloads {
+    builder.build_fast(scope, overloads)
   } else {
     builder.build(scope)
   };
@@ -318,12 +319,9 @@ fn sync_fn_impl<'s>(
   let out_buffer = match data.symbol.result_type {
     NativeType::Struct(_) => {
       let argc = args.length();
-      out_buffer_as_ptr(
-        scope,
-        Some(
-          v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1)).unwrap(),
-        ),
-      )
+      out_buffer_as_ptr(Some(
+        v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1)).unwrap(),
+      ))
     }
     _ => None,
   };
@@ -419,11 +417,110 @@ pub(crate) fn format_error(
 
 #[cfg(test)]
 mod tests {
+  use std::ffi::c_void;
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  use deno_core::JsRuntime;
+  use deno_core::RuntimeOptions;
+  use deno_core::v8;
   use serde_json::json;
 
   use super::ForeignFunction;
   use super::ForeignSymbol;
+  use super::make_sync_fn;
   use crate::symbol::NativeType;
+  use crate::symbol::Symbol;
+  use crate::turbocall;
+
+  #[derive(Clone, Copy)]
+  #[repr(C)]
+  struct Rect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  }
+
+  static MAKE_RECT_CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+  extern "C" fn make_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
+    MAKE_RECT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    Rect {
+      x,
+      y,
+      width,
+      height,
+    }
+  }
+
+  #[test]
+  fn sync_struct_return_views() {
+    MAKE_RECT_CALL_COUNT.store(0, Ordering::Relaxed);
+
+    let parameter_types = vec![NativeType::F64; 4];
+    let result_type =
+      NativeType::Struct(vec![NativeType::F64; 4].into_boxed_slice());
+    let symbol = Symbol {
+      name: "make_rect".to_string(),
+      cif: libffi::middle::Cif::new(
+        parameter_types
+          .clone()
+          .into_iter()
+          .map(libffi::middle::Type::try_from)
+          .collect::<Result<Vec<_>, _>>()
+          .unwrap(),
+        result_type.clone().try_into().unwrap(),
+      ),
+      ptr: libffi::middle::CodePtr::from_ptr(
+        make_rect as *const () as *const c_void,
+      ),
+      parameter_types,
+      result_type,
+    };
+    assert!(!turbocall::is_compatible(&symbol));
+
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    {
+      deno_core::scope!(scope, runtime);
+      let function = make_sync_fn(scope, Box::new(symbol));
+      let key = v8::String::new(scope, "makeRect").unwrap();
+      let global = scope.get_current_context().global(scope);
+      assert_eq!(global.set(scope, key.into(), function.into()), Some(true));
+    }
+
+    runtime
+      .execute_script(
+        "ffi_sync_call_test.js",
+        r#"
+          const backing = new Uint8Array(64);
+          backing.fill(0xee);
+          const out = new Uint8Array(backing.buffer, 16, 32);
+          makeRect(1, 2, 3, 4, out);
+          const values = new Float64Array(backing.buffer, 16, 4);
+          if (values[0] !== 1 || values[1] !== 2 ||
+              values[2] !== 3 || values[3] !== 4) {
+            throw new Error("unexpected struct result");
+          }
+          if (backing[0] !== 0xee || backing[63] !== 0xee) {
+            throw new Error("write escaped the return view");
+          }
+          try {
+            makeRect(1, 2, 3, 4, new Uint8Array(31));
+            throw new Error("synchronous call accepted an undersized buffer");
+          } catch (error) {
+            const expected =
+              "Invalid FFI struct return buffer: expected at least 32 bytes, got 31";
+            if (!(error instanceof TypeError) || error.message !== expected) {
+              throw error;
+            }
+          }
+        "#,
+      )
+      .unwrap();
+
+    assert_eq!(MAKE_RECT_CALL_COUNT.load(Ordering::Relaxed), 1);
+  }
 
   #[cfg(target_os = "windows")]
   #[test]

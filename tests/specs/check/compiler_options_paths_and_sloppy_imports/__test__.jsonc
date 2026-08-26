@@ -1,6 +1,9 @@
 {
   "tests": {
     "main": {
+      // ignored: tsc doesn't resolve compilerOptions.paths + sloppy imports
+      // the way deno does. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "args": "check --quiet main.ts",
       "output": ""
     },

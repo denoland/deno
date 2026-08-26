@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Updating one requirement re-resolves every dependency back into the
+    // lockfile. `@denotest/type-only-jsr-dep` reaches
+    // `@denotest/no-module-graph` only through an `import type`, so resolving
+    // with a code-only module graph drops it from the lockfile, which then
+    // fails `--frozen`.
+    "keeps_type_only_dep": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest @denotest/type-only-jsr-dep",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "const lock = JSON.parse(Deno.readTextFileSync('./deno.lock')); console.log(Object.keys(lock.specifiers).some((s) => s.startsWith('jsr:@denotest/no-module-graph')));"
+          ],
+          "output": "type_only_dep_locked.out"
+        },
+        {
+          "args": "install --frozen=true",
+          "output": "[WILDCARD]"
+        }
+      ]
+    }
+  }
+}

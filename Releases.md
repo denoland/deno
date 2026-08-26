@@ -6,6 +6,324 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.9.5 / 2026.08.06
+
+- feat(add): `--unscoped` flag to alias packages by their unscoped name (#36319)
+- feat(task): add --members flag to run tasks in workspace members only (#35748)
+- feat: add Blob/Body textStream() (#35616)
+- feat: add experimental QuickJS backend (#36194)
+- fix(bundle): avoid esbuild protocol deadlock (#36427)
+- fix(bundle): respect runtime file permissions (#36107)
+- fix(cjs): use loader sources for recursive analysis (#36111)
+- fix(cli): escape control characters in external metadata (#36198)
+- fix(core): don't resolve internal module imports with the user's import map
+  (#36303)
+- fix(crypto): add `"raw-secret"` to `KeyFormat` type (#35708)
+- fix(desktop): handle colored HMR URLs and page loads (#36316)
+- fix(desktop): retain update signature verification op (#36152)
+- fix(ext/crypto): allow deriveBits with length 0 (#36283)
+- fix(ext/napi): polyfill `uv_handle_size` and `uv_strerror` (#36308)
+- fix(ext/net): release completed QUIC stream resources (#36247)
+- fix(ext/net): require --allow-sys for node:dns.getServers() (#35941)
+- fix(ext/node): Node compat for web streams (#36285)
+- fix(ext/node): apply backpressure in Readable.toWeb() (#36321)
+- fix(ext/node): defer TLS write completion callback to avoid reentrancy panic
+  (#35867)
+- fix(ext/node): don't fire http2 settings callback after session destroy
+  (#36230)
+- fix(ext/node): gate constrained memory cgroup reads (#36218)
+- fix(ext/node): handle pre-quoted shell arguments (#36371)
+- fix(ext/node): implement node:test tags (#36292)
+- fix(ext/node): implement util.diff (#36289)
+- fix(ext/node): implement v8.promiseHooks API (#36281)
+- fix(ext/node): sort fs.readdir entries to match Node.js (#36341)
+- fix(ext/node): stop http2 file reads after stream close (#36300)
+- fix(ext/node): store blocklist ranges compactly (#36212)
+- fix(ext/node): support the fs `flush` option for writes (#36290)
+- fix(ext/node): use signatureAlgorithm digest for X509 ECDSA verify (#36326)
+- fix(ext/node_crypto): use named group exponent sizes (#36347)
+- fix(ext/web): attach Node error codes to WHATWG API validation errors (#36288)
+- fix(ext/websocket): disable HTTP/2 server push on wss upgrade path (#36327)
+- fix(fetch): scope redirect-sensitive headers by origin (#36361)
+- fix(ffi): reject resizable buffers in nonblocking calls (#36259)
+- fix(fmt): accept xml and svg extensions for stdin (#36149)
+- fix(fmt): update lax-markup to 0.3.2, lax-css and lax-sql to 0.3.0 (#36397)
+- fix(http): preserve stripped headers across redirects (#36360)
+- fix(inspector): validate request host headers (#36348)
+- fix(net): cancel pending writes on stream close (#36369)
+- fix(net): clean up concurrently dropped load-balanced listeners (#36246)
+- fix(net): handle malformed DNS record text (#36374)
+- fix(node): clean up Web Stream finished listeners (#36227)
+- fix(node): retain consumed HTTP stream wrapper (#36254)
+- fix(npm): ignore invalid package bin targets (#36354)
+- fix(npm): tolerate malformed `scripts` field in packuments (#36324)
+- fix(npmrc): match auth configs by authority and path (#36359)
+- fix(outdated): don't report JSR pre-release versions as latest (#36325)
+- fix(publish): report when the registry rejects a provenance attestation
+  (#36404)
+- fix(resolver): don't treat `deno eval` modules as npm package files (#36304)
+- fix(runtime): map notify's Windows missing-path error to NotFound (#35864)
+- fix(sync-types): add reason to too_many_arguments allows (lint)
+- fix(telemetry): handle reentrant attribute conversion (#36256)
+- fix(webgpu): own mapped range backing stores (#36257)
+- fix(webstorage): preserve Storage constructor name (#35944)
+- fix: capitalize IP in help text (#36170)
+- fix: upgrade deno_task_shell to 0.33.3 (#36406)
+- fix: wire `no-legacy-abort` unstable flag from deno.json config (#36312)
+- perf(core): run the common-path tick drain in Rust (#36157)
+- perf(ext/node): bypass dns lookup on literal IPs in udp send (#35909)
+- perf(ext/web): implement base64url encode/decode as simdutf ops (#36398)
+- perf(fs): open files on the blocking pool in async readFile/writeFile (#36160)
+- perf: order startup functions in release builds (#36219)
+- perf: reduce eager module evaluation at startup (#36331)
+- perf: remove Linux unwind tables from release artifacts (#36265)
+
+### 2.9.4 / 2026.07.23
+
+- feat(desktop): enable `--hmr` for React Router (#35900)
+- feat(ext/node): add a byteLength/length parameter to
+  Buffer.indexOf/lastIndexOf/includes (#35872)
+- feat(ext/node): support raw chacha20 cipher in crypto.createCipheriv (#36016)
+- feat: upgrade V8 to 150.2.0 (#36098)
+- fix(add): support --minimum-dependency-age flag in deno add/remove (#36099)
+- fix(cache): store Web Cache under origin data (#36145)
+- fix(canvas): require FFI permission for native window handles (#36080)
+- fix(clean): reject symlinked node_modules cleanup roots (#36190)
+- fix(compile): bump libsui to 0.16.4 to fix Windows resource SizeOfImage
+  (#36242)
+- fix(core): allow dynamic imports during cached module evaluation (#36258)
+- fix(core): bound error graph conversion (#36070)
+- fix(core): enforce JSON requests in FsModuleLoader (#36137)
+- fix(core): handle malformed error constructors (#36071)
+- fix(core): stop rejected dynamic imports before loading (#36136)
+- fix(desktop): make BrowserWindow bindings typeable (#35907)
+- fix(desktop): preserve binding wrappers after lazy op upgrade (#36065)
+- fix(desktop): strip runtime extension from app name (#36060)
+- fix(ext/napi): cancel async sends after close (#36077)
+- fix(ext/napi): scope callback info per invocation (#36076)
+- fix(ext/node): apply backpressure to http2 stream writes (#36044)
+- fix(ext/node): don't leave 0-byte .heapsnapshot files near the heap limit
+  (#36113)
+- fix(ext/node): implement worker_threads.locks via Web Locks (#35963)
+- fix(ext/node): node:sqlite backup() and deserialize() argument validation
+  (#36127)
+- fix(ext/node): retry DNS query when its per-attempt timeout fires (#35955)
+- fix(ext/node): stop http2 file reads on stream close (#36061)
+- fix(ext/web): handle failed webtransport datagram setup (#36067)
+- fix(ext/webidl): implement `async_sequence` for `ReadableStream.from` (#35976)
+- fix(fetch): bound multipart part headers (#36096)
+- fix(fmt): keep embedded CSS custom property indentation stable (#35949)
+- fix(fs): require sys permission for umask (#36222)
+- fix(http): preserve trust proxy environment setting (#36073)
+- fix(init): validate temporary node_modules parent (#36142)
+- fix(jupyter): report codemirror_mode as a string (#36241)
+- fix(loader): reject non-JSON modules for JSON imports (#36135)
+- fix(napi): synchronize external string finalizers (#36078)
+- fix(net): clean up cancellation resources on early errors (#36229)
+- fix(net): limit WebTransport handshake frame buffering (#36068)
+- fix(node_http2): clean up destroyed sessions (#36043)
+- fix(node_resolver): handle CJS filesystem path edge cases (#36112)
+- fix(node_stream): handle Web Stream adapter errors (#36193)
+- fix(npm): avoid following lock poll symlinks (#36192)
+- fix(npm): download tarballs from the configured registry instead of
+  registry.npmjs.org (#36187)
+- fix(npm): reject symlinked package materialization dirs (#36191)
+- fix(outdated): keep type-only dependencies in the lockfile (#36140)
+- fix(pack): support file paths longer than the tar name field (#36105)
+- fix(permissions): escape bidi controls in prompts (#36195)
+- fix(process): avoid collisions in Windows stdio pipe names (#36081)
+- fix(publish): constrain generated source rewrites (#36109)
+- fix(release): insert into versions.json in semver order (#36097)
+- fix(rt): isolate extracted native addons (#36144)
+- fix(runtime): bridge console to the inspector regardless of --inspect flag
+  (#35795)
+- fix(runtime): give worker isolate threads the stack size we report (#36114)
+- fix(test): escape control characters in test names (#36196)
+- fix(tests): make npm test registry tolerate a bad advisories request body
+  (#36138)
+- fix(tls): resolve sni requests concurrently (#36062)
+- fix(update): don't downgrade lockfile when npm cache is stale (#35904)
+- fix(webtransport): avoid url parse panic (#36066)
+- fix(webtransport): validate certificate dates (#36069)
+- fix(x): honor --minimum-dependency-age and deno.json minimumDependencyAge
+  (#36025)
+- fix: discover config file for jsr: entrypoints (#35838)
+- fix: handle UTF-16 diagnostic columns (#36028)
+- perf(core): avoid duplicating lazy ESM snapshot sources (#36262)
+- perf(snapshot): mangle internal source identifiers (#36263)
+- perf: compress bundled AppImage runtimes (#36261)
+- perf: use FxHash for hot internal hash maps (#36100)
+
+### 2.9.3 / 2026.07.15
+
+- feat(cli): `deno add --no-save` and `--save-optional` (#36039)
+- feat(cli): add --min-dep-age alias (#35914)
+- feat(compile): support aarch64-pc-windows-msvc target (#36004)
+- feat(ext/fetch): add `http2MaxHeaderListSize` option to
+  `Deno.createHttpClient` (#33194)
+- fix(bundle): preserve raw imports in watch mode (#36040)
+- fix(canvas): don't hold SurfaceData mut borrow over window resize (#35993)
+- fix(config): reject out-of-range minimum dependency ages (#36051)
+- fix(core): block user ext imports after resolution (#36012)
+- fix(core): deactivate idle TTY write handles (#35886)
+- fix(core): restrict extension loaders to internal modules (#36013)
+- fix(core): root slow op string coercions (#36018)
+- fix(desktop): don't let op_desktop_send_error_report target caller-supplied
+  URLs (#35940)
+- fix(ext/http): don't panic recycling cancelled record on native response
+  (#36053)
+- fix(ext/napi): don't free threadsafe function on abort while refs remain
+  (#36032)
+- fix(ext/napi): don't resurrect a released threadsafe function in acquire
+  (#36054)
+- fix(ext/node): add deprecation warning for Duplex.toWeb({ type }) DEP0201
+  (#35972)
+- fix(ext/node): guard sqlite deserialize during callbacks (#36023)
+- fix(ext/node): handle UTF-16 assert source positions (#36029)
+- fix(ext/node): handle sqlite conversion failures (#36024)
+- fix(ext/node): respect base64 buffer ranges (#36030)
+- fix(ext/process): don't double-close extra stdio pipe handles on Windows
+  (#36005)
+- fix(lsp): respect lint rule exclusion for no-slow-types diagnostics (#35924)
+- fix(node): stop active read on stream close to avoid leaking Socket/TCPWrap
+  (#35898)
+- fix(node_http2): keep header validation enabled (#36042)
+- fix(node_http2): validate serialized headers (#36041)
+- fix(npm): don't fetch registry info for deprecated packages under
+  --cached-only (#35903)
+- fix(npm): normalize path in BYONM read permission check (#35882)
+- fix(pm): hint about minimumDependencyAge when no version is old enough
+  (#35890)
+- fix(release): only strip Mach-O signature for x86_64-apple-darwin (#35902)
+- fix(release): strip Mach-O signature before patchver on apple targets (#35897)
+- fix(runtime): guard usage op output buffers (#36020)
+- fix(serde_v8): handle deserialization exceptions (#36021)
+- fix(web): guard encodeInto fallback result buffer (#36019)
+- fix(web): support Event subclasses with readonly toStringTag (#35920)
+- fix(worker): remove imported ops during bootstrap (#36014)
+- fix: don't print duplicate parse diagnostics (#35933)
+- perf(ext/crypto): batch randomUUID generation (#35953)
+- perf(ext/fetch): remove quadratic line buffering in EventSource (#35881)
+- perf(ext/node): cache compiled glob matchers + bump bundled minimatch to
+  10.2.5 (#35873)
+- perf(ext/node): fast path fs cp (#35856)
+- perf(ext/node): right-size small socket reads instead of pinning the 64KB slab
+  (#35779)
+- perf(ext/node): speed up sqlite.StatementSync.all() and run() (#35863)
+- perf(ext/web): avoid copy-back in op_base64_atob large path (#35862)
+
+### 2.9.2 / 2026.07.08
+
+- feat(desktop): autodetect React Router framework (#35557)
+- feat(desktop): enable `--hmr` for Vite and Nuxt (#35851)
+- feat(desktop): run HMR by framework dev server (#35722)
+- feat(desktop): window opacity and transparency APIs (#35646)
+- feat(desktop): wire --exclude-unused-npm through to compile (#35740)
+- feat(ext/node): implement v8.setHeapSnapshotNearHeapLimit (#35694)
+- feat(ext/telemetry): honor OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT (#35068)
+- feat(inspector): start inspector server on SIGUSR1 (#35738)
+- feat(node): implement getTestContext() in node:test (#35678)
+- feat: support wildcard patterns in minimumDependencyAge.exclude (#35746)
+- fix(check): don't interleave errors with "Check" lines in a workspace (#35687)
+- fix(compile): bump libsui to 0.16.1 to survive eu-strip in flatpak (#35699)
+- fix(compile): bump libsui to 0.16.3 to fix segfault under gVisor/Cloud Run
+  (#35701)
+- fix(core): don't drain microtasks in mod_evaluate_sync mid-evaluation (#35707)
+- fix(coverage): count a branch-junction line as covered when either arm runs
+  (#35858)
+- fix(coverage): don't count V8 block-boundary gaps as branches (#35767)
+- fix(coverage): don't let a trailing comment change a line's hit count (#35741)
+- fix(deploy): disable config discovery and refresh the cached CLI version
+  (#35754)
+- fix(desktop): attribute bind calls to the registering window id (#35654)
+- fix(desktop): honor desktop.backend from deno.json (#35815
+- fix(desktop): pin @std/http in generated Vite SPA entrypoint + add hermetic
+  compile test (#35676)
+- fix(desktop): rename launcher to <app> so it self-loads the runtime (#35709)
+- fix(desktop): run framework build step before bundling output (#35603)
+- fix(desktop): surface compiled-app startup errors instead of exiting silently
+  (#35567)
+- fix(dprint): exclude `tools/lzld` submodule (#35778)
+- fix(ext): throw DataCloneError when posting non-serializable values (#35604)
+- fix(ext/cache): implement Cache.keys() (#35455)
+- fix(ext/fetch): reject transport failures with Node's "fetch failed" shape
+  (#35618)
+- fix(ext/http): error non-Uint8Array response streams (#35783)
+- fix(ext/http): honor explicit content-length header on HEAD responses (#35728)
+- fix(ext/http): point legacy abort warning at docs.deno.com/go link (#35713)
+- fix(ext/napi): add uv_cond_* polyfills for native addons (#35536)
+- fix(ext/net): abort pending Deno.connect during DNS resolution (#35729)
+- fix(ext/node): allow adopting inherited extra stdio TCP fds (#35805)
+- fix(ext/node): don't panic when main module path has invalid percent-encoding
+  (#35534)
+- fix(ext/node): don't schedule a pause in inspector.waitForDebugger() (#35796)
+- fix(ext/node): flush StringDecoder in cipher final() for stream ciphers
+  (#35800)
+- fix(ext/node): mark TLSWrap dead on teardown before tls_conn check (#35706)
+- fix(ext/node): report all active resources from process.getActiveResourcesInfo
+  (#35532)
+- fix(ext/node): require --allow-net=unix for node:net unix sockets (#35835)
+- fix(ext/node): support fd 3 pipes in spawned Deno children (#34133)
+- fix(ext/signals): unregister handler when SignalStream is dropped (#35832)
+- fix(ext/web): resolve pending BYOB read when teeing a byte stream that closes
+  (#35828)
+- fix(fmt): format Astro inline scripts as TypeScript (#35852)
+- fix(fs): support pre-1970 (negative) timestamps in FsStat (#35517)
+- fix(inspector): close WebSocket connections when the runtime is torn down
+  (#35791)
+- fix(install): don't panic on jsr specifier with a tag like @latest (#35605)
+- fix(install): don't write through hardlinks when copying package files
+  (#35735)
+- fix(install): make setup cache packages hash deterministic (#35825)
+- fix(install): resolve lifecycle script dependency bins against the hoisted
+  layout (#35762)
+- fix(install): support uninstalling multiple global packages (#29352)
+- fix(lint): don't error on non-analyzable package exports like CSS files
+  (#35732)
+- fix(lint): include config file in workspace member invalid version error
+  (#35759)
+- fix(lsp): fix CPU busy loop by creating tokio runtime before JsRuntime in TSC
+  thread (#35595)
+- fix(node/fs): implement followSymlinks option for fs.glob() (#35524)
+- fix(npm): don't re-fetch packuments on every run when registry has no time
+  data (#35834)
+- fix(npm): don't retain full npm `exports` value + fix `--watch` memory leak
+  (#35677)
+- fix(npm): widen node_modules lock staleness margin to avoid false preemption
+  (#35806)
+- fix(permissions): split comma-separated paths in --ignore-read (#35661)
+- fix(test): run Node-API finalizers at test worker shutdown (#35695)
+- fix(watch): accept watch paths in fmt/lint/bench --watch (#35720)
+- fix(watch): execute preload modules under --watch (#35792)
+- fix(watch): terminate on Ctrl+C while blocked in synchronous code (#35826)
+- fix: enable rusqlite "fallible_uint" feature in workspace deps (#35681)
+- perf(config): literal-suffix reject and prune irrelevant globs per base
+  (#35688)
+- perf(core): defer residual lazy source registration (#35731)
+- perf(ext/fetch): stream wasm bytes to the compiler from Rust (#35704)
+- perf(ext/node): remove per-chunk copying on TLSWrap data paths (#35705)
+- perf(ext/node): zero-copy async Buffer writes on the stream_wrap path (#35780)
+- perf(ext/web): identity pipeThrough writable bypass (#35799)
+- perf(ext/web): persistent pump for the generic pipeTo loop (#35813)
+- perf(ext/web): pump readableStreamCollectIntoUint8Array with a persistent read
+  request (#35790)
+- perf(ext/web): reduce per-chunk allocations on stream read and tee paths
+  (#35786)
+- perf(ext/web): reduce per-chunk overhead in Web Streams (#35773)
+- perf(ext/web): run synchronous pull completion without a microtask hop
+  (#35788)
+- perf(ext/web): shared underlying-source algorithms, hoist resource-bridge read
+  request (#35810)
+- perf(ext/web): sync fast path for ReadableStream async iterator next()
+  (#35842)
+- perf(ext/web): synchronous transform fast path for TransformStream (#35844)
+- perf(npm): index packuments with SIMD JSON scanner (#35698)
+- perf(streams): offload resource-backed pipeTo to Rust via op_pipe (#35689)
+- perf(workers): optimize message passing (#35110)
+- perf(workers): return raw buffer from receive ops for no-transferable messages
+  (#35756)
+- perf: use V8 native queueMicrotask instead of op (#35787)
+
 ### 2.9.1 / 2026.07.01
 
 - feat(check): add `--desktop` flag to type-check for deno desktop (#35644)

@@ -18,6 +18,7 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 use deno_webgpu::canvas::ContextData;
 use deno_webgpu::canvas::SurfaceData;
 
@@ -40,6 +41,9 @@ pub enum ByowError {
   #[class(type)]
   #[error("Invalid parameters")]
   InvalidParameters,
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
   #[class(generic)]
   #[error(transparent)]
   CreateSurface(deno_webgpu::wgpu_core::instance::CreateSurfaceError),
@@ -113,8 +117,7 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut data = self.data.borrow_mut();
-    data.width = value;
+    self.data.borrow_mut().width = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -138,8 +141,7 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut data = self.data.borrow_mut();
-    data.height = value;
+    self.data.borrow_mut().height = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -158,6 +160,10 @@ impl UnsafeWindowSurface {
     state: &mut OpState,
     #[scoped] options: UnsafeWindowSurfaceOptions,
   ) -> Result<UnsafeWindowSurface, ByowError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_ffi_partial_no_path()?;
+
     let (_, instance) = deno_webgpu::get_or_init_instance(
       state,
       &deno_webgpu::adapter::GPURequestAdapterOptions {
@@ -168,19 +174,13 @@ impl UnsafeWindowSurface {
     )
     .ok_or(ByowError::NoWgpuInstance)?;
 
-    // Security note:
+    // SAFETY:
     //
     // The `window_handle` and `display_handle` options are pointers to
     // platform-specific window handles.
     //
-    // The code below works under the assumption that:
-    //
-    // - handles can only be created by the FFI interface which
-    // enforces --allow-ffi.
-    //
-    // - `*const c_void` deserizalizes null and v8::External.
-    //
-    // - Only FFI can export v8::External to user code.
+    // FFI permission is checked above, and `*const c_void` deserializes only
+    // null and v8::External values.
     if options.window_handle.is_null() {
       return Err(ByowError::InvalidParameters);
     }

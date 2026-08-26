@@ -795,7 +795,7 @@ class WebSocket extends EventTarget {
           }
 
           this[_serverHandleIdleTimeout]();
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           const buffer = d.buffer;
           emitWebSocketFrame(this, "frameReceived", 2, buffer);
           let data;
@@ -893,7 +893,7 @@ class WebSocket extends EventTarget {
         op_ws_send_binary_ab(this[_rid], data);
         emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const ab = await data.slice().arrayBuffer();
         op_ws_send_binary_ab(this[_rid], ab);
         emitWebSocketFrame(this, "frameSent", 2, ab);

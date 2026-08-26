@@ -1,5 +1,7 @@
-[WILDCARD]TS2307 [ERROR]: Import "foo" not a dependency
-  hint: If you want to use the npm package, try running `deno add npm:foo`
-    at file:///[WILDCARD]/095_cache_with_bare_import.ts:[WILDCARD]
+Check [WILDLINE]
+TS2882 [ERROR]: Cannot find module or type declarations for side-effect import of 'foo'.
+import "foo";
+       ~~~~~
+    at file:///[WILDCARD]/095_cache_with_bare_import.ts:1:8
 
 error: Type checking failed.

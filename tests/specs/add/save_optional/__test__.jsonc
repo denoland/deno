@@ -1,0 +1,54 @@
+{
+  "tempDir": true,
+  "tests": {
+    "package_json": {
+      "steps": [
+        {
+          "args": "add --save-optional npm:@denotest/esm-basic",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "package.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.statSync('node_modules/@denotest/esm-basic').isDirectory)"
+          ],
+          "output": "true\n"
+        }
+      ]
+    },
+    "short_flag_moves_section": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('package.json', JSON.stringify({ dependencies: { '@denotest/esm-basic': '^1.0.0' } }, null, 2))"
+          ],
+          "output": ""
+        },
+        {
+          "args": "add -O npm:@denotest/esm-basic",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "moved.package.json.out"
+        }
+      ]
+    },
+    "conflicts_with_dev": {
+      "args": "add --save-optional --dev npm:@denotest/esm-basic",
+      "output": "conflict.out",
+      "exitCode": 1
+    }
+  }
+}

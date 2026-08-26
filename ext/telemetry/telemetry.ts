@@ -253,20 +253,21 @@ interface OtelSpan {
   addEvent(
     name: string,
     startTime: number,
-  ): void;
+  ): number;
   dropEvent(): void;
   end(endTime: number): void;
 }
 
 enum SpanAttributesLocation {
   SELF = 0,
-  LAST_EVENT = 1,
-  LAST_LINK = 2,
+  EVENT = 1,
+  LINK = 2,
 }
 
 function spanAddAttributes(
   span: OtelSpan,
   attributesLocation: SpanAttributesLocation,
+  attributesTarget: number,
   attributes: Attributes,
 ) {
   const attributeKvs = ObjectEntries(attributes);
@@ -276,6 +277,7 @@ function spanAddAttributes(
       op_otel_span_attribute3(
         span,
         attributesLocation,
+        attributesTarget,
         attributeKvs[i][0],
         attributeKvs[i][1],
         attributeKvs[i + 1][0],
@@ -288,6 +290,7 @@ function spanAddAttributes(
       op_otel_span_attribute2(
         span,
         attributesLocation,
+        attributesTarget,
         attributeKvs[i][0],
         attributeKvs[i][1],
         attributeKvs[i + 1][0],
@@ -298,6 +301,7 @@ function spanAddAttributes(
       op_otel_span_attribute1(
         span,
         attributesLocation,
+        attributesTarget,
         attributeKvs[i][0],
         attributeKvs[i][1],
       );
@@ -437,7 +441,6 @@ class Span {
   #spanContext: SpanContext | undefined;
 
   static {
-    // deno-lint-ignore prefer-primordials
     getOtelSpan = (span) => (#otelSpan in span ? span.#otelSpan : undefined);
   }
 
@@ -474,14 +477,15 @@ class Span {
     }
     const startTimeMs = timeInputToMs(startTime);
 
-    this.#otelSpan.addEvent(
+    const attributesTarget = this.#otelSpan.addEvent(
       name,
       startTimeMs ?? NaN,
     );
-    if (attributes) {
+    if (attributes && attributesTarget !== 0) {
       spanAddAttributes(
         this.#otelSpan,
-        SpanAttributesLocation.LAST_EVENT,
+        SpanAttributesLocation.EVENT,
+        attributesTarget,
         attributes,
       );
     }
@@ -490,7 +494,7 @@ class Span {
 
   addLink(link: Link): this {
     if (!this.#otelSpan) return this;
-    const valid = op_otel_span_add_link(
+    const attributesTarget = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
       link.context.spanId,
@@ -498,14 +502,14 @@ class Span {
       link.context.isRemote ?? false,
       link.droppedAttributesCount ?? 0,
     );
-    if (link.attributes) {
+    if (link.attributes && attributesTarget !== 0) {
       spanAddAttributes(
         this.#otelSpan,
-        SpanAttributesLocation.LAST_LINK,
+        SpanAttributesLocation.LINK,
+        attributesTarget,
         link.attributes,
       );
     }
-    if (!valid) return this;
     return this;
   }
 
@@ -558,6 +562,7 @@ class Span {
     op_otel_span_attribute1(
       this.#otelSpan,
       SpanAttributesLocation.SELF,
+      0,
       key,
       value,
     );
@@ -566,7 +571,12 @@ class Span {
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    spanAddAttributes(this.#otelSpan, SpanAttributesLocation.SELF, attributes);
+    spanAddAttributes(
+      this.#otelSpan,
+      SpanAttributesLocation.SELF,
+      0,
+      attributes,
+    );
     return this;
   }
 
@@ -792,7 +802,7 @@ class Meter {
     if (!METRICS_ENABLED) return new Counter(null, false);
     const instrument = this.#meter.createCounter(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -806,7 +816,7 @@ class Meter {
     if (!METRICS_ENABLED) return new Counter(null, true);
     const instrument = this.#meter.createUpDownCounter(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -820,7 +830,7 @@ class Meter {
     if (!METRICS_ENABLED) return new Gauge(null);
     const instrument = this.#meter.createGauge(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -834,7 +844,7 @@ class Meter {
     if (!METRICS_ENABLED) return new Histogram(null);
     const instrument = this.#meter.createHistogram(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
       options?.advice?.explicitBucketBoundaries,
@@ -849,7 +859,7 @@ class Meter {
     if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
     const instrument = this.#meter.createObservableCounter(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -866,7 +876,7 @@ class Meter {
     if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
     const instrument = this.#meter.createObservableUpDownCounter(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -880,7 +890,7 @@ class Meter {
     if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
     const instrument = this.#meter.createObservableGauge(
       name,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
@@ -1142,22 +1152,22 @@ async function observe(): Promise<void> {
 
   const promises: Promise<void>[] = [];
   // Primordials are not needed, because this is a SafeMap.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   for (const { 0: observable, 1: callbacks } of INDIVIDUAL_CALLBACKS) {
     const result = getObservableResult(observable);
     // Primordials are not needed, because this is a SafeSet.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     for (const callback of callbacks) {
       // PromiseTry is not in primordials?
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       ArrayPrototypePush(promises, Promise.try(callback, result));
     }
   }
   // Primordials are not needed, because this is a SafeMap.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   for (const { 0: callback, 1: result } of BATCH_CALLBACKS) {
     // PromiseTry is not in primordials?
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     ArrayPrototypePush(promises, Promise.try(callback, result));
   }
   await SafePromiseAll(promises);
@@ -1621,7 +1631,7 @@ function getKeyPairs(baggage: Baggage): string[] {
     // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
     if (baggageEntry[1].metadata !== undefined) {
       entry += BAGGAGE_PROPERTIES_SEPARATOR +
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         baggageEntry[1].metadata.toString();
     }
 

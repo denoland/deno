@@ -97,7 +97,7 @@ impl TapTestReporter {
     result: &TestStepResult,
   ) {
     if self.step_n == 0 {
-      drop_println!("# Subtest: {}", desc.root_name)
+      drop_println!("# Subtest: {}", Self::escape_description(&desc.root_name))
     }
 
     let (status, directive) = match result {

@@ -1475,7 +1475,7 @@ function getPathBufferFromURLWin(url: URL) {
     const prefix = Buffer.from("\\\\", "ascii");
     const domain = Buffer.from(domainToUnicode(hostname), "utf8");
     // `concat` is a `node:buffer` static method on `Buffer`
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return Buffer.concat([prefix, domain, decodedPathname]);
   }
   const letter = decodedPathname[1] | 0x20;

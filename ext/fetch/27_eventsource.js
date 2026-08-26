@@ -5,6 +5,8 @@ const { core, primordials } = __bootstrap;
 const { op_utf8_to_byte_string } = core.ops;
 const {
   ArrayPrototypeFind,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
   Number,
   NumberIsFinite,
   NumberIsNaN,
@@ -43,21 +45,27 @@ const {
   headersFromHeaderList,
 } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 
-// Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
+// Same semantics as
+// https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
+// but linear in the input size: fragments that cannot complete a line are
+// buffered in an array and joined only when a line terminator arrives, and
+// complete lines are extracted by index scanning instead of re-slicing, so
+// a line spanning many fragments costs O(length) rather than O(length^2).
 class TextLineStream extends TransformStream {
   #allowCR;
-  #buf = "";
+  #frags = [];
 
   constructor(options) {
     super({
       transform: (chunk, controller) => this.#handle(chunk, controller),
       flush: (controller) => {
-        if (this.#buf.length > 0) {
-          if (
-            this.#allowCR &&
-            this.#buf[this.#buf.length - 1] === "\r"
-          ) controller.enqueue(StringPrototypeSlice(this.#buf, 0, -1));
-          else controller.enqueue(this.#buf);
+        if (this.#frags.length > 0) {
+          const buf = ArrayPrototypeJoin(this.#frags, "");
+          if (this.#allowCR && StringPrototypeEndsWith(buf, "\r")) {
+            controller.enqueue(StringPrototypeSlice(buf, 0, -1));
+          } else {
+            controller.enqueue(buf);
+          }
         }
       },
     });
@@ -65,38 +73,71 @@ class TextLineStream extends TransformStream {
   }
 
   #handle(chunk, controller) {
-    chunk = this.#buf + chunk;
+    if (chunk.length === 0) {
+      return;
+    }
+    const frags = this.#frags;
+    // Fast path: the fragment cannot complete a line (no LF; with allowCR
+    // also no CR, and the buffered tail does not end with a CR that this
+    // fragment would turn into a line break). Just buffer it.
+    if (
+      !StringPrototypeIncludes(chunk, "\n") &&
+      (!this.#allowCR ||
+        (!StringPrototypeIncludes(chunk, "\r") &&
+          (frags.length === 0 ||
+            !StringPrototypeEndsWith(frags[frags.length - 1], "\r"))))
+    ) {
+      ArrayPrototypePush(frags, chunk);
+      return;
+    }
 
+    let s;
+    if (frags.length > 0) {
+      ArrayPrototypePush(frags, chunk);
+      s = ArrayPrototypeJoin(frags, "");
+      frags.length = 0;
+    } else {
+      s = chunk;
+    }
+
+    let start = 0;
+    // Cached position of the next CR at or past `start`; refreshed only once
+    // `start` moves past it, so CR-less spans are not rescanned per line.
+    let crIndex = this.#allowCR ? StringPrototypeIndexOf(s, "\r", start) : -1;
     for (;;) {
-      const lfIndex = StringPrototypeIndexOf(chunk, "\n");
+      const lfIndex = StringPrototypeIndexOf(s, "\n", start);
 
       if (this.#allowCR) {
-        const crIndex = StringPrototypeIndexOf(chunk, "\r");
+        if (crIndex !== -1 && crIndex < start) {
+          crIndex = StringPrototypeIndexOf(s, "\r", start);
+        }
 
         if (
-          crIndex !== -1 && crIndex !== (chunk.length - 1) &&
+          crIndex !== -1 && crIndex !== (s.length - 1) &&
           (lfIndex === -1 || (lfIndex - 1) > crIndex)
         ) {
-          controller.enqueue(StringPrototypeSlice(chunk, 0, crIndex));
-          chunk = StringPrototypeSlice(chunk, crIndex + 1);
+          controller.enqueue(StringPrototypeSlice(s, start, crIndex));
+          start = crIndex + 1;
           continue;
         }
       }
 
       if (lfIndex !== -1) {
         let crOrLfIndex = lfIndex;
-        if (chunk[lfIndex - 1] === "\r") {
+        if (lfIndex > start && s[lfIndex - 1] === "\r") {
           crOrLfIndex--;
         }
-        controller.enqueue(StringPrototypeSlice(chunk, 0, crOrLfIndex));
-        chunk = StringPrototypeSlice(chunk, lfIndex + 1);
+        controller.enqueue(StringPrototypeSlice(s, start, crOrLfIndex));
+        start = lfIndex + 1;
         continue;
       }
 
       break;
     }
 
-    this.#buf = chunk;
+    if (start < s.length) {
+      ArrayPrototypePush(frags, StringPrototypeSlice(s, start));
+    }
   }
 }
 
@@ -256,7 +297,7 @@ class EventSource extends EventTarget {
 
     try {
       for await (
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const chunk of res.body.stream
           .pipeThrough(new TextDecoderStream())
           .pipeThrough(new TextLineStream({ allowCR: true }))

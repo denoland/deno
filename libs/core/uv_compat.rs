@@ -16,11 +16,13 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::ffi::CStr;
 use std::ffi::c_int;
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Waker;
+use std::time::Duration;
 use std::time::Instant;
 
 pub use pipe::*;
@@ -77,6 +79,32 @@ uv_errno!(UV_ECONNABORTED, libc::ECONNABORTED, -4079);
 uv_errno!(UV_ETIMEDOUT, libc::ETIMEDOUT, -4039);
 uv_errno!(UV_EACCES, libc::EACCES, -4092);
 pub const UV_EOF: i32 = -4095;
+
+pub fn uv_error_message(err: c_int) -> Option<&'static CStr> {
+  let message = match err {
+    x if x == UV_EAGAIN => c"resource temporarily unavailable",
+    x if x == UV_EBADF => c"bad file descriptor",
+    x if x == UV_EADDRINUSE => c"address already in use",
+    x if x == UV_ECONNREFUSED => c"connection refused",
+    x if x == UV_EINVAL => c"invalid argument",
+    x if x == UV_ENOTCONN => c"socket is not connected",
+    x if x == UV_ECANCELED => c"operation canceled",
+    x if x == UV_EPIPE => c"broken pipe",
+    x if x == UV_EBUSY => c"resource busy or locked",
+    x if x == UV_ENOBUFS => c"no buffer space available",
+    x if x == UV_ENOTSUP => c"operation not supported on socket",
+    x if x == UV_EALREADY => c"connection already in progress",
+    x if x == UV_ENOENT => c"no such file or directory",
+    x if x == UV_ENOTSOCK => c"socket operation on non-socket",
+    x if x == UV_ECONNRESET => c"connection reset by peer",
+    x if x == UV_ECONNABORTED => c"software caused connection abort",
+    x if x == UV_ETIMEDOUT => c"connection timed out",
+    x if x == UV_EACCES => c"permission denied",
+    x if x == UV_EOF => c"end of file",
+    _ => return None,
+  };
+  Some(message)
+}
 
 /// Map a `std::io::Error` to the closest libuv error code.
 pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
@@ -309,6 +337,23 @@ impl UvLoopInner {
   pub(crate) fn update_time(&self) {
     let ms = Instant::now().duration_since(self.time_origin).as_millis() as u64;
     self.cached_time_ms.set(ms);
+  }
+
+  /// The earliest pending timer, as its absolute deadline (loop-time ms) and
+  /// the delay from now until it fires (`0` if already due). Returns `None`
+  /// when no timer is scheduled. Mirrors libuv's `uv__next_timeout`, which the
+  /// event loop uses to bound how long it may block before the next timer.
+  ///
+  /// The deadline is returned alongside the delay so the caller can detect
+  /// when the earliest deadline changes and avoid re-arming its wakeup every
+  /// tick. `timers` is ordered by `(deadline_ms, id)`, so the front entry is
+  /// always the soonest.
+  pub(crate) fn next_timeout(&self) -> Option<(u64, Duration)> {
+    let deadline = self.timers.borrow().iter().next()?.deadline_ms;
+    Some((
+      deadline,
+      Duration::from_millis(deadline.saturating_sub(self.now_ms())),
+    ))
   }
 
   pub(crate) fn has_alive_handles(&self) -> bool {

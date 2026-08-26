@@ -180,6 +180,7 @@ impl DatabaseHandler for RemoteDbHandler {
         proxy: options.proxy.clone(),
         dns_resolver: Default::default(),
         permissions: None,
+        resolved_deny_check_kind: Default::default(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
@@ -194,6 +195,7 @@ impl DatabaseHandler for RemoteDbHandler {
         http2: true,
         local_address: None,
         client_builder_hook: None,
+        http2_max_header_list_size: None,
       },
     )
     .map_err(JsErrorBox::from_err)?;

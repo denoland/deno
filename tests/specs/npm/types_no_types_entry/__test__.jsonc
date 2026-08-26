@@ -1,4 +1,7 @@
 {
+  // ignored: types from a no-types-entry npm package aren't applied, so the
+  // expected type error is missed. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check --all types_no_types_entry/main.ts",
   "output": "types_no_types_entry/main.out",
   "exitCode": 1

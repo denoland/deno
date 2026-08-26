@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  // Companion to `config_permission_set` (issue #35991): the permission set is
+  // defined in a cwd `deno.json` and selected with `-P=write`, WITHOUT an
+  // explicit `--config`. The re-run subprocess runs the installed bin FILE
+  // (under `deno_x_cache`), so its config auto-discovery anchors on the install
+  // dir, NOT the user's cwd — it would find the internal temp `deno.json` (which
+  // has no permission set) and fail. `deno x` must therefore resolve the user's
+  // auto-discovered cwd `deno.json` and forward it explicitly (alongside
+  // `-P=write`) so the child resolves the set — matching `deno run -P=write
+  // npm:@denotest/try-write`. Previously the npm auto-install path forwarded the
+  // internal temp `deno.json`, so the set could not be found.
+  "tests": {
+    "discover_config": {
+      "args": "x -y -P=write npm:@denotest/try-write",
+      "output": "[WILDCARD]write succeeded\n"
+    }
+  }
+}

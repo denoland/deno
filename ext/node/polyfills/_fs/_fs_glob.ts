@@ -103,11 +103,16 @@ const {
   ArrayPrototypePop,
   ArrayPrototypePush,
   ArrayPrototypeSome,
+  MapPrototypeDelete,
   MapPrototypeForEach,
+  MapPrototypeGet,
+  MapPrototypeGetSize,
+  MapPrototypeSet,
   PromisePrototype,
   PromisePrototypeThen,
   PromiseResolve,
   SafeMap,
+  SafeMapIterator,
   SafeSet,
   SafeSetIterator,
   SetPrototypeForEach,
@@ -472,7 +477,7 @@ export class Glob {
         this.#isExcluded = (value) =>
           ArrayPrototypeSome(matchers, (matcher) => {
             // No primordial exists for Minimatch.prototype.match.
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             return matcher.match(value);
           });
         this.#results.setup(this.#root, this.#isExcluded);
@@ -858,7 +863,7 @@ export class Glob {
       for (let i = 0; i < item.patterns.length; i++) {
         const iter = this.#iterateSubpatterns(item.path, item.patterns[i]);
         while (true) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           const { done, value } = await iter.next();
           if (done) break;
           yield value;
@@ -1150,6 +1155,35 @@ export class Glob {
  * @param pattern the glob pattern to match
  * @param windows whether the path is on a Windows system, defaults to `isWindows`
  */
+// Compiling a glob pattern into a `Minimatch` matcher (which builds a regex)
+// is expensive relative to running it. `matchesGlob()`/`matchGlobPattern()` are
+// typically called repeatedly with the same pattern, so we cache the compiled
+// matcher keyed by the pattern and reuse it. This avoids recompiling on every
+// call (the slow "no-reuse" path). Separate caches per platform let us key by
+// the raw pattern string, avoiding a per-call key allocation on the hot path.
+const MATCHER_CACHE_LIMIT = 256;
+const posixMatcherCache = new SafeMap();
+const windowsMatcherCache = new SafeMap();
+
+function cachedMatcher(pattern: string, windows: boolean) {
+  const cache = windows ? windowsMatcherCache : posixMatcherCache;
+  let matcher = MapPrototypeGet(cache, pattern);
+  if (matcher === undefined) {
+    matcher = createMatcher(pattern, {
+      platform: windows ? "win32" : "posix",
+    });
+    if (MapPrototypeGetSize(cache) >= MATCHER_CACHE_LIMIT) {
+      // Evict the oldest entry (SafeMap preserves insertion order).
+      for (const { 0: oldest } of new SafeMapIterator(cache)) {
+        MapPrototypeDelete(cache, oldest);
+        break;
+      }
+    }
+    MapPrototypeSet(cache, pattern, matcher);
+  }
+  return matcher;
+}
+
 export function matchGlobPattern(
   path: string,
   pattern: string,
@@ -1157,16 +1191,8 @@ export function matchGlobPattern(
 ): boolean {
   validateString(path, "path");
   validateString(pattern, "pattern");
-  return lazyMinimatch().default.minimatch(path, pattern, {
-    kEmptyObject,
-    nocase: isMacOS || isWindows,
-    windowsPathsNoEscape: true,
-    nonegate: true,
-    nocomment: true,
-    optimizationLevel: 2,
-    platform: windows ? "win32" : "posix",
-    nocaseMagicOnly: true,
-  });
+  // deno-lint-ignore deno-internal/prefer-primordials
+  return cachedMatcher(pattern, windows).match(path);
 }
 
 export default {

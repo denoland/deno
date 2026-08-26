@@ -1,4 +1,5 @@
 remoteAddr: {"transport":"tcp","hostname":"10.1.2.3","port":4567}
 header visible: false
+environment after first request: 1
 remoteAddr: {"transport":"tcp","hostname":"10.1.2.3","port":4567}
 header visible: false

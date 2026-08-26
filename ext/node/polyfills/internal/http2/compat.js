@@ -151,7 +151,7 @@ function connectionHeaderMessageWarn() {
 
 function onStreamData(chunk) {
   const request = this[kRequest];
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (request !== undefined && !request.push(chunk)) {
     this.pause();
   }
@@ -171,7 +171,7 @@ function onStreamEnd() {
   // Cause the request stream to end as well.
   const request = this[kRequest];
   if (request !== undefined) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this[kRequest].push(null);
   }
 }
@@ -315,7 +315,7 @@ function onStreamCloseRequest() {
   const state = req[kState];
   state.closed = true;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   req.push(null);
   // If the user didn't interact with incoming data and didn't pipe it,
   // dump it for compatibility with http1

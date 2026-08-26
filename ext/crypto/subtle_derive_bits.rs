@@ -449,11 +449,17 @@ pub fn run(
         .ok_or_else(|| not_supported("Unrecognized algorithm name".into()))?;
       let length =
         length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
-      if length == 0 || length % 8 != 0 {
+      if length % 8 != 0 {
         return Err(op_error("Invalid length".to_string()));
       }
       if iterations == 0 {
         return Err(op_error("iterations must not be zero".to_string()));
+      }
+      // Per w3c/webcrypto#380 a length of 0 derives an empty bit string.
+      // Short-circuit before `derive_bits_sync`, which asserts a positive
+      // length (and the underlying PBKDF2 primitive panics on empty output).
+      if length == 0 {
+        return Ok(Vec::new());
       }
       let key_data: KeyData = (&key.raw).into();
       derive_bits_sync(
@@ -477,8 +483,14 @@ pub fn run(
         .ok_or_else(|| not_supported("Unrecognized algorithm name".into()))?;
       let length =
         length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
-      if length == 0 || length % 8 != 0 {
+      if length % 8 != 0 {
         return Err(op_error("Invalid length".to_string()));
+      }
+      // Per w3c/webcrypto#380 a length of 0 derives an empty bit string.
+      // Short-circuit before `derive_bits_sync`, which asserts a positive
+      // length (and the underlying HKDF primitive panics on empty output).
+      if length == 0 {
+        return Ok(Vec::new());
       }
       let key_data: KeyData = (&key.raw).into();
       derive_bits_sync(

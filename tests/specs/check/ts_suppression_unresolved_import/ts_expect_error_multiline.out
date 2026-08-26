@@ -1,0 +1,13 @@
+TS2578 [ERROR]: Unused '@ts-expect-error' directive.
+// @ts-expect-error
+^
+    at file:///[WILDLINE]/ts_expect_error_multiline.ts:2:1
+
+TS2307 [ERROR]: Cannot find module 'missing-package' or its corresponding type declarations.
+} from "missing-package";
+       ~~~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/ts_expect_error_multiline.ts:5:8
+
+Found 2 errors.
+
+error: Type checking failed.

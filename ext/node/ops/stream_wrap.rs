@@ -761,18 +761,36 @@ unsafe extern "C" fn on_uv_read(
     } else {
       // SAFETY: buf is a valid uv_buf_t allocated by on_uv_alloc per the uv_read_cb contract.
       let buf_ref = unsafe { &*buf };
-      // Create a backing store from the allocated memory.
-      // The deleter will free the alloc when the ArrayBuffer is GC'd.
-      // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
-      let backing_store = unsafe {
-        v8::ArrayBuffer::new_backing_store_from_ptr(
-          buf_ref.base as *mut std::ffi::c_void,
-          nread_usize,
-          backing_store_deleter,
-          buf_ref.len as *mut std::ffi::c_void,
-        )
+      let ab = if nread_usize < buf_ref.len {
+        // Partial read: copy into an exact-size backing store so the
+        // slab returns to the pool immediately and the JS `Buffer`
+        // doesn't pin the full 64KB allocation. Mirrors Node's
+        // right-sizing of any partial read in
+        // `EmitToJSStreamListener::OnStreamRead` (src/stream_base.cc).
+        // SAFETY: buf_ref.base holds at least nread_usize readable bytes
+        // per the uv_read_cb contract.
+        let data = unsafe {
+          std::slice::from_raw_parts(buf_ref.base as *const u8, nread_usize)
+        }
+        .to_vec();
+        free_uv_buf(buf);
+        let backing_store =
+          v8::ArrayBuffer::new_backing_store_from_vec(data).make_shared();
+        v8::ArrayBuffer::with_backing_store(tc, &backing_store)
+      } else {
+        // Full read: transfer slab ownership to the ArrayBuffer.
+        // The deleter will free the alloc when the ArrayBuffer is GC'd.
+        // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            buf_ref.base as *mut std::ffi::c_void,
+            nread_usize,
+            backing_store_deleter,
+            buf_ref.len as *mut std::ffi::c_void,
+          )
+        };
+        v8::ArrayBuffer::with_backing_store(tc, &backing_store.into())
       };
-      let ab = v8::ArrayBuffer::with_backing_store(tc, &backing_store.into());
       ab.into()
     };
     let result = onread.call(tc, recv.into(), &[arg]);
@@ -816,12 +834,12 @@ fn user_owned_buf(
   std::ptr::eq(base as *const u8, user_buf.ptr)
 }
 
-/// Handle uncaught exceptions from stream onread callbacks.
-/// Uses globalThis.reportError() to report the exception as uncaught,
-/// matching Node's MakeCallback behavior where unhandled exceptions
+/// Handle uncaught exceptions from native callbacks (stream onread, TLS write
+/// completion, ...). Uses globalThis.reportError() to report the exception as
+/// uncaught, matching Node's MakeCallback behavior where unhandled exceptions
 /// from native callbacks terminate the process.
-fn call_fatal_exception(
-  scope: &mut v8::ContextScope<v8::HandleScope>,
+pub(crate) fn call_fatal_exception(
+  scope: &mut v8::PinScope,
   exception: v8::Local<v8::Value>,
 ) {
   let global = scope.get_current_context().global(scope);
@@ -830,7 +848,15 @@ fn call_fatal_exception(
     && let Ok(report_fn) = v8::Local::<v8::Function>::try_from(report_fn_val)
   {
     let undef = v8::undefined(scope);
-    report_fn.call(scope, undef.into(), &[exception]);
+    // `reportError` itself can throw (e.g. user-shadowed). Contain it in a
+    // TryCatch so a pending exception can't leak into a shared event-loop
+    // HandleScope — some callers (the deferred TLS write completion) run on
+    // the V8TaskSpawner scope, whose contract forbids leaving an exception set.
+    v8::tc_scope!(tc, scope);
+    report_fn.call(tc, undef.into(), &[exception]);
+    if tc.has_caught() {
+      tc.reset();
+    }
   }
 }
 
@@ -1229,6 +1255,14 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope<'_, '_>,
     #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
+    // Stop any active read before clearing the JS handle so the read-callback
+    // registry drops its strong `Global<this>` and the wrapper can be GC'd
+    // after close. The stream pointer is still valid here (close_handle runs
+    // afterwards). Note: TLSWrap uses this base close op, but its own base
+    // stream is null (reads are owned by the underlying TCP/Pipe wrap), so this
+    // `read_stop_internal()` is a no-op for TLS; the TLS socket is freed
+    // transitively when its underlying `net.Socket` is destroyed.
+    self.read_stop_internal();
     self.clear_js_handle();
     self.base.close_handle(op_state, this, scope, cb)
   }
@@ -1399,12 +1433,12 @@ impl LibUvStreamWrap {
     let req_ptr = Box::into_raw(req);
 
     // `get_contents` copies on-heap typed arrays (<= 64 bytes) into the
-    // stack `buf`, which won't outlive this op — those need an owned
+    // stack `buf`, which won't outlive this op - those need an owned
     // copy. Off-heap stores are stable while JS retains the chunk via
     // `req.buffer = data` (handleWriteReq), the same retention contract
     // as the writev path, so queue a zero-copy iovec pointing at the
     // backing store instead of memcpy'ing the tail into an owned Vec
-    // (the old `uv_write` path copied via collect_bufs — up to the
+    // (the old `uv_write` path copied via collect_bufs - up to the
     // full payload per queued write under backpressure).
     let on_stack = std::ptr::eq(data.as_ptr(), stack_base);
     let err = if on_stack {

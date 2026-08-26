@@ -15,6 +15,7 @@
     ObjectFromEntries,
     ObjectKeys,
     ObjectHasOwn,
+    ReflectOwnKeys,
     setQueueMicrotask,
     SafeMap,
     SafeWeakMap,
@@ -762,6 +763,12 @@
           consoleFromV8[key],
           customConsole[key],
         );
+        // Restore the original method name clobbered by the bind above
+        // ("bound callConsole"), like Node does in its `wrapConsole`.
+        ObjectDefineProperty(customConsole[key], "name", {
+          __proto__: null,
+          value: key,
+        });
       } else {
         // Add additional console APIs from the inspector
         customConsole[key] = consoleFromV8[key];
@@ -824,6 +831,7 @@
 
   function propWritable(value) {
     return {
+      __proto__: null,
       value,
       writable: true,
       enumerable: true,
@@ -833,6 +841,7 @@
 
   function propNonEnumerable(value) {
     return {
+      __proto__: null,
       value,
       writable: true,
       enumerable: false,
@@ -842,6 +851,7 @@
 
   function propReadOnly(value) {
     return {
+      __proto__: null,
       value,
       enumerable: true,
       writable: false,
@@ -851,6 +861,7 @@
 
   function propGetterOnly(getter) {
     return {
+      __proto__: null,
       get: getter,
       set() {},
       enumerable: true,
@@ -867,11 +878,13 @@
 
   function propWritableLazyLoaded(getter, loadFn) {
     const desc = {
+      __proto__: null,
       get() {
         return getter(loadFn());
       },
       set(v) {
         ObjectDefineProperty(this, desc[lazyNameSym], {
+          __proto__: null,
           value: v,
           writable: true,
           enumerable: true,
@@ -887,6 +900,7 @@
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
     const desc = {
+      __proto__: null,
       get() {
         return getter(loadFn());
       },
@@ -898,6 +912,7 @@
         // set creates a new enumerable own data property on the receiver.
         if (ObjectHasOwn(this, name)) {
           ObjectDefineProperty(this, name, {
+            __proto__: null,
             value: v,
             writable: true,
             enumerable: false,
@@ -905,6 +920,7 @@
           });
         } else {
           ObjectDefineProperty(this, name, {
+            __proto__: null,
             value: v,
             writable: true,
             enumerable: true,
@@ -922,15 +938,21 @@
   // Like `Object.defineProperties`, but also stamps the property name into any
   // lazy-loaded descriptors so their setters can target the correct receiver.
   function defineGlobalProperties(target, props) {
-    const keys = ObjectKeys(props);
+    const safeProps = { __proto__: null };
+    const keys = ReflectOwnKeys(props);
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
       const desc = props[key];
-      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
-        desc[lazyNameSym] = key;
+      if (desc !== null && typeof desc === "object") {
+        if (ObjectHasOwn(desc, lazyNameSym)) {
+          desc[lazyNameSym] = key;
+        }
+        safeProps[key] = { __proto__: null, ...desc };
+      } else {
+        safeProps[key] = desc;
       }
     }
-    ObjectDefineProperties(target, props);
+    ObjectDefineProperties(target, safeProps);
   }
 
   function createLazyLoader(specifier) {

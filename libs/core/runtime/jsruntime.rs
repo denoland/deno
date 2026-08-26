@@ -163,14 +163,14 @@ pub type ExtensionTranspiler =
 pub(crate) struct IsolateAllocations {
   pub(crate) externalized_sources: Box<[v8::OneByteConst]>,
   pub(crate) original_sources: Box<[FastString]>,
-  /// Specifiers of the externalized `lazy_loaded_js` sources, parallel to the
+  /// Specifiers of the externalized `lazy_loaded_*` sources, parallel to the
   /// trailing entries of `original_sources` (only populated when building a
   /// snapshot). Used at serialize time to drop the bytes of *non-consumed*
-  /// lazy scripts from the snapshot sidecar — their external-reference slots
+  /// lazy sources from the snapshot sidecar — their external-reference slots
   /// must stay (for index alignment) but nothing references them, so storing
   /// empty bytes avoids duplicating residual sources (which the binary already
   /// ships via the residual table).
-  pub(crate) lazy_js_specifiers: Box<[ModuleName]>,
+  pub(crate) lazy_source_specifiers: Box<[ModuleName]>,
   pub(crate) near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
@@ -961,7 +961,7 @@ impl JsRuntime {
     (
       isolate_allocations.externalized_sources,
       isolate_allocations.original_sources,
-      isolate_allocations.lazy_js_specifiers,
+      isolate_allocations.lazy_source_specifiers,
     ) = bindings::externalize_sources(
       &mut sources,
       snapshot_sources,
@@ -1579,6 +1579,7 @@ impl JsRuntime {
     let ext_loader =
       Rc::new(ExtModuleLoader::new(sources, ext_code_cache.clone()));
     *module_map.loader.borrow_mut() = ext_loader.clone();
+    module_map.set_loading_internal_modules(true);
 
     // Next, load the extension modules as side modules (but do not execute them)
     for module in modules {
@@ -1642,6 +1643,7 @@ impl JsRuntime {
     }
 
     let module_map = realm.0.module_map();
+    module_map.set_loading_internal_modules(false);
     *module_map.loader.borrow_mut() = loader;
     ext_loader.finalize()?;
 
@@ -2650,6 +2652,37 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
+    // Arm a wakeup for the next pending libuv (N-API) timer deadline. The uv
+    // timer phase (Phase 1) fires expired timers at the top of each tick, but
+    // nothing else re-polls the event loop *at* a timer's deadline. A native
+    // `uv_timer_t` that is the only pending work would therefore never fire
+    // until some unrelated event happened to wake the loop. Mirror libuv's
+    // `uv__next_timeout`: schedule a sleep for the earliest deadline and let it
+    // re-poll us. Only re-arm when the earliest deadline changes to avoid
+    // recreating the timer on every tick. See #36454.
+    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      match unsafe { (*uv_inner_ptr).next_timeout() } {
+        Some((deadline, delay)) => {
+          if context_state.uv_timer_wake_deadline.get() != Some(deadline) {
+            context_state.uv_timer_wake.schedule(delay);
+            context_state.uv_timer_wake_deadline.set(Some(deadline));
+          }
+          // Keep this task's waker registered with the sleep. If the deadline
+          // has already elapsed, re-poll immediately so Phase 1 fires it on the
+          // next tick rather than waiting for another wakeup.
+          if context_state.uv_timer_wake.poll_ready(cx).is_ready() {
+            self.inner.state.waker.wake();
+          }
+        }
+        None => {
+          if context_state.uv_timer_wake_deadline.get().is_some() {
+            context_state.uv_timer_wake.clear();
+            context_state.uv_timer_wake_deadline.set(None);
+          }
+        }
+      }
+    }
+
     // Re-wake logic for next iteration
     #[allow(
       clippy::suspicious_else_formatting,
@@ -2872,24 +2905,26 @@ impl JsRuntimeForSnapshot {
     self.inner.prepare_for_cleanup();
     let original_sources =
       std::mem::take(&mut self.0.allocations.original_sources);
-    let lazy_js_specifiers =
-      std::mem::take(&mut self.0.allocations.lazy_js_specifiers);
-    // `lazy_loaded_js` sources are externalized for the snapshot (so consumed
-    // scripts bake in as clean external strings), but only the *consumed* ones
+    let lazy_source_specifiers =
+      std::mem::take(&mut self.0.allocations.lazy_source_specifiers);
+    // `lazy_loaded_*` sources are externalized for the snapshot (so consumed
+    // sources bake in as clean external strings), but only the *consumed* ones
     // are actually referenced by snapshotted code. Non-consumed (residual)
-    // scripts are already shipped via the residual table, so persisting their
+    // sources are already shipped via the residual table, so persisting their
     // bytes here would duplicate them. Store empty bytes for those slots — the
     // external-reference index is preserved (nothing references it), avoiding
     // the duplication.
     let consumed: std::collections::HashSet<String> =
       self.consumed_lazy_specifiers().into_iter().collect();
-    let lazy_js_start = original_sources.len() - lazy_js_specifiers.len();
+    let lazy_source_start =
+      original_sources.len() - lazy_source_specifiers.len();
     let external_strings = original_sources
       .iter()
       .enumerate()
       .map(|(i, s)| {
-        if i >= lazy_js_start
-          && !consumed.contains(lazy_js_specifiers[i - lazy_js_start].as_str())
+        if i >= lazy_source_start
+          && !consumed
+            .contains(lazy_source_specifiers[i - lazy_source_start].as_str())
         {
           return &[][..];
         }
@@ -2929,7 +2964,13 @@ impl JsRuntimeForSnapshot {
       let mut data_store = SnapshotStoreDataStore::default();
       let module_map_data = {
         let module_map = realm.0.module_map();
-        module_map.serialize_for_snapshotting(&mut data_store)
+        // Modules already instantiated in the snapshot don't need their import
+        // edges persisted; nothing reads them after rehydration.
+        let instantiated = {
+          jsrealm::context_scope!(scope, realm, self.v8_isolate());
+          module_map.instantiated_flags(scope)
+        };
+        module_map.serialize_for_snapshotting(&mut data_store, &instantiated)
       };
       let function_templates_data = {
         let function_templates = realm.0.function_templates();
@@ -3639,10 +3680,35 @@ impl JsRuntime {
 
   /// Drain nextTick queue and macrotask queue (no op resolution).
   /// Used when ticks are pending but no async ops completed.
+  ///
+  /// This mirrors the JS `drainTicks()` (see `01_core.js`) exactly, but keeps
+  /// the common path — no `process.nextTick` scheduled and no promise rejection
+  /// to warn about, which is every pure-Deno workload — entirely on the Rust
+  /// side. In that case `drainTicks` just runs `op_run_microtasks()` (a
+  /// `perform_microtask_checkpoint`) and returns; doing it here avoids a
+  /// Rust->JS call plus the JS->Rust op call it would otherwise make. Only when
+  /// a tick or rejection is actually pending do we cross into JS to run
+  /// `processTicksAndRejections`. The flag checks and checkpoint ordering are
+  /// byte-for-byte identical to `drainTicks`, so the nextTick-before-`.then`
+  /// and rejectionhandled-before-unhandledrejection invariants are preserved.
   fn drain_next_tick_and_macrotasks<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
   ) -> Result<(), Box<JsError>> {
+    if !context_state.has_tick_scheduled()
+      && !context_state.has_rejection_to_warn()
+    {
+      scope.perform_microtask_checkpoint();
+      if !context_state.has_tick_scheduled()
+        && !context_state.has_rejection_to_warn()
+      {
+        return Ok(());
+      }
+    }
+
+    // Slow path: a nextTick or rejection is pending. Cross into JS to run
+    // `drainTicks`, which goes straight to `processTicksAndRejections` given
+    // the flags above.
     let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
 
     v8::tc_scope!(let tc_scope, scope);

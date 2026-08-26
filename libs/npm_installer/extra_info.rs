@@ -101,44 +101,70 @@ impl NpmPackageExtraInfoProvider {
     package_path: &Path,
     expected: ExpectedExtraInfo,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
+    // Set when a registry fetch above already failed, so the fallbacks below
+    // don't retry it (it would fail the same way and abort the run).
+    let mut registry_unavailable = false;
     if expected.deprecated {
       // we need the registry version info to get the deprecated string, since it's not in the
       // package's package.json
-      self.fetch_from_registry(package_nv).await
-    } else {
-      match self.fetch_from_package_json(package_path).await {
-        Ok(mut extra_info) => {
-          // some packages that use "directories.bin" have a "bin" entry in
-          // the packument, but not in package.json (e.g. esbuild-wasm)
-          if expected.bin && extra_info.bin.is_none() {
-            self.fetch_from_registry(package_nv).await
-          } else {
-            // When a package has a binding.gyp and no install/preinstall script,
-            // npm injects `"install": "node-gyp rebuild"` at publish time. This
-            // script appears in the packument but not in the tarball's package.json.
-            // Match pnpm's behavior and detect this case by checking for the file.
-            if expected.scripts
-              && extra_info.scripts.is_empty()
-              && self
-                .sys
-                .base_fs_read(&package_path.join("binding.gyp"))
-                .is_ok()
-            {
-              extra_info.scripts = HashMap::from([(
-                "install".into(),
-                "node-gyp rebuild".to_string(),
-              )]);
-            }
-            Ok(extra_info)
-          }
-        }
+      match self.fetch_from_registry(package_nv).await {
+        Ok(extra_info) => return Ok(extra_info),
         Err(err) => {
+          // The registry packument may be unavailable, for example when running
+          // with `--cached-only` and the packument was never cached. The
+          // deprecated string is only used for an informational warning, so fall
+          // back to reading the extra info from the package's on-disk
+          // package.json instead of failing. The deprecation warning is skipped
+          // in this case.
           log::debug!(
-            "failed to get extra info for {} from package.json at {}: {}",
+            "failed to fetch registry info for deprecated package {}: {}",
             package_nv,
-            package_path.join("package.json").display(),
             err
           );
+          registry_unavailable = true;
+        }
+      }
+    }
+    match self.fetch_from_package_json(package_path).await {
+      Ok(mut extra_info) => {
+        // some packages that use "directories.bin" have a "bin" entry in
+        // the packument, but not in package.json (e.g. esbuild-wasm)
+        if expected.bin && extra_info.bin.is_none() && !registry_unavailable {
+          self.fetch_from_registry(package_nv).await
+        } else {
+          // When a package has a binding.gyp and no install/preinstall script,
+          // npm injects `"install": "node-gyp rebuild"` at publish time. This
+          // script appears in the packument but not in the tarball's package.json.
+          // Match pnpm's behavior and detect this case by checking for the file.
+          if expected.scripts
+            && extra_info.scripts.is_empty()
+            && self
+              .sys
+              .base_fs_read(&package_path.join("binding.gyp"))
+              .is_ok()
+          {
+            extra_info.scripts = HashMap::from([(
+              "install".into(),
+              "node-gyp rebuild".to_string(),
+            )]);
+          }
+          Ok(extra_info)
+        }
+      }
+      Err(err) => {
+        log::debug!(
+          "failed to get extra info for {} from package.json at {}: {}",
+          package_nv,
+          package_path.join("package.json").display(),
+          err
+        );
+        if registry_unavailable {
+          // The registry already failed above and package.json couldn't be
+          // read either, so there's nothing left to try. Surface the
+          // package.json error rather than making another registry request
+          // that would fail the same way.
+          Err(err)
+        } else {
           self.fetch_from_registry(package_nv).await
         }
       }

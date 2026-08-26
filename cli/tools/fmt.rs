@@ -65,20 +65,32 @@ pub async fn format(
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-    let fmt_options = FmtOptions::resolve(
+    let mut fmt_options = FmtOptions::resolve(
       fmt_config,
       cli_options.resolve_config_unstable_fmt_options(),
       &fmt_flags,
     );
-    return format_stdin(
-      &fmt_flags,
-      fmt_options,
-      cli_options
-        .ext_flag()
-        .as_ref()
-        .map(|s| s.as_str())
-        .unwrap_or("ts"),
+    let ext = cli_options
+      .ext_flag()
+      .as_ref()
+      .map(|s| s.as_str())
+      .unwrap_or("ts");
+    // Honor `.editorconfig` for stdin the same way file-based formatting does,
+    // resolving it against a synthetic `_stdin.<ext>` path. The resolution base
+    // is the current working directory, not the (possibly relocated via
+    // `--config`) config start dir: stdin has no real location, so the cwd is
+    // the only meaningful place to look for an `.editorconfig`
+    // (https://github.com/denoland/deno/issues/36172). Build the synthetic path
+    // once and pass it down so editorconfig matching and the dprint call can
+    // never diverge on the name.
+    let editorconfig_cache = EditorConfigCache::new();
+    let stdin_path = cli_options.initial_cwd().join(format!("_stdin.{ext}"));
+    fmt_options.options = resolve_per_file_options(
+      &fmt_options.options,
+      &editorconfig_cache,
+      &stdin_path,
     );
+    return format_stdin(&fmt_flags, fmt_options, &stdin_path);
   }
 
   if let Some(watch_flags) = &flags.watch {
@@ -531,6 +543,14 @@ fn format_markup_embedded(
         "ts" | "typescript" | "mts" => "ts",
         "tsx" => "tsx",
         "jsx" => "jsx",
+        // Astro treats inline `<script>` contents as TypeScript by default,
+        // so a bare script tag (which `lax_markup` reports as `js`) must be
+        // formatted as TypeScript rather than JavaScript.
+        _ if file_path.extension().and_then(|e| e.to_str())
+          == Some("astro") =>
+        {
+          "ts"
+        }
         _ => "js",
       };
       let path = file_path.with_extension(ext);
@@ -601,12 +621,25 @@ fn format_embedded_css(
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
     single_line: false,
   };
-  let Some(formatted) =
-    lax_css::format_text(Path::new("embedded.css"), text, &lax_css_config)?
+  // lax-css prints custom property values verbatim, keeping the leading
+  // whitespace on their wrapped continuation lines. the typescript formatter
+  // reindents the embedded result when it puts it back in the template, so
+  // without dedenting first that leading whitespace grows by the template's
+  // indentation on every pass and the format never reaches a fixed point.
+  let dedented = dedent_embedded(text);
+  let Some(formatted) = lax_css::format_text(
+    Path::new("embedded.css"),
+    &dedented,
+    &lax_css_config,
+  )?
   else {
+    // lax-css declined to reformat (an ignore directive, or content it
+    // considers already canonical). leave the block exactly as the user wrote
+    // it: the typescript formatter then emits the template verbatim, which is a
+    // fixed point and preserves any intentional formatting inside it.
     return Ok(None);
   };
-  let formatted = formatted.trim_end_matches('\n');
+  let formatted = formatted.trim_matches('\n');
   Ok(if formatted == text {
     None
   } else {
@@ -1212,7 +1245,7 @@ fn format_ensure_stable(
 fn format_stdin(
   fmt_flags: &FmtFlags,
   fmt_options: FmtOptions,
-  ext: &str,
+  file_path: &Path,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
@@ -1222,9 +1255,8 @@ fn format_stdin(
     had_bom: false,
     text: source.into(),
   };
-  let file_path = PathBuf::from(format!("_stdin.{ext}"));
   let formatted_text = format_file(
-    &file_path,
+    file_path,
     &file,
     &fmt_options.options,
     &fmt_options.unstable,

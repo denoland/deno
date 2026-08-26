@@ -41,7 +41,15 @@ type KeyUsage =
   | "verify"
   | "wrapKey";
 /** @category Crypto */
-type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
+type KeyFormat =
+  | "jwk"
+  | "pkcs8"
+  | "raw"
+  | "raw-secret"
+  | "raw-public"
+  | "raw-private"
+  | "raw-seed"
+  | "spki";
 /** @category Crypto */
 type NamedCurve = string;
 /** @category Crypto */
@@ -223,7 +231,8 @@ interface CryptoKey {
  * `deriveKey`, so calling the constructor throws.
  *
  * @category Crypto */
-declare var CryptoKey: {
+declare var CryptoKey: typeof globalThis extends
+  { document: any; CryptoKey: infer T } ? T : {
   readonly prototype: CryptoKey;
   new (): never;
 };
@@ -650,7 +659,8 @@ interface SubtleCrypto {
  * constructor throws.
  *
  * @category Crypto */
-declare var SubtleCrypto: {
+declare var SubtleCrypto: typeof globalThis extends
+  { document: any; SubtleCrypto: infer T } ? T : {
   readonly prototype: SubtleCrypto;
   new (): never;
   /**
@@ -757,7 +767,9 @@ interface Crypto {
  * rather than constructed directly, so calling the constructor throws.
  *
  * @category Crypto */
-declare var Crypto: {
-  readonly prototype: Crypto;
-  new (): never;
-};
+declare var Crypto: typeof globalThis extends { document: any; Crypto: infer T }
+  ? T
+  : {
+    readonly prototype: Crypto;
+    new (): never;
+  };

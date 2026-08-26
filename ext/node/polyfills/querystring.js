@@ -431,7 +431,7 @@ function unescapeBuffer(s, decodeSpaces = false) {
     out[outIndex++] = currentChar;
     index++;
   }
-  // deno-lint-ignore prefer-primordials -- `out` is a Node Buffer; Buffer.prototype.slice is not Uint8Array.prototype.slice
+  // deno-lint-ignore deno-internal/prefer-primordials -- `out` is a Node Buffer; Buffer.prototype.slice is not Uint8Array.prototype.slice
   return hasHex ? out.slice(0, outIndex) : out;
 }
 
@@ -439,7 +439,7 @@ function qsUnescape(s) {
   try {
     return decodeURIComponent(s);
   } catch {
-    // deno-lint-ignore prefer-primordials -- `unescapeBuffer` returns a Node Buffer; Buffer.prototype.toString is not String/Object toString
+    // deno-lint-ignore deno-internal/prefer-primordials -- `unescapeBuffer` returns a Node Buffer; Buffer.prototype.toString is not String/Object toString
     return unescapeBuffer(s).toString();
   }
 }

@@ -363,8 +363,6 @@ function releaseMemory() {
 
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
-  ts.deno.setEnterSpan(ops.op_make_span);
-  ts.deno.setExitSpan(ops.op_exit_span);
   if (hasStarted) {
     throw new Error("The language server has already been initialized.");
   }

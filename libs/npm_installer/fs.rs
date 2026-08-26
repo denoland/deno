@@ -22,13 +22,14 @@ pub trait CloneDirRecursiveSys:
 /// is not guaranteed - it may be a hardlink, copy, or other platform-specific
 /// operation.
 ///
-/// Note: Does not handle symlinks.
+/// Note: Does not copy source symlinks and rejects symlinked destinations.
 pub fn clone_dir_recursive<TSys: CloneDirRecursiveSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
+  deno_npm_cache::ensure_not_symlink(sys.as_ref(), to)?;
   if cfg!(target_vendor = "apple") {
     if let Some(parent) = to.parent() {
       sys.fs_create_dir_all(parent)?;
@@ -66,6 +67,7 @@ pub trait CopyDirRecursiveSys:
   + sys_traits::FsCloneFile
   + sys_traits::FsCreateDir
   + sys_traits::FsHardLink
+  + sys_traits::FsMetadata
   + sys_traits::FsReadDir
   + sys_traits::FsRemoveFile
 {
@@ -73,14 +75,14 @@ pub trait CopyDirRecursiveSys:
 
 /// Copies a directory to another directory.
 ///
-/// Note: Does not handle symlinks.
+/// Note: Does not copy source symlinks and rejects symlinked destinations.
 pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  sys.fs_create_dir_all(to)?;
+  deno_npm_cache::create_dir_all_no_symlink(sys.as_ref(), to)?;
   let read_dir = sys.fs_read_dir(from)?;
 
   for entry in read_dir {
@@ -142,6 +144,7 @@ mod test {
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsHardLink;
   use sys_traits::FsRead;
+  use sys_traits::FsSymlinkDir;
   use sys_traits::FsWrite;
   use test_util::TempDir;
 
@@ -173,5 +176,22 @@ mod test {
     );
     // and the other end of the hardlink was not written through
     assert_eq!(sys.fs_read_to_string(&binary).unwrap(), "binary contents");
+  }
+
+  #[test]
+  fn copy_dir_recursive_rejects_symlink_destination_directory() {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let from = Path::new("/from");
+    let to = Path::new("/to");
+    let target = Path::new("/target");
+    sys.fs_create_dir_all(from).unwrap();
+    sys.fs_create_dir_all(target).unwrap();
+    sys.fs_write(from.join("file"), "package contents").unwrap();
+    sys.fs_symlink_dir(target, to).unwrap();
+
+    let err = copy_dir_recursive(&sys, from, to).unwrap_err();
+
+    assert_eq!(err.kind(), ErrorKind::AlreadyExists);
+    assert!(sys.fs_read_to_string(target.join("file")).is_err());
   }
 }

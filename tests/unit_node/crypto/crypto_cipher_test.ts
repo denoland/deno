@@ -414,7 +414,9 @@ Deno.test({
 
     const getZeroKey = (cipher: string) => {
       if (cipher === "des-ede3-cbc") return zeros(24);
-      if (cipher === "chacha20-poly1305") return zeros(32);
+      if (cipher === "chacha20" || cipher === "chacha20-poly1305") {
+        return zeros(32);
+      }
       return zeros(+cipher.match(/\d+/)![0] / 8);
     };
     const getZeroIv = (cipher: string) => {
@@ -1020,6 +1022,128 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "chacha20 matches the RFC 8439 test vector and round-trips",
+  fn() {
+    // RFC 8439 §2.4.2. Node/OpenSSL's chacha20 IV is the 4-byte
+    // little-endian initial block counter (1 here) followed by the
+    // 12-byte nonce.
+    const key = Buffer.from(
+      "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "hex",
+    );
+    const iv = Buffer.from("01000000000000000000004a00000000", "hex");
+    const plaintext = "Ladies and Gentlemen of the class of '99: " +
+      "If I could offer you only one tip for the future, " +
+      "sunscreen would be it.";
+    const expected = "6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27af" +
+      "ccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f" +
+      "0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937" +
+      "365af90bbf74a35be6b40b8eedf2785e42874d";
+
+    const cipher = crypto.createCipheriv("chacha20", key, iv);
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext, "utf8"),
+      cipher.final(),
+    ]);
+    assertEquals(encrypted.toString("hex"), expected);
+
+    const decipher = crypto.createDecipheriv("chacha20", key, iv);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+    assertEquals(decrypted.toString("utf8"), plaintext);
+  },
+});
+
+Deno.test({
+  name: "chacha20 keeps keystream position across chunked updates",
+  fn() {
+    const key = Buffer.alloc(32, 1);
+    // Counter bytes are 0x02020202, exercising a non-zero initial counter.
+    const iv = Buffer.alloc(16, 2);
+    const plaintext = Buffer.from(
+      "hello world, this is a longer test message to cross the 64-byte " +
+        "chacha block boundary!!",
+    );
+    // Expected ciphertext produced by Node.js v24.15.0.
+    const expected = "788127700131850a5c17dbe2f7bb9664b4fe2c20380c8065b37b9d" +
+      "11deab2d0e84cd61454063883ed1fe8497ed5543b813fdebc64b37d9dd192dcd7202" +
+      "daf0d393c2503713e0f3eaeff34109bc1a861ab0d213f61d1216";
+
+    const oneShot = crypto.createCipheriv("chacha20", key, iv);
+    const encrypted = Buffer.concat([
+      oneShot.update(plaintext),
+      oneShot.final(),
+    ]);
+    assertEquals(encrypted.toString("hex"), expected);
+
+    // Feed the same plaintext in chunks that are not multiples of the
+    // 64-byte ChaCha block so updates start mid-block.
+    const chunked = crypto.createCipheriv("chacha20", key, iv);
+    const outputs: Buffer[] = [];
+    for (const [start, end] of [[0, 1], [1, 7], [7, 70], [70, undefined]]) {
+      outputs.push(chunked.update(plaintext.subarray(start, end)));
+    }
+    outputs.push(chunked.final());
+    assertEquals(Buffer.concat(outputs).toString("hex"), expected);
+
+    // Single updates large enough to consume leftover keystream, cross
+    // several whole blocks, and end mid-block again, all in one call.
+    const long = Buffer.alloc(300);
+    for (let i = 0; i < long.length; i++) long[i] = i & 0xff;
+    const longOneShot = crypto.createCipheriv("chacha20", key, iv);
+    const longExpected = Buffer.concat([
+      longOneShot.update(long),
+      longOneShot.final(),
+    ]);
+    const longChunked = crypto.createCipheriv("chacha20", key, iv);
+    const longOutputs: Buffer[] = [];
+    for (const [start, end] of [[0, 1], [1, 131], [131, undefined]]) {
+      longOutputs.push(longChunked.update(long.subarray(start, end)));
+    }
+    longOutputs.push(longChunked.final());
+    assertEquals(
+      Buffer.concat(longOutputs).toString("hex"),
+      longExpected.toString("hex"),
+    );
+  },
+});
+
+Deno.test({
+  name: "chacha20 rejects invalid key and iv lengths",
+  fn() {
+    for (const keyLen of [16, 31, 33]) {
+      assertThrows(
+        () => crypto.createCipheriv("chacha20", zeros(keyLen), zeros(16)),
+        RangeError,
+        "Invalid key length",
+      );
+    }
+    for (const ivLen of [0, 12, 17]) {
+      assertThrows(
+        () => crypto.createCipheriv("chacha20", zeros(32), zeros(ivLen)),
+        TypeError,
+        "Invalid initialization vector",
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "chacha20 is listed in getCiphers and getCipherInfo",
+  fn() {
+    assert(crypto.getCiphers().includes("chacha20"));
+    const info = crypto.getCipherInfo("chacha20")!;
+    assertEquals(info.name, "chacha20");
+    assertEquals(info.nid, 1019);
+    assertEquals(info.keyLength, 32);
+    assertEquals(info.ivLength, 16);
+    assertEquals(info.mode, "stream");
+  },
+});
+
 // Helper for the tests below: assert that a cipher/decipher created with
 // `algorithm` rejects each `invalidValue` from `update()` with a TypeError
 // whose code is ERR_INVALID_ARG_TYPE, and releases the native resource.
@@ -1110,6 +1234,108 @@ Deno.test({
       const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
       const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
       assert(dec.length > 0);
+    }
+  },
+});
+
+function viewToBuffer(view: ArrayBufferView): Buffer {
+  return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+}
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() uses byteLength for ArrayBufferView inputs",
+  fn() {
+    const key = Buffer.alloc(32, 1);
+
+    const backing = new Uint8Array(64);
+    for (let i = 0; i < backing.length; i++) backing[i] = i;
+
+    const bufferWithSpoofedLength = Buffer.from(backing);
+    Object.defineProperty(bufferWithSpoofedLength, "length", { value: 1 });
+
+    const uint16WithSpoofedLength = new Uint16Array(
+      backing.buffer.slice(0),
+      0,
+      32,
+    );
+    Object.defineProperty(uint16WithSpoofedLength, "length", { value: 1 });
+
+    const dataView = new DataView(backing.buffer, 5, 37);
+
+    for (
+      const input of [
+        bufferWithSpoofedLength,
+        uint16WithSpoofedLength,
+        dataView,
+      ]
+    ) {
+      const plaintext = viewToBuffer(input);
+
+      for (
+        const [algorithm, iv] of [
+          ["aes-256-ctr", Buffer.alloc(16, 2)],
+          ["aes-256-cbc", Buffer.alloc(16, 3)],
+        ] as const
+      ) {
+        const cipher = crypto.createCipheriv(algorithm, key, iv);
+        const encrypted = Buffer.concat([
+          cipher.update(input),
+          cipher.final(),
+        ]);
+
+        const decipher = crypto.createDecipheriv(algorithm, key, iv);
+        const encryptedView = new DataView(
+          encrypted.buffer,
+          encrypted.byteOffset,
+          encrypted.byteLength,
+        );
+        const decrypted = Buffer.concat([
+          decipher.update(encryptedView),
+          decipher.final(),
+        ]);
+
+        assertEquals(decrypted, plaintext, algorithm);
+      }
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "chacha20-poly1305 update() is not affected by Buffer.allocUnsafe override",
+  fn() {
+    const originalAllocUnsafe = Buffer.allocUnsafe;
+    try {
+      Buffer.allocUnsafe = ((_: number) => {
+        return originalAllocUnsafe(1);
+      }) as typeof Buffer.allocUnsafe;
+
+      const key = Buffer.alloc(32, 1);
+      const iv = Buffer.alloc(12, 2);
+      const plaintext = Buffer.alloc(1024, 3);
+
+      const cipher = crypto.createCipheriv("chacha20-poly1305", key, iv, {
+        authTagLength: 16,
+      });
+      const encrypted = Buffer.concat([
+        cipher.update(plaintext),
+        cipher.final(),
+      ]);
+      assertEquals(encrypted.length, plaintext.length);
+      const tag = (cipher as crypto.CipherGCM).getAuthTag();
+
+      const decipher = crypto.createDecipheriv("chacha20-poly1305", key, iv, {
+        authTagLength: 16,
+      });
+      (decipher as crypto.DecipherGCM).setAuthTag(tag);
+      const decrypted = Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final(),
+      ]);
+      assertEquals(decrypted, plaintext);
+    } finally {
+      Buffer.allocUnsafe = originalAllocUnsafe;
     }
   },
 });

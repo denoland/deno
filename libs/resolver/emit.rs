@@ -356,6 +356,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
             },
             &options,
           )
+          .map_err(dedupe_transpile_error)
           .map_err(JsErrorBox::from_err)?
           .into_source();
         Ok(transpiled_source.text)
@@ -560,13 +561,15 @@ fn transpile(
   } else {
     transpile_options
   };
-  let transpile_result = parsed_source.transpile(
-    transpile_options,
-    &TranspileModuleOptions {
-      module_kind: Some(module_kind),
-    },
-    emit_options,
-  )?;
+  let transpile_result = parsed_source
+    .transpile(
+      transpile_options,
+      &TranspileModuleOptions {
+        module_kind: Some(module_kind),
+      },
+      emit_options,
+    )
+    .map_err(dedupe_transpile_error)?;
   let mut transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
     TranspileResult::Cloned(source) => {
@@ -664,6 +667,38 @@ pub fn invalid_syntax_parse_diagnostics(
   }
 
   Some(deno_ast::ParseDiagnosticsError(diagnostics.clone()))
+}
+
+/// `swc` sometimes reports the exact same fatal parse diagnostic more than
+/// once (ex. `for (console.log("a") of [1]);`), which would otherwise be shown
+/// to the user as a duplicated error message. Collapse identical diagnostics
+/// while keeping the original order. See denoland/deno#27804.
+pub fn dedupe_transpile_error(
+  err: deno_ast::TranspileError,
+) -> deno_ast::TranspileError {
+  fn dedupe(
+    diagnostics: deno_ast::ParseDiagnosticsError,
+  ) -> deno_ast::ParseDiagnosticsError {
+    let mut deduped = Vec::with_capacity(diagnostics.0.len());
+    for diagnostic in diagnostics.0 {
+      if !deduped.contains(&diagnostic) {
+        deduped.push(diagnostic);
+      }
+    }
+    deno_ast::ParseDiagnosticsError(deduped)
+  }
+
+  match err {
+    deno_ast::TranspileError::ParseErrors(diagnostics) => {
+      deno_ast::TranspileError::ParseErrors(dedupe(diagnostics))
+    }
+    deno_ast::TranspileError::FoldProgram(
+      deno_ast::FoldProgramError::ParseDiagnostics(diagnostics),
+    ) => deno_ast::TranspileError::FoldProgram(
+      deno_ast::FoldProgramError::ParseDiagnostics(dedupe(diagnostics)),
+    ),
+    err => err,
+  }
 }
 
 // todo(dsherret): this is a temporary measure until we have swc erroring for this

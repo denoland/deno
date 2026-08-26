@@ -1,0 +1,11 @@
+{
+  "name": "@scope/root",
+  "workspace": [
+    "./foo",
+    "./bar"
+  ],
+  "tasks": {
+    "dev": "echo 'root ran'"
+  },
+  "exports": {}
+}

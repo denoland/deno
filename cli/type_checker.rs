@@ -28,6 +28,7 @@ use deno_terminal::colors;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rustc_hash::FxHashSet;
 
 use crate::args::CliOptions;
 use crate::args::CompilerOptions;
@@ -276,34 +277,75 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
+  /// Walk the module graph exactly as Deno 2.x's forked tsc did - for the
+  /// native (external tsc) check path in `crate::tools::check`. Returns deno's
+  /// own graph diagnostics (missing modules + hints) plus a combined check hash
+  /// over every compiler-options group, with the pinned tsc version folded in.
+  /// Native check runs a single external tsc over the whole generated
+  /// `tsconfig.json`, so the per-group hashes are combined into one: a hit means
+  /// nothing the compiler sees has changed, and the spawn can be skipped.
+  pub(crate) fn walk_graph_for_native_check(
+    &self,
+    graph: &ModuleGraph,
+    lib: TsTypeLib,
+    type_check_mode: TypeCheckMode,
+  ) -> Result<(tsc::Diagnostics, Option<CacheDBHash>), CheckError> {
+    // Packages importable by bare specifier (workspace members + `links`),
+    // used to enhance import errors. TODO: also chain `links` packages to match
+    // `check_diagnostics` exactly.
+    let bare_importable_pkg_names: Vec<String> = self
+      .cli_options
+      .workspace()
+      .resolver_jsr_pkgs()
+      .map(|pkg| pkg.name)
+      .collect();
+    let npm_check_state_hash = check_state_hash(&self.npm_resolver);
+    let groups = self.group_roots_by_compiler_options(graph, lib)?;
+    let mut missing_diagnostics = tsc::Diagnostics::default();
+    let mut combined = FastInsecureHasher::new_deno_versioned();
+    combined.write_hashable(crate::tsc::native::TYPESCRIPT_VERSION);
+    let mut any_hash = false;
+    for group in groups {
+      let mut walker = GraphWalker::new(
+        graph,
+        &self.sys,
+        &self.node_resolver,
+        &self.npm_resolver,
+        &self.compiler_options_resolver,
+        &bare_importable_pkg_names,
+        npm_check_state_hash,
+        group.compiler_options.as_ref(),
+        type_check_mode,
+      );
+      for import in group.imports.iter() {
+        walker.add_config_import(import, &group.referrer);
+      }
+      for root in &group.roots {
+        walker.add_root(root);
+      }
+      let tsc_roots = walker.into_tsc_roots();
+      missing_diagnostics.extend(tsc_roots.missing_diagnostics);
+      if let Some(hash) = tsc_roots.maybe_check_hash {
+        combined.write_hashable(hash);
+        any_hash = true;
+      }
+    }
+    let maybe_check_hash =
+      any_hash.then(|| CacheDBHash::new(combined.finish()));
+    Ok((missing_diagnostics, maybe_check_hash))
+  }
+
+  /// The type-check cache, used by the native check path to skip re-running the
+  /// external compiler when the graph hash is unchanged.
+  pub(crate) fn type_check_cache(&self) -> TypeCheckCache {
+    TypeCheckCache::new(self.caches.type_checking_cache_db())
+  }
+
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<DiagnosticsByFolderIterator<'_>, CheckError> {
-    fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
-      match resolver {
-        CliNpmResolver::Byonm(_) => {
-          // not feasible and probably slower to compute
-          None
-        }
-        CliNpmResolver::Managed(resolver) => {
-          // we should probably go further and check all the individual npm packages
-          let mut package_reqs = resolver.resolution().package_reqs();
-          package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
-          let mut hasher = FastInsecureHasher::new_without_deno_version();
-          // ensure the cache gets busted when turning nodeModulesDir on or off
-          // as this could cause changes in resolution
-          hasher.write_hashable(resolver.root_node_modules_path().is_some());
-          for (pkg_req, pkg_nv) in package_reqs {
-            hasher.write_hashable(&pkg_req);
-            hasher.write_hashable(&pkg_nv);
-          }
-          Some(hasher.finish())
-        }
-      }
-    }
-
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok(DiagnosticsByFolderIterator(
         DiagnosticsByFolderIteratorInner::Empty(Arc::new(graph)),
@@ -500,7 +542,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   current_group_index: usize,
   log_level: Option<log::Level>,
   npm_check_state_hash: Option<u64>,
-  seen_diagnotics: HashSet<String>,
+  seen_diagnotics: FxHashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   initial_cwd: PathBuf,
@@ -540,6 +582,29 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 }
 
 /// Converts the list of ambient module names to regex string
+/// Hash of the npm resolution state, folded into the type-check cache key so
+/// the cache busts when npm deps (or nodeModulesDir) change. Shared by Deno
+/// 2.x's forked tsc and the native (external tsc) check path.
+fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
+  match resolver {
+    // not feasible and probably slower to compute
+    CliNpmResolver::Byonm(_) => None,
+    CliNpmResolver::Managed(resolver) => {
+      let mut package_reqs = resolver.resolution().package_reqs();
+      package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+      let mut hasher = FastInsecureHasher::new_without_deno_version();
+      // ensure the cache gets busted when turning nodeModulesDir on or off
+      // as this could cause changes in resolution
+      hasher.write_hashable(resolver.root_node_modules_path().is_some());
+      for (pkg_req, pkg_nv) in package_reqs {
+        hasher.write_hashable(&pkg_req);
+        hasher.write_hashable(&pkg_nv);
+      }
+      Some(hasher.finish())
+    }
+  }
+}
+
 pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
   regex_string.push_str("^(");
@@ -845,11 +910,11 @@ impl DiagnosticsByFolderRealIterator<'_> {
   }
 }
 
-struct TscRoots {
-  roots: Vec<(ModuleSpecifier, MediaType)>,
-  missing_diagnostics: tsc::Diagnostics,
+pub(crate) struct TscRoots {
+  pub(crate) roots: Vec<(ModuleSpecifier, MediaType)>,
+  pub(crate) missing_diagnostics: tsc::Diagnostics,
   used_ts_expect_error_directives: HashSet<TsDirective>,
-  maybe_check_hash: Option<CacheDBHash>,
+  pub(crate) maybe_check_hash: Option<CacheDBHash>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -880,7 +945,7 @@ struct GraphWalker<'a> {
   /// packages linked via the "links" field), used to enhance import errors.
   bare_importable_pkg_names: &'a [String],
   maybe_hasher: Option<FastInsecureHasher>,
-  seen: HashSet<&'a Url>,
+  seen: FxHashSet<&'a Url>,
   pending: VecDeque<PendingGraphWalkSpecifier<'a>>,
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
@@ -927,8 +992,9 @@ impl<'a> GraphWalker<'a> {
       compiler_options_resolver,
       bare_importable_pkg_names,
       maybe_hasher,
-      seen: HashSet::with_capacity(
+      seen: FxHashSet::with_capacity_and_hasher(
         graph.imports.len() + graph.specifiers_count(),
+        Default::default(),
       ),
       pending: VecDeque::new(),
       has_seen_node_builtin: false,

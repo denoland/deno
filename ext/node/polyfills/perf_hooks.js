@@ -213,7 +213,7 @@ function recordTimerifyHistogram(histogram, start) {
   histogram.record(durationNs);
 }
 
-const timerify = (fn, options = {}) => {
+const timerify = (fn, options = { __proto__: null }) => {
   if (typeof fn !== "function") {
     throw new ERR_INVALID_ARG_TYPE("fn", "function", fn);
   }
@@ -262,7 +262,7 @@ const timerify = (fn, options = {}) => {
     ) {
       // `result` is an arbitrary user thenable, not necessarily a native
       // Promise, so PromisePrototypeFinally cannot be used here.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       return result.finally(() => recordTimerifyHistogram(histogram, start));
     }
     if (histogram !== undefined) {
@@ -364,7 +364,7 @@ class Histogram {
   get percentiles() {
     // Real Map (not SafeMap): returned to userland and must pass
     // `instanceof Map` (SafeMap's prototype chain excludes Map).
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const out = new Map();
     if (typeof this[_handle].percentiles === "function") {
       const flat = this[_handle].percentiles();
@@ -390,7 +390,7 @@ class Histogram {
   get percentilesBigInt() {
     // Real Map (not SafeMap): returned to userland and must pass
     // `instanceof Map` (SafeMap's prototype chain excludes Map).
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const out = new Map();
     if (typeof this[_handle].percentilesBigInt === "function") {
       const flat = this[_handle].percentilesBigInt();

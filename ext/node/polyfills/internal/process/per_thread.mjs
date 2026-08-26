@@ -222,7 +222,7 @@ function buildAllowedFlags() {
 
   // Ignoring primordial lint. Extending from SafeSet prevents augmenting `keys`
   // and [SymbolIterator] instance methods.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   class NodeEnvironmentFlagsSet extends Set {
     constructor(array) {
       super();

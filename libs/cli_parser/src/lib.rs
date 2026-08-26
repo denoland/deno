@@ -9,15 +9,14 @@ pub mod flags;
 // argv against the tables into a `ParseResult`, `convert` turns that into
 // `Flags`, and `help` / `completions` render help text and shell completions
 // from the same static tables. `error` is the parser's public error type.
-//
-// None of this is wired into the CLI's parsing path yet (clap still parses in
-// production); a later change does the cutover and adds the parity test suite.
 pub mod completions;
 pub mod convert;
 pub mod defs;
+pub mod env_vars;
 mod error;
 pub mod help;
 mod parse;
+pub mod permission_help;
 mod types;
 
 pub use error::CliError;
@@ -27,3 +26,5 @@ pub use types::*;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_full;

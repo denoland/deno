@@ -1,0 +1,19 @@
+{
+  "tests": {
+    // internal modules lazily loaded at runtime must not be resolved through
+    // the user's import map
+    "test": {
+      "args": "test --quiet main_test.js",
+      "output": "test.out"
+    },
+    "node_builtin": {
+      "args": "run --quiet node_http.js",
+      "output": "node_http.out"
+    },
+    // ...but user code that remaps a `node:` builtin still gets the mapping
+    "user_remap": {
+      "args": "run --quiet user_remap.js",
+      "output": "user_remap.out"
+    }
+  }
+}

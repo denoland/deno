@@ -76,4 +76,4 @@ CI check.
 ## Daily test viewer
 
 To see the latest test results of all test cases, visit this site
-https://node-test-viewer.deno.dev/results/latest
+https://node-test-viewer.deno.deno.net/results/latest

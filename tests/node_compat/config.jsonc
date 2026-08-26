@@ -106,7 +106,10 @@
       "reason": "Tests Node's --require / --import preload CLI flags, which Deno does not implement."
     },
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
-    "es-module/test-require-module-tla-execution.js": {},
+    "es-module/test-require-module-tla-execution.js": {
+      "ignore": true,
+      "reason": "Node 26.5 asserts the ERR_REQUIRE_ASYNC_MODULE hint names --experimental-print-required-tla; Deno points at --stack-trace-limit instead, as it does not implement that flag"
+    },
     "es-module/test-require-module-tla-nested.js": {},
     "es-module/test-require-module-tla-print-execution.js": {
       "ignore": true,
@@ -189,6 +192,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
+    "parallel/test-abortsignal-any.mjs": {},
     "parallel/test-als-defaultvalue.js": {},
     "parallel/test-arm-math-illegal-instruction.js": {},
     "parallel/test-assert-async.js": {},
@@ -289,10 +293,7 @@
     "parallel/test-buffer-from.js": {},
     "parallel/test-buffer-generic-methods.js": {},
     "parallel/test-buffer-includes.js": {},
-    "parallel/test-buffer-indexof.js": {
-      "ignore": true,
-      "reason": "Node 26 added a byteLength/length parameter to Buffer.indexOf/lastIndexOf/includes not yet implemented"
-    },
+    "parallel/test-buffer-indexof.js": {},
     "parallel/test-buffer-inheritance.js": {},
     "parallel/test-buffer-inspect.js": {},
     "parallel/test-buffer-isascii.js": {},
@@ -966,6 +967,7 @@
     "parallel/test-dgram-connect.js": {},
     "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
+    "parallel/test-dgram-default-lookup-ip.js": {},
     "parallel/test-dgram-error-message-address.js": {},
     "parallel/test-dgram-implicit-bind.js": {},
     "parallel/test-dgram-ipv6only.js": {},
@@ -1085,7 +1087,6 @@
     "parallel/test-dns-resolveany-bad-ancount.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolver-max-timeout.js": {
-      "flaky": true,
       "windows": false // incredibly flaky in CI
     },
     "parallel/test-dns-resolvesrv.js": {},
@@ -1278,6 +1279,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal `internal/fixed_queue` module which is not exposed in Deno"
     },
+    "parallel/test-fs-append-file-flush.js": {},
     "parallel/test-fs-append-file-sync.js": {},
     "parallel/test-fs-buffer.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
@@ -1471,7 +1473,11 @@
     "parallel/test-fs-read-stream-file-handle.js": {},
     "parallel/test-fs-read-stream-inherit.js": {},
     "parallel/test-fs-read-stream-patch-open.js": {},
-    "parallel/test-fs-read-stream-pos.js": { "windows": false },
+    "parallel/test-fs-read-stream-pos.js": {
+      "windows": false,
+      "flaky": true,
+      "reason": "Exit is timing-probabilistic: the reader must catch the file mid-append to observe a sub-highWaterMark chunk (isLow) and then receive one more chunk before EOF. The test's own safety budget is 90s, but the node_compat runner caps each test at 10s (20s on macOS), so on a slow/loaded runner (e.g. linux-aarch64) the interleaving can fail to occur in time and the test times out (denoland/deno#36048)"
+    },
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
     "parallel/test-fs-read-stream.js": {},
@@ -1579,6 +1585,7 @@
     "parallel/test-fs-write-buffer-large.js": {},
     "parallel/test-fs-write-buffer.js": {},
     "parallel/test-fs-write-file-buffer.js": {},
+    "parallel/test-fs-write-file-flush.js": {},
     "parallel/test-fs-write-file-invalid-path.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
@@ -1593,6 +1600,7 @@
     "parallel/test-fs-write-stream-end.js": {},
     "parallel/test-fs-write-stream-file-handle.js": {},
     "parallel/test-fs-write-stream-file-handle-2.js": {},
+    "parallel/test-fs-write-stream-flush.js": {},
     "parallel/test-fs-write-stream-fs.js": {},
     "parallel/test-fs-write-stream-patch-open.js": {},
     "parallel/test-fs-write-stream-throw-type-error.js": {},
@@ -1851,7 +1859,6 @@
     "parallel/test-http-pipeline-socket-parser-typeerror.js": {},
     "parallel/test-http-proxy.js": {},
     "parallel/test-http-raw-headers.js": {},
-    "parallel/test-http-rawheaders-limit.js": {},
     "parallel/test-http-readable-data-event.js": {},
     "parallel/test-http-remove-connection-header-persists-connection.js": {},
     "parallel/test-http-remove-header-stays-removed.js": {},
@@ -2177,6 +2184,7 @@
     "parallel/test-http2-server-shutdown-redundant.js": {},
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
+    "parallel/test-http2-session-cleanup-on-nghttp2-goaway.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
     "parallel/test-http2-session-settings.js": {},
     "parallel/test-http2-session-stream-state.js": {},
@@ -3006,6 +3014,8 @@
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},
     "parallel/test-promise-handled-rejection-no-warning.js": {},
+    "parallel/test-promise-hook-on-before.js": {},
+    "parallel/test-promise-hook-on-init.js": {},
     "parallel/test-promise-unhandled-default.js": {},
     "parallel/test-promise-unhandled-issue-43655.js": {},
     "parallel/test-promise-unhandled-silent.js": {},
@@ -3193,6 +3203,7 @@
     // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
     "parallel/test-runner-subtest-after-hook.js": {},
+    "parallel/test-runner-tags-validation.mjs": {},
     "parallel/test-runner-typechecking.js": {},
     "parallel/test-runner-xfail.js": {},
     "parallel/test-set-incoming-message-header.js": {},
@@ -3343,12 +3354,14 @@
     "parallel/test-socket-write-after-fin.js": {},
     "parallel/test-sqlite-aggregate-function.mjs": {},
     "parallel/test-sqlite-authz.js": {},
+    "parallel/test-sqlite-backup.mjs": {},
     "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync.js": {},
     "parallel/test-sqlite-limits.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
+    "parallel/test-sqlite-serialize.js": {},
     "parallel/test-sqlite-session.js": {
       "ignore": true,
       "reason": "malformed-changeset subtest crashes in the shared SQLite; Node skips it unless using its bundled SQLite session fix (node_shared_sqlite)"
@@ -3409,10 +3422,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {
-      "ignore": true,
-      "reason": "Requires the new Node 26 DEP0201 deprecation warning for Duplex.toWeb({ type }) which Deno does not emit"
-    },
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -3976,12 +3986,37 @@
     "parallel/test-warn-tls-wrap-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
     "parallel/test-weakref.js": {},
+    "parallel/test-web-locks.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
     "parallel/test-webcrypto-derivebits.js": {},
+    "parallel/test-webcrypto-derivebits-hkdf.js": {
+      "ignore": true,
+      "reason": "deriveBits length 0 now conforms to w3c/webcrypto#380 (covered by WPT); remaining failure asserts OpenSSL's 1024-byte HKDF 'info' limit, an OpenSSL implementation quirk (not a WebCrypto spec requirement) that Deno's ring-based HKDF does not impose"
+    },
+    "parallel/test-webcrypto-derivebits-cfrg.js": {
+      "ignore": true,
+      "reason": "Deno throws OperationError 'Invalid length' when more bits are requested than the shared secret provides; Node expects its custom /derived bit length is too small/ wording"
+    },
+    "parallel/test-webcrypto-derivebits-ecdh.js": {
+      "ignore": true,
+      "reason": "Deno throws OperationError 'Invalid length' when more bits are requested than the shared secret provides; Node expects its custom /derived bit length is too small/ wording"
+    },
+    "parallel/test-webcrypto-derivekey.js": {
+      "ignore": true,
+      "reason": "Deno throws TypeError 'Invalid KMAC length: 0' where Node expects its /KmacImportParams.length cannot be 0/ wording"
+    },
+    "parallel/test-webcrypto-digest-turboshake.js": {
+      "ignore": true,
+      "reason": "Deno throws 'Invalid XOF parameters' where Node expects its 'Invalid TurboShakeParams outputLength' wording"
+    },
     "parallel/test-webcrypto-encap-decap-ml-kem.js": {
       "ignore": true,
       "reason": "node:crypto createPublicKey/createPrivateKey does not support ML-KEM post-quantum keys used to seed the test"
+    },
+    "parallel/test-webcrypto-encrypt-decrypt-aes.js": {
+      "ignore": true,
+      "reason": "Deno reports \"Encryption algorithm 'AES-OCB' does not match key algorithm\"; Node expects its generic /Key algorithm mismatch/ wording"
     },
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {
       "ignore": true,
@@ -3995,6 +4030,14 @@
       "ignore": true,
       "reason": "Deno's WebCrypto uses a generic operation-not-valid message instead of Node's per-operation 'Unable to use this key to encrypt/decrypt' wording"
     },
+    "parallel/test-webcrypto-export-import-cfrg.js": {
+      "ignore": true,
+      "reason": "Deno throws 'Invalid key data' where Node expects its /Invalid key type/ wording"
+    },
+    "parallel/test-webcrypto-export-import-ec.js": {
+      "ignore": true,
+      "reason": "Deno throws 'unsupported algorithm' where Node expects its /Invalid key type/ wording"
+    },
     "parallel/test-webcrypto-export-import-ml-dsa.js": {
       "ignore": true,
       "reason": "Deno WebCrypto returns a generic 'Unsupported key format' message instead of Node's 'Unable to import ... using raw format' for plain raw ML-DSA import"
@@ -4003,11 +4046,31 @@
       "ignore": true,
       "reason": "ML-KEM post-quantum WebCrypto import/export is not implemented in Deno"
     },
+    "parallel/test-webcrypto-export-import-rsa.js": {
+      "ignore": true,
+      "reason": "Deno throws 'unsupported algorithm' where Node expects its /Invalid key type/ wording"
+    },
+    "parallel/test-webcrypto-get-public-key.mjs": {
+      "ignore": true,
+      "reason": "Deno throws 'Key usage must be empty' where Node expects its /Unsupported key usage/ wording"
+    },
     "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
       "ignore": true,
       "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
+    },
+    "parallel/test-webcrypto-sign-verify-eddsa.js": {
+      "ignore": true,
+      "reason": "Deno emits the spec-aligned 'The requested operation is not valid for the provided key'; Node expects its /Unable to use this key to verify/ wording"
+    },
+    "parallel/test-webcrypto-sign-verify-kmac.js": {
+      "ignore": true,
+      "reason": "Deno emits the spec-aligned 'The requested operation is not valid for the provided key'; Node expects its /Unable to use this key to verify/ wording"
+    },
+    "parallel/test-webcrypto-sign-verify-rsa.js": {
+      "ignore": true,
+      "reason": "Deno emits the spec-aligned 'The requested operation is not valid for the provided key'; Node expects its /Unable to use this key to verify/ wording"
     },
     "parallel/test-webcrypto-sign-verify-ml-dsa.js": {
       "ignore": true,
@@ -4025,19 +4088,29 @@
       "ignore": true,
       "reason": "Tests Node's internal/crypto/webidl JS module (WebIDL converters such as converters.boolean, converters.DOMString, requiredArguments) via require('internal/crypto/webidl') with --expose-internals; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this internal module"
     },
+    "parallel/test-webcrypto-wrap-unwrap.js": {
+      "ignore": true,
+      "reason": "Deno throws 'Wrapping algorithm does not match key algorithm' where Node expects its 'Key algorithm mismatch' wording"
+    },
     "parallel/test-websocket.js": {},
     "parallel/test-webstorage-without-sqlite.js": {},
     "parallel/test-webstream-string-tag.js": {},
     "parallel/test-webstream-structured-clone-no-leftovers.mjs": {},
+    "parallel/test-webstreams-abort-controller.js": {},
     "parallel/test-webstreams-adapters-sync-write-error.js": {},
+    "parallel/test-webstreams-adapters-writable-buffer-sources.js": {},
     "parallel/test-webstreams-compose.js": {},
+    "parallel/test-webstreams-compression-bad-chunks.js": {},
     "parallel/test-webstreams-decompression-reject-trailing.js": {},
+    "parallel/test-webstreams-duplex-fromweb-writev-unhandled-rejection.js": {},
     "parallel/test-webstreams-finished.js": {},
     "parallel/test-webstreams-pipeline.js": {},
     "parallel/test-whatwg-encoding-custom-api-basics.js": {},
     "parallel/test-whatwg-encoding-custom-fatal-streaming.js": {},
+    "parallel/test-whatwg-encoding-custom-textdecoder-api-invalid-label.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-fatal.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-ignorebom.js": {},
+    "parallel/test-whatwg-encoding-custom-textdecoder-invalid-arg.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-streaming.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-utf16-surrogates.js": {},
     "parallel/test-whatwg-encoding-singlebyte.mjs": {},
@@ -4053,6 +4126,7 @@
       "reason": "Node 26 rewrote the to-ReadableStream adapter to attach a deduplicated error listener even for already-destroyed Readables; Deno short-circuits destroyed streams"
     },
     "parallel/test-whatwg-transformstream-cancel-write-race.js": {},
+    "parallel/test-whatwg-url-canparse.js": {},
     "parallel/test-whatwg-url-custom-deepequal.js": {},
     "parallel/test-whatwg-url-custom-global.js": {},
     "parallel/test-whatwg-url-custom-href-side-effect.js": {},
@@ -4235,6 +4309,7 @@
     "parallel/test-zlib-params.js": {},
     "parallel/test-zlib-premature-end.js": {},
     "parallel/test-zlib-random-byte-pipes.js": {},
+    "parallel/test-zlib-reject-garbage-after-end.js": {},
     "parallel/test-zlib-reset-before-write.js": {},
     "parallel/test-zlib-sync-no-event.js": {},
     "parallel/test-zlib-truncated.js": {},
@@ -4944,6 +5019,7 @@
     "parallel/test-diagnostics-channel-http2-server-stream-created.js": {},
     "parallel/test-diagnostics-channel-http2-server-stream-finish.js": {},
     "parallel/test-diagnostics-channel-http2-server-stream-start.js": {},
+    "parallel/test-diff.js": {},
     "parallel/test-dns-lookup-promises.js": {},
     "parallel/test-double-tls-server.js": {},
     "parallel/test-dummy-stdio.js": {
@@ -5398,6 +5474,10 @@
     "pummel/test-buffer-large-size-slowbuffer.js": {},
     "pummel/test-child-process-spawn-loop.js": {},
     "pummel/test-crypto-pqc-sign-verify-slh-dsa.mjs": {},
+    "pummel/test-webcrypto-derivebits-pbkdf2.js": {
+      "ignore": true,
+      "reason": "deriveBits length 0 now conforms to w3c/webcrypto#380 (covered by WPT); remaining failure is a message-only mismatch: Deno throws \"'baseKey' usages does not contain 'deriveBits'\" where Node expects its /baseKey does not have deriveBits usage/ wording"
+    },
     "pummel/test-fs-largefile.js": {
       "windows": false,
       "reason": "times out"

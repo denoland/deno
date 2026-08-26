@@ -61,6 +61,26 @@ pub(crate) enum ConfigKind {
   PackageJson,
 }
 
+/// Which `package.json` section a dependency should be written to. Only
+/// meaningful for `package.json`; `deno.json` always uses `imports`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum DependencyKind {
+  Normal,
+  Dev,
+  Optional,
+}
+
+impl DependencyKind {
+  /// The `package.json` property this dependency kind is stored under.
+  fn package_json_section(self) -> &'static str {
+    match self {
+      DependencyKind::Normal => "dependencies",
+      DependencyKind::Dev => "devDependencies",
+      DependencyKind::Optional => "optionalDependencies",
+    }
+  }
+}
+
 struct ConfigUpdater {
   kind: ConfigKind,
   cst: CstRootNode,
@@ -163,7 +183,7 @@ impl ConfigUpdater {
     false
   }
 
-  fn add(&mut self, selected: SelectedPackage, dev: bool) {
+  fn add(&mut self, selected: SelectedPackage, kind: DependencyKind) {
     fn insert_index(object: &CstObject, searching_name: &str) -> usize {
       object
         .properties()
@@ -197,50 +217,40 @@ impl ConfigUpdater {
         }
       }
       ConfigKind::PackageJson => {
-        let deps_prop = self.root_object.get("dependencies");
-        let dev_deps_prop = self.root_object.get("devDependencies");
-
-        let dependencies = if dev {
-          self
-            .root_object
-            .object_value("devDependencies")
-            .unwrap_or_else(|| {
-              let index = deps_prop
-                .as_ref()
-                .map(|p| p.property_index() + 1)
-                .unwrap_or_else(|| self.root_object.properties().len());
-              self
-                .root_object
-                .insert(index, "devDependencies", json!({}))
-                .object_value_or_set()
-            })
-        } else {
-          self
-            .root_object
-            .object_value("dependencies")
-            .unwrap_or_else(|| {
-              let index = dev_deps_prop
-                .as_ref()
-                .map(|p| p.property_index())
-                .unwrap_or_else(|| self.root_object.properties().len());
-              self
-                .root_object
-                .insert(index, "dependencies", json!({}))
-                .object_value_or_set()
-            })
-        };
-        let other_dependencies = if dev {
-          deps_prop.and_then(|p| p.value().and_then(|v| v.as_object()))
-        } else {
-          dev_deps_prop.and_then(|p| p.value().and_then(|v| v.as_object()))
-        };
+        let target_section = kind.package_json_section();
+        // Reuse an existing section, otherwise create one right after the most
+        // relevant sibling dependency section so the ordering stays tidy
+        // (`dependencies` -> `devDependencies` -> `optionalDependencies`).
+        let dependencies = self
+          .root_object
+          .object_value(target_section)
+          .unwrap_or_else(|| {
+            let index = self.new_dependency_section_index(kind);
+            self
+              .root_object
+              .insert(index, target_section, json!({}))
+              .object_value_or_set()
+          });
 
         let (alias, value) = package_json_dependency_entry(selected);
 
-        if let Some(other) = other_dependencies
-          && let Some(prop) = other.get(&alias)
-        {
-          remove_prop_and_maybe_parent_prop(prop);
+        // Remove the package from any of the other dependency sections so it
+        // doesn't end up declared twice.
+        for other_section in [
+          DependencyKind::Normal,
+          DependencyKind::Dev,
+          DependencyKind::Optional,
+        ] {
+          if other_section == kind {
+            continue;
+          }
+          if let Some(other) = self
+            .root_object
+            .object_value(other_section.package_json_section())
+            && let Some(prop) = other.get(&alias)
+          {
+            remove_prop_and_maybe_parent_prop(prop);
+          }
         }
 
         match dependencies.get(&alias) {
@@ -256,6 +266,35 @@ impl ConfigUpdater {
     }
 
     self.modified = true;
+  }
+
+  /// Picks the index at which to insert a newly created dependency section so
+  /// that `dependencies`, `devDependencies` and `optionalDependencies` keep a
+  /// stable, predictable order.
+  fn new_dependency_section_index(&self, kind: DependencyKind) -> usize {
+    // Sections that should appear before the one being created, closest first.
+    let preceding: &[&str] = match kind {
+      DependencyKind::Normal => &[],
+      DependencyKind::Dev => &["dependencies"],
+      DependencyKind::Optional => &["devDependencies", "dependencies"],
+    };
+    for section in preceding {
+      if let Some(prop) = self.root_object.get(section) {
+        return prop.property_index() + 1;
+      }
+    }
+    // Otherwise insert before the first following section, if any.
+    let following: &[&str] = match kind {
+      DependencyKind::Normal => &["devDependencies", "optionalDependencies"],
+      DependencyKind::Dev => &["optionalDependencies"],
+      DependencyKind::Optional => &[],
+    };
+    for section in following {
+      if let Some(prop) = self.root_object.get(section) {
+        return prop.property_index();
+      }
+    }
+    self.root_object.properties().len()
   }
 
   fn remove(&mut self, package: &str) -> bool {
@@ -282,6 +321,10 @@ impl ConfigUpdater {
           self
             .root_object
             .object_value("devDependencies")
+            .and_then(|deps| deps.get(package)),
+          self
+            .root_object
+            .object_value("optionalDependencies")
             .and_then(|deps| deps.get(package)),
         ];
         let removed = deps.iter().any(|d| d.is_some());
@@ -563,7 +606,8 @@ pub async fn add(
   ));
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
-  let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
+  let mut package_reqs: Vec<AddRmPackageReq> =
+    Vec::with_capacity(add_flags.packages.len());
 
   let initial_cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
   for entry_text in add_flags.packages.iter() {
@@ -577,7 +621,29 @@ pub async fn add(
     .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
-      Ok(add_req) => package_reqs.push(add_req),
+      Ok(mut add_req) => {
+        if add_flags.unscoped {
+          add_req.use_unscoped_alias();
+          // packages from different scopes can share an unscoped name
+          // (ex. `@luca/flag` and `@other/flag`), which would otherwise
+          // silently overwrite each other in the config
+          if let Some(existing) =
+            package_reqs.iter().find(|r| r.alias == add_req.alias)
+          {
+            bail!(
+              "{} and {} would both be added as \"{}\". Provide an explicit alias for one of them (ex. `{}`).",
+              existing.package_name(),
+              add_req.package_name(),
+              add_req.alias,
+              crate::colors::yellow(format!(
+                "deno {cmd_name} my-alias@{}",
+                add_req.package_name()
+              )),
+            );
+          }
+        }
+        package_reqs.push(add_req)
+      }
       // Currently unreachable: default_registry is always Some (defaults to Npm),
       // so parse() always resolves a prefix. Kept as a safety fallback in case
       // the API is called with None from elsewhere.
@@ -673,7 +739,25 @@ pub async fn add(
     }
   }
 
-  let dev = add_flags.dev;
+  let kind = if add_flags.dev {
+    DependencyKind::Dev
+  } else if add_flags.optional {
+    DependencyKind::Optional
+  } else {
+    DependencyKind::Normal
+  };
+
+  // Some packages must be resolved and installed directly as additional graph
+  // roots, rather than relying on them being picked up from the configuration
+  // file during the install step:
+  //
+  // * `--no-save`: the package is installed into `node_modules` (and the
+  //   lockfile) but not declared as a dependency at all.
+  // * `--save-optional`: Deno's installer does not materialize
+  //   `optionalDependencies` from `package.json`, so install the package
+  //   directly to keep parity with `--save-dev` (which does install on add).
+  let install_directly = add_flags.no_save || kind == DependencyKind::Optional;
+  let mut additional_roots = Vec::new();
   for selected_package in selected_packages {
     log::info!(
       "Add {}{}{}",
@@ -682,28 +766,47 @@ pub async fn add(
       selected_package.selected_version
     );
 
+    if install_directly {
+      let specifier = format!(
+        "{}@{}",
+        selected_package.package_name, selected_package.version_req
+      );
+      match deno_core::url::Url::parse(&specifier) {
+        Ok(url) => additional_roots.push(url),
+        Err(err) => {
+          bail!("Failed to parse package specifier '{specifier}': {err}")
+        }
+      }
+    }
+
+    if add_flags.no_save {
+      continue;
+    }
+
     if force_package_json {
-      npm_config.as_mut().unwrap().add(selected_package, dev);
+      npm_config.as_mut().unwrap().add(selected_package, kind);
     } else if selected_package.package_name.starts_with("npm:")
       && prefer_npm_config
     {
       if let Some(npm) = &mut npm_config {
-        npm.add(selected_package, dev);
+        npm.add(selected_package, kind);
       } else {
-        deno_config.as_mut().unwrap().add(selected_package, dev);
+        deno_config.as_mut().unwrap().add(selected_package, kind);
       }
     } else if let Some(deno) = &mut deno_config {
-      deno.add(selected_package, dev);
+      deno.add(selected_package, kind);
     } else {
-      npm_config.as_mut().unwrap().add(selected_package, dev);
+      npm_config.as_mut().unwrap().add(selected_package, kind);
     }
   }
 
-  if let Some(npm) = npm_config {
-    npm.commit()?;
-  }
-  if let Some(deno) = deno_config {
-    deno.commit()?;
+  if !add_flags.no_save {
+    if let Some(npm) = npm_config {
+      npm.commit()?;
+    }
+    if let Some(deno) = deno_config {
+      deno.commit()?;
+    }
   }
 
   npm_install_after_modification(
@@ -711,6 +814,7 @@ pub async fn add(
     Some(jsr_resolver),
     CacheTopLevelDepsOptions {
       lockfile_only: add_flags.lockfile_only,
+      additional_roots,
     },
   )
   .await?;
@@ -946,6 +1050,34 @@ impl From<crate::args::DefaultRegistry> for Prefix {
   }
 }
 impl AddRmPackageReq {
+  /// The package name with its registry prefix (ex. `jsr:@std/path`).
+  pub fn package_name(&self) -> String {
+    match &self.value {
+      AddRmPackageReqValue::Jsr(req) => format!("jsr:{}", req.name),
+      AddRmPackageReqValue::Npm(req) => format!("npm:{}", req.name),
+    }
+  }
+
+  /// Drops the scope from the alias (ex. `@david/jsonc-morph` becomes
+  /// `jsonc-morph`).
+  ///
+  /// Does nothing when the name has no scope, or when the user provided an
+  /// alias of their own, which is the case whenever the alias isn't the
+  /// package name.
+  pub fn use_unscoped_alias(&mut self) {
+    let name = match &self.value {
+      AddRmPackageReqValue::Jsr(req) | AddRmPackageReqValue::Npm(req) => {
+        &req.name
+      }
+    };
+    if self.alias == *name
+      && let Some((_scope, unscoped_name)) =
+        name.strip_prefix('@').and_then(|name| name.split_once('/'))
+    {
+      self.alias = StackString::from(unscoped_name);
+    }
+  }
+
   pub fn parse(
     entry_text: &str,
     default_prefix: Option<Prefix>,
@@ -1104,6 +1236,7 @@ pub async fn remove(
       None,
       CacheTopLevelDepsOptions {
         lockfile_only: remove_flags.lockfile_only,
+        additional_roots: vec![],
       },
     )
     .await?;
@@ -1408,6 +1541,7 @@ pub async fn link(
       None,
       CacheTopLevelDepsOptions {
         lockfile_only: link_flags.lockfile_only,
+        additional_roots: vec![],
       },
     )
     .await?;
@@ -1512,6 +1646,7 @@ pub async fn unlink(
     None,
     CacheTopLevelDepsOptions {
       lockfile_only: unlink_flags.lockfile_only,
+      additional_roots: vec![],
     },
   )
   .await?;
@@ -1613,8 +1748,8 @@ mod test {
       let s = format!("on input: {input}, maybe_prefix: {maybe_prefix:?}");
       assert_eq!(
         AddRmPackageReq::parse(input, maybe_prefix)
-          .expect(&s)
-          .expect(&s),
+          .unwrap()
+          .unwrap(),
         expected,
         "{s}",
       );
@@ -1627,5 +1762,47 @@ mod test {
         .to_string(),
       "@scope/pkg@tag",
     );
+  }
+
+  #[test]
+  fn test_use_unscoped_alias() {
+    let cases = [
+      (
+        ("jsr:@david/jsonc-morph", None),
+        jsr_pkg_req("jsonc-morph", "@david/jsonc-morph"),
+      ),
+      (
+        ("jsr:@std/path@^1.0.0", None),
+        jsr_pkg_req("path", "@std/path@^1.0.0"),
+      ),
+      (
+        ("npm:@types/node", None),
+        npm_pkg_req("node", "@types/node@*"),
+      ),
+      (
+        ("@scope/pkg", Some(Prefix::Npm)),
+        npm_pkg_req("pkg", "@scope/pkg@*"),
+      ),
+      // an explicit alias always wins
+      (
+        ("my-alias@jsr:@david/jsonc-morph", None),
+        jsr_pkg_req("my-alias", "@david/jsonc-morph"),
+      ),
+      // unscoped names are unaffected
+      (("npm:chalk", None), npm_pkg_req("chalk", "chalk@*")),
+      (
+        ("chalk", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@*"),
+      ),
+    ];
+
+    for ((input, maybe_prefix), expected) in cases {
+      let s = format!("on input: {input}, maybe_prefix: {maybe_prefix:?}");
+      let mut req = AddRmPackageReq::parse(input, maybe_prefix)
+        .unwrap()
+        .unwrap();
+      req.use_unscoped_alias();
+      assert_eq!(req, expected, "{s}");
+    }
   }
 }

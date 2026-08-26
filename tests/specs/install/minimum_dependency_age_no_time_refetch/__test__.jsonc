@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      // minimumDependencyAge forces the full packument to be requested, but
+      // the test registry serves no publish dates for this package, so the
+      // cached packument has an empty `time` map.
+      "args": "run --no-lock main.ts",
+      "output": "first.out"
+    },
+    {
+      // A second run must resolve entirely from the cache: the cache entry
+      // records that the full packument was already fetched and the registry
+      // simply has no `time` data. Previously the empty `time` map was
+      // mistaken for an abbreviated cache entry and the packument was
+      // re-downloaded on every process start (any `Download` line here fails
+      // the test).
+      "args": "run --no-lock main.ts",
+      "output": "ok\n"
+    }
+  ]
+}

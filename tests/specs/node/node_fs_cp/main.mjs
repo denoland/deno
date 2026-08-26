@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -10,8 +11,14 @@ try {
   // ignore
 }
 
-await fs.cp(src, target, { recursive: true, force: true });
-await fs.cp(src, target, { recursive: true, force: true });
+assert.strictEqual(
+  await fs.cp(src, target, { recursive: true, force: true }),
+  undefined,
+);
+assert.strictEqual(
+  await fs.cp(src, target, { recursive: true, force: true }),
+  undefined,
+);
 
 const entries = await Array.fromAsync(await fs.readdir(target));
 console.log(entries);

@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // The cwd deno.json sets a cutoff that would exclude 2.0.0, but the package
+    // is listed in `minimumDependencyAge.exclude`, so the newest version 2.0.0
+    // is selected — `deno x` must match `deno run` here (issue #35991 review).
+    "args": "x -y npm:@denotest/x-min-dep-age",
+    "output": "[WILDCARD]\n2.0.0\n"
+  }]
+}

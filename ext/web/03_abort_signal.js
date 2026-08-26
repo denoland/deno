@@ -6,6 +6,7 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  ArrayIsArray,
   ArrayPrototypePush,
   FunctionPrototypeApply,
   ObjectPrototypeIsPrototypeOf,
@@ -18,6 +19,7 @@ const {
   Symbol,
   SymbolFor,
   TypeError,
+  TypeErrorPrototype,
   WeakRefPrototypeDeref,
 } = primordials;
 
@@ -73,8 +75,39 @@ class AbortSignal extends EventTarget {
 
   static any(signals) {
     const prefix = "Failed to execute 'AbortSignal.any'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    return createDependentAbortSignal(signals, prefix);
+    // Node tags these validation errors with `ERR_INVALID_ARG_TYPE`; the
+    // WebIDL machinery otherwise throws plain (code-less) TypeErrors.
+    try {
+      webidl.requiredArguments(arguments.length, 1, prefix);
+    } catch (e) {
+      e.code = "ERR_INVALID_ARG_TYPE";
+      throw e;
+    }
+    // Validate array elements up front so a non-AbortSignal member reports
+    // Node's `signals[i] is not of type AbortSignal.` message. Non-array
+    // iterables fall through to the sequence converter below.
+    if (ArrayIsArray(signals)) {
+      for (let i = 0; i < signals.length; i++) {
+        if (!ObjectPrototypeIsPrototypeOf(AbortSignalPrototype, signals[i])) {
+          const err = new TypeError(
+            `signals[${i}] is not of type AbortSignal.`,
+          );
+          err.code = "ERR_INVALID_ARG_TYPE";
+          throw err;
+        }
+      }
+    }
+    try {
+      return createDependentAbortSignal(signals, prefix);
+    } catch (e) {
+      if (
+        ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) &&
+        e.code === undefined
+      ) {
+        e.code = "ERR_INVALID_ARG_TYPE";
+      }
+      throw e;
+    }
   }
 
   static abort(reason = undefined) {

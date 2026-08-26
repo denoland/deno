@@ -365,6 +365,9 @@ pub(crate) fn compile_trampoline(
 }
 
 pub(crate) struct Turbocall {
+  // Held to keep the executable trampoline memory alive for V8; the fast-call
+  // pointer is read once (via `ptr()`) when building `overloads`.
+  #[allow(unused, reason = "kept alive for V8 fast API")]
   pub trampoline: Trampoline,
   // Held in a box to keep the memory alive for CFunctionInfo
   #[allow(unused, reason = "kept alive for CFunctionInfo")]
@@ -372,6 +375,33 @@ pub(crate) struct Turbocall {
   // Held in a box to keep the memory alive for V8
   #[allow(unused, reason = "kept alive for V8 fast API")]
   pub c_function_info: Box<fast_api::CFunctionInfo>,
+  // The fast-call overload handed to `FunctionTemplate::build_fast`. Boxed so
+  // the slice V8 retains has a stable address that survives moving this
+  // `Turbocall` into the cppgc-managed `FunctionData`. See `overloads()`.
+  overloads: Box<[fast_api::CFunction; 1]>,
+}
+
+impl Turbocall {
+  /// The fast-call overload slice for this trampoline.
+  ///
+  /// # Safety
+  ///
+  /// The returned slice is extended to `'static`. V8 150.x stores the raw
+  /// `CFunction`/`CFunctionInfo` pointers reachable from it directly inside the
+  /// `FunctionTemplateInfo`, so the storage must outlive the resulting
+  /// function. That holds because the backing `Box`es live in this `Turbocall`,
+  /// which is owned by the cppgc `FunctionData` set as the function's data and
+  /// is therefore dropped only after V8 has released the function. The caller
+  /// must not retain the slice past the lifetime of the owning `Turbocall`.
+  pub(crate) unsafe fn overloads(&self) -> &'static [fast_api::CFunction] {
+    // SAFETY: see the method-level contract above.
+    unsafe {
+      std::mem::transmute::<
+        &[fast_api::CFunction],
+        &'static [fast_api::CFunction],
+      >(self.overloads.as_slice())
+    }
+  }
 }
 
 pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
@@ -389,14 +419,34 @@ pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
 
   let c_function_info = Box::new(fast_api::CFunctionInfo::new(
     ret,
-    &param_info,
+    // SAFETY: `param_info` is boxed and stored in the returned `Turbocall`
+    // alongside this `CFunctionInfo`, so it outlives the pointer V8 keeps to it.
+    unsafe {
+      std::mem::transmute::<
+        &[fast_api::CTypeInfo],
+        &'static [fast_api::CTypeInfo],
+      >(&param_info)
+    },
     fast_api::Int64Representation::BigInt,
   ));
+
+  let c_function = fast_api::CFunction::new(
+    trampoline.ptr(),
+    // SAFETY: `c_function_info` is boxed and stored in the returned `Turbocall`,
+    // so the pointer stays valid for as long as the resulting `CFunction`.
+    unsafe {
+      std::mem::transmute::<
+        &fast_api::CFunctionInfo,
+        &'static fast_api::CFunctionInfo,
+      >(&c_function_info)
+    },
+  );
 
   Turbocall {
     trampoline,
     param_info,
     c_function_info,
+    overloads: Box::new([c_function]),
   }
 }
 

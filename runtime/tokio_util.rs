@@ -38,9 +38,11 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
       "DENO_TOKIO_MAX_IO_EVENTS_PER_TICK",
       max_io_events_per_tick,
     ))
-    // In debug builds, blocking tasks (like swc parsing/emitting via
-    // spawn_blocking) can overflow the default 2MB thread stack due to
-    // unoptimized stack frames. Use 8MB to match the main thread size.
+    // Stack size for the blocking pool only — this is a current_thread
+    // runtime, so JS/V8 always runs on the thread that calls `block_on`, not
+    // on a pool thread. In debug builds, blocking tasks (like swc
+    // parsing/emitting via spawn_blocking) can overflow the default 2MB thread
+    // stack due to unoptimized stack frames, so give them 8MB there.
     .thread_stack_size(if cfg!(debug_assertions) {
       8 * 1024 * 1024
     } else {

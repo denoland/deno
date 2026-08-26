@@ -1,4 +1,7 @@
 {
+  // ignored: extensionless remote module (typed by content-type) has no mirror
+  // stock tsgo can language-detect. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check --reload --all http://localhost:4545/subdir/no_js_ext@1.0.0",
   "output": "output.out"
 }

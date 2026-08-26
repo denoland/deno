@@ -12,6 +12,10 @@
       "output": "42\n"
     },
     "check": {
+      // ignored: tsc doesn't resolve the bare specifier provided by the
+      // auto-linked external import map (deno resolves it at runtime).
+      // https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "args": "check main.ts",
       "output": "check.out"
     },
