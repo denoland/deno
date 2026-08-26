@@ -20,11 +20,11 @@ use deno_core::OpState;
 use deno_core::ToV8;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
-use deno_core::serde_json;
 use deno_core::v8;
 
 /// Thread-safe intermediate value type for crossing the WEF ↔ Deno boundary.
 /// Converts directly to V8 values without going through serde.
+#[derive(Debug, Clone, PartialEq)]
 pub enum DesktopValue {
   Null,
   Bool(bool),
@@ -75,6 +75,202 @@ impl<'a> ToV8<'a> for DesktopValue {
       }
     })
   }
+}
+
+// Serde support so `DesktopValue` can ride inside `#[serde]` op payloads
+// (`DesktopEvent::BindCall` args, `op_desktop_resolve_bind_call` results).
+// Unlike `serde_json::Value`, `Binary` maps to serde bytes, which serde_v8
+// materializes as a `Uint8Array` — this is what lets binding arguments and
+// return values carry binary data (see denoland/deno#36498).
+//
+// The view type is not preserved. serde_v8 routes every `ArrayBufferView`
+// and `ArrayBuffer` to `visit_byte_buf`, so a `Float64Array`, `Int32Array`,
+// `DataView` or bare `ArrayBuffer` arrives on the other side as raw bytes
+// (a `Uint8Array` going out, an `ArrayBuffer` in the renderer's own glue).
+// Callers that need the original view must carry the type themselves. This
+// is lossy, but only relative to a transport that never worked: before
+// #36498 any of these was a hard `invalid type: byte array` error.
+impl serde::Serialize for DesktopValue {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    use serde::ser::SerializeMap;
+    use serde::ser::SerializeSeq;
+    match self {
+      DesktopValue::Null => serializer.serialize_unit(),
+      DesktopValue::Bool(b) => serializer.serialize_bool(*b),
+      DesktopValue::Int(i) => serializer.serialize_i32(*i),
+      DesktopValue::Double(d) => serializer.serialize_f64(*d),
+      DesktopValue::String(s) => serializer.serialize_str(s),
+      DesktopValue::List(l) => {
+        let mut seq = serializer.serialize_seq(Some(l.len()))?;
+        for v in l {
+          seq.serialize_element(v)?;
+        }
+        seq.end()
+      }
+      DesktopValue::Dict(d) => {
+        let mut map = serializer.serialize_map(Some(d.len()))?;
+        for (k, v) in d {
+          map.serialize_entry(k, v)?;
+        }
+        map.end()
+      }
+      DesktopValue::Binary(b) => serializer.serialize_bytes(b),
+    }
+  }
+}
+
+impl<'de> serde::Deserialize<'de> for DesktopValue {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    struct ValueVisitor {
+      depth: usize,
+    }
+
+    /// Threads the current nesting depth through nested values, which a
+    /// bare `Deserialize` impl has nowhere to carry.
+    struct ValueSeed {
+      depth: usize,
+    }
+
+    impl<'de> serde::de::DeserializeSeed<'de> for ValueSeed {
+      type Value = DesktopValue;
+
+      fn deserialize<D>(self, deserializer: D) -> Result<DesktopValue, D::Error>
+      where
+        D: serde::Deserializer<'de>,
+      {
+        deserializer.deserialize_any(ValueVisitor { depth: self.depth })
+      }
+    }
+
+    impl<'de> serde::de::Visitor<'de> for ValueVisitor {
+      type Value = DesktopValue;
+
+      fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a JSON-compatible value or binary data")
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Bool(v))
+      }
+
+      fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+        Ok(match i32::try_from(v) {
+          Ok(i) => DesktopValue::Int(i),
+          Err(_) => DesktopValue::Double(v as f64),
+        })
+      }
+
+      fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(match i32::try_from(v) {
+          Ok(i) => DesktopValue::Int(i),
+          Err(_) => DesktopValue::Double(v as f64),
+        })
+      }
+
+      fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Double(v))
+      }
+
+      fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
+        Ok(DesktopValue::String(v.to_owned()))
+      }
+
+      fn visit_string<E>(self, v: String) -> Result<Self::Value, E> {
+        Ok(DesktopValue::String(v))
+      }
+
+      fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Binary(v.to_vec()))
+      }
+
+      fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Binary(v))
+      }
+
+      fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Null)
+      }
+
+      fn visit_none<E>(self) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Null)
+      }
+
+      fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+      where
+        D: serde::Deserializer<'de>,
+      {
+        use serde::de::DeserializeSeed;
+        ValueSeed { depth: self.depth }.deserialize(deserializer)
+      }
+
+      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+      where
+        A: serde::de::SeqAccess<'de>,
+      {
+        let depth = self.depth.checked_add(1).filter(|d| *d <= MAX_DEPTH);
+        let Some(depth) = depth else {
+          return Err(nesting_too_deep());
+        };
+        let mut list = Vec::new();
+        while let Some(v) = seq.next_element_seed(ValueSeed { depth })? {
+          list.push(v);
+        }
+        Ok(DesktopValue::List(list))
+      }
+
+      fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+      where
+        A: serde::de::MapAccess<'de>,
+      {
+        let depth = self.depth.checked_add(1).filter(|d| *d <= MAX_DEPTH);
+        let Some(depth) = depth else {
+          return Err(nesting_too_deep());
+        };
+        let mut dict = Vec::new();
+        while let Some(k) = map.next_key::<String>()? {
+          dict.push((k, map.next_value_seed(ValueSeed { depth })?));
+        }
+        Ok(DesktopValue::Dict(dict))
+      }
+    }
+
+    deserializer.deserialize_any(ValueVisitor { depth: 0 })
+  }
+}
+
+/// Nesting depth accepted anywhere a `DesktopValue` is built from data the
+/// runtime didn't produce itself.
+///
+/// Every conversion in and out of `DesktopValue` recurses once per level, so
+/// without a bound a deeply nested value walks the runtime thread off the end
+/// of its stack instead of surfacing an error to the caller. Matches
+/// `serde_json`'s own recursion limit.
+///
+/// Two paths have to honour it, in opposite directions:
+///
+/// - JS → Rust, enforced by the `Deserialize` impl below. A self-referential
+///   value returned from a binding handler (`const o = {}; o.self = o; return
+///   o`) is the realistic source.
+/// - renderer → Rust, enforced by `laufey_value_to_desktop_value` in
+///   `cli/rt_desktop`, which converts renderer-supplied binding *arguments*
+///   before the deserializer is ever involved. A `laufey::Value` can't be
+///   cyclic — something upstream would have had to resolve the cycle to build
+///   it — but its depth is still whatever the renderer sent.
+///
+/// Bounding both entry points is what makes `DesktopValue::to_v8` safe: it
+/// recurses too, and only ever walks a value that arrived through one of them.
+pub const MAX_DEPTH: usize = 128;
+
+fn nesting_too_deep<E: serde::de::Error>() -> E {
+  serde::de::Error::custom(format!(
+    "binding value nested deeper than {MAX_DEPTH} levels (cyclic?)"
+  ))
 }
 
 /// Wraps a `Result<DesktopValue, DesktopValue>` from `execute_js`.
@@ -137,7 +333,7 @@ pub enum DesktopEvent {
   BindCall {
     window_id: u32,
     name: String,
-    args: serde_json::Value,
+    args: Vec<DesktopValue>,
     call_id: u32,
   },
   #[serde(rename_all = "camelCase")]
@@ -272,12 +468,12 @@ pub fn create_desktop_event_channel()
 /// A pending call from the webview to a bound Deno function.
 pub struct PendingBindCall {
   pub name: String,
-  pub args: serde_json::Value,
-  pub response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  pub args: Vec<DesktopValue>,
+  pub response: tokio::sync::oneshot::Sender<Result<DesktopValue, String>>,
 }
 
 type PendingBindResponsesMap =
-  HashMap<u32, tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>>;
+  HashMap<u32, tokio::sync::oneshot::Sender<Result<DesktopValue, String>>>;
 
 #[derive(Clone)]
 pub struct PendingBindResponses(
@@ -302,7 +498,7 @@ static BIND_CALL_COUNTER: AtomicU32 = AtomicU32::new(1);
 /// Returns the call_id to embed in the `DesktopEvent::BindCall`.
 pub fn register_bind_call(
   responses: &PendingBindResponses,
-  response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  response: tokio::sync::oneshot::Sender<Result<DesktopValue, String>>,
 ) -> u32 {
   let call_id = BIND_CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
   responses.0.lock().unwrap().insert(call_id, response);
@@ -1126,7 +1322,7 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
 fn op_desktop_resolve_bind_call(
   state: &mut OpState,
   #[smi] call_id: u32,
-  #[serde] result: serde_json::Value,
+  #[serde] result: DesktopValue,
 ) {
   if let Some(responses) = state.try_borrow::<PendingBindResponses>()
     && let Some(tx) = responses.0.lock().unwrap().remove(&call_id)
@@ -1885,6 +2081,7 @@ mod tests {
 
   use super::BrowserWindow;
   use super::DesktopEvent;
+  use super::DesktopValue;
   use super::MenuItem;
   use super::PendingBindResponses;
   use super::PermissionState;
@@ -2168,7 +2365,7 @@ mod tests {
       kind_of(DesktopEvent::BindCall {
         window_id: 0,
         name: "".into(),
-        args: serde_json::Value::Null,
+        args: vec![],
         call_id: 0,
       }),
       "bindCall"
@@ -2306,14 +2503,17 @@ mod tests {
   // --- BindCall.args round-trip ---
 
   #[test]
-  fn bind_call_args_passes_through_arbitrary_json() {
-    // BindCall carries a serde_json::Value as `args`. We must serialize
+  fn bind_call_args_passes_through_arbitrary_values() {
+    // BindCall carries `Vec<DesktopValue>` as `args`. We must serialize
     // it transparently (not nested under "args.value" or with a Some()
     // wrapper) so the renderer sees exactly what was passed.
     let ev = DesktopEvent::BindCall {
       window_id: 1,
       name: "greet".into(),
-      args: json!([{"name": "ada", "n": 42}]),
+      args: vec![DesktopValue::Dict(vec![
+        ("name".into(), DesktopValue::String("ada".into())),
+        ("n".into(), DesktopValue::Int(42)),
+      ])],
       call_id: 7,
     };
     let v = serde_json::to_value(&ev).unwrap();
@@ -2321,6 +2521,118 @@ mod tests {
     assert_eq!(v["args"][0]["n"], 42);
     assert_eq!(v["callId"], 7);
     assert_eq!(v["windowId"], 1);
+  }
+
+  #[test]
+  fn desktop_value_binary_serializes_as_bytes() {
+    // `Binary` must reach serde as `serialize_bytes` — serde_v8 turns that
+    // into a `Uint8Array` on the JS side, which is what lets bindings carry
+    // binary data (denoland/deno#36498). serde_cbor-style formats would show
+    // this directly; through serde_json, serialize_bytes lands as an array
+    // of numbers rather than an error or an objectified map.
+    let j =
+      serde_json::to_value(DesktopValue::Binary(vec![1, 2, 3, 255])).unwrap();
+    assert_eq!(j, json!([1, 2, 3, 255]));
+  }
+
+  #[test]
+  fn desktop_value_json_roundtrip_and_binary_deserialize() {
+    // Non-binary values keep plain JSON semantics in both directions.
+    let v = DesktopValue::Dict(vec![
+      ("ok".into(), DesktopValue::Bool(true)),
+      ("n".into(), DesktopValue::Int(42)),
+      ("f".into(), DesktopValue::Double(1.5)),
+      (
+        "list".into(),
+        DesktopValue::List(vec![
+          DesktopValue::Null,
+          DesktopValue::String("hi".into()),
+        ]),
+      ),
+    ]);
+    let j = serde_json::to_value(&v).unwrap();
+    assert_eq!(
+      j,
+      json!({"ok": true, "n": 42, "f": 1.5, "list": [null, "hi"]})
+    );
+    let back: DesktopValue = serde_json::from_value(j).unwrap();
+    assert_eq!(back, v);
+
+    // Integers outside i32 degrade to Double (laufey's Int is i32-wide).
+    let big: DesktopValue =
+      serde_json::from_value(json!(5_000_000_000_i64)).unwrap();
+    assert_eq!(big, DesktopValue::Double(5_000_000_000.0));
+
+    // A deserializer that produces bytes (serde_v8 for Uint8Array /
+    // ArrayBuffer views) must map to Binary, not error like
+    // serde_json::Value's visitor did (denoland/deno#36498).
+    struct Bytes(Vec<u8>);
+    impl<'de> serde::Deserializer<'de> for Bytes {
+      type Error = serde_json::Error;
+      fn deserialize_any<V: serde::de::Visitor<'de>>(
+        self,
+        visitor: V,
+      ) -> Result<V::Value, Self::Error> {
+        visitor.visit_byte_buf(self.0)
+      }
+      serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct enum identifier ignored_any
+      }
+    }
+    let bin: DesktopValue =
+      serde::Deserialize::deserialize(Bytes(vec![9, 8, 7])).unwrap();
+    assert_eq!(bin, DesktopValue::Binary(vec![9, 8, 7]));
+  }
+
+  #[test]
+  fn desktop_value_rejects_nesting_past_the_depth_limit() {
+    // The visitor recurses per level, so an unbounded value — a cyclic
+    // object returned from a binding handler is the realistic source —
+    // would run the runtime thread out of stack. It must surface an error
+    // to the caller instead.
+    //
+    // Built as a `Value` rather than parsed from text: serde_json's own
+    // parser has a recursion limit that would fire first and mask the
+    // guard under test. `from_value` applies no limit of its own.
+    fn nest_lists(depth: usize) -> serde_json::Value {
+      let mut v = json!(1);
+      for _ in 0..depth {
+        v = serde_json::Value::Array(vec![v]);
+      }
+      v
+    }
+
+    let err =
+      serde_json::from_value::<DesktopValue>(nest_lists(super::MAX_DEPTH + 1))
+        .unwrap_err();
+    assert!(
+      err.to_string().contains("nested deeper than"),
+      "expected the depth guard to reject, got: {err}"
+    );
+
+    // Nesting within the limit still deserializes, so the guard isn't
+    // simply rejecting anything structured.
+    serde_json::from_value::<DesktopValue>(nest_lists(super::MAX_DEPTH))
+      .expect("nesting within the limit must still deserialize");
+  }
+
+  #[test]
+  fn desktop_value_depth_limit_counts_maps_too() {
+    // `visit_map` carries its own guard; a value nested through objects
+    // rather than arrays must be bounded the same way.
+    let mut v = json!(1);
+    for _ in 0..super::MAX_DEPTH + 1 {
+      let mut obj = serde_json::Map::new();
+      obj.insert("a".to_string(), v);
+      v = serde_json::Value::Object(obj);
+    }
+    let err = serde_json::from_value::<DesktopValue>(v).unwrap_err();
+    assert!(
+      err.to_string().contains("nested deeper than"),
+      "expected the depth guard to reject, got: {err}"
+    );
   }
 
   // --- error dialog single-flight ---
@@ -2546,7 +2858,7 @@ mod tests {
   // unit test, but the bug surface is the map manipulation, not the
   // tiny op2 wrapper.
 
-  fn resolve(responses: &PendingBindResponses, id: u32, v: serde_json::Value) {
+  fn resolve(responses: &PendingBindResponses, id: u32, v: DesktopValue) {
     if let Some(tx) = responses.0.lock().unwrap().remove(&id) {
       let _ = tx.send(Ok(v));
     }
@@ -2563,11 +2875,23 @@ mod tests {
     let responses = PendingBindResponses::new();
     let (tx, rx) = tokio::sync::oneshot::channel();
     let id = register_bind_call(&responses, tx);
-    // The renderer resolves with a JSON value.
-    resolve(&responses, id, serde_json::json!({"ok": true, "n": 42}));
+    // The runtime resolves with a DesktopValue.
+    resolve(
+      &responses,
+      id,
+      DesktopValue::Dict(vec![
+        ("ok".into(), DesktopValue::Bool(true)),
+        ("n".into(), DesktopValue::Int(42)),
+      ]),
+    );
     let v = rx.await.expect("oneshot recv").expect("Ok variant");
-    assert_eq!(v["ok"], true);
-    assert_eq!(v["n"], 42);
+    assert_eq!(
+      v,
+      DesktopValue::Dict(vec![
+        ("ok".into(), DesktopValue::Bool(true)),
+        ("n".into(), DesktopValue::Int(42)),
+      ])
+    );
     // After resolve, the map entry is gone.
     assert!(
       responses.0.lock().unwrap().is_empty(),
@@ -2613,7 +2937,7 @@ mod tests {
     let responses = PendingBindResponses::new();
     // No entry registered — resolve with a random id must not panic
     // and must not affect any state.
-    resolve(&responses, 999_999, serde_json::Value::Null);
+    resolve(&responses, 999_999, DesktopValue::Null);
     reject(&responses, 999_999, "x".to_string());
     assert!(responses.0.lock().unwrap().is_empty());
   }
@@ -2627,10 +2951,10 @@ mod tests {
     // .unwrap() that would crash the runtime.
     let responses = PendingBindResponses::new();
     let (tx, rx) =
-      tokio::sync::oneshot::channel::<Result<serde_json::Value, String>>();
+      tokio::sync::oneshot::channel::<Result<DesktopValue, String>>();
     let id = register_bind_call(&responses, tx);
     drop(rx);
-    resolve(&responses, id, serde_json::Value::Null);
+    resolve(&responses, id, DesktopValue::Null);
     // If we reach this line without panicking, the test passes.
   }
 
