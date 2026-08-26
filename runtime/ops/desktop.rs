@@ -1345,6 +1345,18 @@ fn op_desktop_prompt(
   }
 }
 
+/// How long to wait on a clipboard call before giving up.
+///
+/// On X11 and Wayland there is no central clipboard store: the call is
+/// serviced by whichever application owns the selection, and
+/// `gtk_clipboard_wait_for_text` has no timeout of its own. The blocking pool
+/// these calls run on is shared and bounded, so an unbounded wait turns one
+/// unresponsive peer into starvation for every other blocking task in the
+/// runtime. Short enough not to strand a caller, long enough that a merely
+/// slow owner still succeeds.
+const CLIPBOARD_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_secs(5);
+
 /// Read the clipboard's text off the JS thread.
 ///
 /// `DesktopApi::read_clipboard_text` is synchronous, and on X11/Wayland the
@@ -1375,12 +1387,24 @@ async fn op_desktop_read_clipboard_text(
   // `readText()` is an ordinary API an app may poll on an interval, and
   // nothing here rate-limits it.
   //
-  // A join error (a backend that panics mid-read) yields `None` rather than
-  // leaving the caller's promise pending forever.
-  deno_core::unsync::spawn_blocking(move || api.read_clipboard_text())
-    .await
-    .ok()
-    .flatten()
+  // The pool being bounded is also why the timeout matters. A read is
+  // serviced by whichever app owns the selection and can block for as long
+  // as that app likes, and a `spawn_blocking` task can't be cancelled — so
+  // without a bound on the wait, enough hung reads would occupy pool threads
+  // permanently and starve every other blocking task in the runtime, not
+  // just the caller. Timing out doesn't reclaim the thread, but it stops the
+  // caller adding more of them behind an unbounded await.
+  //
+  // A join error (a backend that panics mid-read) yields `None` too, rather
+  // than leaving the caller's promise pending forever.
+  let read =
+    deno_core::unsync::spawn_blocking(move || api.read_clipboard_text());
+  match tokio::time::timeout(CLIPBOARD_TIMEOUT, read).await {
+    Ok(Ok(text)) => text,
+    // Timed out, or the backend panicked. `readText()` resolves to `""`
+    // either way, matching the empty-clipboard case rather than hanging.
+    _ => None,
+  }
 }
 
 /// Write the clipboard's text off the JS thread. Blocking semantics — and the
@@ -1398,10 +1422,10 @@ async fn op_desktop_write_clipboard_text(
   let Some(api) = api else {
     return;
   };
-  let _ = deno_core::unsync::spawn_blocking(move || {
+  let write = deno_core::unsync::spawn_blocking(move || {
     api.write_clipboard_text(&text);
-  })
-  .await;
+  });
+  let _ = tokio::time::timeout(CLIPBOARD_TIMEOUT, write).await;
 }
 
 fn permission_state_to_web_string(state: PermissionState) -> &'static str {
