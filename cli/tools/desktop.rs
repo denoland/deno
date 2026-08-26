@@ -3138,6 +3138,16 @@ async fn package_macos_app_bundle(
   // Generate Info.plist. The backend binary is the CFBundleExecutable so
   // there is no shell-script `exec` between LaunchServices and the GUI
   // process (which would break tray registration — see above).
+  // Warn here rather than inside the renderer, which is otherwise a pure
+  // string builder (and is called repeatedly from tests). The plist keys
+  // accept only period-separated integers, so a non-numeric version leaves
+  // the defaults in place — say so, since the deb/rpm path rejects the same
+  // `deno.json` outright.
+  warn_if_version_not_numeric(
+    config_package_version(cli_options).as_deref(),
+    "the bundle will carry CFBundleShortVersionString 1.0 / CFBundleVersion \
+     1.0.0 (both accept only period-separated integers)",
+  );
   let info_plist = render_macos_info_plist(
     &app_name,
     &bundle_id,
@@ -3252,18 +3262,6 @@ fn render_macos_info_plist(
           .collect::<Vec<_>>()
           .join(".")
       });
-  // The plist keys accept only period-separated integers, so a non-numeric
-  // version leaves the defaults in place. Say so rather than silently
-  // shipping `1.0` — the deb/rpm path rejects the same `deno.json` outright.
-  if let Some(version) = config_version
-    && numeric_version.is_none()
-  {
-    log::warn!(
-      "deno.json `version` \"{version}\" is not numeric; the bundle will \
-       carry CFBundleShortVersionString 1.0 / CFBundleVersion 1.0.0 \
-       (both accept only period-separated integers)"
-    );
-  }
   let short_version = numeric_version.as_deref().unwrap_or("1.0");
   let bundle_version = numeric_version.as_deref().unwrap_or("1.0.0");
   format!(
@@ -4346,9 +4344,10 @@ fn msi_product_version(
     // the default is the only way through. Say so: on the deb/rpm path the
     // same `deno.json` is a hard error, and silently shipping a version the
     // user didn't write is the class of bug this whole change exists to fix.
-    log::warn!(
-      "deno.json `version` \"{version}\" is not numeric; the .msi will be \
-       built with ProductVersion 1.0.0 (MSI accepts only major.minor.build)"
+    warn_if_version_not_numeric(
+      Some(version),
+      "the .msi will be built with ProductVersion 1.0.0 (MSI accepts only \
+       major.minor.build)",
     );
     return Ok("1.0.0".to_string());
   };
@@ -4381,6 +4380,25 @@ fn msi_product_version(
   )
 }
 
+/// Warn that a configured version isn't numeric and a default is being used
+/// in its place.
+///
+/// The formats that need a numeric version (MSI's ProductVersion, the plist
+/// version keys) can't express one that isn't, so falling back is the only
+/// way through — but the deb/rpm path rejects the very same `deno.json`, and
+/// quietly shipping a version the user didn't write is the failure #36503 is
+/// about. `consequence` names what the build will carry instead.
+fn warn_if_version_not_numeric(
+  config_version: Option<&str>,
+  consequence: &str,
+) {
+  if let Some(version) = config_version
+    && numeric_version_fields(version).is_none()
+  {
+    log::warn!("deno.json `version` {version:?} is not numeric; {consequence}");
+  }
+}
+
 /// The leading numeric `major[.minor[.build]]` fields of a version, dropping
 /// any semver prerelease/build suffix. `None` when the version isn't numeric
 /// at all (`weird`, `1.beta.2`) — the packagers that need a numeric version
@@ -4391,11 +4409,24 @@ fn msi_product_version(
 /// so the padding carries no meaning to drop.
 fn numeric_version_fields(version: &str) -> Option<Vec<u64>> {
   let core = version.split(['-', '+']).next().unwrap_or(version);
-  core
-    .split('.')
+  let all: Vec<&str> = core.split('.').collect();
+  let fields = all
+    .iter()
     .take(3)
     .map(|p| p.parse::<u64>().ok())
-    .collect::<Option<Vec<_>>>()
+    .collect::<Option<Vec<_>>>()?;
+  // A fourth field is dropped rather than rejected: three is all either
+  // target can hold (MSI's ProductVersion has three, `CFBundleVersion`
+  // accepts at most three integers), so the output is right either way.
+  // Still worth saying, since the non-numeric truncation next door warns.
+  if all.len() > 3 {
+    log::warn!(
+      "deno.json `version` {version:?} has more than three numeric fields; \
+       only the leading major.minor.build are used for the .msi and .app \
+       versions"
+    );
+  }
+  Some(fields)
 }
 
 /// Wrap a Windows app directory in a Windows Installer `.msi` package.
