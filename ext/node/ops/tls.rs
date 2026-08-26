@@ -74,8 +74,10 @@ pub(crate) struct NodeTlsState {
   pub(crate) server_ticketer:
     Option<Arc<dyn deno_tls::rustls::server::ProducesTickets>>,
   /// Cached TLS-1.3 client cert verifiers and shared "no client cert"
-  /// resolvers, used when a client connection is built without custom CA
-  /// certs or a client cert.  Reusing these `Arc`s across connections keeps
+  /// resolvers, used when a client connection is built without per-context
+  /// `ca` certs or a client cert (a process-level custom CA from
+  /// `setDefaultCACertificates` is fine: the setter drops these caches
+  /// whenever it changes).  Reusing these `Arc`s across connections keeps
   /// rustls's session-resumption identity check (`Arc::downgrade(&verifier)`)
   /// stable, which is what allows `tls.TLSSocket#isSessionReused()` to
   /// return true on subsequent connections.  Keep strict and
