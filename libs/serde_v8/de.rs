@@ -5,15 +5,15 @@ use serde::de::SeqAccess as _;
 use serde::de::Visitor;
 use serde::de::{self};
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::JsBuffer;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::StringOrBuffer;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::U16String;
 use crate::error::Error;
 use crate::error::Result;
@@ -335,7 +335,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
     }
   }
 
-  #[allow(deprecated)] // dispatch arms for deprecated magic types
+  #[allow(deprecated, reason = "dispatch arms for deprecated magic types")]
   fn deserialize_struct<V>(
     self,
     name: &'static str,

@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-#![allow(deprecated)] // exercises deprecated magic types until removal
+#![allow(deprecated, reason = "exercises deprecated magic types until removal")]
 
 use serde::Deserialize;
 use serde::Deserializer;

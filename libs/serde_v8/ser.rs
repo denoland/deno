@@ -5,14 +5,14 @@ use std::cell::RefCell;
 use serde::ser;
 use serde::ser::Serialize;
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::ExternalPointer;
 use crate::ToJsBuffer;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::U16String;
 use crate::error::Error;
 use crate::error::Result;
@@ -277,7 +277,7 @@ impl<'a, T: MagicType + ToV8> ser::SerializeStruct
 }
 
 // Dispatches between magic and regular struct serializers
-#[allow(deprecated)] // carries deprecated magic types until their removal
+#[allow(deprecated, reason = "carries deprecated magic types until their removal")]
 pub enum StructSerializers<'a, 'b, 'c, 'i> {
   ExternalPointer(MagicalSerializer<'a, 'b, 'c, 'i, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, 'i, magic::Value<'a>>),
@@ -572,7 +572,7 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   /// Serialises Rust typed structs into plain JS objects.
-  #[allow(deprecated)] // dispatch arms for deprecated magic types
+  #[allow(deprecated, reason = "dispatch arms for deprecated magic types")]
   fn serialize_struct(
     self,
     name: &'static str,

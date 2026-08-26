@@ -23,7 +23,7 @@ use std::sync::Arc;
 pub use blob::BlobError;
 pub use compression::CompressionError;
 pub use css_stylesheet::create_css_style_sheet;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use deno_core::U16String;
 use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
@@ -704,7 +704,7 @@ fn op_encoding_decode_utf8<'a>(
   }
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 #[serde]
 fn op_encoding_decode_single(
@@ -774,7 +774,7 @@ fn op_encoding_new_decoder(
   })
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 #[serde]
 fn op_encoding_decode(

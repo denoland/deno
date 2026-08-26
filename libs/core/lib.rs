@@ -73,10 +73,10 @@ pub use serde_v8;
 pub use serde_v8::ByteString;
 pub use serde_v8::DetachedBuffer;
 pub use serde_v8::JsBuffer;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 pub use serde_v8::StringOrBuffer;
 pub use serde_v8::ToJsBuffer;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;

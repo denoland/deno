@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-#![allow(deprecated)] // impls for the deprecated type itself
+#![allow(deprecated, reason = "impls for the deprecated type itself")]
 
 use num_bigint::BigInt;
 

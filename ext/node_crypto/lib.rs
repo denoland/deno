@@ -9,7 +9,7 @@ use std::rc::Rc;
 use aws_lc_rs::signature::Ed25519KeyPair;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use deno_core::StringOrBuffer;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
@@ -391,7 +391,7 @@ fn create_oaep(
   Ok(oaep)
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
@@ -432,7 +432,7 @@ pub fn op_node_private_encrypt(
   }
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
@@ -505,7 +505,7 @@ pub fn op_node_validate_oaep_hash(
   create_oaep(Some(hash), None).map(|_| ())
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
@@ -566,7 +566,7 @@ pub fn op_node_public_encrypt(
   }
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 pub fn op_node_public_decrypt(
   #[serde] key: StringOrBuffer,
@@ -1052,7 +1052,7 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
   dist.sample(&mut rng)
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn scrypt(
   password: StringOrBuffer,
@@ -1111,7 +1111,7 @@ fn scrypt(
 }
 
 #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
@@ -1145,7 +1145,7 @@ pub enum ScryptAsyncError {
   Other(JsErrorBox),
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 #[op2]
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
