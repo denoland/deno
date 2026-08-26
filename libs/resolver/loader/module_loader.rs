@@ -10,6 +10,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::errors::PackageJsonLoadError;
 use url::Url;
 
@@ -20,6 +21,7 @@ use super::LoadedModuleOrAsset;
 use super::LoadedModuleSource;
 use super::NpmModuleLoadError;
 use super::RequestedModuleType;
+use super::media_type_name;
 use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
 use crate::emit::EmitParsedSourceHelperError;
@@ -83,6 +85,14 @@ pub enum LoadCodeSourceErrorKind {
     "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."
   )]
   MissingJsonAttribute,
+  #[class(type)]
+  #[error(
+    "Expected a JSON module, but identified a {actual} module.\n  Specifier: {specifier}"
+  )]
+  ExpectedJsonModule {
+    specifier: Url,
+    actual: &'static str,
+  },
   #[class(inherit)]
   #[error(transparent)]
   NpmModuleLoad(#[from] NpmModuleLoadError),
@@ -188,10 +198,16 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     // referrer from all error messages. This should be up to deno_core to display.
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
+    cjs_analysis_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<LoadedModuleOrAsset<'a>, LoadCodeSourceError> {
     let source = match self
       .prepared_module_loader
-      .load_prepared_module(graph, specifier, requested_module_type)
+      .load_prepared_module(
+        graph,
+        specifier,
+        requested_module_type,
+        cjs_analysis_source_provider,
+      )
       .await
       .map_err(LoadCodeSourceError::from)?
     {
@@ -214,6 +230,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
               Cow::Borrowed(specifier),
               maybe_referrer,
               requested_module_type,
+              cjs_analysis_source_provider,
             )
             .await
             .map_err(LoadCodeSourceError::from)?;
@@ -250,6 +267,16 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
           && matches!(self.allow_json_imports, AllowJsonImports::WithAttribute)
         {
           Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
+        } else if matches!(requested_module_type, RequestedModuleType::Json)
+          && loaded_module.media_type != MediaType::Json
+        {
+          Err(
+            LoadCodeSourceErrorKind::ExpectedJsonModule {
+              specifier: loaded_module.specifier.clone().into_owned(),
+              actual: media_type_name(loaded_module.media_type),
+            }
+            .into_box(),
+          )
         } else {
           Ok(source)
         }
@@ -282,6 +309,17 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     {
       return Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box());
     }
+    if matches!(requested_module_type, RequestedModuleType::Json)
+      && loaded_module.media_type != MediaType::Json
+    {
+      return Err(
+        LoadCodeSourceErrorKind::ExpectedJsonModule {
+          specifier: loaded_module.specifier.clone().into_owned(),
+          actual: media_type_name(loaded_module.media_type),
+        }
+        .into_box(),
+      );
+    }
 
     Ok(Some(loaded_module))
   }
@@ -311,6 +349,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
     graph: &'graph ModuleGraph,
     specifier: &Url,
     requested_module_type: &RequestedModuleType<'_>,
+    cjs_analysis_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<Option<LoadedModuleOrAsset<'graph>>, LoadPreparedModuleError> {
     // Note: keep this in sync with the sync version below
     match self.load_prepared_module_or_defer_emit(
@@ -346,7 +385,13 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         media_type,
         source,
       }) => self
-        .load_maybe_cjs(specifier, media_type, source)
+        .load_maybe_cjs(
+          graph,
+          specifier,
+          media_type,
+          source,
+          cjs_analysis_source_provider,
+        )
         .await
         .map(|text| {
           Some(LoadedModuleOrAsset::Module(LoadedModule {
@@ -477,6 +522,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         &self.sys,
         deno_graph::ModuleGraphError::ModuleError(err.clone()),
         EnhanceGraphErrorMode::ShowRange,
+        true,
         // This is the post-build module-load path; bare-specifier resolution
         // hints don't apply here.
         &[],
@@ -615,9 +661,11 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
 
   async fn load_maybe_cjs(
     &self,
+    graph: &ModuleGraph,
     specifier: &Url,
     media_type: MediaType,
     original_source: &ArcStr,
+    fallback_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<ArcStr, LoadMaybeCjsError> {
     let js_source = self
       .emitter
@@ -628,9 +676,15 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         original_source,
       )
       .await?;
+    let source_provider =
+      GraphCjsAnalysisSourceProvider::new(graph, fallback_source_provider);
     let text = self
       .node_code_translator
-      .translate_cjs_to_esm(specifier, Some(Cow::Borrowed(js_source.as_ref())))
+      .translate_cjs_to_esm_with_source_provider(
+        specifier,
+        Some(Cow::Borrowed(js_source.as_ref())),
+        Some(&source_provider),
+      )
       .await?;
     // Apply load-time security mitigations for known React Server Components
     // CVEs to the translated source. Opt in via `DENO_PATCH_REACT_CVE`.
@@ -648,5 +702,38 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       Cow::Borrowed(_) => js_source.clone(),
       Cow::Owned(text) => text.into(),
     })
+  }
+}
+
+pub struct GraphCjsAnalysisSourceProvider<'a> {
+  graph: &'a ModuleGraph,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+}
+
+impl<'a> GraphCjsAnalysisSourceProvider<'a> {
+  pub fn new(
+    graph: &'a ModuleGraph,
+    fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+  ) -> Self {
+    Self { graph, fallback }
+  }
+}
+
+impl CjsAnalysisSourceProvider for GraphCjsAnalysisSourceProvider<'_> {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
+    if let Some(module) = self.graph.get(specifier) {
+      match module {
+        deno_graph::Module::Js(module) => {
+          return Some(Cow::Borrowed(module.source.text.as_ref()));
+        }
+        deno_graph::Module::Json(module) => {
+          return Some(Cow::Borrowed(module.source.text.as_ref()));
+        }
+        _ => {}
+      }
+    }
+    self
+      .fallback
+      .and_then(|provider| provider.load_source(specifier))
   }
 }

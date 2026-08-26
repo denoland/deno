@@ -97,6 +97,10 @@ pub trait CjsCodeAnalyzer {
   ) -> Result<Option<Vec<String>>, JsErrorBox>;
 }
 
+pub trait CjsAnalysisSourceProvider {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>>;
+}
+
 pub enum ResolvedCjsAnalysis<'a> {
   Esm(Cow<'a, str>),
   Cjs(BTreeSet<String>),
@@ -184,7 +188,11 @@ impl<
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
+    source_provider: Option<&'a dyn CjsAnalysisSourceProvider>,
   ) -> Result<ResolvedCjsAnalysis<'a>, TranslateCjsToEsmError> {
+    let source = source.or_else(|| {
+      source_provider.and_then(|provider| provider.load_source(entry_specifier))
+    });
     let analysis = self
       .cjs_code_analyzer
       .analyze_cjs(entry_specifier, source, EsmAnalysisMode::SourceOnly)
@@ -209,6 +217,7 @@ impl<
           analysis.reexports,
           &mut all_exports,
           &mut errors,
+          source_provider,
         )
         .await;
 
@@ -227,6 +236,7 @@ impl<
           &analysis.member_reexports,
           &mut all_exports,
           &mut errors,
+          source_provider,
         )
         .await;
       // Members whose attached names couldn't be determined statically
@@ -238,6 +248,7 @@ impl<
             fallback_reexports,
             &mut all_exports,
             &mut errors,
+            source_provider,
           )
           .await;
       }
@@ -274,6 +285,7 @@ impl<
     member_reexports: &[CjsMemberReExport],
     all_exports: &mut BTreeSet<String>,
     errors: &mut Vec<JsErrorBox>,
+    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Vec<String> {
     let mut fallback_reexports = Vec::new();
     for entry in member_reexports {
@@ -306,7 +318,12 @@ impl<
       };
       let props = match self
         .cjs_code_analyzer
-        .analyze_cjs_member_props(&inner_specifier, None, &entry.member)
+        .analyze_cjs_member_props(
+          &inner_specifier,
+          source_provider
+            .and_then(|provider| provider.load_source(&inner_specifier)),
+          &entry.member,
+        )
         .await
       {
         Ok(Some(props)) => props,
@@ -343,13 +360,15 @@ impl<
     // this goes through the modules concurrently, so collect
     // the errors in order to be deterministic
     errors: &mut Vec<JsErrorBox>,
+    source_provider: Option<&'a (dyn CjsAnalysisSourceProvider + 'a)>,
   ) {
-    struct Analysis {
+    struct Analysis<'a> {
       reexport_specifier: url::Url,
-      analysis: CjsAnalysis<'static>,
+      analysis: CjsAnalysis<'a>,
     }
 
-    type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, JsErrorBox>>;
+    type AnalysisFuture<'a> =
+      LocalBoxFuture<'a, Result<Analysis<'a>, JsErrorBox>>;
 
     let mut handled_reexports: HashSet<Url> = HashSet::default();
     handled_reexports.insert(entry_specifier.clone());
@@ -399,10 +418,12 @@ impl<
 
           let referrer = referrer.clone();
           let future = async move {
+            let source = source_provider
+              .and_then(|provider| provider.load_source(&reexport_specifier));
             let analysis = cjs_code_analyzer
               .analyze_cjs(
                 &reexport_specifier,
-                None,
+                source,
                 EsmAnalysisMode::SourceImportsAndExports,
               )
               .await
@@ -462,6 +483,7 @@ impl<
                 &analysis.member_reexports,
                 all_exports,
                 errors,
+                source_provider,
               )
               .await;
             // Members that couldn't be narrowed statically fall back to a
@@ -499,12 +521,17 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<UrlOrPath>, JsErrorBox> {
-    if specifier.starts_with('/') {
-      todo!();
-    }
-
     let referrer = UrlOrPathRef::from_url(referrer);
     let referrer_path = referrer.path().unwrap();
+    if specifier.starts_with('/') {
+      return Ok(
+        self
+          .file_extension_probe(PathBuf::from(specifier), referrer_path)
+          .ok()
+          .map(UrlOrPath::Path),
+      );
+    }
+
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
@@ -622,30 +649,26 @@ impl<
   ) -> Result<PathBuf, JsErrorBox> {
     let p = p.clean();
     if self.sys.fs_exists_no_err(&p) {
-      let file_name = p.file_name().unwrap();
-      let p_js =
-        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.sys.fs_is_file_no_err(&p_js) {
+      if let Some(p_js) = with_file_name_suffix(&p, ".js")
+        && self.sys.fs_is_file_no_err(&p_js)
+      {
         return Ok(p_js);
-      } else if self.sys.fs_is_dir_no_err(&p) {
+      }
+      if self.sys.fs_is_dir_no_err(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
       }
-    } else if let Some(file_name) = p.file_name() {
+    } else {
+      if let Some(p_js) = with_file_name_suffix(&p, ".js")
+        && self.sys.fs_is_file_no_err(&p_js)
       {
-        let p_js =
-          p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-        if self.sys.fs_is_file_no_err(&p_js) {
-          return Ok(p_js);
-        }
+        return Ok(p_js);
       }
+      if let Some(p_json) = with_file_name_suffix(&p, ".json")
+        && self.sys.fs_is_file_no_err(&p_json)
       {
-        let p_json =
-          p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
-        if self.sys.fs_is_file_no_err(&p_json) {
-          return Ok(p_json);
-        }
+        return Ok(p_json);
       }
     }
     Err(JsErrorBox::from_err(ModuleNotFoundError {
@@ -656,6 +679,12 @@ impl<
   }
 }
 
+fn with_file_name_suffix(path: &Path, suffix: &str) -> Option<PathBuf> {
+  let mut file_name = path.file_name()?.to_os_string();
+  file_name.push(suffix);
+  Some(path.with_file_name(file_name))
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TranslateCjsToEsmError {
   #[class(inherit)]
@@ -664,6 +693,12 @@ pub enum TranslateCjsToEsmError {
   #[class(inherit)]
   #[error(transparent)]
   ExportAnalysis(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+  #[class("InvalidData")]
+  #[error("CommonJS module path {0:?} is not valid UTF-8")]
+  InvalidUtf8Path(std::ffi::OsString),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -765,12 +800,23 @@ impl<
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
+    self
+      .translate_cjs_to_esm_with_source_provider(entry_specifier, source, None)
+      .await
+  }
+
+  pub async fn translate_cjs_to_esm_with_source_provider<'a>(
+    &self,
+    entry_specifier: &Url,
+    source: Option<Cow<'a, str>>,
+    source_provider: Option<&'a dyn CjsAnalysisSourceProvider>,
+  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
     let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Disabled) {
       return Ok(source.unwrap());
     } else {
       let analysis = self
         .module_export_analyzer
-        .analyze_all_exports(entry_specifier, source)
+        .analyze_all_exports(entry_specifier, source, source_provider)
         .await?;
 
       match analysis {
@@ -778,10 +824,7 @@ impl<
         ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
       }
     };
-    Ok(Cow::Owned(exports_to_wrapper_module(
-      entry_specifier,
-      &all_exports,
-    )))
+    exports_to_wrapper_module(entry_specifier, &all_exports).map(Cow::Owned)
   }
 }
 
@@ -861,15 +904,18 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
 fn exports_to_wrapper_module(
   entry_specifier: &Url,
   all_exports: &BTreeSet<String>,
-) -> String {
-  let quoted_entry_specifier_text = to_double_quote_string(
-    url_to_file_path(entry_specifier).unwrap().to_str().unwrap(),
-  );
+) -> Result<String, TranslateCjsToEsmError> {
+  let entry_path = url_to_file_path(entry_specifier)?;
+  let entry_path = entry_path
+    .into_os_string()
+    .into_string()
+    .map_err(TranslateCjsToEsmError::InvalidUtf8Path)?;
+  let quoted_entry_specifier_text = to_double_quote_string(&entry_path);
   let export_names_with_quoted = all_exports
     .iter()
     .map(|export| (export.as_str(), to_double_quote_string(export)))
     .collect::<Vec<_>>();
-  capacity_builder::StringBuilder::<String>::build(|builder| {
+  Ok(capacity_builder::StringBuilder::<String>::build(|builder| {
       let mut temp_var_count = 0;
       builder.append(
         r#"import { createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
@@ -913,7 +959,7 @@ if (import.meta.main) {
         |builder| builder.append("mod"),
         &mut temp_var_count,
       );
-    }).unwrap()
+    }).unwrap())
 }
 
 fn add_export<'a>(
@@ -984,7 +1030,7 @@ mod tests {
     let exports = BTreeSet::from(
       ["static", "server", "app", "dashed-export", "3d"].map(|s| s.to_string()),
     );
-    let text = exports_to_wrapper_module(&url, &exports);
+    let text = exports_to_wrapper_module(&url, &exports).unwrap();
     assert_eq!(
       text,
       r#"import { createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
@@ -1017,5 +1063,32 @@ export { __deno_export_4__ as "module.exports" };
       to_double_quote_string("\r\n\t\"test"),
       "\"\\r\\n\\t\\\"test\""
     );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn test_with_file_name_suffix_preserves_non_utf8() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::ffi::OsStringExt;
+
+    let path = PathBuf::from(OsString::from_vec(b"/tmp/cjs-\xff".to_vec()));
+    let path = with_file_name_suffix(&path, ".js").unwrap();
+    assert_eq!(path.as_os_str().as_bytes(), b"/tmp/cjs-\xff.js");
+  }
+
+  #[cfg(target_os = "linux")]
+  #[test]
+  fn test_exports_to_wrapper_module_rejects_non_utf8_path() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let url = Url::parse("file:///tmp/cjs-%FF.cjs").unwrap();
+    let err = exports_to_wrapper_module(&url, &BTreeSet::new()).unwrap_err();
+    match err {
+      TranslateCjsToEsmError::InvalidUtf8Path(path) => {
+        assert_eq!(path.as_bytes(), b"/tmp/cjs-\xff.cjs");
+      }
+      err => panic!("unexpected error: {err}"),
+    }
   }
 }

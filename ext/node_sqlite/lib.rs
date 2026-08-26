@@ -122,7 +122,7 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidCallback(&'static str),
   #[class(type)]
-  #[error("FromUtf8Error: {0}")]
+  #[error("String contains a null byte: {0}")]
   #[property("code" = self.code())]
   FromNullError(#[from] std::ffi::NulError),
   #[class(type)]
@@ -201,7 +201,9 @@ impl SqliteError {
     match self {
       Self::InvalidConstructor => ErrorCode::ERR_ILLEGAL_CONSTRUCTOR,
       Self::InvalidBindType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
-      Self::InvalidBindValue(_) => ErrorCode::ERR_INVALID_ARG_VALUE,
+      Self::InvalidBindValue(_) | Self::FromNullError(_) => {
+        ErrorCode::ERR_INVALID_ARG_VALUE
+      }
       Self::FailedBind(_)
       | Self::UnknownNamedParameter(_)
       | Self::DuplicateNamedParameter(..)

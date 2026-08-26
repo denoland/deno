@@ -1847,12 +1847,19 @@ export class Buffer extends Uint8Array {
    * @since v1.5.0
    * @param value What to search for.
    * @param [byteOffset=0] Where to begin searching in `buf`. If negative, then offset is calculated from the end of `buf`.
+   * @param [end=buf.length] Where to stop searching in `buf` (exclusive).
    * @param [encoding='utf8'] If `value` is a string, this is the encoding used to determine the binary representation of the string that will be searched for in `buf`.
    * @return The index of the first occurrence of `value` in `buf`, or `-1` if `buf` does not contain `value`.
    */
   indexOf(
     value: string | number | Uint8Array,
     byteOffset?: number,
+    encoding?: Encoding,
+  ): number;
+  indexOf(
+    value: string | number | Uint8Array,
+    byteOffset: number | undefined,
+    end: number,
     encoding?: Encoding,
   ): number;
   /**
@@ -1919,12 +1926,19 @@ export class Buffer extends Uint8Array {
    * @since v6.0.0
    * @param value What to search for.
    * @param [byteOffset=buf.length - 1] Where to begin searching in `buf`. If negative, then offset is calculated from the end of `buf`.
+   * @param [end=buf.length] Where to stop searching in `buf` (exclusive).
    * @param [encoding='utf8'] If `value` is a string, this is the encoding used to determine the binary representation of the string that will be searched for in `buf`.
    * @return The index of the last occurrence of `value` in `buf`, or `-1` if `buf` does not contain `value`.
    */
   lastIndexOf(
     value: string | number | Uint8Array,
     byteOffset?: number,
+    encoding?: Encoding,
+  ): number;
+  lastIndexOf(
+    value: string | number | Uint8Array,
+    byteOffset: number | undefined,
+    end: number,
     encoding?: Encoding,
   ): number;
   /**
@@ -1978,12 +1992,19 @@ export class Buffer extends Uint8Array {
    * @since v5.3.0
    * @param value What to search for.
    * @param [byteOffset=0] Where to begin searching in `buf`. If negative, then offset is calculated from the end of `buf`.
+   * @param [end=buf.length] Where to stop searching in `buf` (exclusive).
    * @param [encoding='utf8'] If `value` is a string, this is its encoding.
    * @return `true` if `value` was found in `buf`, `false` otherwise.
    */
   includes(
     value: string | number | Buffer,
     byteOffset?: number,
+    encoding?: Encoding,
+  ): boolean;
+  includes(
+    value: string | number | Buffer,
+    byteOffset: number | undefined,
+    end: number,
     encoding?: Encoding,
   ): boolean;
   /**

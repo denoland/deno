@@ -1,4 +1,7 @@
 {
+  // ignored: .d.ts entrypoint not checked under skipLibCheck:true.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check index.js",
   "output": "check.out",
   "exitCode": 1

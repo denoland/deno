@@ -285,10 +285,29 @@ impl TestContextBuilder {
       None => cwd,
     };
 
+    // Point `deno check` at a pre-downloaded native compiler so each test's
+    // fresh temp `DENO_DIR` doesn't re-download it. `tools/download_tsc.ts`
+    // materializes it under `<target>/.native_tsc/deno_dir`; the harness resolves
+    // that path itself and injects `DENO_TSC_BIN` per-test (like `JSR_URL`),
+    // instead of relying on a CI script exporting it into the ambient env. An
+    // explicit ambient `DENO_TSC_BIN` (e.g. a local `export`) still wins, as does
+    // a value a test sets itself.
+    let mut envs = self.envs.clone();
+    if !envs.contains_key("DENO_TSC_BIN") {
+      let tsc_bin = std::env::var_os("DENO_TSC_BIN")
+        .map(|v| v.to_string_lossy().into_owned())
+        .or_else(|| {
+          crate::native_tsc_bin_path().map(|p| p.to_string_lossy().into_owned())
+        });
+      if let Some(tsc_bin) = tsc_bin {
+        envs.insert("DENO_TSC_BIN".to_string(), tsc_bin);
+      }
+    }
+
     TestContext {
       cwd,
       deno_exe,
-      envs: self.envs.clone(),
+      envs,
       diagnostic_logger: self.diagnostic_logger.clone(),
       _http_server_guard: http_server_guard,
       deno_dir,

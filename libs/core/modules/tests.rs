@@ -559,6 +559,32 @@ fn test_lazy_loaded_esm() {
 }
 
 #[test]
+fn test_lazy_loaded_esm_rejects_non_lazy_cached_module() {
+  let mut runtime = JsRuntime::new(Default::default());
+
+  runtime
+    .execute_script(
+      "setup.js",
+      r#"
+      const load = Deno.core.createLazyLoader("ext:core/ops");
+      let error;
+      try {
+        load();
+      } catch (caught) {
+        error = caught;
+      }
+      if (error === undefined) {
+        throw new Error("a non-lazy cached module was loaded");
+      }
+      if (!error.message.includes("cannot be lazy-loaded")) {
+        throw error;
+      }
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
 fn test_lazy_loaded_esm_aliased_specifier() {
   deno_core::extension!(
     test_ext,
@@ -660,6 +686,39 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   let result = runtime.mod_evaluate(mod_id);
   runtime.run_event_loop(Default::default()).await.unwrap();
   result.await.unwrap();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/36216
+///
+/// Evaluating a pre-instantiated module cached under a synthetic ESM specifier
+/// can synchronously start a dynamic import. The cache-hit path must not keep
+/// `ModuleMapData` borrowed while V8 runs the module body, because starting
+/// the import allocates a new module load ID from the same map.
+#[test]
+fn test_cached_synthetic_esm_evaluation_allows_dynamic_import() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  module_map.add_synthetic_esm_module(
+    ascii_str!("custom:synthetic").into(),
+    ascii_str!("ext:test/backing.js").into(),
+  );
+  let module_id = module_map
+    .new_es_module(
+      scope,
+      false,
+      ascii_str!("custom:synthetic").into(),
+      ascii_str!(r#"import("file:///dynamic_import.js").catch(() => {});"#)
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, module_id).unwrap();
+  module_map
+    .lazy_load_synthetic_esm_module(scope, "custom:synthetic")
+    .unwrap();
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/34307
@@ -941,6 +1000,58 @@ fn test_validate_import_attributes_default() {
     .unwrap();
 }
 
+fn fs_module_loader_specifier(file_name: &str) -> ModuleSpecifier {
+  let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("modules")
+    .join("testdata")
+    .join(file_name);
+  deno_path_util::url_from_file_path(&path).unwrap()
+}
+
+async fn load_fs_module(
+  file_name: &str,
+  requested_module_type: RequestedModuleType,
+) -> Result<ModuleSource, ModuleLoaderError> {
+  let specifier = fs_module_loader_specifier(file_name);
+  let response = FsModuleLoader.load(
+    &specifier,
+    None,
+    ModuleLoadOptions {
+      is_dynamic_import: false,
+      is_synchronous: false,
+      requested_module_type,
+    },
+  );
+  match response {
+    ModuleLoadResponse::Sync(result) => result,
+    ModuleLoadResponse::Async(future) => future.await,
+  }
+}
+
+#[tokio::test]
+async fn test_fs_module_loader_rejects_non_json_for_json_request() {
+  for file_name in ["fs_module_loader.js", "fs_module_loader"] {
+    let specifier = fs_module_loader_specifier(file_name);
+    let error = load_fs_module(file_name, RequestedModuleType::Json)
+      .await
+      .unwrap_err();
+
+    assert_eq!(error.get_class(), "TypeError");
+    assert_eq!(
+      error.to_string(),
+      format!(
+        "Expected a JSON module, but identified a JavaScript module.\n  Specifier: {specifier}"
+      )
+    );
+  }
+
+  let module =
+    load_fs_module("fs_module_loader.json", RequestedModuleType::Json)
+      .await
+      .unwrap();
+  assert_eq!(module.module_type, ModuleType::Json);
+}
+
 #[test]
 fn test_validate_import_attributes_callback() {
   // Verify that `validate_import_attributes_cb` is called and can deny
@@ -1076,6 +1187,60 @@ fn test_validate_import_attributes_callback2() {
       exception_to_err_result::<()>(scope, exception, false, true).unwrap_err();
     assert_eq!(err.to_string(), "Uncaught TypeError: boom!");
   }
+}
+
+#[tokio::test]
+async fn test_validate_import_attributes_callback_dynamic_import() {
+  fn validate_import_attributes(
+    scope: &mut v8::PinScope,
+    _attributes: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
+  ) {
+    let message = v8::String::new(scope, "boom!").unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+  }
+
+  let loader = Rc::new(TestingModuleLoader::new(StaticModuleLoader::with(
+    Url::parse("file:///target.js").unwrap(),
+    ascii_str!("globalThis.executed = true;"),
+  )));
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader.clone()),
+    validate_import_attributes_cb: Some(Box::new(validate_import_attributes)),
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "file:///main.js",
+      r#"
+      globalThis.executed = false;
+      globalThis.importError = undefined;
+      import("./target.js", { with: { unsupported: "value" } })
+        .catch((error) => globalThis.importError = error);
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  assert_eq!(loader.counts(), ModuleLoadEventCounts::default());
+  runtime
+    .execute_script(
+      "file:///check.js",
+      r#"
+      if (globalThis.executed) {
+        throw new Error("rejected import was evaluated");
+      }
+      if (!(globalThis.importError instanceof TypeError)) {
+        throw new Error("expected dynamic import to reject with TypeError");
+      }
+      if (globalThis.importError.message !== "boom!") {
+        throw new Error(`unexpected rejection: ${globalThis.importError}`);
+      }
+      "#,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -1874,6 +2039,7 @@ fn main_and_side_module() {
 
 #[test]
 fn dynamic_imports_snapshot() {
+  let _snapshot_lock = crate::runtime::tests::snapshot_test_lock();
   //TODO: Once the issue with the ModuleNamespaceEntryGetter is fixed, we can maintain a reference to the module
   // and use it when loading the snapshot
   let snapshot = {
@@ -1914,6 +2080,7 @@ fn dynamic_imports_snapshot() {
 
 #[test]
 fn import_meta_snapshot() {
+  let _snapshot_lock = crate::runtime::tests::snapshot_test_lock();
   let snapshot = {
     const MAIN_WITH_CODE_SRC: &str = r#"
       if (import.meta.url != 'file:///main_with_code.js') throw Error();
@@ -2160,6 +2327,7 @@ fn builtin_core_module() {
     module_loader: Some(Rc::new(loader)),
     ..Default::default()
   });
+  runtime.module_map().set_loading_internal_modules(true);
 
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
@@ -2167,6 +2335,98 @@ fn builtin_core_module() {
   #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
+    .unwrap();
+  runtime.module_map().set_loading_internal_modules(false);
+}
+
+#[test]
+fn safe_array_iterator_remains_done_after_array_grows() {
+  let main_specifier =
+    resolve_url("ext:///safe_array_iterator_test.js").unwrap();
+
+  let source_code = r#"
+    import { primordials } from "ext:core/mod.js";
+
+    const array = [1, 2];
+    const iterator = new primordials.SafeArrayIterator(array);
+
+    for (const value of iterator) {
+      if (value !== 1) throw new Error("unexpected first value");
+      break;
+    }
+
+    const resumed = iterator.next();
+    if (resumed.done || resumed.value !== 2) {
+      throw new Error("iterator did not resume after an early exit");
+    }
+    if (!iterator.next().done) throw new Error("iterator was not exhausted");
+
+    array.push(3);
+    if (!iterator.next().done) {
+      throw new Error("exhausted iterator resumed after the array grew");
+    }
+  "#;
+  let loader = StaticModuleLoader::new([(main_specifier.clone(), source_code)]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(loader)),
+    ..Default::default()
+  });
+  runtime.module_map().set_loading_internal_modules(true);
+
+  let main_id =
+    futures::executor::block_on(runtime.load_main_es_module(&main_specifier))
+      .unwrap();
+  let receiver = runtime.mod_evaluate(main_id);
+  futures::executor::block_on(runtime.run_event_loop(Default::default()))
+    .unwrap();
+  futures::executor::block_on(receiver).unwrap();
+  runtime.module_map().set_loading_internal_modules(false);
+}
+
+// An internal module that is lazily loaded at runtime gets its imports
+// resolved by the embedder's loader, which in Deno applies the user's import
+// map. Mapping `ext:core/mod.js` used to rewrite internal imports too and
+// break instantiation. Regression test for
+// https://github.com/denoland/deno/issues/36302.
+#[test]
+fn lazy_loaded_internal_module_ignores_loader_remapping() {
+  /// Stands in for an import map that maps every specifier.
+  struct RemappingLoader;
+
+  impl ModuleLoader for RemappingLoader {
+    fn resolve(
+      &self,
+      _specifier: &str,
+      _referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      Ok(ModuleSpecifier::parse("file:///remapped.js").unwrap())
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!();
+    }
+  }
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(RemappingLoader)),
+    ..Default::default()
+  });
+
+  runtime
+    .lazy_load_es_module_with_code(
+      "ext:test/lazy.js",
+      r#"
+      import { core } from "ext:core/mod.js";
+      if (typeof core === "undefined") throw new Error("core missing");
+    "#,
+    )
     .unwrap();
 }
 
@@ -2425,6 +2685,54 @@ fn ext_module_loader_relative() {
       .resolve(specifier, referrer, ResolutionKind::Import)
       .unwrap();
     assert_eq!(result.as_str(), expected);
+  }
+}
+
+#[test]
+fn module_map_rejects_user_ext_imports_after_resolution() {
+  struct ExtResolvingLoader;
+
+  impl ModuleLoader for ExtResolvingLoader {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      if specifier == "mapped" {
+        return Ok(ModuleSpecifier::parse("ext:core/ops").unwrap());
+      }
+      let referrer = if referrer == "." {
+        "file:///"
+      } else {
+        referrer
+      };
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!()
+    }
+  }
+
+  let runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(ExtResolvingLoader)),
+    ..Default::default()
+  });
+  let module_map = runtime.module_map();
+
+  for specifier in ["Ext:core/ops", "mapped"] {
+    let error = module_map
+      .resolve(specifier, "file:///main.js", ResolutionKind::DynamicImport)
+      .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("Importing ext: modules is only allowed"));
+    assert!(message.contains("ext:core/ops"));
   }
 }
 

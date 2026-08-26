@@ -129,6 +129,49 @@ extern "C" fn test_callback_throws(
   result
 }
 
+extern "C" fn test_callback_info_reentrant(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
+  assert_eq!(ty, napi_function);
+
+  let outer_marker = args[1];
+
+  let mut global: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_global(env, &mut global));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_call_function(
+    env,
+    global,
+    args[0],
+    0,
+    ptr::null(),
+    &mut result,
+  ));
+
+  let (args_after_reentry, argc_after_reentry, _) =
+    napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc_after_reentry, 2);
+
+  let mut same_marker = false;
+  assert_napi_ok!(napi_strict_equals(
+    env,
+    outer_marker,
+    args_after_reentry[1],
+    &mut same_marker,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, same_marker, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_callback_run", test_callback_run),
@@ -138,6 +181,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       test_callback_run_with_recv
     ),
     napi_new_property!(env, "test_callback_throws", test_callback_throws),
+    napi_new_property!(
+      env,
+      "test_callback_info_reentrant",
+      test_callback_info_reentrant
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(

@@ -84,6 +84,12 @@ pub use pipe::PipeWrite;
 pub use pipe::RawPipeHandle;
 pub use pipe::pipe;
 
+/// Env var used by the Node `child_process` spawn path to tell a Deno child
+/// which extra numeric stdio fd slots it inherited. Both `deno_process` (which
+/// sets it) and `deno_io` (which consumes it at startup) reference this single
+/// constant so the name has one source of truth.
+pub const DENO_EXTRA_STDIO_FDS_ENV_VAR: &str = "DENO_EXTRA_STDIO_FDS";
+
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
   fn as_raw_io_handle(&self) -> RawIoHandle;
@@ -200,6 +206,58 @@ fn stdio_fd(fd: i32) -> StdFile {
   unsafe { StdFile::from_raw_fd(fd) }
 }
 
+#[cfg(unix)]
+fn inherited_extra_stdio_fd(fd: i32) -> Option<StdFile> {
+  if fd < 3 {
+    return None;
+  }
+  // The dup exists purely for in-process node:fs use, so mark it
+  // close-on-exec: unlike the original fd (which must stay inheritable, as
+  // in Node), the dup must not leak into spawned grandchildren, where it
+  // would hold pipe ends open and delay EOF for the parent.
+  // SAFETY: fcntl validates the descriptor and gives FdTable its own handle.
+  let dup_fd = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+  if dup_fd == -1 {
+    log::debug!(
+      "duplicating inherited extra stdio fd {} failed: {}",
+      fd,
+      std::io::Error::last_os_error()
+    );
+    return None;
+  }
+  // SAFETY: dup_fd is a fresh descriptor owned by the returned file.
+  Some(unsafe { StdFile::from_raw_fd(dup_fd) })
+}
+
+#[cfg(unix)]
+fn register_inherited_extra_stdio_fds(fd_table: &mut FdTable) {
+  let Ok(fds) = std::env::var(DENO_EXTRA_STDIO_FDS_ENV_VAR) else {
+    return;
+  };
+  // Consume the marker so it does not leak into the child's own environment
+  // (`Deno.env.toObject()`) and get inherited by grandchildren spawned through
+  // paths that bypass `create_command` (FFI exec, embedders, native modules),
+  // where the stale fd numbers would no longer be valid.
+  // SAFETY: this runs synchronously on the main thread during extension init,
+  // before any user JS (or worker/FFI/native code) that could read or write the
+  // environment runs, so there is no concurrent access to race with. This is
+  // the same startup env-mutation invariant Deno relies on elsewhere.
+  unsafe {
+    std::env::remove_var(DENO_EXTRA_STDIO_FDS_ENV_VAR);
+  }
+  for fd in fds.split(',').filter_map(|fd| fd.parse::<i32>().ok()) {
+    if fd_table.contains(fd) {
+      continue;
+    }
+    if let Some(file) = inherited_extra_stdio_fd(fd) {
+      fd_table.register_inherited_extra_stdio(
+        fd,
+        Rc::new(StdFileResourceInner::file(file, None)) as Rc<dyn fs::File>,
+      );
+    }
+  }
+}
+
 #[cfg(windows)]
 fn stdio_fd(fd: i32) -> StdFile {
   let std_handle = match fd {
@@ -300,6 +358,9 @@ deno_core::extension!(deno_io,
         stderr: child_stderr,
       });
     }
+
+    #[cfg(unix)]
+    register_inherited_extra_stdio_fds(&mut fd_table);
 
     state.put(fd_table);
   },
@@ -567,6 +628,63 @@ impl Drop for StdFileResourceInner {
   }
 }
 
+/// Runs work that may block for an unbounded amount of time on a dedicated
+/// thread, so that it never occupies a thread of the shared tokio blocking
+/// threadpool (which other fs operations need in order to make progress).
+///
+/// Thread creation can fail with `EAGAIN` once the OS refuses to create more
+/// threads, which is plausible in exactly the high-concurrency scenario this
+/// helper exists for. Such pressure is usually transient, so retry with backoff
+/// while it clears — waiting here costs nothing that the caller is not already
+/// waiting for, and it keeps the threadpool free for the work that will relieve
+/// the pressure.
+async fn spawn_unpooled_blocking<F, R>(action: F) -> R
+where
+  F: FnOnce() -> R + Send + 'static,
+  R: Send + 'static,
+{
+  // ~400ms of retries in total
+  const MAX_SPAWN_ATTEMPTS: usize = 10;
+  const MAX_SPAWN_BACKOFF: std::time::Duration =
+    std::time::Duration::from_millis(100);
+
+  let mut backoff = std::time::Duration::from_millis(1);
+
+  for attempt in 0..MAX_SPAWN_ATTEMPTS {
+    // `action` is handed to the thread only once the thread is known to exist,
+    // so that a failed spawn leaves it owned here and available to retry with
+    let (action_tx, action_rx) = std::sync::mpsc::channel::<F>();
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let spawn_result = std::thread::Builder::new()
+      .name("deno-flock".to_string())
+      // these threads only sit in a single syscall, so the default 2MB stack is
+      // wasteful when many locks are pending at once
+      .stack_size(256 * 1024)
+      .spawn(move || {
+        if let Ok(action) = action_rx.recv() {
+          let _ = result_tx.send(action());
+        }
+      });
+
+    if spawn_result.is_ok() {
+      // the receiver is alive, because the thread that owns it was spawned
+      let _ = action_tx.send(action);
+      return result_rx.await.unwrap();
+    }
+
+    if attempt + 1 < MAX_SPAWN_ATTEMPTS {
+      tokio::time::sleep(backoff).await;
+      backoff = (backoff * 2).min(MAX_SPAWN_BACKOFF);
+    }
+  }
+
+  // The exhaustion is not clearing, so stop retrying and use the threadpool.
+  // That gives up the guarantee above, but only on a machine that has stayed
+  // out of threads throughout, and stalling other fs work is a far better
+  // failure mode than failing the lock or aborting the process.
+  spawn_blocking(action).await.unwrap()
+}
+
 impl StdFileResourceInner {
   pub fn file(fs_file: StdFile, maybe_path: Option<PathBuf>) -> Self {
     StdFileResourceInner::new(StdFileResourceKind::File, fs_file, maybe_path)
@@ -598,6 +716,25 @@ impl StdFileResourceInner {
     }
   }
 
+  /// Gets the file for use off the current thread, cloning it when possible so
+  /// that the cell stays usable, and otherwise taking it out of the cell.
+  ///
+  /// The returned flag indicates whether the file was taken out and so must be
+  /// handed back with [`Self::return_file_from_task`] when the work is done.
+  fn take_file_for_task(&self) -> (StdFile, bool) {
+    let mut cell = self.cell.borrow_mut();
+    match cell.as_mut().unwrap().try_clone().ok() {
+      Some(value) => (value, false),
+      None => (cell.take().unwrap(), true),
+    }
+  }
+
+  fn return_file_from_task(&self, file: StdFile, did_take: bool) {
+    if did_take {
+      self.cell.borrow_mut().replace(file);
+    }
+  }
+
   fn with_inner_blocking_task<F, R: 'static + Send>(
     &self,
     action: F,
@@ -611,17 +748,7 @@ impl StdFileResourceInner {
       let permit = acquire_fut.await;
       // we take the value out of the cell, use it on a blocking task,
       // then put it back into the cell when we're done
-      let mut did_take = false;
-      let mut cell_value = {
-        let mut cell = self.cell.borrow_mut();
-        match cell.as_mut().unwrap().try_clone().ok() {
-          Some(value) => value,
-          None => {
-            did_take = true;
-            cell.take().unwrap()
-          }
-        }
-      };
+      let (mut cell_value, did_take) = self.take_file_for_task();
       let (cell_value, result) = spawn_blocking(move || {
         let result = action(&mut cell_value);
         (cell_value, result)
@@ -629,10 +756,7 @@ impl StdFileResourceInner {
       .await
       .unwrap();
 
-      if did_take {
-        // put it back
-        self.cell.borrow_mut().replace(cell_value);
-      }
+      self.return_file_from_task(cell_value, did_take);
 
       drop(permit); // explicit for clarity
       result
@@ -651,6 +775,70 @@ impl StdFileResourceInner {
     async move {
       let _permit = acquire_fut.await;
       spawn_blocking(action).await.unwrap()
+    }
+  }
+
+  /// Acquires an advisory file lock without risking starvation of the shared
+  /// tokio blocking threadpool.
+  ///
+  /// Acquiring a lock can block for an unbounded amount of time, so a lock wait
+  /// must never park a thread from the blocking threadpool: with only a couple
+  /// dozen pool threads available, a burst of concurrent locks would exhaust
+  /// the pool and stall every other blocking fs operation — including the
+  /// `readTextFile`/`writeTextFile` calls the current lock holder needs in
+  /// order to make progress and release the lock (see #22504).
+  ///
+  /// So instead of `spawn_blocking`:
+  ///
+  /// - First try the non-blocking `try_lock`. That is a single fast syscall, so
+  ///   it is fine to run inline, and it handles the common uncontended case
+  ///   without involving another thread at all.
+  /// - Only when the lock is actually contended fall back to the blocking
+  ///   `flock()`/`LockFileEx` syscall on a dedicated thread, which does not
+  ///   compete with other blocking fs work. We use the blocking syscall rather
+  ///   than polling `try_lock` because the OS schedules waiters fairly, whereas
+  ///   a poll loop can starve an individual waiter under contention.
+  fn lock_task(
+    &self,
+    exclusive: bool,
+  ) -> impl Future<Output = FsResult<()>> + '_ {
+    // we want to restrict this to one async action at a time
+    let acquire_fut = self.cell_async_task_queue.acquire();
+    async move {
+      let permit = acquire_fut.await;
+      // we clone the file (or take it out if cloning fails), lock it, then put
+      // it back into the cell when we're done
+      let (file, did_take) = self.take_file_for_task();
+
+      let try_result = if exclusive {
+        file.try_lock()
+      } else {
+        file.try_lock_shared()
+      };
+      // Note that a non-`WouldBlock` error is deliberately not surfaced here.
+      // On Windows, `LockFileEx(LOCKFILE_FAIL_IMMEDIATELY)` can report plain
+      // contention as `ERROR_ACCESS_DENIED`, so anything other than success
+      // just means "fall back to the blocking wait", which reports a genuine
+      // error if there is one.
+      let result = if try_result.is_ok() {
+        self.return_file_from_task(file, did_take);
+        Ok(())
+      } else {
+        let (file, result) = spawn_unpooled_blocking(move || {
+          let result = if exclusive {
+            file.lock()
+          } else {
+            file.lock_shared()
+          };
+          (file, result)
+        })
+        .await;
+        self.return_file_from_task(file, did_take);
+        result.map_err(Into::into)
+      };
+
+      drop(permit); // explicit for clarity
+      result
     }
   }
 
@@ -1123,16 +1311,7 @@ impl crate::fs::File for StdFileResourceInner {
     })
   }
   async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
-    self
-      .with_inner_blocking_task(move |file| {
-        if exclusive {
-          file.lock()?;
-        } else {
-          file.lock_shared()?;
-        }
-        Ok(())
-      })
-      .await
+    self.lock_task(exclusive).await
   }
 
   fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
@@ -1152,6 +1331,9 @@ impl crate::fs::File for StdFileResourceInner {
   }
   async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
     use std::fs::TryLockError;
+    // `try_lock` is non-blocking, but this still goes through the task queue
+    // rather than running inline: skipping the queue would let it overtake an
+    // in-flight `lock_async` on the same file and report a stale answer
     self
       .with_inner_blocking_task(move |file| {
         let result = if exclusive {
@@ -1172,6 +1354,10 @@ impl crate::fs::File for StdFileResourceInner {
     self.with_sync(|file| Ok(file.unlock()?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
+    // `unlock` is non-blocking, but this must stay on the task queue: running
+    // it inline would let it overtake an in-flight `lock_async` on the same
+    // file, turning the unlock into a no-op and leaving the file locked once
+    // the pending lock is acquired
     self
       .with_inner_blocking_task(|file| Ok(file.unlock()?))
       .await
@@ -1465,7 +1651,7 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     if let Ok(file_info) = query_file_information(file_handle) {
       fsstat.ctime = Some(windows_time_to_unix_time_msec(
         &file_info.BasicInformation.ChangeTime,
-      ) as u64);
+      ));
 
       if file_info.BasicInformation.FileAttributes
         & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT

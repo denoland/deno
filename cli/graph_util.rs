@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -58,8 +59,8 @@ use sys_traits::FsMetadata;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
-use crate::args::TypeCheckModeExt;
 use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::graph_kind;
 use crate::args::jsr_url;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -91,6 +92,10 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  /// Whether errors for graph roots without a referrer may probe the file
+  /// system for sloppy-import suggestions. Runtime-created dynamic roots set
+  /// this to false because they were not part of the prepared module graph.
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   /// Lazily collects the names of packages importable by bare specifier
   /// (workspace members and packages linked via the "links" field), used to
   /// enhance import errors. Only called when a resolution error is actually
@@ -125,6 +130,8 @@ pub fn graph_valid(
       will_type_check: options.will_type_check,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+      allow_sloppy_imports_hints_for_unreferenced_roots: options
+        .allow_sloppy_imports_hints_for_unreferenced_roots,
       collect_bare_importable_pkg_names: options
         .collect_bare_importable_pkg_names,
     },
@@ -151,11 +158,19 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub will_type_check: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   /// Lazily collects the names of packages importable by bare specifier
   /// (workspace members and packages linked via the "links" field), used to
   /// enhance import errors. Only called when a resolution error is actually
   /// encountered, so the happy path pays nothing.
   pub collect_bare_importable_pkg_names: &'a dyn Fn() -> Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+pub struct GraphRootsValidOptions {
+  pub allow_unknown_media_types: bool,
+  pub allow_unknown_jsr_exports: bool,
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -232,6 +247,17 @@ pub fn graph_walk_errors<'a>(
       {
         return None;
       }
+      // Roots with no referrer are gated by the flag; everything else always
+      // gets sloppy-import hints.
+      let is_unreferenced_root = is_root
+        && !matches!(
+          &error,
+          ModuleGraphError::ModuleError(error)
+            if error.maybe_referrer().is_some()
+        );
+      let allow_sloppy_imports_hints = options
+        .allow_sloppy_imports_hints_for_unreferenced_roots
+        || !is_unreferenced_root;
       let enhanced = enhance_graph_error(
         sys,
         error,
@@ -240,6 +266,7 @@ pub fn graph_walk_errors<'a>(
         } else {
           EnhanceGraphErrorMode::ShowRange
         },
+        allow_sloppy_imports_hints,
         bare_importable_pkg_names
           .get_or_insert_with(&collect_bare_importable_pkg_names),
       );
@@ -418,6 +445,38 @@ pub struct CreatePublishGraphOptions<'a> {
   pub packages: &'a [JsrPackageConfig],
   pub build_fast_check_graph: bool,
   pub validate_graph: bool,
+  /// Whether to skip exports that can't be analyzed as modules
+  /// (ex. CSS files) instead of surfacing diagnostics for them.
+  /// This is used when linting because validating the exports is
+  /// the responsibility of `deno publish`.
+  /// See https://github.com/denoland/deno/issues/26308
+  pub skip_unanalyzable_exports: bool,
+}
+
+fn is_analyzable_export(url: &ModuleSpecifier) -> bool {
+  match MediaType::from_specifier(url) {
+    MediaType::JavaScript
+    | MediaType::Jsx
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Dts
+    | MediaType::Dmts
+    | MediaType::Dcts
+    | MediaType::Tsx
+    | MediaType::Json
+    | MediaType::Wasm => true,
+    MediaType::Css
+    | MediaType::Jsonc
+    | MediaType::Json5
+    | MediaType::Html
+    | MediaType::Markdown
+    | MediaType::Sql
+    | MediaType::SourceMap
+    | MediaType::Unknown => false,
+  }
 }
 
 pub struct ModuleGraphCreator {
@@ -527,7 +586,13 @@ impl ModuleGraphCreator {
 
     let mut roots = Vec::new();
     for package_config in options.packages {
-      roots.extend(package_config.config_file.resolve_export_value_urls()?);
+      let export_urls =
+        package_config.config_file.resolve_export_value_urls()?;
+      if options.skip_unanalyzable_exports {
+        roots.extend(export_urls.into_iter().filter(is_analyzable_export));
+      } else {
+        roots.extend(export_urls);
+      }
     }
 
     let loader = self
@@ -578,11 +643,22 @@ impl ModuleGraphCreator {
     }
 
     if options.build_fast_check_graph {
-      let fast_check_workspace_members = options
+      let mut fast_check_workspace_members = options
         .packages
         .iter()
         .map(|p| config_to_deno_graph_workspace_member(&p.config_file))
         .collect::<Result<Vec<_>, _>>()?;
+      if options.skip_unanalyzable_exports {
+        for member in &mut fast_check_workspace_members {
+          let base = member.base.clone();
+          member.exports.retain(|_, value| {
+            base
+              .join(value)
+              .map(|url| is_analyzable_export(&url))
+              .unwrap_or(true)
+          });
+        }
+      }
       self.module_graph_builder.build_fast_check_graph(
         &mut graph,
         BuildFastCheckGraphOptions {
@@ -623,7 +699,7 @@ impl ModuleGraphCreator {
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-    let graph_kind = self.options.type_check_mode().as_graph_kind();
+    let graph_kind = graph_kind(self.options.type_check_mode());
 
     let graph = self
       .create_graph_with_options(CreateGraphOptions {
@@ -879,6 +955,7 @@ impl ModuleGraphBuilder {
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
           unstable_css_imports: self.cli_options.unstable_raw_imports(),
+          unstable_config_imports: false,
         }
       };
     }
@@ -1127,12 +1204,14 @@ impl ModuleGraphBuilder {
   ) -> CliDenoGraphLoader {
     self.create_graph_loader_with_permissions(
       self.root_permissions_container.clone(),
+      None,
     )
   }
 
   pub fn create_graph_loader_with_permissions(
     &self,
     permissions: PermissionsContainer,
+    file_permission_api_name: Option<&'static str>,
   ) -> CliDenoGraphLoader {
     CliDenoGraphLoader::new(
       self.file_fetcher.clone(),
@@ -1142,6 +1221,7 @@ impl ModuleGraphBuilder {
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
+        file_permission_api_name,
         reporter: self.load_reporter.clone(),
         include_npm_sources: self.analyze_npm_sources(),
       },
@@ -1160,8 +1240,11 @@ impl ModuleGraphBuilder {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
-      false,
-      false,
+      GraphRootsValidOptions {
+        allow_unknown_media_types: false,
+        allow_unknown_jsr_exports: false,
+        allow_sloppy_imports_hints_for_unreferenced_roots: true,
+      },
     )
   }
 
@@ -1169,8 +1252,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-    allow_unknown_media_types: bool,
-    allow_unknown_jsr_exports: bool,
+    options: GraphRootsValidOptions,
   ) -> Result<(), JsErrorBox> {
     let will_type_check = self.cli_options.type_check_mode().is_true();
     let collect_bare_importable_pkg_names = || {
@@ -1196,8 +1278,10 @@ impl ModuleGraphBuilder {
           self.compiler_options_resolver.as_ref(),
         ),
         exit_integrity_errors: true,
-        allow_unknown_media_types,
-        allow_unknown_jsr_exports,
+        allow_unknown_media_types: options.allow_unknown_media_types,
+        allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+        allow_sloppy_imports_hints_for_unreferenced_roots: options
+          .allow_sloppy_imports_hints_for_unreferenced_roots,
         collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
       },
     )
@@ -1216,7 +1300,7 @@ impl ModuleGraphBuilder {
     }
   }
 
-  fn maybe_resolve_ts_config_imports(
+  pub(crate) fn maybe_resolve_ts_config_imports(
     &self,
     graph_kind: GraphKind,
   ) -> Vec<deno_graph::ReferrerImports> {

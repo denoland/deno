@@ -37,7 +37,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use crate::args::BenchFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
-use crate::args::TypeCheckModeExt;
+use crate::args::graph_kind;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
@@ -534,16 +534,14 @@ pub async fn run_benchmarks_with_watch(
   flags: Arc<Flags>,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
+  let clear_screen = flags
+    .watch
+    .as_ref()
+    .map(|w| !w.no_clear_screen)
+    .unwrap_or(true);
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new(
-      "Bench",
-      bench_flags
-        .watch
-        .as_ref()
-        .map(|w| !w.no_clear_screen)
-        .unwrap_or(true),
-    ),
+    file_watcher::PrintConfig::new("Bench", clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
@@ -558,7 +556,7 @@ pub async fn run_benchmarks_with_watch(
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
-        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let graph_kind = graph_kind(cli_options.type_check_mode());
         let module_graph_creator = factory.module_graph_creator().await?;
         let members_with_bench_options =
           cli_options.resolve_bench_options_for_members(&bench_flags)?;

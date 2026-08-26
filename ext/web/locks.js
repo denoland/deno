@@ -5,6 +5,7 @@ import {
   op_lock_manager_await_lock,
   op_lock_manager_await_steal,
   op_lock_manager_cancel,
+  op_lock_manager_is_stolen,
   op_lock_manager_query,
   op_lock_manager_release,
   op_lock_manager_request,
@@ -218,9 +219,13 @@ class LockManager {
         op_lock_manager_await_steal(heldRid),
         PromisePrototypeThen(callbackPromise, () => false),
       ]);
-      if (stolen) {
+      // The race can be won by a fast-returning callback even when the lock was
+      // stolen: the steal is recorded synchronously but `await_steal` only
+      // resolves an event-loop turn later, whereas the callback resolves on a
+      // microtask. Re-check synchronously so a stolen lock always rejects.
+      if (stolen || op_lock_manager_is_stolen(heldRid)) {
         throw new DOMException(
-          "The lock was broken",
+          "The operation was aborted",
           "AbortError",
         );
       }
@@ -230,7 +235,11 @@ class LockManager {
     }
   }
 
-  query() {
+  // `query()` returns a Promise per the Web Locks spec and Node's
+  // `LockManager`; the underlying op is synchronous, so there is nothing to
+  // await, but the method stays `async` to produce a real Promise.
+  // deno-lint-ignore require-await
+  async query() {
     webidl.assertBranded(this, LockManagerPrototype);
     const { held, pending } = op_lock_manager_query();
     for (let i = 0; i < held.length; i++) {

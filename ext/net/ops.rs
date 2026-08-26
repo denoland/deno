@@ -25,6 +25,7 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
+use hickory_proto::rr::Record;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
 use hickory_resolver::ResolveError;
@@ -558,40 +559,9 @@ pub async fn op_net_connect_tcp_inner(
 
   let options = options.unwrap_or_default();
 
-  // Resolve all addresses for Happy Eyeballs
-  let addrs: Vec<SocketAddr> =
-    resolve_addr(&addr.hostname, addr.port).await?.collect();
-
-  if addrs.is_empty() {
-    return Err(NetError::NoResolvedAddress);
-  }
-
-  // Happy Eyeballs races every resolved candidate, so it may connect to any of
-  // them; the non-racing path only ever connects to `addrs[0]`.
-  let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
-
-  // Post-resolution deny check: verify the IPs we may actually connect to are
-  // not denied. This prevents bypassing IP-literal deny rules via numeric
-  // hostname aliases (e.g. 2130706433 → 127.0.0.1). Only the candidates we may
-  // attempt are checked: all of them when Happy Eyeballs races them, otherwise
-  // just the single address that will be used.
-  {
-    let mut state_ = state.borrow_mut();
-    let permissions = state_.borrow_mut::<PermissionsContainer>();
-    let checked = if use_happy_eyeballs {
-      &addrs[..]
-    } else {
-      &addrs[..1]
-    };
-    for addr in checked {
-      permissions.check_net_resolved(
-        &addr.ip(),
-        addr.port(),
-        "Deno.connect()",
-      )?;
-    }
-  }
-
+  // Fetch the cancel handle before the first await point. Aborting from JS
+  // closes the resource, so fetching it any later would miss an abort that
+  // fires while an earlier future (e.g. DNS resolution) is still pending.
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
       .borrow_mut()
@@ -600,31 +570,74 @@ pub async fn op_net_connect_tcp_inner(
       .ok()
   });
 
-  // Use Happy Eyeballs if enabled and multiple addresses available
-  let tcp_stream_result = if use_happy_eyeballs {
-    let attempt_delay =
-      Duration::from_millis(options.auto_select_family_attempt_delay);
-    crate::happy_eyeballs::connect_happy_eyeballs(
-      addrs,
-      attempt_delay,
-      cancel_handle.clone(),
-    )
-    .await
-    .map(|result| result.stream)
-    .map_err(NetError::Io)
-  } else {
-    // Single address or Happy Eyeballs disabled - use first address
-    let addr = addrs[0];
-    if let Some(cancel_handle) = &cancel_handle {
-      match TcpStream::connect(&addr).or_cancel(cancel_handle).await {
-        Ok(result) => result.map_err(NetError::Io),
-        Err(err) => Err(NetError::Canceled(err)),
-      }
+  let tcp_stream_result = async {
+    // Resolve all addresses for Happy Eyeballs
+    let resolve_fut = resolve_addr(&addr.hostname, addr.port);
+    let addrs: Vec<SocketAddr> = if let Some(cancel_handle) = &cancel_handle {
+      resolve_fut.or_cancel(cancel_handle).await??.collect()
     } else {
-      TcpStream::connect(&addr).await.map_err(NetError::Io)
-    }
-  };
+      resolve_fut.await?.collect()
+    };
 
+    if addrs.is_empty() {
+      return Err(NetError::NoResolvedAddress);
+    }
+
+    // Happy Eyeballs races every resolved candidate, so it may connect to any
+    // of them; the non-racing path only ever connects to `addrs[0]`.
+    let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
+
+    // Post-resolution deny check: verify the IPs we may actually connect to
+    // are not denied. This prevents bypassing IP-literal deny rules via
+    // numeric hostname aliases (e.g. 2130706433 -> 127.0.0.1). Only the
+    // candidates we may attempt are checked: all of them when Happy Eyeballs
+    // races them, otherwise just the single address that will be used.
+    {
+      let mut state_ = state.borrow_mut();
+      let permissions = state_.borrow_mut::<PermissionsContainer>();
+      let checked = if use_happy_eyeballs {
+        &addrs[..]
+      } else {
+        &addrs[..1]
+      };
+      for addr in checked {
+        permissions.check_net_resolved(
+          &addr.ip(),
+          addr.port(),
+          "Deno.connect()",
+        )?;
+      }
+    }
+
+    // Use Happy Eyeballs if enabled and multiple addresses available
+    if use_happy_eyeballs {
+      let attempt_delay =
+        Duration::from_millis(options.auto_select_family_attempt_delay);
+      crate::happy_eyeballs::connect_happy_eyeballs(
+        addrs,
+        attempt_delay,
+        cancel_handle.clone(),
+      )
+      .await
+      .map(|result| result.stream)
+      .map_err(NetError::Io)
+    } else {
+      // Single address or Happy Eyeballs disabled - use first address
+      let addr = addrs[0];
+      if let Some(cancel_handle) = &cancel_handle {
+        match TcpStream::connect(&addr).or_cancel(cancel_handle).await {
+          Ok(result) => result.map_err(NetError::Io),
+          Err(err) => Err(NetError::Canceled(err)),
+        }
+      } else {
+        TcpStream::connect(&addr).await.map_err(NetError::Io)
+      }
+    }
+  }
+  .await;
+
+  // Remove the cancel handle resource on every exit path (including
+  // resolution errors) so it does not leak in the resource table.
   if let Some(cancel_rid) = resource_abort_id
     && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
   {
@@ -1123,27 +1136,34 @@ pub async fn op_dns_resolve(
     lookup_fut.await
   };
 
-  lookup
-    .map_err(|e| match e.kind() {
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-      {
-        NetError::DnsNotFound(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections) =>
-      {
-        NetError::DnsNotConnected(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout) =>
-      {
-        NetError::DnsTimedOut(e)
-      }
-      _ => NetError::Dns(e),
-    })?
-    .records()
-    .iter()
+  let lookup = lookup.map_err(|e| match e.kind() {
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+    {
+      NetError::DnsNotFound(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoConnections) =>
+    {
+      NetError::DnsNotConnected(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::Timeout) =>
+    {
+      NetError::DnsTimedOut(e)
+    }
+    _ => NetError::Dns(e),
+  })?;
+
+  format_dns_records(lookup.records(), record_type)
+}
+
+fn format_dns_records<'a>(
+  records: impl IntoIterator<Item = &'a Record>,
+  record_type: RecordType,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
+  records
+    .into_iter()
     .filter_map(|rec| {
       let is_any = record_type == RecordType::ANY;
       // For ANY queries, use each record's actual type for formatting
@@ -1152,7 +1172,10 @@ pub async fn op_dns_resolve(
       } else {
         record_type
       };
-      let r = format_rdata(effective_type)(rec.data()).transpose();
+      let r = match format_rdata(effective_type)(rec.data()) {
+        Err(NetError::UnsupportedRecordType) if is_any => None,
+        result => result.transpose(),
+      };
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
@@ -1170,7 +1193,16 @@ pub async fn op_dns_resolve(
 
 #[op2]
 #[serde]
-pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+pub fn op_net_get_system_dns_servers(
+  state: &mut OpState,
+) -> Result<Vec<(String, u16)>, NetError> {
+  // Reading the host resolver configuration (the system nameservers, e.g.
+  // from /etc/resolv.conf) exposes host network configuration, so gate it
+  // behind the same `sys` permission as Deno.networkInterfaces(). Reachable
+  // from JS via node:dns.getServers().
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("networkInterfaces", "node:dns.getServers()")?;
   let (config, _opts) = system_conf::read_system_conf()
     .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
   let servers = config
@@ -1239,13 +1271,10 @@ fn format_rdata(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsRecordData::Aname),
-      CAA => r.as_caa().map(|caa| {
-        DnsRecordData::Caa {
-          critical: caa.issuer_critical(),
-          tag: caa.tag().to_string(),
-          // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
-          value: str::from_utf8(caa.raw_value()).unwrap().to_string(),
-        }
+      CAA => r.as_caa().map(|caa| DnsRecordData::Caa {
+        critical: caa.issuer_critical(),
+        tag: caa.tag().to_string(),
+        value: String::from_utf8_lossy(caa.raw_value()).into_owned(),
       }),
       CNAME => r
         .as_cname()
@@ -1258,9 +1287,9 @@ fn format_rdata(
       NAPTR => r.as_naptr().map(|naptr| DnsRecordData::Naptr {
         order: naptr.order(),
         preference: naptr.preference(),
-        flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
-        services: String::from_utf8(naptr.services().to_vec()).unwrap(),
-        regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
+        flags: String::from_utf8_lossy(naptr.flags()).into_owned(),
+        services: String::from_utf8_lossy(naptr.services()).into_owned(),
+        regexp: String::from_utf8_lossy(naptr.regexp()).into_owned(),
         replacement: naptr.replacement().to_string(),
       }),
       NS => r.as_ns().map(ToString::to_string).map(DnsRecordData::Ns),
@@ -1307,6 +1336,7 @@ mod tests {
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
   use hickory_proto::rr::Name;
+  use hickory_proto::rr::rdata::NULL;
   use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
   use hickory_proto::rr::rdata::aaaa::AAAA;
@@ -1321,6 +1351,8 @@ mod tests {
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
   use hickory_proto::rr::record_data::RData;
+  use hickory_proto::serialize::binary::BinDecoder;
+  use hickory_proto::serialize::binary::Restrict;
   use socket2::SockRef;
 
   use super::*;
@@ -1374,6 +1406,78 @@ mod tests {
   }
 
   #[test]
+  fn dns_records_caa_lossy_invalid_utf8_for_any_query() {
+    // Raw CAA RDATA received from the network: flags, tag, then an opaque
+    // value containing invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x05issue\xffa";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::CAA,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+    let records = [Record::from_rdata(Name::new(), 60, rdata)];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Caa {
+          critical: false,
+          tag: "issue".to_string(),
+          value: "\u{fffd}a".to_string(),
+        },
+        record_type: Some("CAA".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
+  fn dns_records_any_skips_unsupported_record_types() {
+    let name = Name::parse("www.iana.org.", None).unwrap();
+    let cname = Record::from_rdata(
+      name.clone(),
+      60,
+      RData::CNAME(CNAME(Name::parse("target.example.", None).unwrap())),
+    );
+    let rrsig = Record::from_rdata(
+      name,
+      60,
+      RData::Unknown {
+        code: RecordType::RRSIG,
+        rdata: NULL::with(vec![1]),
+      },
+    );
+    let records = [cname, rrsig];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Cname("target.example.".to_string()),
+        record_type: Some("CNAME".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
+  fn dns_records_explicit_unsupported_type_still_errors() {
+    let rrsig = Record::from_rdata(
+      Name::new(),
+      60,
+      RData::Unknown {
+        code: RecordType::RRSIG,
+        rdata: NULL::with(vec![1]),
+      },
+    );
+
+    assert!(matches!(
+      format_dns_records(&[rrsig], RecordType::RRSIG),
+      Err(NetError::UnsupportedRecordType)
+    ));
+  }
+
+  #[test]
   fn rdata_to_return_record_cname() {
     let func = format_rdata(RecordType::CNAME);
     let rdata = RData::CNAME(CNAME(Name::new()));
@@ -1416,6 +1520,31 @@ mod tests {
         services: "".to_string(),
         regexp: "".to_string(),
         replacement: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_naptr_lossy_invalid_utf8() {
+    // Flags are restricted to ASCII by Hickory's wire decoder. Services and
+    // regexp remain arbitrary character strings and can contain invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x01\x00\x02\x01U\x02s\xff\x02\xffr\x00";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::NAPTR,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+      format_rdata(RecordType::NAPTR)(&rdata).unwrap(),
+      Some(DnsRecordData::Naptr {
+        order: 1,
+        preference: 2,
+        flags: "U".to_string(),
+        services: "s\u{fffd}".to_string(),
+        regexp: "\u{fffd}r".to_string(),
+        replacement: ".".to_string(),
       })
     );
   }
@@ -1603,5 +1732,65 @@ mod tests {
     let stream = wr.as_ref().as_ref();
     let socket = socket2::SockRef::from(stream);
     test_fn(socket);
+  }
+
+  #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+  async fn tcp_connect_cancel_while_resolving() {
+    use std::sync::Arc;
+    use std::task::Poll;
+
+    use deno_permissions::RuntimePermissionDescriptorParser;
+
+    deno_core::extension!(
+      test_ext,
+      state = |state| {
+        let parser = Arc::new(RuntimePermissionDescriptorParser::new(
+          sys_traits::impls::RealSys,
+        ));
+        state.put(PermissionsContainer::allow_all(parser));
+      }
+    );
+
+    let runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init()],
+      ..Default::default()
+    });
+
+    let state = runtime.op_state();
+    let cancel_rid = state.borrow_mut().resource_table.add(CancelHandle::new());
+
+    // A hostname (not an IP literal) forces async resolution, so the first
+    // poll parks the op in the DNS lookup.
+    let ip_addr = IpAddr {
+      hostname: String::from("localhost"),
+      port: 1,
+    };
+
+    let mut connect_fut = op_net_connect_tcp_inner(
+      state.clone(),
+      ip_addr,
+      None,
+      Some(cancel_rid),
+      None,
+    )
+    .boxed_local();
+
+    let pending = std::future::poll_fn(|cx| {
+      Poll::Ready(connect_fut.poll_unpin(cx).is_pending())
+    })
+    .await;
+    assert!(pending);
+
+    // Abort the same way the JS abort handler does: close the cancel handle
+    // resource while the op is still resolving the address.
+    let res = state
+      .borrow_mut()
+      .resource_table
+      .take_any(cancel_rid)
+      .unwrap();
+    res.close();
+
+    let result = connect_fut.await;
+    assert!(matches!(result, Err(NetError::Canceled(_))));
   }
 }

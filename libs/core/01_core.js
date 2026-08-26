@@ -15,6 +15,7 @@
     ObjectFromEntries,
     ObjectKeys,
     ObjectHasOwn,
+    ReflectOwnKeys,
     setQueueMicrotask,
     SafeMap,
     SafeWeakMap,
@@ -66,7 +67,6 @@
     op_memory_usage,
     op_op_names,
     op_print,
-    op_queue_microtask,
     op_ref_op,
     op_resources,
     op_run_microtasks,
@@ -556,11 +556,34 @@
     }
   }
 
+  // V8 installs a native `queueMicrotask` on the global object (enabled via the
+  // `--enable-queue-microtask` flag). We wrap it below to route uncaught
+  // exceptions through `reportExceptionCallback`, so we grab a reference to the
+  // native implementation here - it lets us enqueue microtasks without crossing
+  // the op boundary.
+  //
+  // V8 skips experimental globals while snapshotting, so the native function is
+  // only installed at runtime. In a from-scratch runtime it's already on the
+  // global when this module runs (before our wrapper replaces it below), so we
+  // can grab it directly. When restoring from a snapshot it isn't there yet, so
+  // fall back to a lazy capture on first use: our wrapper shadows the native one
+  // as an own property of the global, so momentarily remove our property to
+  // reveal the native one underneath, then restore our wrapper.
+  let nativeQueueMicrotask = window.queueMicrotask;
+  function captureNativeQueueMicrotask() {
+    const wrapper = window.queueMicrotask;
+    delete window.queueMicrotask;
+    nativeQueueMicrotask = window.queueMicrotask;
+    window.queueMicrotask = wrapper;
+    return nativeQueueMicrotask;
+  }
+
   function queueMicrotask(cb) {
     if (typeof cb != "function") {
       throw new TypeError("expected a function");
     }
-    return op_queue_microtask(() => {
+    const enqueue = nativeQueueMicrotask ?? captureNativeQueueMicrotask();
+    return enqueue(() => {
       try {
         cb();
       } catch (error) {
@@ -740,6 +763,12 @@
           consoleFromV8[key],
           customConsole[key],
         );
+        // Restore the original method name clobbered by the bind above
+        // ("bound callConsole"), like Node does in its `wrapConsole`.
+        ObjectDefineProperty(customConsole[key], "name", {
+          __proto__: null,
+          value: key,
+        });
       } else {
         // Add additional console APIs from the inspector
         customConsole[key] = consoleFromV8[key];
@@ -802,6 +831,7 @@
 
   function propWritable(value) {
     return {
+      __proto__: null,
       value,
       writable: true,
       enumerable: true,
@@ -811,6 +841,7 @@
 
   function propNonEnumerable(value) {
     return {
+      __proto__: null,
       value,
       writable: true,
       enumerable: false,
@@ -820,6 +851,7 @@
 
   function propReadOnly(value) {
     return {
+      __proto__: null,
       value,
       enumerable: true,
       writable: false,
@@ -829,6 +861,7 @@
 
   function propGetterOnly(getter) {
     return {
+      __proto__: null,
       get: getter,
       set() {},
       enumerable: true,
@@ -845,11 +878,13 @@
 
   function propWritableLazyLoaded(getter, loadFn) {
     const desc = {
+      __proto__: null,
       get() {
         return getter(loadFn());
       },
       set(v) {
         ObjectDefineProperty(this, desc[lazyNameSym], {
+          __proto__: null,
           value: v,
           writable: true,
           enumerable: true,
@@ -865,6 +900,7 @@
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
     const desc = {
+      __proto__: null,
       get() {
         return getter(loadFn());
       },
@@ -876,6 +912,7 @@
         // set creates a new enumerable own data property on the receiver.
         if (ObjectHasOwn(this, name)) {
           ObjectDefineProperty(this, name, {
+            __proto__: null,
             value: v,
             writable: true,
             enumerable: false,
@@ -883,6 +920,7 @@
           });
         } else {
           ObjectDefineProperty(this, name, {
+            __proto__: null,
             value: v,
             writable: true,
             enumerable: true,
@@ -900,15 +938,21 @@
   // Like `Object.defineProperties`, but also stamps the property name into any
   // lazy-loaded descriptors so their setters can target the correct receiver.
   function defineGlobalProperties(target, props) {
-    const keys = ObjectKeys(props);
+    const safeProps = { __proto__: null };
+    const keys = ReflectOwnKeys(props);
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
       const desc = props[key];
-      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
-        desc[lazyNameSym] = key;
+      if (desc !== null && typeof desc === "object") {
+        if (ObjectHasOwn(desc, lazyNameSym)) {
+          desc[lazyNameSym] = key;
+        }
+        safeProps[key] = { __proto__: null, ...desc };
+      } else {
+        safeProps[key] = desc;
       }
     }
-    ObjectDefineProperties(target, props);
+    ObjectDefineProperties(target, safeProps);
   }
 
   function createLazyLoader(specifier) {

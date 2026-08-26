@@ -1,12 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
-
-use serde::Deserialize;
-use serde::Serialize;
 
 use super::RequestedModuleType;
 use crate::ModuleCodeString;
@@ -22,9 +20,12 @@ use crate::modules::ModuleType;
 use crate::runtime::SnapshotDataId;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
+use crate::snapshot_format::Decoder;
+use crate::snapshot_format::Encoder;
+use crate::snapshot_format::SnapshotResult;
 
 /// A symbolic module entity.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
@@ -201,12 +202,18 @@ pub(crate) struct ModuleMapData {
   pub(crate) synthetic_module_exports_store: SyntheticModuleExportsStore,
   pub(crate) lazy_esm_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  pub(crate) residual_lazy_esm_sources:
+    &'static [(&'static str, &'static str)],
   /// Specifiers of lazy-loaded ESM modules known to exist (survives
   /// snapshotting). Used to check if a module should be loaded from
   /// `lazy_esm_sources` without going through the external module loader.
-  pub(crate) known_lazy_esm: RefCell<HashSet<String>>,
+  /// `Cow` so that specifiers restored from a snapshot can borrow the snapshot
+  /// blob instead of being copied onto the heap for every isolate.
+  pub(crate) known_lazy_esm: RefCell<HashSet<Cow<'static, str>>>,
   pub(crate) lazy_script_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  pub(crate) residual_lazy_script_sources:
+    &'static [(&'static str, &'static str)],
   /// Results of `load_ext_script` evaluations. Populated on first
   /// evaluation so later callers (`Deno.core.loadExtScript()` from JS,
   /// the `synthetic_esm` dispatch from Rust) share a single evaluated
@@ -239,7 +246,7 @@ pub(crate) struct ModuleMapData {
 }
 
 /// Snapshot-compatible representation of this data.
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 pub(crate) struct ModuleMapSnapshotData {
   next_load_id: i32,
   main_module_id: Option<i32>,
@@ -250,21 +257,82 @@ pub(crate) struct ModuleMapSnapshotData {
   /// Specifiers of lazy-loaded ESM modules that are known to exist but
   /// are not compiled/instantiated in the snapshot. They will be loaded
   /// from the binary on first access at runtime.
-  #[serde(default)]
-  lazy_esm_specifiers: Vec<String>,
+  lazy_esm_specifiers: Vec<Cow<'static, str>>,
   /// `load_ext_script` cache snapshot. Captures the exports object
   /// returned by each polyfill IIFE evaluated at snapshot time so the
   /// runtime can share the same value (with the `synthetic_esm` dispatch
   /// in particular) without re-evaluating — re-eval would clobber
   /// registered `internals.__*` hooks and duplicate class identities.
-  #[serde(default)]
   loaded_script_results: Vec<(FastString, SnapshotDataId)>,
   /// Snapshot of the captured `__bootstrap` view registered via
   /// `op_set_captured_bootstrap` at the end of `01_core.js`. Restored
   /// at runtime so the Rust `load_ext_script` can reinstall it on
   /// `globalThis.__bootstrap` during each script evaluation.
-  #[serde(default)]
   captured_bootstrap: Option<SnapshotDataId>,
+}
+
+impl SymbolicModule {
+  fn encode(&self, e: &mut Encoder) {
+    match self {
+      Self::Alias(name) => {
+        e.u8(0);
+        e.str(name.as_str());
+      }
+      Self::Mod(id) => {
+        e.u8(1);
+        e.usize(*id);
+      }
+    }
+  }
+
+  fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(match d.u8()? {
+      0 => Self::Alias(d.fast_string()?),
+      1 => Self::Mod(d.usize()?),
+      n => return Decoder::invalid_discriminant("SymbolicModule", n as u32),
+    })
+  }
+}
+
+impl ModuleMapSnapshotData {
+  pub(crate) fn encode(&self, e: &mut Encoder) {
+    e.i32(self.next_load_id);
+    e.option(self.main_module_id, |e, v| e.i32(v));
+    e.seq(self.modules.iter(), |e, m| m.encode(e));
+    e.seq(self.module_handles.iter(), |e, v| e.u32(*v));
+    e.seq(self.main_module_callbacks.iter(), |e, v| e.u32(*v));
+    e.seq(self.by_name.iter(), |e, (name, ty, module)| {
+      e.str(name.as_str());
+      ty.encode(e);
+      module.encode(e);
+    });
+    e.seq(self.lazy_esm_specifiers.iter(), |e, s| e.str(s));
+    e.seq(self.loaded_script_results.iter(), |e, (name, id)| {
+      e.str(name.as_str());
+      e.u32(*id);
+    });
+    e.option(self.captured_bootstrap, |e, v| e.u32(v));
+  }
+
+  pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(Self {
+      next_load_id: d.i32()?,
+      main_module_id: d.option(|d| d.i32())?,
+      modules: d.seq(ModuleInfo::decode)?,
+      module_handles: d.seq(|d| d.u32())?,
+      main_module_callbacks: d.seq(|d| d.u32())?,
+      by_name: d.seq(|d| {
+        Ok((
+          d.fast_string()?,
+          RequestedModuleType::decode(d)?,
+          SymbolicModule::decode(d)?,
+        ))
+      })?,
+      lazy_esm_specifiers: d.seq(|d| d.cow_str())?,
+      loaded_script_results: d.seq(|d| Ok((d.fast_string()?, d.u32()?)))?,
+      captured_bootstrap: d.option(|d| d.u32())?,
+    })
+  }
 }
 
 impl ModuleMapData {
@@ -424,17 +492,38 @@ impl ModuleMapData {
     self.info.get(id).map(|info| info.name.as_str().to_owned())
   }
 
+  /// Serialize for snapshotting.
+  ///
+  /// `instantiated` is a per-module-id flag saying whether the V8 module was
+  /// already instantiated at snapshot time (see
+  /// [`crate::modules::ModuleMap::instantiated_flags`]). The import edges of an
+  /// instantiated module are dead weight in the snapshot: the only consumers of
+  /// `ModuleInfo::requests` are `module_resolve_callback` /
+  /// `module_source_callback`, which V8 only invokes while *instantiating* a
+  /// module, and `RecursiveModuleLoad`, which only walks the requests of an
+  /// already-registered module to make sure its subgraph is registered — and a
+  /// module instantiated in the snapshot necessarily brought its whole subgraph
+  /// with it. So we drop them, which also means the `Url`s inside them (the one
+  /// thing in the sidecar that cannot be a borrow) are never written or parsed.
   pub fn serialize_for_snapshotting(
     self,
     data_store: &mut SnapshotStoreDataStore,
+    instantiated: &[bool],
   ) -> ModuleMapSnapshotData {
     debug_assert_eq!(self.by_name.len(), self.handles.len());
     debug_assert_eq!(self.info.len(), self.handles.len());
 
+    let mut info = self.info;
+    for module in info.iter_mut() {
+      if instantiated.get(module.id).copied().unwrap_or(false) {
+        module.requests = Vec::new();
+      }
+    }
+
     let mut ser = ModuleMapSnapshotData {
       next_load_id: self.next_load_id,
       main_module_id: self.main_module_id.map(|x| x as _),
-      modules: self.info,
+      modules: info,
       ..Default::default()
     };
 
@@ -453,12 +542,8 @@ impl ModuleMapData {
       ser.by_name.push((name, module_type.clone(), module));
     });
 
-    ser.lazy_esm_specifiers = self
-      .known_lazy_esm
-      .borrow()
-      .iter()
-      .map(|s| s.to_string())
-      .collect();
+    ser.lazy_esm_specifiers =
+      self.known_lazy_esm.into_inner().into_iter().collect();
 
     // Move out of the Rc<RefCell<...>> so we can consume the values.
     let cached_results: HashMap<ModuleName, v8::Global<v8::Value>> =
@@ -522,7 +607,16 @@ impl ModuleMapData {
 
   // TODO(mmastrac): this is better than giving the entire crate access to the internals.
   #[cfg(test)]
-  pub fn assert_module_map(&self, modules: &Vec<ModuleInfo>) {
+  ///
+  /// `restored_from_snapshot` is the number of module ids that were rehydrated
+  /// from a snapshot. Those modules were already instantiated when the snapshot
+  /// was taken, so their import edges are intentionally not persisted (see
+  /// [`Self::serialize_for_snapshotting`]) and are expected to be empty here.
+  pub fn assert_module_map(
+    &self,
+    modules: &Vec<ModuleInfo>,
+    restored_from_snapshot: usize,
+  ) {
     use crate::runtime::NO_OF_BUILTIN_MODULES;
     let data = self;
     assert_eq!(data.handles.len(), modules.len() + NO_OF_BUILTIN_MODULES);
@@ -532,7 +626,20 @@ impl ModuleMapData {
 
     for info in modules {
       assert!(data.handles.get(info.id).is_some());
-      assert_eq!(data.info.get(info.id).unwrap(), info);
+      let actual = data.info.get(info.id).unwrap();
+      if info.id < restored_from_snapshot {
+        assert_eq!(actual.id, info.id);
+        assert_eq!(actual.main, info.main);
+        assert_eq!(actual.name, info.name);
+        assert_eq!(actual.module_type, info.module_type);
+        assert!(
+          actual.requests.is_empty(),
+          "import edges of snapshot-instantiated module {} should be dropped",
+          info.name
+        );
+      } else {
+        assert_eq!(actual, info);
+      }
       let requested_module_type =
         RequestedModuleType::from(info.module_type.clone());
       assert_eq!(

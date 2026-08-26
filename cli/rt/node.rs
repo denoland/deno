@@ -10,8 +10,6 @@ use deno_media_type::MediaType;
 use deno_resolver::loader::NpmModuleLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_permissions::CheckedPath;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
@@ -203,29 +201,15 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
   ) -> Result<CjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
+      // Recursive analysis must use the source selected by the active module
+      // loader. If no loader-owned source is available, leave the export set
+      // empty and let runtime resolution handle the target.
       None => {
-        if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
-          // PERMISSIONS: This is ok because it's just being used for cjs analysis
-          let path = CheckedPath::unsafe_new(Cow::Owned(path));
-          // todo(dsherret): should this use the sync method instead?
-          if let Ok(source_from_file) =
-            self.sys.read_text_file_lossy_async(path.into_owned()).await
-          {
-            source_from_file
-          } else {
-            return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
-              exports: vec![],
-              reexports: vec![],
-              member_reexports: vec![],
-            }));
-          }
-        } else {
-          return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
-            exports: vec![],
-            reexports: vec![],
-            member_reexports: vec![],
-          }));
-        }
+        return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
+          exports: vec![],
+          reexports: vec![],
+          member_reexports: vec![],
+        }));
       }
     };
     self.inner_cjs_analysis(specifier, source)

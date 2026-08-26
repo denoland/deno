@@ -1476,6 +1476,48 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpInvalidPortWithAbortSignalDoesNotLeak() {
+    const controller = new AbortController();
+    await assertRejects(
+      () => Deno.connect({ port: -1, signal: controller.signal }),
+      RangeError,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: false } },
+  async function netTcpPermissionErrorWithAbortSignalDoesNotLeak() {
+    const controller = new AbortController();
+    await assertRejects(
+      () =>
+        Deno.connect({
+          hostname: "127.0.0.1",
+          port: 80,
+          signal: controller.signal,
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: false } },
+  async function resolveDnsPermissionErrorWithAbortSignalDoesNotLeak() {
+    const controller = new AbortController();
+    await assertRejects(
+      () =>
+        Deno.resolveDns("example.com", "A", {
+          nameServer: { ipAddr: "127.0.0.1" },
+          signal: controller.signal,
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
 Deno.test({
   ignore: Deno.build.os === "linux",
   permissions: { net: true },

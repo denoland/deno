@@ -22,13 +22,6 @@ use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use ctr::cipher::StreamCipher;
 use rsa::pkcs1::DecodeRsaPrivateKey;
-use sha1::Sha1;
-use sha2::Sha256;
-use sha2::Sha384;
-use sha2::Sha512;
-use sha3::Sha3_256;
-use sha3::Sha3_384;
-use sha3::Sha3_512;
 
 use crate::shared::*;
 
@@ -85,45 +78,7 @@ pub(crate) fn decrypt_rsa_oaep(
   let key = key.as_rsa_private_key()?;
 
   let private_key = rsa::RsaPrivateKey::from_pkcs1_der(key)?;
-  let label = Some(String::from_utf8_lossy(&label).to_string());
-
-  let padding = match hash {
-    ShaHash::Sha1 => rsa::Oaep {
-      digest: Box::<Sha1>::default(),
-      mgf_digest: Box::<Sha1>::default(),
-      label,
-    },
-    ShaHash::Sha256 => rsa::Oaep {
-      digest: Box::<Sha256>::default(),
-      mgf_digest: Box::<Sha256>::default(),
-      label,
-    },
-    ShaHash::Sha384 => rsa::Oaep {
-      digest: Box::<Sha384>::default(),
-      mgf_digest: Box::<Sha384>::default(),
-      label,
-    },
-    ShaHash::Sha512 => rsa::Oaep {
-      digest: Box::<Sha512>::default(),
-      mgf_digest: Box::<Sha512>::default(),
-      label,
-    },
-    ShaHash::Sha3_256 => rsa::Oaep {
-      digest: Box::<Sha3_256>::default(),
-      mgf_digest: Box::<Sha3_256>::default(),
-      label,
-    },
-    ShaHash::Sha3_384 => rsa::Oaep {
-      digest: Box::<Sha3_384>::default(),
-      mgf_digest: Box::<Sha3_384>::default(),
-      label,
-    },
-    ShaHash::Sha3_512 => rsa::Oaep {
-      digest: Box::<Sha3_512>::default(),
-      mgf_digest: Box::<Sha3_512>::default(),
-      label,
-    },
-  };
+  let padding = rsa_oaep_padding(hash, &label);
 
   private_key
     .decrypt(padding, data)

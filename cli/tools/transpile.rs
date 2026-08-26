@@ -22,7 +22,6 @@ use crate::args::Flags;
 use crate::args::SourceMapMode;
 use crate::args::TranspileFlags;
 use crate::factory::CliFactory;
-use crate::util::display;
 
 pub async fn transpile(
   flags: Arc<Flags>,
@@ -191,7 +190,7 @@ pub async fn transpile(
     // Determine output path
     if is_stdout_mode {
       // Single file, no output specified: print to stdout
-      display::write_to_stdout_ignore_sigpipe(js_text.as_bytes())?;
+      deno_print::drop_write_stdout(js_text.as_bytes());
     } else {
       let output_path = maybe_output_path.unwrap();
 

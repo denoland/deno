@@ -49,6 +49,9 @@ pub enum CacheError {
   #[error("Cache deletion is not supported")]
   DeletionNotSupported,
   #[class(type)]
+  #[error("Cache.keys() is not supported with the remote cache backend")]
+  KeysNotSupported,
+  #[class(type)]
   #[error("Content-Encoding is not allowed in response headers")]
   ContentEncodingNotAllowed,
   #[class(generic)]
@@ -105,6 +108,7 @@ deno_core::extension!(deno_cache,
     op_cache_storage_keys,
     op_cache_put,
     op_cache_match,
+    op_cache_keys,
     op_cache_delete,
   ],
   lazy_loaded_js = [ "01_cache.js" ],
@@ -151,6 +155,21 @@ pub struct CacheMatchResponseMeta {
 pub struct CacheDeleteRequest {
   pub cache_id: i64,
   pub request_url: String,
+}
+
+#[derive(FromV8, Debug)]
+pub struct CacheKeysRequest {
+  pub cache_id: i64,
+  /// When set, only the key matching this (already normalized) request URL is
+  /// returned. This lets the backend filter instead of materializing every
+  /// entry in the cache just to return a single key.
+  pub request_url: Option<String>,
+}
+
+#[derive(Debug, ToV8)]
+pub struct CacheKeyEntry {
+  pub request_url: String,
+  pub request_headers: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Clone)]
@@ -228,6 +247,17 @@ impl CacheImpl {
     match self {
       Self::Sqlite(cache) => cache.delete(request).await,
       Self::Lsc(cache) => cache.delete(request).await,
+    }
+  }
+
+  pub async fn keys(
+    &self,
+    cache_id: i64,
+    request_url: Option<String>,
+  ) -> Result<Vec<CacheKeyEntry>, CacheError> {
+    match self {
+      Self::Sqlite(cache) => cache.keys(cache_id, request_url).await,
+      Self::Lsc(cache) => cache.keys(cache_id, request_url).await,
     }
   }
 }
@@ -364,6 +394,15 @@ pub async fn op_cache_delete(
   cache.delete(request).await
 }
 
+#[op2]
+pub async fn op_cache_keys(
+  state: Rc<RefCell<OpState>>,
+  #[scoped] request: CacheKeysRequest,
+) -> Result<Vec<CacheKeyEntry>, CacheError> {
+  let cache = get_cache(&state)?;
+  cache.keys(request.cache_id, request.request_url).await
+}
+
 pub fn get_cache(
   state: &Rc<RefCell<OpState>>,
 ) -> Result<CacheImpl, CacheError> {
@@ -392,6 +431,9 @@ pub fn vary_header_matches(
   };
   let headers = get_headers_from_vary_header(vary_header);
   for header in headers {
+    if header == "*" {
+      return false;
+    }
     let query_header = get_header(&header, query_request_headers);
     let cached_header = get_header(&header, cached_request_headers);
     if query_header != cached_header {
@@ -403,31 +445,74 @@ pub fn vary_header_matches(
 
 #[test]
 fn test_vary_header_matches() {
+  let headers = |headers: &[(&str, &str)]| {
+    headers
+      .iter()
+      .map(|(name, value)| ((*name).into(), (*value).into()))
+      .collect::<Vec<(ByteString, ByteString)>>()
+  };
+
   let vary_header = ByteString::from("accept-encoding");
-  let query_request_headers = vec![(
-    ByteString::from("accept-encoding"),
-    ByteString::from("gzip"),
-  )];
-  let cached_request_headers = vec![(
-    ByteString::from("accept-encoding"),
-    ByteString::from("gzip"),
-  )];
+  let query_request_headers = headers(&[("accept-encoding", "gzip")]);
+  let cached_request_headers = headers(&[("accept-encoding", "gzip")]);
   assert!(vary_header_matches(
     &vary_header,
     &query_request_headers,
     &cached_request_headers
   ));
-  let vary_header = ByteString::from("accept-encoding");
-  let query_request_headers = vec![(
-    ByteString::from("accept-encoding"),
-    ByteString::from("gzip"),
-  )];
-  let cached_request_headers =
-    vec![(ByteString::from("accept-encoding"), ByteString::from("br"))];
+
+  let query_request_headers = headers(&[("accept-encoding", "gzip")]);
+  let cached_request_headers = headers(&[("accept-encoding", "br")]);
   assert!(!vary_header_matches(
     &vary_header,
     &query_request_headers,
     &cached_request_headers
+  ));
+
+  let vary_header = ByteString::from("x-example");
+  let cached_request_headers =
+    headers(&[("X-Example", "first"), ("x-example", "cached")]);
+  let matching_query_headers =
+    headers(&[("x-example", "first"), ("X-EXAMPLE", "cached")]);
+  assert!(vary_header_matches(
+    &vary_header,
+    &matching_query_headers,
+    &cached_request_headers,
+  ));
+
+  for query_request_headers in [
+    headers(&[("x-example", "first"), ("x-example", "query")]),
+    headers(&[("x-example", "cached"), ("x-example", "first")]),
+    headers(&[("x-example", "first")]),
+  ] {
+    assert!(!vary_header_matches(
+      &vary_header,
+      &query_request_headers,
+      &cached_request_headers,
+    ));
+  }
+
+  let no_headers = headers(&[]);
+  assert!(vary_header_matches(&vary_header, &no_headers, &no_headers,));
+  assert!(!vary_header_matches(
+    &vary_header,
+    &headers(&[("x-example", "present")]),
+    &no_headers,
+  ));
+  assert!(!vary_header_matches(
+    &ByteString::from("*"),
+    &no_headers,
+    &no_headers,
+  ));
+
+  let response_headers =
+    headers(&[("vary", "accept-language"), ("Vary", "x-example")]);
+  let vary_header = get_header("vary", &response_headers).unwrap();
+  assert_eq!(vary_header, ByteString::from("accept-language, x-example"));
+  assert!(!vary_header_matches(
+    &vary_header,
+    &headers(&[("accept-language", "en"), ("x-example", "query")]),
+    &headers(&[("accept-language", "en"), ("x-example", "cached")]),
   ));
 }
 
@@ -447,21 +532,32 @@ fn test_get_headers_from_vary_header() {
   assert_eq!(headers, vec!["accept-encoding", "user-agent"]);
 }
 
-/// Get value for the header with the given name.
+/// Get the combined value for headers with the given name.
+///
+/// This follows Fetch's header-list get algorithm: matching values are joined
+/// in their original order with `, ` separators.
 pub fn get_header(
   name: &str,
   headers: &[(ByteString, ByteString)],
 ) -> Option<ByteString> {
-  headers
-    .iter()
-    .find(|(k, _)| {
-      if let Ok(k) = std::str::from_utf8(k) {
-        k.eq_ignore_ascii_case(name)
-      } else {
-        false
+  let mut combined: Option<Vec<u8>> = None;
+  for (header_name, value) in headers {
+    let Ok(header_name) = std::str::from_utf8(header_name) else {
+      continue;
+    };
+    if !header_name.eq_ignore_ascii_case(name) {
+      continue;
+    }
+
+    match &mut combined {
+      Some(combined) => {
+        combined.extend_from_slice(b", ");
+        combined.extend_from_slice(value);
       }
-    })
-    .map(|(_, v)| v.to_owned())
+      None => combined = Some(value.to_vec()),
+    }
+  }
+  combined.map(ByteString::from)
 }
 
 #[test]
@@ -479,9 +575,10 @@ fn test_get_header() {
       ByteString::from("vary"),
       ByteString::from("accept-encoding"),
     ),
+    (ByteString::from("Accept-Encoding"), ByteString::from("br")),
   ];
   let value = get_header("accept-encoding", &headers);
-  assert_eq!(value, Some(ByteString::from("gzip")));
+  assert_eq!(value, Some(ByteString::from("gzip, br")));
   let value = get_header("content-type", &headers);
   assert_eq!(value, Some(ByteString::from("application/json")));
   let value = get_header("vary", &headers);

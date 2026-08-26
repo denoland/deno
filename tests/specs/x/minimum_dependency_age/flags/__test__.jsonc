@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "tests": {
+    "jsr_disabled": {
+      // An explicit `--minimum-dependency-age=0` disables the cutoff, so the
+      // newest version (2.0.0) is selected, matching `deno run`.
+      "args": "x -y --minimum-dependency-age=0 jsr:@denotest/x-min-dep-age",
+      "output": "[WILDCARD]\n2.0.0\n"
+    },
+    "jsr_cutoff": {
+      // A cutoff between the two publish dates excludes 2.0.0 (2025-06-01), so
+      // 1.0.0 (2025-01-01) is selected, matching `deno run`.
+      "args": "x -y --minimum-dependency-age=2025-03-01T00:00:00.000Z jsr:@denotest/x-min-dep-age",
+      "output": "[WILDCARD]\n1.0.0\n"
+    },
+    "npm_disabled": {
+      "args": "x -y --minimum-dependency-age=0 npm:@denotest/x-min-dep-age",
+      "output": "[WILDCARD]\n2.0.0\n"
+    },
+    "npm_cutoff": {
+      "args": "x -y --minimum-dependency-age=2025-03-01T00:00:00.000Z npm:@denotest/x-min-dep-age",
+      "output": "[WILDCARD]\n1.0.0\n"
+    }
+  }
+}

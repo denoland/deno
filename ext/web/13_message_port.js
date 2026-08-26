@@ -16,24 +16,37 @@ const {
   op_message_port_recv_message_sync,
 } = core.ops;
 const {
+  Array,
+  ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
+  Float64Array,
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectHasOwn,
+  ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseResolve,
   queueMicrotask,
+  ReflectApply,
   SafeArrayIterator,
   SafeSet,
+  SafeWeakMap,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
   Symbol,
   SymbolFor,
   SymbolIterator,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeSet,
   TypeError,
   TypeErrorPrototype,
+  Uint8Array,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 const {
   InterruptedPrototype,
@@ -111,8 +124,6 @@ class MessageChannel {
 webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
-const _id = Symbol("id");
-const MessagePortIdSymbol = _id;
 const MessagePortReceiveMessageOnPortSymbol = Symbol(
   "MessagePortReceiveMessageOnPort",
 );
@@ -126,6 +137,39 @@ const refMessagePort = Symbol("refMessagePort");
  * unref/ref on the global message event handler count. */
 const unrefParentPort = Symbol("unrefParentPort");
 
+/** @type {WeakMap<MessagePort, number | null>} */
+const messagePortIds = new SafeWeakMap();
+
+/**
+ * @param {MessagePort} port
+ * @returns {number | null}
+ */
+function getMessagePortId(port) {
+  const id = WeakMapPrototypeGet(messagePortIds, port);
+  if (id === undefined) {
+    throw new TypeError("Illegal invocation");
+  }
+  return id;
+}
+
+/**
+ * @param {MessagePort} port
+ * @param {number | null} id
+ */
+function setMessagePortId(port, id) {
+  WeakMapPrototypeSet(messagePortIds, port, id);
+}
+
+/**
+ * @param {MessagePort} port
+ * @returns {number | null}
+ */
+function takeMessagePortId(port) {
+  const id = getMessagePortId(port);
+  setMessagePortId(port, null);
+  return id;
+}
+
 /**
  * @param {number} id
  * @returns {MessagePort}
@@ -134,7 +178,7 @@ function createMessagePort(id) {
   const port = webidl.createBranded(MessagePort);
   port[core.hostObjectBrand] = "MessagePort";
   setEventTargetData(port);
-  port[_id] = id;
+  setMessagePortId(port, id);
   port[_enabled] = false;
   port[_messageEventListenerCount] = 0;
   port[_refed] = false;
@@ -216,8 +260,6 @@ class _MessagePortBase extends EventTarget {
 }
 
 class MessagePort extends _MessagePortBase {
-  /** @type {number | null} */
-  [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
   [_refed] = false;
@@ -253,7 +295,8 @@ class MessagePort extends _MessagePortBase {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    const portClosed = this[_id] === null;
+    const portId = getMessagePortId(this);
+    const portClosed = portId === null;
     // Fast path: no transferables - serialize and send in one shot,
     // bypassing the JsMessageData serde overhead
     if (
@@ -269,10 +312,10 @@ class MessagePort extends _MessagePortBase {
           "DataCloneError",
         );
       }
-      op_message_port_post_message_raw(
-        this[_id],
-        core.serialize(message, undefined, serializeErrorCb),
-      );
+      const data = serializeMessageData(message, serializeErrorCb);
+      const currentPortId = getMessagePortId(this);
+      if (currentPortId === null) return;
+      op_message_port_post_message_raw(currentPortId, data);
       return;
     }
     message = webidl.converters.any(message);
@@ -315,7 +358,7 @@ class MessagePort extends _MessagePortBase {
       for (let i = 0; i < transfer.length; i++) {
         const t = transfer[i];
         if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
-          if (t[_id] === null) {
+          if (getMessagePortId(t) === null) {
             throw new DOMException(
               "MessagePort in transfer list is already detached",
               "DataCloneError",
@@ -341,7 +384,9 @@ class MessagePort extends _MessagePortBase {
     }
     if (portClosed) return;
     const data = serializeJsMessageData(message, transfer);
-    op_message_port_post_message(this[_id], data);
+    const currentPortId = getMessagePortId(this);
+    if (currentPortId === null) return;
+    op_message_port_post_message(currentPortId, data);
   }
 
   start() {
@@ -350,11 +395,12 @@ class MessagePort extends _MessagePortBase {
     (async () => {
       this[_enabled] = true;
       while (true) {
-        if (this[_id] === null) break;
+        const portId = getMessagePortId(this);
+        if (portId === null) break;
         let data;
         try {
           this[_dataPromise] = op_message_port_recv_message(
-            this[_id],
+            portId,
           );
           if (
             typeof this[nodeWorkerThreadCloseCb] === "function" &&
@@ -445,16 +491,16 @@ class MessagePort extends _MessagePortBase {
         cb();
       });
     }
-    if (this[_id] !== null) {
+    const portId = getMessagePortId(this);
+    if (portId !== null) {
       // Drain any already-queued messages synchronously before closing the
       // resource. Node guarantees that messages sent before the close()
       // call get dispatched even if the receiver closes mid-stream
       // (regression test #22762). Without this, messages buffered after
       // the current async recv resolved but before our handler called
       // close() would be silently dropped.
-      const portId = this[_id];
       try {
-        while (this[_id] === portId) {
+        while (getMessagePortId(this) === portId) {
           const data = op_message_port_recv_message_sync(portId);
           if (data === null) break;
           if (!dispatchPortMessageData(this, data)) break;
@@ -464,9 +510,9 @@ class MessagePort extends _MessagePortBase {
       }
       // The dispatch may have closed the port via a user handler that
       // re-entered close(); only tear down the resource if we still own it.
-      if (this[_id] === portId) {
+      if (getMessagePortId(this) === portId) {
         core.close(portId);
-        this[_id] = null;
+        setMessagePortId(this, null);
         nodeWorkerThreadMaybeInvokeCloseCb(this);
       }
     }
@@ -481,7 +527,7 @@ class MessagePort extends _MessagePortBase {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: {
-          active: this[_id] !== null,
+          active: getMessagePortId(this) !== null,
           refed: this[_refed],
           onmessage: this.onmessage,
           onmessageerror: this.onmessageerror,
@@ -518,8 +564,7 @@ webidl.configureInterface(MessagePort);
 const MessagePortPrototype = MessagePort.prototype;
 
 core.registerTransferableResource("MessagePort", (port) => {
-  const id = port[_id];
-  port[_id] = null;
+  const id = takeMessagePortId(port);
   if (id === null) {
     throw new DOMException(
       "Can not transfer disentangled message port",
@@ -557,13 +602,16 @@ function resolveTransferableResource(type) {
 }
 
 function deserializeJsMessageData(messageData) {
+  // Raw fast path: the receive op handed us the serialized buffer directly
+  // (a typed array) instead of a `{ data, transferables }` object, because the
+  // message carried no transferables. This is the hot path and avoids a
+  // per-message object + empty-array allocation on the Rust side.
+  if (ArrayBufferIsView(messageData)) {
+    return [deserializeMessageData(messageData), emptyTransferables];
+  }
   // Fast path: no transferables (most common case)
   if (messageData.transferables.length === 0) {
-    const deserializers = core.getCloneableDeserializers();
-    const data = deserializers
-      ? core.deserialize(messageData.data, { deserializers })
-      : core.deserialize(messageData.data);
-    return [data, emptyTransferables];
+    return [deserializeMessageData(messageData.data), emptyTransferables];
   }
 
   /** @type {object[]} */
@@ -645,6 +693,208 @@ const serializeErrorCb = (err) => {
   throw new DOMException(err, "DataCloneError");
 };
 
+// --- Primitive structured-clone fast path -------------------------------
+//
+// For the common no-transferables case where the payload is a primitive
+// (undefined / null / boolean / number / string), V8's ValueSerializer +
+// ValueDeserializer round-trip (two builtin op calls into C++, plus a buffer
+// allocation) dominates the cost of moving the message. This is exactly the
+// latency-bound worker_threads ping-pong pattern.
+//
+// Instead, primitives are encoded with a tiny self-describing byte layout and
+// decoded back in pure JS with no serializer involved. The first byte is a
+// sentinel (FAST_MARKER, 0xFE). V8's structured-clone format always begins
+// with 0xFF (kVersionTag, written by ValueSerializer::WriteHeader), so the two
+// encodings can never be confused: any buffer whose first byte isn't 0xFE is a
+// regular V8 stream and goes through `core.deserialize` unchanged.
+//
+// Strings are encoded as raw UTF-16 code units so JS string semantics are
+// preserved exactly, including lone surrogates. Bigints, objects, functions and
+// symbols are not fast primitives.
+const FAST_MARKER = 0xFE;
+const FAST_UNDEFINED = 0;
+const FAST_NULL = 1;
+const FAST_FALSE = 2;
+const FAST_TRUE = 3;
+const FAST_INT32 = 4;
+const FAST_DOUBLE = 5;
+const FAST_STRING = 6;
+const FAST_STRING_LATIN1 = 7;
+// Above this many code units, hand the string to V8's ValueSerializer, which
+// blits string contents with a native memcpy, rather than walking per-char in
+// the JS loops below. Measured crossover on x86_64 Linux (ping-pong vs V8):
+// the JS path wins up to ~128 code units for both 1-byte (Latin1) and 2-byte
+// strings and loses beyond it (roughly break-even at 256, +100%+ by a few KiB).
+// The fast path targets small latency-bound messages; larger strings are
+// structured-clone-bound and better served by V8.
+const FAST_STRING_MAX = 128;
+
+// Scratch union buffer used to read/write the raw bytes of an f64. Sender and
+// receiver always run on the same machine, so native byte order is consistent
+// across the channel; we never need an explicit endianness conversion. Access
+// is fully synchronous (no `await` between write and read), so a single shared
+// instance is safe.
+const fastF64 = new Float64Array(1);
+const fastF64Bytes = new Uint8Array(TypedArrayPrototypeGetBuffer(fastF64));
+
+function fastTag(tag) {
+  const b = new Uint8Array(2);
+  b[0] = FAST_MARKER;
+  b[1] = tag;
+  return b;
+}
+
+// Returns a `Uint8Array` encoding `value`, or `undefined` if `value` is not a
+// fast-path primitive (and so must go through V8's ValueSerializer).
+function fastSerialize(value) {
+  if (value === null) return fastTag(FAST_NULL);
+  switch (typeof value) {
+    case "undefined":
+      return fastTag(FAST_UNDEFINED);
+    case "boolean":
+      return fastTag(value ? FAST_TRUE : FAST_FALSE);
+    case "number": {
+      // Encode as int32 when it round-trips exactly (excluding -0, whose sign
+      // must be preserved). Everything else (incl. -0, NaN, +/-Infinity, any
+      // non-integer) goes through the f64 path.
+      if ((value | 0) === value && !ObjectIs(value, -0)) {
+        const b = new Uint8Array(6);
+        b[0] = FAST_MARKER;
+        b[1] = FAST_INT32;
+        b[2] = value & 0xFF;
+        b[3] = (value >>> 8) & 0xFF;
+        b[4] = (value >>> 16) & 0xFF;
+        b[5] = (value >>> 24) & 0xFF;
+        return b;
+      }
+      const b = new Uint8Array(10);
+      b[0] = FAST_MARKER;
+      b[1] = FAST_DOUBLE;
+      fastF64[0] = value;
+      TypedArrayPrototypeSet(b, fastF64Bytes, 2);
+      return b;
+    }
+    case "string": {
+      const length = value.length;
+      // Long strings lose to V8's native memcpy; let the serializer take them.
+      if (length > FAST_STRING_MAX) return undefined;
+      // Optimistically encode as Latin1 (1 byte/code unit). Most real payloads
+      // (JSON, URLs, identifiers) are ASCII, so this halves both the buffer
+      // size and the decode work. Bail to the two-byte path on the first code
+      // unit >= 256.
+      const b = new Uint8Array(6 + length);
+      b[0] = FAST_MARKER;
+      b[1] = FAST_STRING_LATIN1;
+      b[2] = length & 0xFF;
+      b[3] = (length >>> 8) & 0xFF;
+      b[4] = (length >>> 16) & 0xFF;
+      b[5] = (length >>> 24) & 0xFF;
+      let latin1 = true;
+      for (let i = 0, j = 6; i < length; i++, j++) {
+        const code = StringPrototypeCharCodeAt(value, i);
+        if (code >= 256) {
+          latin1 = false;
+          break;
+        }
+        b[j] = code;
+      }
+      if (latin1) return b;
+      const b2 = new Uint8Array(6 + length * 2);
+      b2[0] = FAST_MARKER;
+      b2[1] = FAST_STRING;
+      b2[2] = length & 0xFF;
+      b2[3] = (length >>> 8) & 0xFF;
+      b2[4] = (length >>> 16) & 0xFF;
+      b2[5] = (length >>> 24) & 0xFF;
+      for (let i = 0, j = 6; i < length; i++, j += 2) {
+        const code = StringPrototypeCharCodeAt(value, i);
+        b2[j] = code & 0xFF;
+        b2[j + 1] = code >>> 8;
+      }
+      return b2;
+    }
+    default:
+      return undefined;
+  }
+}
+
+// Decodes a buffer previously produced by `fastSerialize`. Only call this when
+// `buffer[0] === FAST_MARKER`.
+function fastDeserialize(buffer) {
+  switch (buffer[1]) {
+    case FAST_UNDEFINED:
+      return undefined;
+    case FAST_NULL:
+      return null;
+    case FAST_FALSE:
+      return false;
+    case FAST_TRUE:
+      return true;
+    case FAST_INT32:
+      // Bitwise OR yields a signed 32-bit integer, restoring negatives.
+      return buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24);
+    case FAST_DOUBLE:
+      fastF64Bytes[0] = buffer[2];
+      fastF64Bytes[1] = buffer[3];
+      fastF64Bytes[2] = buffer[4];
+      fastF64Bytes[3] = buffer[5];
+      fastF64Bytes[4] = buffer[6];
+      fastF64Bytes[5] = buffer[7];
+      fastF64Bytes[6] = buffer[8];
+      fastF64Bytes[7] = buffer[9];
+      return fastF64[0];
+    case FAST_STRING_LATIN1: {
+      // Strings are capped at FAST_STRING_MAX code units on encode, so a
+      // single `apply` is always well within the argument limit. Pre-size and
+      // index-assign rather than push, to avoid array growth on this hot path.
+      const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24)) >>> 0;
+      const codes = new Array(length);
+      for (let i = 0, j = 6; i < length; i++, j++) {
+        codes[i] = buffer[j];
+      }
+      return ReflectApply(StringFromCharCode, null, codes);
+    }
+    case FAST_STRING: {
+      const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24)) >>> 0;
+      const codes = new Array(length);
+      for (let i = 0, j = 6; i < length; i++, j += 2) {
+        codes[i] = buffer[j] | (buffer[j + 1] << 8);
+      }
+      return ReflectApply(StringFromCharCode, null, codes);
+    }
+    default:
+      throw new TypeError("Invalid fast message encoding");
+  }
+}
+
+// Serialize a message payload (no transferables) to a buffer, taking the
+// primitive fast path when possible. `errorCallback` is forwarded to
+// `core.serialize` for the slow path (primitives never error).
+function serializeMessageData(value, errorCallback) {
+  const fast = fastSerialize(value);
+  if (fast !== undefined) return fast;
+  return core.serialize(value, undefined, errorCallback);
+}
+
+// Deserialize a message payload buffer (no transferables), taking the
+// primitive fast path when the buffer carries the fast-path sentinel.
+// `useDeserializers` (default true) controls whether the registered
+// host-object deserializers are applied on the V8 slow path; callers that
+// want host objects in the stream to throw (Node cross-thread messaging) pass
+// `false`. Primitives carry no host objects, so the flag is irrelevant to the
+// fast path.
+function deserializeMessageData(buffer, useDeserializers = true) {
+  if (buffer[0] === FAST_MARKER) return fastDeserialize(buffer);
+  if (!useDeserializers) return core.deserialize(buffer);
+  const deserializers = core.getCloneableDeserializers();
+  return deserializers
+    ? core.deserialize(buffer, { deserializers })
+    : core.deserialize(buffer);
+}
+
 function serializeJsMessageData(data, transferables) {
   const { isDetachedBuffer } = core.loadExtScript("ext:deno_web/06_streams.js");
 
@@ -659,9 +909,8 @@ function serializeJsMessageData(data, transferables) {
 
   // Fast path: no transferables (most common case)
   if (transferables.length === 0) {
-    const serializedData = core.serialize(data, undefined, serializeErrorCb);
     return {
-      data: serializedData,
+      data: serializeMessageData(data, serializeErrorCb),
       transferables: emptySerializedTransferables,
     };
   }
@@ -904,12 +1153,13 @@ function structuredClone(value, options) {
 
 return {
   deserializeJsMessageData,
+  deserializeMessageData,
   isUncloneable,
   markAsUncloneable,
   markNotSerializable,
   MessageChannel,
   MessagePort,
-  MessagePortIdSymbol,
+  getMessagePortId,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
@@ -927,6 +1177,8 @@ return {
   },
   refMessagePort,
   serializeJsMessageData,
+  serializeMessageData,
+  setMessagePortId,
   structuredClone,
   unrefParentPort,
 };

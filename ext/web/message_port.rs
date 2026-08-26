@@ -82,7 +82,7 @@ impl MessagePort {
   pub async fn recv(
     &self,
     state: Rc<RefCell<OpState>>,
-  ) -> Result<Option<JsMessageData>, MessagePortError> {
+  ) -> Result<Option<RecvMessageData>, MessagePortError> {
     let rx = &self.rx;
 
     let maybe_data = poll_fn(|cx| {
@@ -92,21 +92,26 @@ impl MessagePort {
     .await;
 
     if let Some((data, transferables)) = maybe_data {
-      let js_transferables = if transferables.is_empty() {
-        vec![]
-      } else {
-        serialize_transferables(&mut state.borrow_mut(), transferables)
-      };
-      return Ok(Some(JsMessageData {
+      // Fast path: no transferables -> hand the buffer to JS directly.
+      if transferables.is_empty() {
+        return Ok(Some(RecvMessageData::Raw(data)));
+      }
+      let js_transferables =
+        serialize_transferables(&mut state.borrow_mut(), transferables);
+      return Ok(Some(RecvMessageData::Full(JsMessageData {
         data,
         transferables: js_transferables,
-      }));
+      })));
     }
     Ok(None)
   }
 
   /// Try to receive a message synchronously without blocking.
   /// Returns `Ok(None)` if no message is available or the channel is closed.
+  ///
+  /// Unlike the async `recv`, this keeps returning the full `JsMessageData`
+  /// object: the sync path is the batch-drain used by fire-and-forget floods,
+  /// which is not latency-bound and showed no benefit from the raw fast path.
   pub fn try_recv_sync(
     &self,
     state: &mut OpState,
@@ -293,6 +298,51 @@ pub struct JsMessageData {
   pub transferables: Vec<JsTransferable>,
 }
 
+// Returned from the message-receive ops. The overwhelmingly common case is a
+// message with no transferables, which is handed to JS as the serialized buffer
+// *directly* -- skipping the per-message `{ data, transferables }` object (and
+// its empty transferables array) that `JsMessageData` would otherwise allocate
+// on the hottest worker path. This mirrors the send side, where
+// `op_*_post_message_raw` already bypasses the `JsMessageData` envelope for the
+// no-transferables case. When a message does carry transferables it falls back
+// to the full `JsMessageData` object; JS disambiguates by checking whether the
+// received value is a typed array (`Raw`) or an object (`Full`).
+pub enum RecvMessageData {
+  Raw(DetachedBuffer),
+  Full(JsMessageData),
+}
+
+impl<'a> deno_core::ToV8<'a> for RecvMessageData {
+  type Error = JsErrorBox;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut deno_core::v8::PinScope<'a, 'i>,
+  ) -> Result<deno_core::v8::Local<'a, deno_core::v8::Value>, Self::Error> {
+    match self {
+      RecvMessageData::Raw(buffer) => {
+        // Reuse serde_v8's DetachedBuffer conversion (produces a Uint8Array),
+        // matching what `JsMessageData::data` yields via `#[to_v8(serde)]`.
+        deno_core::serde_v8::to_v8(scope, buffer)
+          .map_err(|e| JsErrorBox::generic(e.to_string()))
+      }
+      RecvMessageData::Full(data) => data
+        .to_v8(scope)
+        .map_err(|e| JsErrorBox::generic(e.to_string())),
+    }
+  }
+}
+
+impl From<JsMessageData> for RecvMessageData {
+  fn from(data: JsMessageData) -> Self {
+    if data.transferables.is_empty() {
+      RecvMessageData::Raw(data.data)
+    } else {
+      RecvMessageData::Full(data)
+    }
+  }
+}
+
 #[op2]
 pub fn op_message_port_post_message(
   state: &mut OpState,
@@ -318,7 +368,7 @@ pub fn op_message_port_post_message(
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<JsMessageData>, MessagePortError> {
+) -> Result<Option<RecvMessageData>, MessagePortError> {
   let resource = {
     let state = state.borrow();
     match state.resource_table.get::<MessagePortResource>(rid) {

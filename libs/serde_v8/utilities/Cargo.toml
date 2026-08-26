@@ -2,12 +2,17 @@
 
 [package]
 name = "serde_v8_utilities"
-version = "0.22.0"
+version = "0.26.0"
 edition = "2024"
 publish = false
 
 [lib]
 path = "lib.rs"
+
+[features]
+default = ["v8"]
+quickjs = ["v8/quickjs"]
+v8 = ["v8/v8"]
 
 [dependencies]
 v8.workspace = true

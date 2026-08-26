@@ -289,7 +289,7 @@ class DiffieHellmanImpl {
       return secretBuf;
     }
 
-    // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+    // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
     return secretBuf.toString(outputEncoding);
   }
 
@@ -327,7 +327,7 @@ class DiffieHellmanImpl {
 
   getGenerator(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#generator.toString(encoding);
     }
 
@@ -336,7 +336,7 @@ class DiffieHellmanImpl {
 
   getPrime(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#prime.toString(encoding);
     }
 
@@ -345,7 +345,7 @@ class DiffieHellmanImpl {
 
   getPrivateKey(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#privateKey.toString(encoding);
     }
 
@@ -354,7 +354,7 @@ class DiffieHellmanImpl {
 
   getPublicKey(encoding?: any): Buffer | string {
     if (encoding !== undefined && encoding != "buffer") {
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return this.#publicKey.toString(encoding);
     }
 
@@ -1364,7 +1364,7 @@ function ecdhEncode(
   if (encoding === undefined || encoding === "buffer") {
     return buffer;
   }
-  // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+  // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
   return buffer.toString(encoding);
 }
 
@@ -1434,7 +1434,7 @@ class ECDHImpl {
     }
 
     if (outputEncoding && outputEncoding !== "buffer") {
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) has no primordial
       return result.toString(outputEncoding);
     }
     return result;

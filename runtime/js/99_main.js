@@ -41,6 +41,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectIsExtensible,
@@ -53,12 +54,25 @@ const {
   PromiseResolve,
   queueMicrotask,
   ReflectApply,
+  ReflectOwnKeys,
   StringPrototypePadEnd,
   Symbol,
   SymbolDispose,
   SymbolIterator,
   TypeError,
 } = primordials;
+
+function getSafeOwnPropertyDescriptors(object) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(object);
+  const safeDescriptors = { __proto__: null };
+  const keys = ReflectOwnKeys(descriptors);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    safeDescriptors[key] = { __proto__: null, ...descriptors[key] };
+  }
+  return safeDescriptors;
+}
+
 const {
   isNativeError,
 } = core;
@@ -138,7 +152,7 @@ function bootstrapOtel(otelConfig) {
   bootstrap(otelConfig);
 }
 
-// deno-lint-ignore prefer-primordials
+// deno-lint-ignore deno-internal/prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it";
 }
@@ -233,9 +247,11 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
     transferOrOptions === null ||
     (arguments.length <= 1)
   ) {
-    op_worker_post_message_raw(core.serialize(message, undefined, (err) => {
-      throw new DOMException(err, "DataCloneError");
-    }));
+    op_worker_post_message_raw(
+      messagePort.serializeMessageData(message, (err) => {
+        throw new DOMException(err, "DataCloneError");
+      }),
+    );
     return;
   }
   message = webidl.converters.any(message);
@@ -660,7 +676,7 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_deno_version",
   "op_jupyter_typescript_version",
   // Used in jupyter API
-  "op_base64_encode",
+  "op_base64_encode_from_buffer",
 
   // Used in the lint API
   "op_lint_report",
@@ -702,6 +718,7 @@ const NOT_IMPORTED_OPS = [
   "Notification",
   "op_desktop_apply_patch",
   "op_desktop_confirm_update",
+  "op_desktop_verify_ed25519",
   "op_desktop_init",
   "op_desktop_recv_event",
   "op_desktop_resolve_bind_call",
@@ -729,10 +746,17 @@ function removeImportedOps() {
   }
 }
 
-// FIXME(bartlomieju): temporarily add whole `Deno.core` to
-// `Deno[Deno.internal]` namespace. It should be removed and only necessary
-// methods should be left there.
-ObjectAssign(internals, { core });
+// `Deno[Deno.internal]` is reachable from user code. Preserve its existing
+// internal compatibility surface, but keep extension-loading capabilities on
+// the core object imported through `ext:core/mod.js`.
+const userVisibleCoreDescriptors = getSafeOwnPropertyDescriptors(core);
+delete userVisibleCoreDescriptors.createLazyLoader;
+delete userVisibleCoreDescriptors.loadExtScript;
+const userVisibleCore = ObjectFreeze(ObjectDefineProperties(
+  { __proto__: null },
+  userVisibleCoreDescriptors,
+));
+ObjectAssign(internals, { core: userVisibleCore });
 const internalSymbol = Symbol("Deno.internal");
 // `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
 // compatibility so they don't error under `deno run`. Mirrors the surface of
@@ -771,7 +795,7 @@ const finalDenoNs = ObjectDefineProperties(
       },
     },
   },
-  ObjectGetOwnPropertyDescriptors(denoNs),
+  getSafeOwnPropertyDescriptors(denoNs),
 );
 
 ObjectDefineProperties(finalDenoNs, {
@@ -879,7 +903,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       0: denoVersion,
       1: location_,
       2: unstableFeatures,
-      3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
       7: nodeDebug,
@@ -926,11 +949,23 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       let serve = undefined;
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
-          try {
-            serve = lazyServeMod().registerDeclarativeServer(main.default);
-          } catch (e) {
-            if (mode === executionModes.serve || autoServe) {
-              throw e;
+          const dflt = main.default;
+          // `registerDeclarativeServer` returns immediately unless the default
+          // export has an own `fetch`, but merely reaching that check loads
+          // 00_serve.ts -> 23_request/23_response/22_body -> the web-streams
+          // polyfill: ~430 KB across 11 modules. Every CommonJS entry point
+          // surfaces `module.exports` as `default`, and plenty of ESM ones
+          // have an unrelated `export default`, so that graph was being
+          // compiled for programs that will never serve anything. Hoist the
+          // guard here. `dflt == null` still calls through, so the TypeError
+          // `Object.hasOwn(null, ...)` raises under `deno serve` is unchanged.
+          if (dflt == null || ObjectHasOwn(dflt, "fetch")) {
+            try {
+              serve = lazyServeMod().registerDeclarativeServer(dflt);
+            } catch (e) {
+              if (mode === executionModes.serve || autoServe) {
+                throw e;
+              }
             }
           }
         }
@@ -1023,9 +1058,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     bootstrapOtel(otelConfig);
 
-    if (inspectFlag) {
-      core.wrapConsole(globalThis.console, core.v8Console);
-    }
+    // Wrap the console unconditionally (like the worker bootstrap does)
+    // rather than only under --inspect*: the inspector can also be
+    // activated later at runtime (node:inspector open(), SIGUSR1), and
+    // without the wrap those sessions never receive
+    // Runtime.consoleAPICalled events.
+    core.wrapConsole(globalThis.console, core.v8Console);
 
     event.defineEventHandler(globalThis, "error");
     event.defineEventHandler(globalThis, "load");
@@ -1064,7 +1102,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       if (unstable) {
         ObjectDefineProperties(
           finalDenoNs,
-          ObjectGetOwnPropertyDescriptors(unstable),
+          getSafeOwnPropertyDescriptors(unstable),
         );
       }
     }
@@ -1151,6 +1189,8 @@ function bootstrapWorkerRuntime(
 
     closeOnIdle = runtimeOptions[14];
 
+    removeImportedOps();
+
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
@@ -1220,7 +1260,7 @@ function bootstrapWorkerRuntime(
       if (unstable) {
         ObjectDefineProperties(
           finalDenoNs,
-          ObjectGetOwnPropertyDescriptors(unstable),
+          getSafeOwnPropertyDescriptors(unstable),
         );
       }
     }

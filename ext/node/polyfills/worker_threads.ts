@@ -25,16 +25,19 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
+  deserializeMessageData,
   isUncloneable,
   markAsUncloneable: webMarkAsUncloneable,
   MessageChannel,
   MessagePort,
-  MessagePortIdSymbol,
+  getMessagePortId,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
+  serializeMessageData,
+  setMessagePortId,
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -81,6 +84,7 @@ const lazyModule = core.createLazyLoader("node:module");
 // loaders.
 
 const {
+  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -143,7 +147,7 @@ const workerCpuUsageBuffer = new Float64Array(2);
 const debugWorkerThreads = false;
 function debugWT(...args) {
   if (debugWorkerThreads) {
-    // deno-lint-ignore prefer-primordials no-console
+    // deno-lint-ignore deno-internal/prefer-primordials no-console
     console.log(...args);
   }
 }
@@ -247,7 +251,6 @@ interface WorkerOptions {
     codeRangeSizeMb?: number;
     stackSizeMb?: number;
   };
-  // deno-lint-ignore prefer-primordials
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
@@ -497,10 +500,10 @@ class NodeWorker extends EventEmitter {
       // `require` is already available from the Node worker bootstrap.
       // See: https://github.com/denoland/deno/issues/26739
       sourceCode = `var __filename = ${
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         JSON.stringify(lazyProcess().default.cwd() + "/[worker eval]")};\n` +
         `var __dirname = ${
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           JSON.stringify(lazyProcess().default.cwd())};\n` +
         `var module = { exports: {} };\n` +
         `var exports = module.exports;\n` +
@@ -510,7 +513,7 @@ class NodeWorker extends EventEmitter {
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       specifier = specifier.toString();
       specifier = op_worker_threads_filename(specifier) ?? specifier;
     }
@@ -525,7 +528,7 @@ class NodeWorker extends EventEmitter {
 
     const id = op_create_worker(
       {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         specifier: specifier.toString(),
         hasSourceCode,
         sourceCode,
@@ -793,7 +796,7 @@ class NodeWorker extends EventEmitter {
       }
       op_host_post_message_raw(
         this.#id,
-        core.serialize(message),
+        serializeMessageData(message),
       );
       return;
     }
@@ -1188,11 +1191,11 @@ internals.__initWorkerThreads = (
           const stdinHandler = (ev) => {
             const msg = ev.data;
             if (isWorkerStdinMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               workerStdin.push(msg.data);
               ev.stopImmediatePropagation();
             } else if (isWorkerStdinEndMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               workerStdin.push(null);
               parentPort.removeEventListener("message", stdinHandler);
               ev.stopImmediatePropagation();
@@ -1745,7 +1748,7 @@ function moveMessagePortToContext(
   // Node checks closed-port state before vm.Context to give a clearer
   // error when the port is detached -- order matters for tests in the
   // node_compat suite that pass an empty {} as the context.
-  const portId = port[MessagePortIdSymbol];
+  const portId = getMessagePortId(port);
   if (portId === null) {
     throw new ERR_CLOSED_MESSAGE_PORT();
   }
@@ -1755,7 +1758,7 @@ function moveMessagePortToContext(
   }
   // Take ownership of the port: clear the id on the original so it can no
   // longer be used from this context.
-  port[MessagePortIdSymbol] = null;
+  setMessagePortId(port, null);
 
   // Allocate the wrapper inside the target context so its prototype chain
   // is the target realm's (i.e., `wrapper instanceof Object` in the caller
@@ -1804,7 +1807,13 @@ function moveMessagePortToContext(
         // surface as `messageerror` per Node semantics.
         let message;
         try {
-          message = core.deserialize(data.data);
+          // `data` is either the raw serialized buffer (no transferables) or a
+          // `{ data, transferables }` object. Deserialize without the
+          // host-object deserializers registry either way.
+          message = deserializeMessageData(
+            ArrayBufferIsView(data) ? data : data.data,
+            false,
+          );
         } catch {
           const err = new Error(
             "Message could not be deserialized in the target context",
@@ -1831,7 +1840,7 @@ function moveMessagePortToContext(
 
   wrapper.postMessage = (msg: unknown) => {
     if (closed) return;
-    op_message_port_post_message_raw(portId, core.serialize(msg));
+    op_message_port_post_message_raw(portId, serializeMessageData(msg));
   };
 
   return wrapper;
@@ -1850,7 +1859,9 @@ function receiveMessageOnPort(port: MessagePort): object | undefined {
     throw err;
   }
   port[MessagePortReceiveMessageOnPortSymbol] = true;
-  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
+  const portId = getMessagePortId(port);
+  if (portId === null) return undefined;
+  const data = op_message_port_recv_message_sync(portId);
   if (data === null) return undefined;
   const message = deserializeJsMessageData(data)[0];
   patchMessagePortIfFound(message);
@@ -2077,13 +2088,14 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       // `active: false` after the close event has fired. The underlying
       // resource may already be closed (recv loop saw end-of-stream);
       // swallow any "bad resource id" error from a redundant core.close.
-      if (port[MessagePortIdSymbol] !== null) {
+      const portId = getMessagePortId(port);
+      if (portId !== null) {
         try {
-          core.close(port[MessagePortIdSymbol]);
+          core.close(portId);
         } catch {
           // already closed
         }
-        port[MessagePortIdSymbol] = null;
+        setMessagePortId(port, null);
       }
       port.dispatchEvent(new Event("close"));
     });
@@ -2232,6 +2244,8 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
+const { locks } = core.createLazyLoader("ext:deno_web/locks.js")();
+
 // Node's `worker_threads.MessagePort` is a function (not a class) that throws
 // `ERR_CONSTRUCT_CALL_INVALID` whether called as `MessagePort()` or
 // `new MessagePort()`. Mirror that here while keeping
@@ -2281,6 +2295,7 @@ ObjectAssign(exportsObj, {
   // Node's contract (an empty resourceLimits on the main thread).
   resourceLimits: {},
   threadName: "",
+  locks,
   markAsUncloneable,
   markAsUntransferable,
   isMarkedAsUntransferable,

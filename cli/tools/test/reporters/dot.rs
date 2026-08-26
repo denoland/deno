@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_print::drop_print;
+use deno_print::drop_println;
+
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
@@ -14,7 +17,6 @@ pub struct DotTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl DotTestReporter {
   pub fn new(
     cwd: Url,
@@ -41,16 +43,16 @@ impl DotTestReporter {
   fn print_status(&mut self, status: String) {
     // Non-TTY console prints every result on a separate line.
     if self.width == 0 {
-      println!("{}", status);
+      drop_println!("{}", status);
       return;
     }
 
     if self.n != 0 && self.n.is_multiple_of(self.width) {
-      println!();
+      drop_println!();
     }
     self.n += 1;
 
-    print!("{}", status);
+    drop_print!("{}", status);
   }
 
   fn print_test_step_result(&mut self, result: &TestStepResult) {
@@ -90,7 +92,6 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -172,7 +173,7 @@ impl TestReporter for DotTestReporter {
       .uncaught_errors
       .push((origin.to_string(), error));
 
-    println!(
+    drop_println!(
       "Uncaught error from {} {}",
       to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
@@ -226,7 +227,7 @@ impl TestReporter for DotTestReporter {
       elapsed,
       &self.failure_format_options,
     );
-    println!();
+    drop_println!();
   }
 
   fn report_sigint(

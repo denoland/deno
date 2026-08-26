@@ -42,6 +42,10 @@ pub fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
 ///
 /// The difference from [`extract_doc_tests`] is that this function does *not*
 /// wrap extracted code snippets in a `Deno.test` call.
+#[allow(
+  dead_code,
+  reason = "re-enabled once `deno check --doc` is supported by the native type checker"
+)]
 pub fn extract_snippet_files(file: File) -> Result<Vec<File>, AnyError> {
   extract_inner(file, WrapKind::NoWrap)
 }
@@ -577,15 +581,7 @@ fn parse_shebang(shebang: &str) -> Shebang {
       "scoped --deny-* flags aren't supported yet, either remove them or ignore the test",
     ),
     Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
-    Err(err) => match err.get(clap::error::ContextKind::InvalidArg) {
-      Some(clap::error::ContextValue::String(arg)) => {
-        invalid(&format!("could not parse flag {arg}"))
-      }
-      Some(clap::error::ContextValue::Strings(args)) => {
-        invalid(&format!("could not parse flags {}", args.join(", ")))
-      }
-      _ => invalid("could not parse flags"),
-    },
+    Err(err) => invalid(&format!("could not parse flags: {}", err.message)),
   }
 }
 

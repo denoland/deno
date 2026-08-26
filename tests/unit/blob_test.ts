@@ -94,6 +94,21 @@ Deno.test(async function blobStream() {
   assertEquals(decoder.decode(bytes), "Hello World");
 });
 
+Deno.test(async function blobTextStream() {
+  const text = "Hello 👋 wörld";
+  const blob = new Blob([text]);
+  const stream = blob.textStream();
+  assert(stream instanceof ReadableStream);
+  const reader = stream.getReader();
+  let result = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    result += value;
+  }
+  assertEquals(result, text);
+});
+
 Deno.test(async function blobArrayBuffer() {
   const uint = new Uint8Array([102, 111, 111]);
   const blob = new Blob([uint]);

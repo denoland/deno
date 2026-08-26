@@ -112,16 +112,6 @@ impl Resource for ReadDirResource {
   }
 }
 
-fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
-  let read = open_options.read;
-  let write = open_options.write || open_options.append;
-  match (read, write) {
-    (true, true) => OpenAccessKind::ReadWrite,
-    (false, true) => OpenAccessKind::Write,
-    (true, false) | (false, false) => OpenAccessKind::Read,
-  }
-}
-
 #[op2]
 #[string]
 pub fn op_fs_cwd(state: &mut OpState) -> Result<String, FsOpsError> {
@@ -156,6 +146,9 @@ pub fn op_fs_umask(
 ) -> Result<u32, FsOpsError>
 where
 {
+  state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_sys("umask", "Deno.umask()")?;
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
@@ -210,7 +203,7 @@ pub fn op_fs_open_sync(
     .borrow_mut::<deno_permissions::PermissionsContainer>()
     .check_open(
       Cow::Borrowed(path),
-      open_options_to_access_kind(&options),
+      options.access_kind(),
       Some("Deno.openSync()"),
     )?;
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
@@ -241,7 +234,7 @@ pub async fn op_fs_open_async(
         .borrow_mut::<deno_permissions::PermissionsContainer>()
         .check_open(
           Cow::Owned(path),
-          open_options_to_access_kind(&options),
+          options.access_kind(),
           Some("Deno.open()"),
         )?,
     )
@@ -1549,7 +1542,7 @@ pub fn op_fs_read_file_sync(
     .borrow::<deno_permissions::PermissionsContainer>()
     .check_open(
       Cow::Borrowed(path),
-      open_options_to_access_kind(&options),
+      options.access_kind(),
       Some("Deno.readFileSync()"),
     )?;
 
@@ -1583,7 +1576,7 @@ pub async fn op_fs_read_file_async(
       .borrow::<deno_permissions::PermissionsContainer>()
       .check_open(
         Cow::Owned(path),
-        open_options_to_access_kind(&options),
+        options.access_kind(),
         Some("Deno.readFile()"),
       )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
@@ -2102,13 +2095,13 @@ create_struct_writer! {
     size: u64,
     // In milliseconds, like JavaScript. Available on both Unix or Windows.
     mtime_set: bool,
-    mtime: u64,
+    mtime: i64,
     atime_set: bool,
-    atime: u64,
+    atime: i64,
     birthtime_set: bool,
-    birthtime: u64,
+    birthtime: i64,
     ctime_set: bool,
-    ctime: u64,
+    ctime: i64,
     // Stats below are platform dependent.
     // On Unix, they are always available.
     // On Windows, the `*_set` fields are used

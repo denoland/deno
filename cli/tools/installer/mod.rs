@@ -27,11 +27,14 @@ use crate::util::display;
 mod bin_name_resolver;
 mod global;
 mod local;
+mod npm_compat;
 
 pub use global::uninstall;
 use local::CategorizedInstalledDeps;
+pub use local::RootTsConfigMode;
 use local::categorize_installed_npm_deps;
 pub use local::ci_command;
+pub use local::sync_types_command;
 
 #[derive(Default)]
 pub struct InstallStats {

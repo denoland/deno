@@ -69,10 +69,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
           : Buffer.from(buf, enc);
         // Handle partial writes - writeSync may not write all bytes at once
         // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         while (data.byteLength > 0) {
           const nwritten = writer.writeSync(data);
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           if (nwritten >= data.byteLength) break;
           data = TypedArrayPrototypeSlice(data, nwritten);
         }
@@ -104,10 +104,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   });
   let fd = -1;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (writer instanceof io.Stdout) {
     fd = io.STDOUT_RID;
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
   } else if (writer instanceof io.Stderr) {
     fd = io.STDERR_RID;
   }
@@ -216,7 +216,7 @@ const _read = function (size) {
   io.stdin?.[io.REF]();
   const p = Buffer.alloc(size || 16 * 1024);
   PromisePrototypeThen(io.stdin?.read(p), (length) => {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(length === null ? null : TypedArrayPrototypeSlice(p, 0, length));
   }, (error) => {
     this.destroy(error);
@@ -314,7 +314,7 @@ export const initStdin = (warmup = false) => {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
       stdin = new (lazyStream().Readable)({ read() {} });
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       stdin.push(null);
     }
   }

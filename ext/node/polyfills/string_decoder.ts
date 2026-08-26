@@ -120,7 +120,7 @@ function bufferToString(buf, encoding, start, end) {
       `Cannot create a string longer than 0x${maxStringLengthHex} characters`,
     );
   }
-  // deno-lint-ignore prefer-primordials -- buf is a Buffer; Buffer.prototype.toString(encoding) is not String.prototype.toString
+  // deno-lint-ignore deno-internal/prefer-primordials -- buf is a Buffer; Buffer.prototype.toString(encoding) is not String.prototype.toString
   return buf.toString(encoding, start, end);
 }
 

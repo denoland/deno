@@ -8,6 +8,7 @@ const { core, primordials } = __bootstrap;
 const {
   Error,
   ObjectGetOwnPropertyNames,
+  ObjectHasOwn,
   String,
   ReflectOwnKeys,
   ArrayPrototypeIncludes,
@@ -130,6 +131,7 @@ const env:
       const value = denoEnvGet(String(name));
       if (value !== undefined) {
         return {
+          __proto__: null,
           enumerable: true,
           configurable: true,
           value,
@@ -173,7 +175,10 @@ const env:
       return true;
     },
     defineProperty(target, property, attributes) {
-      if (attributes?.get || attributes?.set) {
+      if (
+        ObjectHasOwn(attributes, "get") ||
+        ObjectHasOwn(attributes, "set")
+      ) {
         throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
           "'process.env' does not accept an " +
             "accessor(getter/setter) descriptor",
@@ -192,7 +197,10 @@ const env:
       }
 
       if (typeof property === "symbol") {
-        ReflectDefineProperty(target, property, attributes);
+        ReflectDefineProperty(target, property, {
+          __proto__: null,
+          ...attributes,
+        });
         return true;
       }
 

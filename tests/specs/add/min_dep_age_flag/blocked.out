@@ -1,0 +1,6 @@
+error: Could not find version of '@denotest/add' that matches specified version constraint '^1.0.0'
+
+A newer matching version was found, but it was not used because it was newer than the specified minimum dependency date of 2025-05-15 00:00:00 UTC
+
+hint: This version is blocked by the minimum dependency age policy, which avoids installing recently published versions to reduce supply chain risk (the default is 24 hours). To use this version now, pass the --minimum-dependency-age (or --min-dep-age) flag (for example 0 to disable it, or a shorter duration like 60 minutes) or set "minimumDependencyAge" in your deno.json, or wait until the version is old enough.
+docs: https://docs.deno.com/go/minimum-dependency-age

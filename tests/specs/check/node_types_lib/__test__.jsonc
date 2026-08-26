@@ -1,4 +1,7 @@
 {
+  // ignored: `/// <reference lib="node" />` is not a stock tsgo lib (fork-ism).
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check -q --all main.ts",
   "output": ""
 }

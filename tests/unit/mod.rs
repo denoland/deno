@@ -22,6 +22,8 @@ fn main() {
       .hash_dir(tests.join("unit"))
       .hash_dir(tests.join("util"))
       .hash_dir(tests.join("testdata"))
+      // lint_plugin_prefer_primordials_test imports tools/lint_plugins
+      .hash_dir(test_util::root_path().join("tools/lint_plugins"))
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path());
   });
@@ -103,8 +105,13 @@ fn run_test(test: &CollectedTest) -> TestResult {
     deno = deno.arg("--unstable-kv");
   }
 
+  if test.name.ends_with("::webgpu_test") {
+    deno = deno.arg("--unstable-webgpu");
+  }
+
   if test.name.ends_with("::worker_permissions_test")
     || test.name.ends_with("::worker_test")
+    || test.name.ends_with("::umask_test")
   {
     deno = deno.arg("--unstable-worker-options");
   }

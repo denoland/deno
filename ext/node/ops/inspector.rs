@@ -97,9 +97,12 @@ pub fn op_inspector_open(
   let port = port.unwrap_or(DEFAULT_PORT);
   let addr = SocketAddr::new(host_ip, port);
 
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("inspector", "inspector.open")?;
+    permissions
+      .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
+  }
 
   let server =
     create_inspector_server(addr, "deno", InspectPublishUid::default())?;
@@ -140,7 +143,12 @@ pub fn op_inspector_url(
 pub fn op_inspector_wait(state: &OpState) -> bool {
   match state.try_borrow::<Rc<JsRuntimeInspector>>() {
     Some(inspector) => {
-      inspector.wait_for_session_and_break_on_next_statement();
+      // Node's inspector.waitForDebugger() blocks until a session sends
+      // Runtime.runIfWaitingForDebugger and then resumes execution as-is;
+      // it must not schedule a pause on the next statement like
+      // --inspect-brk does, otherwise clients get an unexpected
+      // Debugger.paused right after attaching.
+      inspector.wait_for_runtime_run_if_waiting_for_debugger();
       true
     }
     None => false,

@@ -42,6 +42,11 @@ fn ignore_range_directive() {
 }
 
 #[test]
+fn try_catch_finally_returns() {
+  run_coverage_text("try_catch_finally_returns", "ts");
+}
+
+#[test]
 fn no_snaps() {
   no_snaps_included("no_snaps_included", "ts");
 }
@@ -632,11 +637,11 @@ fn test_summary_reporter() {
     output.assert_matches_text(
       "| File        | Branch % | Function % | Line % |
 | ----------- | -------- | ---------- | ------ |
-| bar.ts      |     50.0 |      100.0 |   57.1 |
-| baz/quux.ts |     50.0 |      100.0 |   28.6 |
+| bar.ts      |     50.0 |      100.0 |   85.7 |
+| baz/quux.ts |     50.0 |      100.0 |   42.9 |
 | baz/qux.ts  |    100.0 |      100.0 |  100.0 |
-| foo.ts      |     75.0 |      100.0 |   76.9 |
-| All files   |     70.0 |      100.0 |   61.0 |
+| foo.ts      |     75.0 |      100.0 |   92.3 |
+| All files   |     70.0 |      100.0 |   75.6 |
 ",
     );
   }
@@ -657,8 +662,8 @@ fn test_summary_reporter() {
       "| File       | Branch % | Function % | Line % |
 | ---------- | -------- | ---------- | ------ |
 | baz/qux.ts |    100.0 |      100.0 |  100.0 |
-| foo.ts     |     75.0 |      100.0 |   76.9 |
-| All files  |     83.3 |      100.0 |   85.0 |
+| foo.ts     |     75.0 |      100.0 |   92.3 |
+| All files  |     83.3 |      100.0 |   95.0 |
 ",
     );
   }

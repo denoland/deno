@@ -1,0 +1,7 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install npm:@denotest/add jsr:@denotest/add",
+    "output": "install.out"
+  }]
+}

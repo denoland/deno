@@ -22,6 +22,14 @@ to keep in `CLAUDE.md` but that saves a lot of exploration time up front.
 - [`ci.md`](./ci.md) — how the CI workflow is generated and how it decides which
   jobs to run, including the docs-only fast path that brought this directory
   into existence.
+- [`desktop-architecture.md`](./desktop-architecture.md) — how `deno desktop`
+  wires a native window to a Deno runtime: the load model, the ABI handshake,
+  the two transports, and the lifecycle edges.
+- [`package-management.md`](./package-management.md) — how `deno add` /
+  `deno install <pkg>` add dependencies: the two flag parsers, the config
+  writer, the shared install path, and the `--dev` / `--save-optional` /
+  `--no-save` flags (including why `optionalDependencies` need special
+  handling).
 
 ## Editing these docs
 

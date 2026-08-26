@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "node_pipe_wrap_net_perm": {
+      "if": "unix",
+      "args": "run --allow-read --allow-write --deny-net main.ts",
+      "output": "main.out"
+    },
+    "node_pipe_wrap_abstract_socket": {
+      "if": "linux",
+      "args": "run --allow-net abstract.ts",
+      "output": "abstract.out"
+    }
+  }
+}

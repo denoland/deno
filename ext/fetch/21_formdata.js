@@ -20,6 +20,7 @@ const {
   ObjectFreeze,
   ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
   SafeMap,
   SafeRegExp,
   Symbol,
@@ -314,7 +315,7 @@ function formDataToBlob(formData) {
   const chunks = [];
   const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   for (const { 0: name, 1: value } of formData) {
     if (typeof value === "string") {
       ArrayPrototypePush(
@@ -387,6 +388,18 @@ const CRLF = "\r\n";
 const LF = StringPrototypeCodePointAt(CRLF, 1);
 const CR = StringPrototypeCodePointAt(CRLF, 0);
 const DASH = StringPrototypeCodePointAt("-", 0);
+const SPACE = StringPrototypeCodePointAt(" ", 0);
+const TAB = StringPrototypeCodePointAt("\t", 0);
+const MAX_MULTIPART_PART_HEADER_SIZE = 16 * 1024;
+const MAX_MULTIPART_PART_HEADER_COUNT = 128;
+
+/**
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+function decodeLatin1Bytes(bytes) {
+  return ReflectApply(StringFromCharCode, null, bytes);
+}
 
 class MultipartParser {
   /**
@@ -400,9 +413,8 @@ class MultipartParser {
       );
     }
 
-    this.boundary = `--${boundary}`;
     this.body = body;
-    this.boundaryChars = core.encode(this.boundary);
+    this.boundaryChars = core.encode(`--${boundary}`);
   }
 
   /**
@@ -412,11 +424,16 @@ class MultipartParser {
   #parseHeaders(headersText) {
     const headers = new Headers();
     const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
+    let headerCount = 0;
     for (let i = 0; i < rawHeaders.length; ++i) {
       const rawHeader = rawHeaders[i];
       const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
       if (sepIndex < 0) {
         continue; // Skip this header
+      }
+      headerCount++;
+      if (headerCount > MAX_MULTIPART_PART_HEADER_COUNT) {
+        throw new TypeError("Multipart part has too many headers");
       }
       const key = StringPrototypeSlice(rawHeader, 0, sepIndex);
       const value = StringPrototypeSlice(rawHeader, sepIndex + 1);
@@ -432,79 +449,125 @@ class MultipartParser {
 
   /**
    * @param {number} index
-   * @returns {0 | 1 | 2}
+   * @returns {boolean}
    */
-  #delimiterType(index) {
+  #matchesBoundary(index) {
     for (let i = 0; i < this.boundaryChars.length; i++) {
       if (this.body[index + i] !== this.boundaryChars[i]) {
-        return 0;
+        return false;
       }
     }
 
-    const suffixIndex = index + this.boundaryChars.length;
-    if (this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF) {
-      return 1;
+    return true;
+  }
+
+  /**
+   * @param {number} index
+   * @returns {{ type: 1 | 2, nextIndex: number } | null}
+   */
+  #matchDelimiter(index) {
+    if (!this.#matchesBoundary(index)) {
+      return null;
     }
+
+    let suffixIndex = index + this.boundaryChars.length;
+    /** @type {1 | 2} */
+    let type = 1;
     if (
       this.body[suffixIndex] === DASH &&
       this.body[suffixIndex + 1] === DASH
     ) {
-      return 2;
+      type = 2;
+      suffixIndex += 2;
     }
 
-    return 0;
+    // RFC 2046 section 5.1.1 requires receivers to accept transport
+    // padding on every boundary delimiter line.
+    while (
+      this.body[suffixIndex] === SPACE || this.body[suffixIndex] === TAB
+    ) {
+      suffixIndex++;
+    }
+
+    if (type === 2 && suffixIndex === this.body.length) {
+      return { type, nextIndex: suffixIndex };
+    }
+    if (
+      this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF
+    ) {
+      return { type, nextIndex: suffixIndex + 2 };
+    }
+
+    return null;
+  }
+
+  /**
+   * @returns {{ type: 1 | 2, headerStart: number } | null}
+   */
+  #findInitialDelimiter() {
+    // RFC 2046 section 5.1.1 requires receivers to ignore the preamble.
+    // Only consider boundary delimiters at the start of a line so that
+    // boundary-looking bytes within the preamble are not accepted.
+    for (let index = 0; index < this.body.length; index++) {
+      const isLineStart = index === 0 ||
+        (this.body[index - 2] === CR && this.body[index - 1] === LF);
+      if (!isLineStart) {
+        continue;
+      }
+
+      const delimiter = this.#matchDelimiter(index);
+      if (delimiter !== null) {
+        return { type: delimiter.type, headerStart: delimiter.nextIndex };
+      }
+    }
+
+    return null;
   }
 
   /**
    * @returns {FormData}
    */
   parse() {
-    // To have fields body must be at least 2 boundaries + \r\n + --
-    // on the last boundary.
-    if (this.body.length < (this.boundary.length * 2) + 4) {
-      const decodedBody = core.decode(this.body);
-      const lastBoundary = this.boundary + "--";
-      // check if it's an empty valid form data
-      if (
-        decodedBody === lastBoundary ||
-        decodedBody === lastBoundary + "\r\n"
-      ) {
-        return new FormData();
-      }
+    const initialDelimiter = this.#findInitialDelimiter();
+    if (initialDelimiter === null) {
       throw new TypeError("Unable to parse body as form data");
     }
 
     const formData = new FormData();
+    if (initialDelimiter.type === 2) {
+      return formData;
+    }
+
     let headerText = "";
-    let state = 0;
+    let headerStart = initialDelimiter.headerStart;
+    let state = 1;
     let fileStart = 0;
 
-    for (let i = 0; i < this.body.length; i++) {
+    for (let i = headerStart; i < this.body.length; i++) {
       const byte = this.body[i];
       const prevByte = this.body[i - 1];
       const isNewLine = byte === LF && prevByte === CR;
 
       if (state === 1) {
-        headerText += StringFromCharCode(byte);
-      }
-
-      if (state === 0 && isNewLine) {
-        state = 1;
-      } else if (
-        state === 1
-      ) {
+        const headerByteLength = i - headerStart + 1;
+        if (headerByteLength > MAX_MULTIPART_PART_HEADER_SIZE) {
+          throw new TypeError("Multipart part headers are too large");
+        }
         if (
           isNewLine && this.body[i + 1] === CR &&
           this.body[i + 2] === LF
         ) {
           // end of the headers section
+          headerText = decodeLatin1Bytes(
+            TypedArrayPrototypeSubarray(this.body, headerStart, i + 1),
+          );
           state = 2;
           fileStart = i + 3; // After \r\n
         }
       } else if (state === 2) {
         if (isNewLine) {
-          const delimiterType = this.#delimiterType(i + 1);
-          if (delimiterType === 0) {
+          const delimiter = this.#matchDelimiter(i + 1);
+          if (delimiter === null) {
             continue;
           }
 
@@ -541,12 +604,13 @@ class MultipartParser {
             }
           }
 
-          if (delimiterType === 2) {
+          if (delimiter.type === 2) {
             break;
           }
 
           state = 1;
-          i += this.boundaryChars.length + 2; // Skip boundary + trailing \r\n
+          headerStart = delimiter.nextIndex;
+          i = headerStart - 1;
         }
       }
     }

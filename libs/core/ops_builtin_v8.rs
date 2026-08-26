@@ -229,16 +229,6 @@ pub fn op_set_captured_bootstrap(
 
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
 // allowed to touch JS heap.
-#[op2(nofast)]
-pub fn op_queue_microtask(
-  isolate: &mut v8::Isolate,
-  cb: v8::Local<v8::Function>,
-) {
-  isolate.enqueue_microtask(cb);
-}
-
-// We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
-// allowed to touch JS heap.
 #[op2(nofast, reentrant)]
 pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
@@ -876,6 +866,16 @@ pub fn op_serialize<'s, 'i>(
   let value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
   value_serializer.write_header();
 
+  // Buffers whose transfer has been registered with the serializer. They must
+  // stay attached until after `write_value`, because V8 150.x checks
+  // `was_detached()` before consulting the transfer map when serializing a
+  // (typed array) view -- detaching early makes it throw "An ArrayBuffer is
+  // detached and could not be cloned". They are detached after serialization.
+  let mut buffers_to_detach: Vec<v8::Local<v8::ArrayBuffer>> =
+    Vec::with_capacity(
+      transferred_array_buffers.map_or(0, |b| b.length() as usize),
+    );
+
   if let Some(transferred_array_buffers) = transferred_array_buffers {
     let state = JsRuntime::state_from(scope);
     for index in 0..transferred_array_buffers.length() {
@@ -902,9 +902,9 @@ pub fn op_serialize<'s, 'i>(
         }
 
         let backing_store = buf.get_backing_store();
-        buf.detach(None);
         let id = shared_array_buffer_store.insert(backing_store);
         value_serializer.transfer_array_buffer(id, buf);
+        buffers_to_detach.push(buf);
         let id = v8::Number::new(scope, id as f64).into();
         transferred_array_buffers.set(scope, i, id);
       }
@@ -914,6 +914,12 @@ pub fn op_serialize<'s, 'i>(
   v8::tc_scope!(let scope, scope);
 
   let ret = value_serializer.write_value(scope.get_current_context(), value);
+
+  // Detach the transferred buffers now that serialization has read them.
+  for buf in buffers_to_detach {
+    buf.detach(None);
+  }
+
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
     // Dummy value, this result will be discarded because an error was thrown.

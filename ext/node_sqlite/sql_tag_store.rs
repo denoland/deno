@@ -20,6 +20,14 @@ struct CachedStatement {
   inner: InnerStatementPtr,
   return_arrays: bool,
   use_big_ints: bool,
+  /// Reassigned from the store's counter whenever the statement is rebound or
+  /// reset by `get`/`all`/`run`/`iterate`. A live iterator captures this and
+  /// refuses to step once it changes, so it cannot resume over another
+  /// caller's bound parameters. Values are drawn from a store-wide sequence
+  /// rather than counting up per statement, so that a cache entry evicted and
+  /// re-prepared under the same SQL cannot hand a stale iterator a generation
+  /// it already recorded.
+  iter_generation: Cell<u64>,
 }
 
 impl CachedStatement {
@@ -120,12 +128,15 @@ pub struct SQLTagStore {
   use_big_ints: bool,
   db_object: v8::Global<v8::Object>,
   iter_contexts: RefCell<Vec<*mut SQLTagStoreIteratorContext>>,
+  /// Monotonic source for `CachedStatement::iter_generation`.
+  next_iter_generation: Cell<u64>,
 }
 
 struct SQLTagStoreIteratorContext {
   store: *const SQLTagStore,
   store_ref: v8::Global<v8::Value>,
   sql: String,
+  expected_generation: u64,
   finished: Cell<bool>,
   finalized_functions: Cell<u8>,
   next_func: RefCell<Option<v8::Weak<v8::Function>>>,
@@ -196,7 +207,24 @@ impl SQLTagStore {
       use_big_ints,
       db_object,
       iter_contexts: RefCell::new(Vec::new()),
+      next_iter_generation: Cell::new(0),
     }
+  }
+
+  /// Hands out the next generation value for this store, so no iterator
+  /// holding an older one can be mistaken for current. The counter wraps, but
+  /// only after 2^64 rebinds, by which point no iterator from the previous lap
+  /// can still be alive.
+  fn bump_iter_generation(&self) -> u64 {
+    let generation = self.next_iter_generation.get().wrapping_add(1);
+    self.next_iter_generation.set(generation);
+    generation
+  }
+
+  /// Invalidates any live iterator over `stmt` by moving it to a fresh
+  /// generation.
+  fn invalidate_iter(&self, stmt: &CachedStatement) {
+    stmt.iter_generation.set(self.bump_iter_generation());
   }
 
   // Parse template literal strings and interpolated values to build
@@ -230,7 +258,9 @@ impl SQLTagStore {
 
     let mut sql = String::new();
     for i in 0..n_strings {
-      let str_val = strings.get_index(scope, i).unwrap();
+      let str_val = strings
+        .get_index(scope, i)
+        .ok_or(super::validators::Error::V8Exception)?;
       if !str_val.is_string() {
         return Err(SqliteError::Validation(
           super::validators::Error::InvalidArgType(
@@ -265,6 +295,9 @@ impl SQLTagStore {
           // Update settings from store
           stmt.return_arrays = self.return_arrays;
           stmt.use_big_ints = self.use_big_ints;
+          // Rebinding for this caller resets the statement out from under any
+          // live iterator over the same tagged literal.
+          self.invalidate_iter(stmt);
           // Need to return, but can't borrow mut twice
           drop(cache);
           return Ok(self.get_cached_statement(&sql));
@@ -298,6 +331,7 @@ impl SQLTagStore {
       inner: stmt_cell,
       return_arrays: self.return_arrays,
       use_big_ints: self.use_big_ints,
+      iter_generation: Cell::new(self.bump_iter_generation()),
     };
 
     self.cache.borrow_mut().put(sql.clone(), cached_stmt);
@@ -388,7 +422,11 @@ impl SQLTagStore {
     };
 
     obj
-      .set(scope, last_insert_row_id_str.into(), last_insert_row_id_val)
+      .create_data_property(
+        scope,
+        last_insert_row_id_str.into(),
+        last_insert_row_id_val,
+      )
       .unwrap();
 
     let changes_str = CHANGES.v8_string(scope).unwrap();
@@ -399,7 +437,9 @@ impl SQLTagStore {
       v8::Number::new(scope, changes as f64).into()
     };
 
-    obj.set(scope, changes_str.into(), changes_val).unwrap();
+    obj
+      .create_data_property(scope, changes_str.into(), changes_val)
+      .unwrap();
 
     Ok(obj.into())
   }
@@ -494,24 +534,30 @@ impl SQLTagStore {
           inner: stmt_cell,
           return_arrays: self.return_arrays,
           use_big_ints: self.use_big_ints,
+          iter_generation: Cell::new(self.bump_iter_generation()),
         };
 
         self.cache.borrow_mut().put(sql.clone(), cached_stmt);
       }
     }
 
-    {
+    let expected_generation = {
       let mut stmt = self.get_cached_statement(&sql);
       stmt.return_arrays = self.return_arrays;
       stmt.use_big_ints = self.use_big_ints;
+      // A second `iterate` over the same tagged literal rebinds the shared
+      // statement, so the previous iterator has to stop here too.
+      self.invalidate_iter(&stmt);
       stmt.bind_params(scope, args, 1)?;
-    }
+      stmt.iter_generation.get()
+    };
 
     let store_ref = v8::Global::new(scope, args.this().cast::<v8::Value>());
     let iter_ctx = Box::into_raw(Box::new(SQLTagStoreIteratorContext {
       store: self as *const SQLTagStore,
       store_ref,
       sql,
+      expected_generation,
       finished: Cell::new(false),
       finalized_functions: Cell::new(0),
       next_func: RefCell::new(None),
@@ -537,15 +583,39 @@ impl SQLTagStore {
         VALUE.v8_string(scope).unwrap().into(),
       ];
 
+      let generation = store
+        .cache
+        .borrow()
+        .peek(&ctx.sql)
+        .map(|stmt| stmt.iter_generation.get());
+
       // If the cached statement was evicted mid-iteration, finish the iterator
       // instead of re-preparing and restarting from the first row.
-      if ctx.finished.get() || !store.cache.borrow().exists(&ctx.sql) {
+      if ctx.finished.get() || generation.is_none() {
         let values =
           &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
         rv.set(result.into());
+        return;
+      }
+
+      if generation != Some(ctx.expected_generation) {
+        let msg = v8::String::new(
+          scope,
+          "This iterator was invalidated because the statement was reset by calling get(), all(), run(), or iterate() on the same tagged template.",
+        )
+        .unwrap();
+        let err = v8::Exception::error(scope, msg);
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_val = v8::String::new(scope, "ERR_INVALID_STATE").unwrap();
+        err.to_object(scope).unwrap().set(
+          scope,
+          code_key.into(),
+          code_val.into(),
+        );
+        scope.throw_exception(err);
         return;
       }
 
@@ -594,7 +664,17 @@ impl SQLTagStore {
       let store = unsafe { &*ctx.store };
 
       ctx.finished.set(true);
-      if store.cache.borrow().exists(&ctx.sql) {
+      // Only reset the statement if it is still the one this iterator was
+      // bound to. A get()/all()/run()/iterate() on the same tagged template
+      // rebinds the shared statement for another caller, and resetting it here
+      // — e.g. while `for...of` unwinds after next() reported the
+      // invalidation — would restart that caller's iteration from the first
+      // row.
+      let is_current =
+        store.cache.borrow().peek(&ctx.sql).is_some_and(|stmt| {
+          stmt.iter_generation.get() == ctx.expected_generation
+        });
+      if is_current {
         let _ = {
           let stmt = store.get_cached_statement(&ctx.sql);
           stmt.reset()
@@ -642,16 +722,28 @@ impl SQLTagStore {
 
     let global = scope.get_current_context().global(scope);
     let iter_str = ITERATOR.v8_string(scope).unwrap();
-    let js_iterator: v8::Local<v8::Object> = {
-      global
-        .get(scope, iter_str.into())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    };
+    let js_iterator = global
+      .get(scope, iter_str.into())
+      .ok_or(super::validators::Error::V8Exception)?;
+    let js_iterator =
+      v8::Local::<v8::Object>::try_from(js_iterator).map_err(|_| {
+        super::validators::Error::InvalidArgType(
+          "Iterator must be an object.".into(),
+        )
+      })?;
 
     let proto_str = PROTOTYPE.v8_string(scope).unwrap();
-    let js_iterator_proto = js_iterator.get(scope, proto_str.into()).unwrap();
+    let js_iterator_proto = js_iterator
+      .get(scope, proto_str.into())
+      .ok_or(super::validators::Error::V8Exception)?;
+    if !js_iterator_proto.is_object() && !js_iterator_proto.is_null() {
+      return Err(
+        super::validators::Error::InvalidArgType(
+          "Iterator.prototype must be an object or null.".into(),
+        )
+        .into(),
+      );
+    }
 
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),

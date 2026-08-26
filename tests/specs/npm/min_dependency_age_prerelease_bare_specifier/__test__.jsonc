@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run --minimum-dependency-age=2025-01-01T00:00:00.000Z main.ts",
+  "output": "main.out"
+}

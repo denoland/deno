@@ -25,6 +25,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
+pub mod fast_registry_json;
 pub mod registry;
 pub mod resolution;
 

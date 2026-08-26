@@ -85,7 +85,16 @@ class TextDecoder {
     ) {
       encoding = "utf-8";
     } else {
-      encoding = op_encoding_normalize_label(label);
+      try {
+        encoding = op_encoding_normalize_label(label);
+      } catch (err) {
+        // The op only rejects unknown encoding labels; Node attaches
+        // ERR_ENCODING_NOT_SUPPORTED to that error.
+        if (err !== null && typeof err === "object" && err.code === undefined) {
+          err.code = "ERR_ENCODING_NOT_SUPPORTED";
+        }
+        throw err;
+      }
     }
     this.#encoding = encoding;
     this.#fatal = options.fatal;
@@ -172,28 +181,41 @@ class TextDecoder {
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
       if (isSharedArrayBuffer(buffer)) {
-        // We clone the data into a non-shared ArrayBuffer so we can pass it
-        // to Rust.
-        // `input` is now a Uint8Array, and calling the TypedArray constructor
-        // with a TypedArray argument copies the data.
+        // We clone the data into a private, non-shared ArrayBuffer so we can
+        // pass it to Rust. This copy is mandatory: another thread can mutate a
+        // SharedArrayBuffer while V8 performs its two-pass UTF-8 decode (first
+        // sizing the output, then writing it), and a mutation in between can
+        // make the write pass emit more code units than were allocated,
+        // corrupting native memory.
+        //
+        // We first build a `Uint8Array` view over the selected range of the
+        // shared buffer (the raw bytes, regardless of `input`'s element type),
+        // then pass that view to the `Uint8Array` constructor. Constructing a
+        // TypedArray from a TypedArray argument (as opposed to a
+        // `buffer, byteOffset, byteLength` triple, which only creates another
+        // view) copies the data into a fresh, non-shared ArrayBuffer.
         if (isTypedArray(input)) {
           input = new Uint8Array(
-            buffer,
-            TypedArrayPrototypeGetByteOffset(
-              /** @type {Uint8Array} */ (input),
-            ),
-            TypedArrayPrototypeGetByteLength(
-              /** @type {Uint8Array} */ (input),
+            new Uint8Array(
+              buffer,
+              TypedArrayPrototypeGetByteOffset(
+                /** @type {Uint8Array} */ (input),
+              ),
+              TypedArrayPrototypeGetByteLength(
+                /** @type {Uint8Array} */ (input),
+              ),
             ),
           );
         } else if (isDataView(input)) {
           input = new Uint8Array(
-            buffer,
-            DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
-            DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            new Uint8Array(
+              buffer,
+              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            ),
           );
         } else {
-          input = new Uint8Array(buffer);
+          input = new Uint8Array(new Uint8Array(buffer));
         }
       }
 
@@ -371,18 +393,16 @@ class TextDecoderStream {
     this.#transform = new TransformStream({
       // The transform and flush functions need access to TextDecoderStream's
       // `this`, so they are defined as functions rather than methods.
+      // Synchronous transform: the TransformStream fast path resolves the write
+      // without a per-chunk promise or microtask hop when transform() returns
+      // undefined. Throws propagate to the stream via transformAlgorithm.
       transform: (chunk, controller) => {
-        try {
-          chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
-            allowShared: true,
-          });
-          const decoded = this.#decoder.decode(chunk, { stream: true });
-          if (decoded) {
-            controller.enqueue(decoded);
-          }
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
+          allowShared: true,
+        });
+        const decoded = this.#decoder.decode(chunk, { stream: true });
+        if (decoded) {
+          controller.enqueue(decoded);
         }
       },
       flush: (controller) => {
@@ -472,31 +492,29 @@ class TextEncoderStream {
     this.#transform = new TransformStream({
       // The transform and flush functions need access to TextEncoderStream's
       // `this`, so they are defined as functions rather than methods.
+      // Synchronous transform: the TransformStream fast path resolves the write
+      // without a per-chunk promise or microtask hop when transform() returns
+      // undefined. Throws propagate to the stream via transformAlgorithm.
       transform: (chunk, controller) => {
-        try {
-          chunk = webidl.converters.DOMString(chunk);
-          if (chunk === "") {
-            return PromiseResolve();
-          }
-          if (this.#pendingHighSurrogate !== null) {
-            chunk = this.#pendingHighSurrogate + chunk;
-          }
-          const lastCodeUnit = StringPrototypeCharCodeAt(
-            chunk,
-            chunk.length - 1,
-          );
-          if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
-            this.#pendingHighSurrogate = StringPrototypeSlice(chunk, -1);
-            chunk = StringPrototypeSlice(chunk, 0, -1);
-          } else {
-            this.#pendingHighSurrogate = null;
-          }
-          if (chunk) {
-            controller.enqueue(core.encode(chunk));
-          }
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
+        chunk = webidl.converters.DOMString(chunk);
+        if (chunk === "") {
+          return;
+        }
+        if (this.#pendingHighSurrogate !== null) {
+          chunk = this.#pendingHighSurrogate + chunk;
+        }
+        const lastCodeUnit = StringPrototypeCharCodeAt(
+          chunk,
+          chunk.length - 1,
+        );
+        if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
+          this.#pendingHighSurrogate = StringPrototypeSlice(chunk, -1);
+          chunk = StringPrototypeSlice(chunk, 0, -1);
+        } else {
+          this.#pendingHighSurrogate = null;
+        }
+        if (chunk) {
+          controller.enqueue(core.encode(chunk));
         }
       },
       flush: (controller) => {

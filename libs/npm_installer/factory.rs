@@ -2,14 +2,18 @@
 
 use std::sync::Arc;
 
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSetting;
+use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::NpmPackumentFormat;
 use deno_npm_cache::RegistryInfoProvider;
 use deno_npm_cache::TarballCache;
+use deno_npm_cache::TarballCacheReporter;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::factory::ResolverFactory;
 use deno_resolver::factory::WorkspaceFactory;
 use deno_resolver::factory::WorkspaceFactorySys;
@@ -82,6 +86,113 @@ impl<
     + crate::InstallProgressReporter,
 > InstallReporter for T
 {
+}
+
+pub struct NpmCacheServices<
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TSys: NpmCacheSys,
+> {
+  npm_cache: Arc<NpmCache<TSys>>,
+  registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
+  tarball_cache: Arc<TarballCache<TNpmCacheHttpClient, TSys>>,
+}
+
+impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
+  NpmCacheServices<TNpmCacheHttpClient, TSys>
+{
+  pub fn new(
+    npm_cache_dir: Arc<NpmCacheDir>,
+    sys: TSys,
+    cache_setting: NpmCacheSetting,
+    npmrc: Arc<ResolvedNpmRc>,
+    http_client: Arc<TNpmCacheHttpClient>,
+    packument_format: NpmPackumentFormat,
+    tarball_cache_reporter: Option<Arc<dyn TarballCacheReporter>>,
+  ) -> Self {
+    let npm_cache = create_npm_cache(
+      npm_cache_dir,
+      sys.clone(),
+      cache_setting,
+      npmrc.clone(),
+    );
+    let registry_info_provider = create_registry_info_provider(
+      npm_cache.clone(),
+      http_client.clone(),
+      npmrc.clone(),
+      packument_format,
+    );
+    let tarball_cache = create_tarball_cache(
+      npm_cache.clone(),
+      http_client,
+      sys,
+      npmrc,
+      tarball_cache_reporter,
+    );
+    Self {
+      npm_cache,
+      registry_info_provider,
+      tarball_cache,
+    }
+  }
+
+  pub fn npm_cache(&self) -> &Arc<NpmCache<TSys>> {
+    &self.npm_cache
+  }
+
+  pub fn registry_info_provider(
+    &self,
+  ) -> &Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>> {
+    &self.registry_info_provider
+  }
+
+  pub fn tarball_cache(&self) -> &Arc<TarballCache<TNpmCacheHttpClient, TSys>> {
+    &self.tarball_cache
+  }
+}
+
+fn create_npm_cache<TSys: NpmCacheSys>(
+  npm_cache_dir: Arc<NpmCacheDir>,
+  sys: TSys,
+  cache_setting: NpmCacheSetting,
+  npmrc: Arc<ResolvedNpmRc>,
+) -> Arc<NpmCache<TSys>> {
+  Arc::new(NpmCache::new(npm_cache_dir, sys, cache_setting, npmrc))
+}
+
+fn create_registry_info_provider<
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TSys: NpmCacheSys,
+>(
+  npm_cache: Arc<NpmCache<TSys>>,
+  http_client: Arc<TNpmCacheHttpClient>,
+  npmrc: Arc<ResolvedNpmRc>,
+  packument_format: NpmPackumentFormat,
+) -> Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>> {
+  Arc::new(RegistryInfoProvider::new(
+    npm_cache,
+    http_client,
+    npmrc,
+    packument_format,
+  ))
+}
+
+fn create_tarball_cache<
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TSys: NpmCacheSys,
+>(
+  npm_cache: Arc<NpmCache<TSys>>,
+  http_client: Arc<TNpmCacheHttpClient>,
+  sys: TSys,
+  npmrc: Arc<ResolvedNpmRc>,
+  reporter: Option<Arc<dyn TarballCacheReporter>>,
+) -> Arc<TarballCache<TNpmCacheHttpClient, TSys>> {
+  Arc::new(TarballCache::new(
+    npm_cache,
+    http_client,
+    sys,
+    npmrc,
+    reporter,
+  ))
 }
 
 pub struct NpmInstallerFactory<
@@ -258,12 +369,12 @@ impl<
   pub fn npm_cache(&self) -> Result<&Arc<NpmCache<TSys>>, anyhow::Error> {
     self.npm_cache.get_or_try_init(|| {
       let workspace_factory = self.workspace_factory();
-      Ok(Arc::new(NpmCache::new(
+      Ok(create_npm_cache(
         workspace_factory.npm_cache_dir()?.clone(),
         workspace_factory.sys().clone(),
         self.options.cache_setting.clone(),
         workspace_factory.npmrc()?.clone(),
-      )))
+      ))
     })
   }
 
@@ -300,6 +411,7 @@ impl<
         let workspace_factory = self.workspace_factory();
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.resolver_factory.npm_resolution().clone(),
+          workspace_factory.npmrc()?.clone(),
           workspace_factory.workspace_npm_link_packages()?.clone(),
           match (self.options.resolve_npm_resolution_snapshot)()? {
             Some(snapshot) => {
@@ -429,12 +541,12 @@ impl<
       } else {
         NpmPackumentFormat::Abbreviated
       };
-      Ok(Arc::new(RegistryInfoProvider::new(
+      Ok(create_registry_info_provider(
         self.npm_cache()?.clone(),
         self.http_client().clone(),
         self.workspace_factory().npmrc()?.clone(),
         packument_format,
-      )))
+      ))
     })
   }
 
@@ -443,7 +555,7 @@ impl<
   ) -> Result<&Arc<TarballCache<TNpmCacheHttpClient, TSys>>, anyhow::Error> {
     self.tarball_cache.get_or_try_init(|| {
       let workspace_factory = self.workspace_factory();
-      Ok(Arc::new(TarballCache::new(
+      Ok(create_tarball_cache(
         self.npm_cache()?.clone(),
         self.http_client.clone(),
         workspace_factory.sys().clone(),
@@ -452,7 +564,7 @@ impl<
           .install_reporter
           .as_ref()
           .map(|r| r.clone() as Arc<dyn deno_npm_cache::TarballCacheReporter>),
-      )))
+      ))
     })
   }
 

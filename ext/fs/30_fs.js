@@ -89,10 +89,10 @@ const {
   ObjectValues,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
+  Symbol,
   SymbolAsyncIterator,
   SymbolDispose,
   SymbolIterator,
-  SymbolFor,
   TypeError,
   Uint32Array,
 } = primordials;
@@ -110,6 +110,8 @@ function lazyStreams() {
     (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
 }
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+
+const fsFileConstructorKey = Symbol("Deno.internal.FsFile");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -354,7 +356,10 @@ function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
   let str =
-    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd"; return {';
+    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "android" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd";' +
+    // Two's-complement inversion avoids float64 precision loss near 2^64.
+    " const readI64Ms = (lo, hi) => hi < 2147483648 ? lo + hi * 4294967296 : -((~hi >>> 0) * 4294967296 + (~lo >>> 0) + 1);" +
+    " return {";
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
@@ -379,9 +384,9 @@ function createByteStruct(types) {
         offset += 2;
       }
     } else if (type == "date") {
-      str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
+      str += `${name}: view[${offset}] === 0 ? null : new Date(readI64Ms(view[${
         offset + 2
-      }] + view[${offset + 3}] * 2**32),`;
+      }], view[${offset + 3}])),`;
       offset += 2;
     } else {
       if (!optionalLoose) {
@@ -596,7 +601,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid, fsFileConstructorKey);
 }
 
 async function open(
@@ -609,7 +614,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid, fsFileConstructorKey);
 }
 
 function createSync(path) {
@@ -643,7 +648,7 @@ class FsFile {
       value: rid,
     });
     this.#rid = rid;
-    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
+    if (!symbol || symbol !== fsFileConstructorKey) {
       throw new TypeError(
         "'Deno.FsFile' cannot be constructed, use 'Deno.open()' or 'Deno.openSync()' instead",
       );
@@ -980,6 +985,7 @@ return {
   createSync,
   cwd,
   FsFile,
+  fsFileConstructorKey,
   link,
   linkSync,
   lstat,

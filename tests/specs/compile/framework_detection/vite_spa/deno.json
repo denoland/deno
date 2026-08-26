@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "build": "deno run -A build.ts"
+  },
+  "imports": {
+    "jsr:@std/http@^1/file-server": "./_file_server.ts"
+  }
+}

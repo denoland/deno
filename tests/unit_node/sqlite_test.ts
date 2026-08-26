@@ -136,6 +136,21 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   assertThrows(() => session.close(), Error, "database is not open");
 });
 
+Deno.test("[node/sqlite] createSession rejects null bytes in options", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => db.createSession({ db: "main\0" }), {
+    code: "ERR_INVALID_ARG_VALUE",
+  });
+  nodeAssert.throws(() => db.createSession({ table: "data\0" }), {
+    code: "ERR_INVALID_ARG_VALUE",
+  });
+
+  const session = db.createSession();
+  assert(session.changeset() instanceof Uint8Array);
+  session.close();
+});
+
 Deno.test("[node/sqlite] StatementSync integer too large", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
@@ -279,6 +294,38 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
   db.close();
 });
 
+Deno.test("[node/sqlite] StatementSync handles named parameter access failures", () => {
+  using db = new DatabaseSync(":memory:");
+  const statement = db.prepare("SELECT :value AS value");
+
+  assertThrows(
+    () =>
+      statement.get(
+        new Proxy({}, {
+          ownKeys() {
+            throw new Error("ownKeys failed");
+          },
+        }),
+      ),
+    Error,
+  );
+  assertThrows(
+    () =>
+      statement.get({
+        get value(): number {
+          throw new Error("getter failed");
+        },
+      }),
+    Error,
+  );
+  assertThrows(() => statement.get({ "value\0suffix": 1 }), TypeError);
+
+  assertEquals(statement.get({ value: 1 }), {
+    value: 1,
+    __proto__: null,
+  });
+});
+
 Deno.test("[node/sqlite] StatementSync unknown named parameters should throw", () => {
   const db = new DatabaseSync(":memory:");
   db.exec(
@@ -335,6 +382,29 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
   assertEquals(value, null);
 
   db.close();
+});
+
+Deno.test("[node/sqlite] iterator creation handles accessor failures", () => {
+  using db = new DatabaseSync(":memory:");
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Iterator");
+  assert(descriptor);
+
+  try {
+    Object.defineProperty(globalThis, "Iterator", {
+      configurable: true,
+      get() {
+        throw new Error("Iterator getter failed");
+      },
+    });
+    assertThrows(() => db.prepare("SELECT 1").iterate(), Error);
+  } finally {
+    Object.defineProperty(globalThis, "Iterator", descriptor);
+  }
+
+  assertEquals([...db.prepare("SELECT 1 AS value").iterate()], [{
+    value: 1,
+    __proto__: null,
+  }]);
 });
 
 // https://github.com/denoland/deno/issues/28187
@@ -600,6 +670,44 @@ Deno.test("[node/sqlite] DatabaseSync.deserialize corrupt header surfaces error 
   );
 });
 
+Deno.test("[node/sqlite] DatabaseSync.deserialize is blocked during user callback", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (id INTEGER)");
+  db.exec("INSERT INTO test VALUES (1), (2), (3)");
+
+  let blocked = false;
+
+  db.function("deserialize_in_callback", (id) => {
+    if (id === 2) {
+      nodeAssert.throws(
+        () => db.deserialize(new Uint8Array(0)),
+        {
+          code: "ERR_INVALID_STATE",
+          message:
+            "cannot close database while a user-defined callback is running",
+        },
+      );
+      blocked = true;
+    }
+
+    return id;
+  });
+
+  assertEquals(
+    db.prepare("SELECT deserialize_in_callback(id) AS id FROM test").all(),
+    [
+      { id: 1, __proto__: null },
+      { id: 2, __proto__: null },
+      { id: 3, __proto__: null },
+    ],
+  );
+  assertStrictEquals(blocked, true);
+  assertEquals(db.prepare("SELECT COUNT(*) AS count FROM test").get(), {
+    count: 3,
+    __proto__: null,
+  });
+});
+
 Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
   const errMessageClosed = "database is not open";
@@ -627,6 +735,21 @@ Deno.test("[node/sqlite] calling StatementSync and Session methods after connect
 
   assertThrows(() => sess.changeset(), Error, errMessageClosed);
   assertThrows(() => sess.patchset(), Error, errMessageClosed);
+});
+
+Deno.test("[node/sqlite] Session stays closed after connection reopens", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(value INTEGER)");
+  const session = db.createSession();
+  db.exec("INSERT INTO data VALUES (1)");
+
+  db.close();
+  db.open();
+
+  const errMessage = "session is not open";
+  assertThrows(() => session.changeset(), Error, errMessage);
+  assertThrows(() => session.patchset(), Error, errMessage);
+  assertThrows(() => session.close(), Error, errMessage);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/30144
@@ -719,6 +842,60 @@ Deno.test("[node/sqlite] DatabaseSync.aggregate input validation", () => {
   }, {
     code: "ERR_INVALID_ARG_TYPE",
     message: /The "options\.directOnly" argument must be a boolean/,
+  });
+});
+
+Deno.test("[node/sqlite] function option access failures remain catchable", () => {
+  using db = new DatabaseSync(":memory:");
+
+  assertThrows(
+    () =>
+      db.function(
+        "scalar_option",
+        {
+          get varargs(): boolean {
+            throw new Error("option getter failed");
+          },
+        },
+        () => 0,
+      ),
+    Error,
+  );
+
+  const scalar = () => 0;
+  Object.defineProperty(scalar, "length", {
+    get() {
+      throw new Error("length getter failed");
+    },
+  });
+  assertThrows(() => db.function("scalar_length", scalar), Error);
+
+  const step = () => 0;
+  Object.defineProperty(step, "length", {
+    get() {
+      throw new Error("length getter failed");
+    },
+  });
+  assertThrows(
+    () => db.aggregate("aggregate_length", { start: 0, step }),
+    Error,
+  );
+
+  assertThrows(
+    () =>
+      db.aggregate("aggregate_option", {
+        get start(): number {
+          throw new Error("option getter failed");
+        },
+        step: () => 0,
+      }),
+    Error,
+  );
+
+  db.function("scalar", () => 1);
+  assertEquals(db.prepare("SELECT scalar() AS value").get(), {
+    value: 1,
+    __proto__: null,
   });
 });
 
@@ -1272,6 +1449,27 @@ Deno.test("sql.get retrieves a single row", () => {
   assertStrictEquals(Object.getPrototypeOf(first), null);
 });
 
+Deno.test("SQLTagStore handles template access failures", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  const strings = new Array(1) as unknown as TemplateStringsArray;
+  Object.defineProperty(strings, 0, {
+    get() {
+      throw new Error("template getter failed");
+    },
+  });
+
+  assertThrows(
+    () => sql.get(strings),
+    Error,
+  );
+  assertEquals(sql.get`SELECT 1 AS value`, {
+    value: 1,
+    __proto__: null,
+  });
+});
+
 Deno.test("sql.all retrieves all rows", () => {
   using db = new DatabaseSync(":memory:");
   // @ts-expect-error createTagStore is a valid method
@@ -1654,3 +1852,52 @@ Deno.test(
     db.close();
   },
 );
+
+Deno.test("SQLTagStore iterator is invalidated when the statement is rebound", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  for (const text of ["bob", "mac", "alice"]) {
+    sql.run`INSERT INTO foo (text) VALUES (${text})`;
+  }
+
+  const iter = sql.iterate`SELECT * FROM foo WHERE id >= ${1} ORDER BY id ASC`;
+  assertStrictEquals(iter.next().value.text, "bob");
+
+  // Rebinding the cached statement for another caller must stop the live
+  // iterator rather than let it resume over the new parameters.
+  assertStrictEquals(
+    sql.get`SELECT * FROM foo WHERE id >= ${3} ORDER BY id ASC`.text,
+    "alice",
+  );
+  assertThrows(() => iter.next(), Error, "invalidated");
+});
+
+Deno.test("SQLTagStore invalidated iterator does not reset a live one", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  for (const text of ["bob", "mac", "alice"]) {
+    sql.run`INSERT INTO foo (text) VALUES (${text})`;
+  }
+
+  const first = sql.iterate`SELECT * FROM foo WHERE id >= ${1} ORDER BY id ASC`;
+  assertStrictEquals(first.next().value.text, "bob");
+
+  // The second iterate() takes over the cached statement; `first` is now stale.
+  const second = sql
+    .iterate`SELECT * FROM foo WHERE id >= ${1} ORDER BY id ASC`;
+  assertStrictEquals(second.next().value.text, "bob");
+
+  // Closing the stale iterator must not reset the statement `second` is
+  // stepping through, which would restart it from the first row.
+  assertThrows(() => first.next(), Error, "invalidated");
+  first.return?.();
+  assertStrictEquals(second.next().value.text, "mac");
+  assertStrictEquals(second.next().value.text, "alice");
+  assertStrictEquals(second.next().done, true);
+});

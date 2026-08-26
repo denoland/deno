@@ -387,7 +387,6 @@ async fn install_global_compiled(
     output: Some(output.clone()),
     args: install_flags_global.args,
     target: None,
-    watch: None,
     no_terminal: false,
     icon: None,
     include: vec![],
@@ -398,6 +397,7 @@ async fn install_global_compiled(
     app_name: None,
     minify: false,
     exclude_unused_npm: false,
+    engine: Default::default(),
   };
 
   let mut new_flags = flags.as_ref().clone();
@@ -2472,6 +2472,7 @@ mod tests {
       },
       scopes,
       registry_configs: Default::default(),
+      replace_registry_host: Default::default(),
       min_release_age_days: None,
       trust_policy: Default::default(),
       trust_policy_ignore_after_minutes: None,

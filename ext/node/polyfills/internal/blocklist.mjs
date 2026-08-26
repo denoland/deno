@@ -342,7 +342,7 @@ class SocketAddress {
     } = options;
 
     if (typeof family === "string") {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       family = family.toLowerCase();
     }
     switch (family) {

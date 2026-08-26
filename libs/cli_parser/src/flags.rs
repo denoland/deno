@@ -9,11 +9,6 @@ use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-#[allow(
-  clippy::disallowed_types,
-  reason = "Arc needed for CompletionsFlags::Dynamic"
-)]
-use std::sync::Arc;
 
 pub use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundleOptions;
@@ -23,7 +18,6 @@ pub use deno_bundle_runtime::SourceMapType;
 pub use deno_config::deno_json::NewestDependencyDate;
 pub use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::NodeModulesLinkerMode;
-use deno_core::error::AnyError;
 pub use deno_core::url::Url;
 pub use deno_lib::args::CaData;
 pub use deno_lib::args::UnstableConfig;
@@ -58,10 +52,13 @@ pub enum DefaultRegistry {
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub optional: bool,
+  pub no_save: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
   pub package_json: bool,
+  pub unscoped: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -145,7 +142,6 @@ pub struct BenchFlags {
   pub json: bool,
   pub no_run: bool,
   pub permit_no_files: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -159,7 +155,42 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
-  pub watch: Option<WatchFlags>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SyncTypesFlags {
+  /// Files, directories, or remote modules to use as module graph roots.
+  /// These scope dependency discovery, not the generated TypeScript project.
+  /// An empty list discovers dependencies from the entire project.
+  pub roots: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum JavaScriptEngine {
+  #[default]
+  V8,
+  QuickJs,
+}
+
+impl JavaScriptEngine {
+  pub const fn artifact_suffix(&self) -> &'static str {
+    match self {
+      Self::V8 => "",
+      Self::QuickJs => "-quickjs",
+    }
+  }
+}
+
+impl std::str::FromStr for JavaScriptEngine {
+  type Err = String;
+
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    match value {
+      "v8" => Ok(Self::V8),
+      "quickjs" => Ok(Self::QuickJs),
+      _ => Err(format!("unsupported JavaScript engine: {value}")),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,7 +199,6 @@ pub struct CompileFlags {
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
-  pub watch: Option<WatchFlags>,
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
@@ -189,6 +219,9 @@ pub struct CompileFlags {
   /// analyzable dynamic imports may not appear in the graph; pass
   /// `--include npm:<pkg>` for any such packages.
   pub exclude_unused_npm: bool,
+  /// JS engine the compiled binary should run on. Named `engine` because
+  /// `deno desktop --backend` already means the render backend.
+  pub engine: JavaScriptEngine,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -216,6 +249,9 @@ pub struct DesktopFlags {
   pub exclude: Vec<String>,
   pub hmr: bool,
   pub backend: Option<String>,
+  /// JS engine the desktop binary runs on. Distinct from `backend`, which
+  /// selects the render backend (webview/cef/raw).
+  pub engine: JavaScriptEngine,
   pub all_targets: bool,
   /// Reverse-DNS bundle / application identifier (e.g. `com.acme.foo`).
   /// Used for the macOS `CFBundleIdentifier`, the Linux `.desktop` file
@@ -240,38 +276,20 @@ pub struct DesktopFlags {
   /// just a small download artifact. Value is the compressor: `"xz"` (LZMA)
   /// or `"zstd"`.
   pub compress: Option<String>,
+  /// Embed only the npm packages reachable from the module graph instead of
+  /// the full managed snapshot. Same opt-in semantics as
+  /// `deno compile --exclude-unused-npm`.
+  pub exclude_unused_npm: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompletionsFlags {
+  /// Pre-rendered static completion script.
   Static(Box<[u8]>),
-  #[allow(
-    clippy::disallowed_types,
-    reason = "Arc needed for dynamic completion callback"
-  )]
-  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
-}
-
-#[allow(clippy::disallowed_types, reason = "Arc used in Dynamic variant")]
-impl PartialEq for CompletionsFlags {
-  fn eq(&self, other: &Self) -> bool {
-    match (self, other) {
-      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
-      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
-      _ => false,
-    }
-  }
-}
-
-impl Eq for CompletionsFlags {}
-
-impl std::fmt::Debug for CompletionsFlags {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
-      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
-    }
-  }
+  /// Dynamic completions for the given shell. The actual generation is
+  /// performed on the CLI side (it needs the runtime's completion handler),
+  /// so this variant only records the target shell.
+  Dynamic { shell: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -355,7 +373,6 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub no_editorconfig: bool,
-  pub watch: Option<WatchFlags>,
   pub unstable_component: bool,
   pub unstable_sql: bool,
 }
@@ -487,7 +504,6 @@ pub struct LintFlags {
   pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
-  pub watch: Option<WatchFlags>,
 }
 
 impl LintFlags {
@@ -508,7 +524,6 @@ pub struct ReplFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RunFlags {
   pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
   pub print_task_list: bool,
@@ -518,7 +533,6 @@ impl RunFlags {
   pub fn new_default(script: String) -> Self {
     Self {
       script,
-      watch: None,
       bare: false,
       coverage_dir: None,
       print_task_list: false,
@@ -575,7 +589,6 @@ pub struct XFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
   pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
   pub parallel: bool,
@@ -586,25 +599,12 @@ impl ServeFlags {
   pub fn new_default(script: String, port: u16, host: &str) -> Self {
     Self {
       script,
-      watch: None,
       port,
       host: host.to_owned(),
       parallel: false,
       open_site: false,
     }
   }
-}
-
-pub enum WatchFlagsRef<'a> {
-  Watch(&'a WatchFlags),
-  WithPaths(&'a WatchFlagsWithPaths),
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct WatchFlags {
-  pub hmr: bool,
-  pub no_clear_screen: bool,
-  pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -621,6 +621,8 @@ pub struct TaskFlags {
   pub task: Option<String>,
   pub is_run: bool,
   pub recursive: bool,
+  /// Run the task in all workspace members, but not in the workspace root.
+  pub members: bool,
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
@@ -665,7 +667,6 @@ pub struct TestFlags {
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
-  pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
@@ -811,6 +812,7 @@ pub enum DenoSubcommand {
   Link(LinkFlags),
   Unlink(UnlinkFlags),
   Lsp,
+  SyncTypes(SyncTypesFlags),
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
@@ -828,38 +830,6 @@ pub enum DenoSubcommand {
   Pack(PackFlags),
   Help(HelpFlags),
   X(XFlags),
-}
-
-impl DenoSubcommand {
-  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
-    match self {
-      Self::Run(RunFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Serve(ServeFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Test(TestFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::WithPaths(flags)),
-      Self::Bench(BenchFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Check(CheckFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Lint(LintFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Fmt(FmtFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Compile(CompileFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::Watch(flags)),
-      _ => None,
-    }
-  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1022,6 +992,9 @@ pub struct Flags {
   pub require: Vec<String>,
   pub tunnel: bool,
   pub cpu_prof: Option<CpuProfFlags>,
+  /// Watch configuration for subcommands that support `--watch`. `paths` is
+  /// only populated for subcommands whose `--watch` accepts values.
+  pub watch: Option<WatchFlagsWithPaths>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]

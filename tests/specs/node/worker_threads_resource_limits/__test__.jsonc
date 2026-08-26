@@ -8,6 +8,10 @@
       "args": "run --allow-read default_main.mjs",
       "output": "default_main.out"
     },
+    "resource_limits_default_stack_size": {
+      "args": "run --allow-read --v8-flags=--stack-size=3072 stack_size_default_main.mjs",
+      "output": "stack_size_default.out"
+    },
     "resource_limits_oom": {
       "args": "run --allow-read oom_main.mjs",
       "output": "oom_main.out",

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.9.1"
+version = "2.9.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -24,7 +24,12 @@ path = "integration_tests_runner.rs"
 harness = false
 
 [features]
-default = ["upgrade", "__vendored_zlib_ng"]
+default = ["v8"]
+# The dependency named `v8` is the deno_v8 facade, retained under the existing
+# crate name so the engine integration does not require source-level churn.
+v8 = ["__runtime_defaults", "deno_core/v8", "v8/v8"]
+quickjs = ["__runtime_defaults", "deno_core/quickjs", "v8/quickjs"]
+__runtime_defaults = ["upgrade", "__vendored_zlib_ng"]
 # A feature that enables heap profiling with dhat on Linux.
 # 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`
 # 2. Run the executable. It will output a dhat-heap.json file.
@@ -42,6 +47,8 @@ __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry", "opentelemetry-otlp/grpc-tonic"]
 # Custom panic trace with `deno_panic`
 panic-trace = ["deno_panic"]
+# Linux release builds remove DWARF unwind tables and trace with frame pointers.
+panic-trace-frame-pointer = ["panic-trace", "deno_panic/frame-pointer"]
 
 [build-dependencies]
 deno_runtime = { workspace = true }
@@ -53,6 +60,7 @@ zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
 sha2.workspace = true
+v8.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true
@@ -75,9 +83,11 @@ deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_npm_installer = { workspace = true }
 deno_npmrc.workspace = true
+deno_os.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
-deno_panic = { version = "0.2.0", optional = true }
+deno_panic = { version = "0.2.1", optional = true }
 deno_path_util.workspace = true
+deno_print.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime.workspace = true
 deno_semver.workspace = true
@@ -90,6 +100,7 @@ eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
 node_shim.workspace = true
+v8.workspace = true
 
 anstream.workspace = true
 async-trait.workspace = true
@@ -104,9 +115,6 @@ cab.workspace = true
 capacity_builder.workspace = true
 cfb.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
-clap_complete.workspace = true
-clap_complete_fig.workspace = true
 color-print.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
@@ -118,7 +126,7 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
-esbuild_client = { version = "0.7.1", features = ["serde"] }
+esbuild_client = { version = "0.7.2", features = ["serde"] }
 faster-hex.workspace = true
 fastwebsockets.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -188,6 +196,7 @@ tracing-opentelemetry = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"], optional = true }
 twox-hash.workspace = true
 typed-arena.workspace = true
+unicode-general-category.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde", "v5"] }
 walkdir.workspace = true
@@ -210,10 +219,15 @@ tokio-vsock.workspace = true
 [dev-dependencies]
 # unsafe_use_unprotected_platform is a workaround for a segfault that may occur
 # when running multiple v8 tests on different threads
+criterion.workspace = true
 deno_core = { workspace = true, features = ["unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true
+
+[[bench]]
+name = "flags"
+harness = false
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

@@ -46,6 +46,74 @@ Deno.test(async function cacheStorageKeys() {
   assert(await caches.delete("keys-c"));
 });
 
+Deno.test(async function cacheKeys() {
+  const cacheName = "cache-keys";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+
+  // Empty cache returns an empty array.
+  const empty = await cache.keys();
+  assert(Array.isArray(empty));
+  assertEquals(empty.length, 0);
+
+  await cache.put(
+    new Request("https://example.com/a"),
+    new Response("a"),
+  );
+  await cache.put(
+    new Request("https://example.com/b", { headers: { "x-test": "yes" } }),
+    new Response("b"),
+  );
+
+  // Returns the request keys in insertion order, preserving headers.
+  const keys = await cache.keys();
+  assertEquals(keys.length, 2);
+  assert(keys[0] instanceof Request);
+  assertEquals(keys[0].url, "https://example.com/a");
+  assertEquals(keys[1].url, "https://example.com/b");
+  assertEquals(keys[1].headers.get("x-test"), "yes");
+
+  // Filtering by a request only returns the matching key.
+  const filtered = await cache.keys(new Request("https://example.com/b"));
+  assertEquals(filtered.length, 1);
+  assertEquals(filtered[0].url, "https://example.com/b");
+
+  // A non-existent request returns an empty array.
+  const none = await cache.keys("https://example.com/missing");
+  assertEquals(none.length, 0);
+
+  // A non-GET request returns an empty array (only GET is stored).
+  const nonGet = await cache.keys(
+    new Request("https://example.com/a", { method: "POST" }),
+  );
+  assertEquals(nonGet.length, 0);
+
+  // keys() reflects a prior delete().
+  assert(await cache.delete("https://example.com/a"));
+  const afterDelete = await cache.keys();
+  assertEquals(afterDelete.length, 1);
+  assertEquals(afterDelete[0].url, "https://example.com/b");
+
+  // A put() overwriting an existing URL doesn't duplicate the key, and the
+  // returned order reflects the order entries were (re-)inserted: /b is put
+  // before /a here, so it comes first.
+  await cache.put(
+    new Request("https://example.com/b"),
+    new Response("b2"),
+  );
+  await cache.put(
+    new Request("https://example.com/a"),
+    new Response("a2"),
+  );
+  const afterOverwrite = await cache.keys();
+  assertEquals(afterOverwrite.map((r) => r.url), [
+    "https://example.com/b",
+    "https://example.com/a",
+  ]);
+
+  assert(await caches.delete(cacheName));
+});
+
 Deno.test(async function cacheApi() {
   const cacheName = "cache-v1";
   const cache = await caches.open(cacheName);
@@ -125,6 +193,53 @@ Deno.test(async function cacheApi() {
 
   assert(await caches.delete(cacheName));
   assertFalse(await caches.has(cacheName));
+});
+
+Deno.test(async function cacheVaryUsesCombinedHeaderValues() {
+  const cacheName = "cache-vary-combined-values";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+  const url = "https://example.com/vary-combined-values";
+
+  const cachedRequest = new Request(url, {
+    headers: [
+      ["x-unchanged", "same"],
+      ["x-example", "first"],
+      ["X-Example", "cached"],
+    ],
+  });
+  await cache.put(
+    cachedRequest,
+    new Response("cached response", {
+      headers: [
+        ["Vary", "x-unchanged"],
+        ["vary", "x-example"],
+      ],
+    }),
+  );
+
+  const matchingRequest = new Request(url, {
+    headers: [
+      ["x-unchanged", "same"],
+      ["x-example", "first"],
+      ["x-example", "cached"],
+    ],
+  });
+  assertEquals(
+    await (await cache.match(matchingRequest))?.text(),
+    "cached response",
+  );
+
+  const differentRequest = new Request(url, {
+    headers: [
+      ["x-unchanged", "same"],
+      ["x-example", "first"],
+      ["x-example", "query"],
+    ],
+  });
+  assertEquals(await cache.match(differentRequest), undefined);
+
+  await caches.delete(cacheName);
 });
 
 Deno.test(async function cacheStorageMatch() {

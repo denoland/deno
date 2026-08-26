@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import vm, {
   compileFunction,
   createContext,
@@ -178,6 +178,52 @@ Deno.test({
     assertEquals(
       result.message,
       "A dynamic import callback was not specified.",
+    );
+  },
+});
+
+Deno.test({
+  name: "vm default loader does not trust internal scheme filenames",
+  async fn() {
+    await assertRejects(
+      async () => {
+        await runInThisContext('import("ext:core/ops")', {
+          filename: "node:vm",
+          importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+        });
+      },
+      TypeError,
+      "Importing ext: modules is only allowed",
+    );
+
+    const fn = compileFunction('return import("ext:core/ops")', [], {
+      filename: "node:vm",
+      importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    });
+    await assertRejects(
+      () => fn(),
+      TypeError,
+      "Importing ext: modules is only allowed",
+    );
+
+    const mod = new SourceTextModule(
+      'export const p = import("ext:core/ops");',
+      {
+        identifier: "node:vm",
+        importModuleDynamically: vm.constants
+          .USE_MAIN_CONTEXT_DEFAULT_LOADER as never,
+      },
+    );
+    await mod.link(() => {
+      throw new Error("unexpected static import");
+    });
+    await mod.evaluate();
+    assertEquals(mod.identifier, "node:vm");
+    const namespace = mod.namespace as { p: Promise<unknown> };
+    await assertRejects(
+      () => namespace.p,
+      TypeError,
+      "Importing ext: modules is only allowed",
     );
   },
 });

@@ -115,12 +115,11 @@ pub fn op_worker_spawn(
   let (init_send, init_recv) = channel();
   let (shutdown_tx, shutdown_rx) = unbounded_channel();
   std::thread::spawn(move || {
-    let (mut runtime, worker_host_side) = create_runtime_from_snapshot(
-      snapshot,
-      false,
-      Some(close_watcher),
-      vec![],
-    );
+    let tokio = super::create_tokio_runtime();
+    let (mut runtime, worker_host_side) = {
+      let _guard = tokio.enter();
+      create_runtime_from_snapshot(snapshot, false, Some(close_watcher), vec![])
+    };
     runtime.op_state().borrow_mut().put(output.clone());
     init_send
       .send(WorkerControl {
@@ -131,7 +130,10 @@ pub fn op_worker_spawn(
       })
       .map_err(|_| unreachable!())
       .unwrap();
-    run_async(run_worker_task(runtime, base_url, main_script, shutdown_rx));
+    run_async(
+      tokio,
+      run_worker_task(runtime, base_url, main_script, shutdown_rx),
+    );
   });
 
   // This is technically a blocking call

@@ -1,0 +1,61 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 257,
+      "name": "span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "long",
+          "value": {
+            "stringValue": "abcde"
+          }
+        },
+        {
+          "key": "short",
+          "value": {
+            "stringValue": "hi"
+          }
+        },
+        {
+          "key": "num",
+          "value": {
+            "doubleValue": 12345
+          }
+        },
+        {
+          "key": "arr",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "stringValue": "xxxxx"
+                },
+                {
+                  "stringValue": "yy"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": []
+}

@@ -6,9 +6,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use super::ExtensionTranspiler;
 use crate::Extension;
 use crate::JsRuntimeForSnapshot;
@@ -16,6 +13,9 @@ use crate::RuntimeOptions;
 use crate::cppgc::FunctionTemplateSnapshotData;
 use crate::error::CoreError;
 use crate::modules::ModuleMapSnapshotData;
+use crate::snapshot_format::Decoder;
+use crate::snapshot_format::Encoder;
+use crate::snapshot_format::SnapshotResult;
 
 pub type WithRuntimeCb = dyn Fn(&mut JsRuntimeForSnapshot);
 
@@ -187,6 +187,15 @@ pub fn create_snapshot(
   create_snapshot_options: CreateSnapshotOptions,
   warmup_script: Option<&'static str>,
 ) -> Result<CreateSnapshotOutput, CoreError> {
+  // Snapshot creation typically runs in build scripts, outside of any
+  // tokio runtime, but creating a `JsRuntime` requires a runtime context
+  // (delayed V8 tasks are scheduled on it). Enter a private one.
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _tokio_guard = tokio_runtime.enter();
+
   let mut mark = Instant::now();
   #[allow(
     clippy::print_stdout,
@@ -292,7 +301,10 @@ pub fn create_snapshot(
 
 /// The data we intend to snapshot, separated from any V8 objects that
 /// are stored in the [`SnapshotLoadDataStore`]/[`SnapshotStoreDataStore`].
-#[derive(Serialize, Deserialize)]
+///
+/// On the write side `'snapshot` is the lifetime of the live runtime's
+/// allocations; on the read side it is always `'static`, because everything is
+/// decoded as a borrow of the `&'static [u8]` snapshot blob.
 pub(crate) struct SnapshottedData<'snapshot> {
   pub js_handled_promise_rejection_cb: Option<u32>,
   pub ext_import_meta_proto: Option<u32>,
@@ -302,29 +314,73 @@ pub(crate) struct SnapshottedData<'snapshot> {
   pub op_count: usize,
   pub source_count: usize,
   pub addl_refs_count: usize,
-  #[serde(borrow)]
   pub ext_source_maps: HashMap<&'snapshot str, &'snapshot [u8]>,
-  #[serde(borrow)]
   pub external_strings: Vec<&'snapshot [u8]>,
 }
 
+impl SnapshottedData<'_> {
+  fn encode(&self, e: &mut Encoder) {
+    e.option(self.js_handled_promise_rejection_cb, |e, v| e.u32(v));
+    e.option(self.ext_import_meta_proto, |e, v| e.u32(v));
+    self.module_map_data.encode(e);
+    self.function_templates_data.encode(e);
+    e.seq(self.extensions.iter(), |e, s| e.str(s));
+    e.usize(self.op_count);
+    e.usize(self.source_count);
+    e.usize(self.addl_refs_count);
+    e.seq(self.ext_source_maps.iter(), |e, (k, v)| {
+      e.str(k);
+      e.bytes(v);
+    });
+    e.seq(self.external_strings.iter(), |e, v| e.bytes(v));
+  }
+}
+
+impl SnapshottedData<'static> {
+  fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
+    Ok(Self {
+      js_handled_promise_rejection_cb: d.option(|d| d.u32())?,
+      ext_import_meta_proto: d.option(|d| d.u32())?,
+      module_map_data: ModuleMapSnapshotData::decode(d)?,
+      function_templates_data: FunctionTemplateSnapshotData::decode(d)?,
+      extensions: d.seq(|d| Ok(d.str()?.0))?,
+      op_count: d.usize()?,
+      source_count: d.usize()?,
+      addl_refs_count: d.usize()?,
+      ext_source_maps: d.map(|d| Ok((d.str()?.0, d.bytes()?)))?,
+      external_strings: d.seq(|d| d.bytes())?,
+    })
+  }
+}
+
 /// Snapshot sidecar data, containing a [`SnapshottedData`] and the length of the
-/// associated data array. This is the final form of the [`SnapshottedData`] before
-/// we hand it off to serde.
-#[derive(Serialize, Deserialize)]
+/// associated data array. This is the final form of the [`SnapshottedData`]
+/// before it is encoded into the sidecar blob.
 pub(crate) struct SerializableSnapshotSidecarData<'snapshot> {
   pub(crate) data_count: u32,
-  #[serde(borrow)]
   pub snapshot_data: SnapshottedData<'snapshot>,
 }
 
-impl<'snapshot> SerializableSnapshotSidecarData<'snapshot> {
-  fn from_slice(slice: &'snapshot [u8]) -> Self {
-    bincode::deserialize(slice).expect("Failed to deserialize snapshot data")
+impl SerializableSnapshotSidecarData<'static> {
+  fn from_slice(slice: &'static [u8]) -> Self {
+    let d = &mut Decoder::new(slice)
+      .expect("Failed to deserialize snapshot sidecar data");
+    let data_count = d.u32().expect("Failed to deserialize snapshot data");
+    let snapshot_data =
+      SnapshottedData::decode(d).expect("Failed to deserialize snapshot data");
+    Self {
+      data_count,
+      snapshot_data,
+    }
   }
+}
 
+impl SerializableSnapshotSidecarData<'_> {
   fn into_bytes(self) -> Box<[u8]> {
-    bincode::serialize(&self).unwrap().into_boxed_slice()
+    let mut e = Encoder::new();
+    e.u32(self.data_count);
+    self.snapshot_data.encode(&mut e);
+    e.into_bytes()
   }
 }
 

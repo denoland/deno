@@ -668,7 +668,7 @@ class WASI {
     if (!this.#memory) {
       throw new ERR_WASI_NOT_STARTED();
     }
-    // deno-lint-ignore prefer-primordials -- WebAssembly.Memory.prototype.buffer getter; no primordial equivalent
+    // deno-lint-ignore deno-internal/prefer-primordials -- WebAssembly.Memory.prototype.buffer getter; no primordial equivalent
     return new Uint8Array(this.#memory.buffer);
   }
 

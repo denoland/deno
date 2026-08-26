@@ -9,6 +9,14 @@ use super::extensions;
 use super::ts_module_loader::maybe_transpile_source;
 
 pub fn create_snapshot() -> Box<[u8]> {
+  // Snapshot creation may run outside of any tokio runtime (e.g. in a
+  // build script), but creating a `JsRuntime` requires a runtime context.
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _tokio_guard = tokio_runtime.enter();
+
   let extensions_for_snapshot = vec![extensions::checkin_runtime::init::<()>()];
 
   let runtime_for_snapshot = JsRuntimeForSnapshot::new(RuntimeOptions {

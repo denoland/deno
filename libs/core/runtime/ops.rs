@@ -73,7 +73,9 @@ macro_rules! try_integer_some {
     if $n.$is() {
       // SAFETY: v8 handles can be transmuted
       let n: &v8::$type = unsafe { std::mem::transmute($n) };
-      return Some(az::wrapping_cast::<_, _>(n.value()));
+      // `n.value()` is already an integer here, so the `as` cast wraps on
+      // overflow rather than saturating. That is deliberate.
+      return Some(n.value() as _);
     }
   };
 }
@@ -83,7 +85,9 @@ macro_rules! try_number_int_some {
     if $n.$is() {
       // SAFETY: v8 handles can be transmuted
       let n: &v8::$type = unsafe { std::mem::transmute($n) };
-      return Some(az::wrapping_cast::<_, _>(n.value().trunc() as $trunc));
+      // The inner `as $trunc` saturates the float; the outer `as _` narrows
+      // the resulting integer with wrapping. Both are deliberate.
+      return Some(n.value().trunc() as $trunc as _);
     }
   };
 }
@@ -1151,6 +1155,22 @@ mod tests {
         let test = format!("assert({op}({str}) == {len})");
         run_test2(JIT_SLOW_ITERATIONS, op, &test)?;
       }
+    }
+
+    for op in ["op_test_string_cow", "op_test_string_ref"] {
+      run_test2(
+        JIT_SLOW_ITERATIONS,
+        op,
+        &format!(
+          r"
+          const arg = {{
+            toString() {{
+              return 'a'.repeat(1000) + 'b'.repeat(1000);
+            }},
+          }};
+          assert({op}(arg) == 2000);"
+        ),
+      )?;
     }
 
     // Ensure that we're correctly encoding UTF-8

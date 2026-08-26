@@ -194,7 +194,7 @@
       "links": [],
       "droppedLinksCount": 0,
       "status": {
-        "message": "error sending request for url (http://unreachable-host.abc/): client error (Connect): dns error: [WILDLINE]",
+        "message": "fetch failed",
         "code": 2
       }
     },

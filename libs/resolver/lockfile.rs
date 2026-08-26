@@ -90,7 +90,8 @@ impl LockfileNpmPackageInfoApiAdapter {
             os: version_info.os.iter().map(|s| s.to_string()).collect(),
             deprecated: version_info.deprecated.is_some(),
             bin: version_info.bin.is_some(),
-            scripts: version_info.scripts.contains_key("preinstall")
+            scripts: version_info.has_install_script.unwrap_or(false)
+              || version_info.scripts.contains_key("preinstall")
               || version_info.scripts.contains_key("install")
               || version_info.scripts.contains_key("postinstall"),
             optional_peers: version_info

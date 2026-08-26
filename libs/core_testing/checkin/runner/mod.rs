@@ -137,11 +137,20 @@ pub fn create_runtime_from_snapshot_with_options(
   (runtime, worker_host_side)
 }
 
-fn run_async(f: impl Future<Output = Result<(), anyhow::Error>>) {
-  let tokio = tokio::runtime::Builder::new_current_thread()
+/// Create the tokio runtime that a checkin `JsRuntime` runs on. It must
+/// exist and be entered before the `JsRuntime` is created, so that delayed
+/// V8 tasks can be scheduled on it.
+fn create_tokio_runtime() -> tokio::runtime::Runtime {
+  tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
-    .expect("Failed to build a runtime");
+    .expect("Failed to build a runtime")
+}
+
+fn run_async(
+  tokio: tokio::runtime::Runtime,
+  f: impl Future<Output = Result<(), anyhow::Error>>,
+) {
   tokio.block_on(f).expect("Failed to run the given task");
 
   // We don't have a good way to wait for tokio to go idle here, but we'd like tokio

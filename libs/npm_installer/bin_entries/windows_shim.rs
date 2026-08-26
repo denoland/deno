@@ -29,6 +29,7 @@ use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
 
 use crate::bin_entries::EntrySetupOutcome;
+use crate::bin_entries::bin_script_stays_in_package;
 use crate::bin_entries::relative_path;
 
 // note: parts of logic and pretty much all of the shims ported from https://github.com/npm/cmd-shim
@@ -304,6 +305,15 @@ pub fn set_up_bin_shim<'a>(
   package_path: &'a Path,
   bin_node_modules_dir_path: &'a Path,
 ) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
+  if !bin_script_stays_in_package(bin_script) {
+    return Ok(EntrySetupOutcome::MissingEntrypoint {
+      bin_name,
+      package_path,
+      entrypoint: package_path.join(bin_script),
+      package,
+      extra,
+    });
+  }
   let sys = sys.with_paths_in_errors();
   let shim_path = bin_node_modules_dir_path.join(bin_name);
   let target_file = package_path.join(bin_script);

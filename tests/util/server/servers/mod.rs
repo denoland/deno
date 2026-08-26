@@ -22,6 +22,7 @@ use denokv_proto::datapath::SnapshotReadStatus;
 use futures::FutureExt;
 use futures::StreamExt;
 use http;
+use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::Request;
@@ -84,6 +85,7 @@ const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
+const WSS2_PUSH_PORT: u16 = 4266;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
@@ -117,6 +119,7 @@ pub async fn run_all_servers() {
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
   let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
+  let wss2_push_server_fut = ws::run_wss2_push_server(WSS2_PUSH_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
   let tls_client_auth_server_fut =
@@ -160,6 +163,7 @@ pub async fn run_all_servers() {
     ws_ping_server_fut.boxed_local(),
     wss_server_fut.boxed_local(),
     wss2_server_fut.boxed_local(),
+    wss2_push_server_fut.boxed_local(),
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),
@@ -784,6 +788,23 @@ async fn main_server(
     (_, "/http_version") => {
       let version = format!("{:?}", req.version());
       Ok(Response::new(string_body(&version)))
+    }
+    (_, "/large_headers") => {
+      let mut res = Response::new(string_body("ok"));
+      // Add headers whose decoded size totals ~29KB to test the http2 max
+      // header list size. This is intentionally larger than hyper's old 16KB
+      // default so that a default client (which now advertises a browser-like
+      // 256KB limit) can still receive it. See
+      // https://github.com/denoland/deno/issues/36462.
+      for i in 0..200 {
+        let value = "a".repeat(100);
+        res.headers_mut().append(
+          HeaderName::from_bytes(format!("x-large-header-{i}").as_bytes())
+            .unwrap(),
+          HeaderValue::from_str(&value).unwrap(),
+        );
+      }
+      Ok(res)
     }
     (_, "/content_length") => {
       let content_length = format!("{:?}", req.headers().get("content-length"));

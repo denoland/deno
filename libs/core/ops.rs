@@ -95,6 +95,12 @@ pub struct OpCtx {
 
   pub(crate) decl: OpDecl,
   pub(crate) fast_fn_info: Option<CFunction>,
+  /// The fast-call overload passed to `FunctionTemplate::build_fast`. Stored
+  /// here (rather than synthesized on the stack) because V8 150.x keeps the raw
+  /// `CFunction` pointers directly inside `FunctionTemplateInfo`, so the slice
+  /// must outlive every template built from this op. `OpCtx` lives until isolate
+  /// disposal, which satisfies that.
+  pub(crate) fast_fn_overloads: Option<[CFunction; 1]>,
   pub(crate) metrics_fn: Option<OpMetricsFn>,
 
   op_driver: Rc<OpDriverImpl>,
@@ -130,6 +136,7 @@ impl OpCtx {
       decl,
       op_driver,
       fast_fn_info,
+      fast_fn_overloads: fast_fn_info.map(|f| [f]),
       isolate,
       metrics_fn,
       enable_stack_trace,

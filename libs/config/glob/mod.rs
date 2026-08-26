@@ -249,35 +249,59 @@ impl FilePatterns {
       });
     }
 
-    // todo(dsherret): This could be further optimized by not including
-    // patterns that will only ever match another base.
     for base_path in include_patterns_by_base_path.keys() {
       let applicable_excludes = get_applicable_excludes(base_path);
       let mut applicable_includes = Vec::new();
+      // whether any ancestor contributed a candidate include pattern before the
+      // `can_match_under` filter dropped it; distinguishes "no patterns cover
+      // this base at all" from "patterns exist but none can match here".
+      let mut had_candidate_patterns = false;
       // get all patterns that apply to the current or ancestor directories
-      for path in base_path.ancestors() {
-        if let Some(patterns) = include_patterns_by_base_path.get(path) {
+      for ancestor in base_path.ancestors() {
+        if let Some(patterns) = include_patterns_by_base_path.get(ancestor) {
+          had_candidate_patterns |= !patterns.is_empty();
+          // `ancestor` is an ancestor (or equal) of `base_path`, so this strip
+          // always succeeds and yields `base_path` relative to the shared base
+          // these patterns are anchored at. Skip patterns that can never match
+          // anything under `base_path` so they aren't tested against every file
+          // walked there.
+          let relative_base =
+            base_path.strip_prefix(ancestor).unwrap_or(base_path);
           applicable_includes.extend(
             patterns
               .iter()
+              .filter(|p| p.can_match_under(relative_base))
               .map(|p| PathOrPattern::Pattern((*p).clone())),
           );
         }
       }
+      let include = if self.include.is_none() {
+        None
+      } else if applicable_includes.is_empty()
+        && self
+          .include
+          .as_ref()
+          .map(|i| !i.0.is_empty())
+          .unwrap_or(false)
+      {
+        if had_candidate_patterns {
+          // Candidate include patterns exist for this base but `can_match_under`
+          // pruned every one, so nothing under this base can match the include
+          // set. Keep a closed (empty) include set rather than falling through
+          // to `None`, which would include everything under the base.
+          Some(PathOrPatternSet::new(Vec::new()))
+        } else {
+          // No include pattern is anchored at or above this base (e.g. a broad
+          // path include covers it), so keep the existing include-everything
+          // behavior for the base.
+          None
+        }
+      } else {
+        Some(PathOrPatternSet::new(applicable_includes))
+      };
       result.push(Self {
         base: base_path.clone(),
-        include: if self.include.is_none()
-          || applicable_includes.is_empty()
-            && self
-              .include
-              .as_ref()
-              .map(|i| !i.0.is_empty())
-              .unwrap_or(false)
-        {
-          None
-        } else {
-          Some(PathOrPatternSet::new(applicable_includes))
-        },
+        include,
         exclude: PathOrPatternSet::new(applicable_excludes),
       });
     }
@@ -611,6 +635,11 @@ pub struct GlobPattern {
   /// `pattern` with `base_path` stripped off, used to match against paths that
   /// have had `base_path` removed via `Path::strip_prefix` on the hot path.
   relative_pattern: glob::Pattern,
+  /// Trailing literal (glob-free, ASCII) run of `pattern`, lowercased. Any path
+  /// matched by `pattern` must end with this, so it's used as a cheap reject on
+  /// the hot path before running the glob engine. Empty when the pattern ends
+  /// with a glob character or a non-ASCII literal (e.g. `**/*`).
+  literal_suffix: Box<[u8]>,
 }
 
 impl GlobPattern {
@@ -643,11 +672,13 @@ impl GlobPattern {
           source,
         }
       })?;
+    let literal_suffix = ascii_literal_suffix(&pattern_text);
     Ok(Self {
       is_negated,
       pattern,
       base_path,
       relative_pattern,
+      literal_suffix,
     })
   }
 
@@ -685,6 +716,13 @@ impl GlobPattern {
   }
 
   pub fn matches_path(&self, path: &Path) -> PathGlobMatch {
+    // Cheap reject: any path matched by `pattern` must end with its trailing
+    // literal run, so bail before touching the glob engine when it doesn't.
+    if !self.literal_suffix.is_empty()
+      && !path_ends_with_ascii_ci(path, &self.literal_suffix)
+    {
+      return PathGlobMatch::NotMatched;
+    }
     let matched = if self.base_path.as_os_str().is_empty() {
       // No literal prefix to strip, so match the full pattern. This is
       // unconditionally equivalent to the old behavior, including for
@@ -727,8 +765,91 @@ impl GlobPattern {
       pattern: self.pattern.clone(),
       base_path: self.base_path.clone(),
       relative_pattern: self.relative_pattern.clone(),
+      literal_suffix: self.literal_suffix.clone(),
     }
   }
+
+  /// Returns `false` only when this pattern can provably never match any path
+  /// under `relative_base` (a path relative to this pattern's `base_path`).
+  /// Returns `true` whenever a match is still possible, so it's safe to use for
+  /// dropping patterns that are irrelevant to a given traversal base.
+  fn can_match_under(&self, relative_base: &Path) -> bool {
+    let mut pattern_segments = self
+      .relative_pattern
+      .as_str()
+      .split('/')
+      .filter(|s| !s.is_empty());
+    for component in relative_base.components() {
+      let component = match component {
+        std::path::Component::Normal(s) => s.to_string_lossy(),
+        // Anything other than a normal segment (root, `.`, `..`) is unexpected
+        // here, so stay conservative and keep the pattern.
+        _ => return true,
+      };
+      match pattern_segments.next() {
+        // The pattern is shallower than the base and has no `**` left, so it can
+        // only ever match ancestors of the base, never files beneath it.
+        None => return false,
+        // `**` matches any number of segments, including all remaining ones.
+        Some("**") => return true,
+        Some(segment) => {
+          if !single_segment_matches(segment, &component) {
+            return false;
+          }
+        }
+      }
+    }
+    true
+  }
+}
+
+/// Matches a single path segment (no separators) against a single glob segment
+/// using the same options as full-path matching. Errs toward `true` when the
+/// segment can't be compiled, so callers never drop a pattern by mistake.
+fn single_segment_matches(segment: &str, value: &str) -> bool {
+  match glob::Pattern::new(segment) {
+    Ok(pattern) => pattern.matches_with(value, match_options()),
+    Err(_) => true,
+  }
+}
+
+/// The maximal trailing run of `pattern` that contains no glob metacharacters
+/// (`*`, `?`, `[`, `]`) and no non-ASCII bytes, lowercased for case-insensitive
+/// comparison. Literal brackets are escaped to `[[]`/`[]]` before this runs, so
+/// treating `[` and `]` as metacharacters keeps the run genuinely literal.
+fn ascii_literal_suffix(pattern: &str) -> Box<[u8]> {
+  let bytes = pattern.as_bytes();
+  let mut start = bytes.len();
+  while start > 0 {
+    let b = bytes[start - 1];
+    if matches!(b, b'*' | b'?' | b'[' | b']') || !b.is_ascii() {
+      break;
+    }
+    start -= 1;
+  }
+  bytes[start..].to_ascii_lowercase().into_boxed_slice()
+}
+
+/// Whether `path` ends with the ASCII `suffix`, ignoring case. `suffix` is
+/// already lowercased; the comparison avoids allocating for valid UTF-8 paths.
+///
+/// `suffix` comes from a pattern normalized to `/`, but on Windows the path
+/// separator is `\`, so a suffix that spans a directory boundary (e.g.
+/// `/deno.json`) would never match. Treat `\` and `/` as equivalent so the
+/// reject stays a genuine necessary condition on every platform. Normalizing
+/// only ever widens what passes this pre-filter (the real glob engine still
+/// runs afterward), so it never drops a genuine match.
+fn path_ends_with_ascii_ci(path: &Path, suffix: &[u8]) -> bool {
+  let path = path.as_os_str().to_string_lossy();
+  let bytes = path.as_bytes();
+  bytes.len() >= suffix.len()
+    && bytes[bytes.len() - suffix.len()..]
+      .iter()
+      .zip(suffix)
+      .all(|(p, s)| {
+        let p = if *p == b'\\' { b'/' } else { *p };
+        p.eq_ignore_ascii_case(s)
+      })
 }
 
 pub fn is_glob_pattern(path: &str) -> bool {
@@ -880,6 +1001,128 @@ mod test {
         .map(|file_patterns| ComparableFilePatterns::new(root, file_patterns))
         .collect()
     }
+  }
+
+  #[test]
+  fn ascii_literal_suffix_extraction() {
+    assert_eq!(&*ascii_literal_suffix("/root/**/*.ts"), b".ts");
+    assert_eq!(&*ascii_literal_suffix("/root/**/*.TS"), b".ts");
+    assert_eq!(
+      &*ascii_literal_suffix("/root/**/foo/bar.ts"),
+      b"/foo/bar.ts"
+    );
+    // ends with a glob character: no literal suffix
+    assert_eq!(&*ascii_literal_suffix("/root/**/*"), b"");
+    assert_eq!(&*ascii_literal_suffix("/root/foo?"), b"");
+    // brackets are glob metacharacters, so the run stops at the last `]`
+    assert_eq!(&*ascii_literal_suffix("/root/[[]a].ts"), b".ts");
+    // non-ASCII byte stops the run
+    let non_ascii = ascii_literal_suffix("/root/**/\u{00e9}.ts");
+    assert_eq!(&*non_ascii, b".ts");
+  }
+
+  #[test]
+  fn glob_pattern_literal_suffix_reject() {
+    let pattern = GlobPattern::new("/root/src/**/*.ts").unwrap();
+    assert_eq!(
+      pattern.matches_path(Path::new("/root/src/a/b.ts")),
+      PathGlobMatch::Matched
+    );
+    // wrong extension is rejected by the suffix fast-path
+    assert_eq!(
+      pattern.matches_path(Path::new("/root/src/a/b.js")),
+      PathGlobMatch::NotMatched
+    );
+    // case-insensitive, matching the glob engine's own options
+    assert_eq!(
+      pattern.matches_path(Path::new("/root/src/a/b.TS")),
+      PathGlobMatch::Matched
+    );
+    // negated patterns report NotMatched when the suffix doesn't match
+    let negated = GlobPattern::new("!/root/src/**/*.ts").unwrap();
+    assert_eq!(
+      negated.matches_path(Path::new("/root/src/a/b.js")),
+      PathGlobMatch::NotMatched
+    );
+    assert_eq!(
+      negated.matches_path(Path::new("/root/src/a/b.ts")),
+      PathGlobMatch::MatchedNegated
+    );
+  }
+
+  #[test]
+  fn path_ends_with_ascii_ci_separators() {
+    // The suffix is normalized to `/`, but on Windows the OS path uses `\`.
+    // A directory-spanning suffix must still match a backslash path, otherwise
+    // every workspace member config file is rejected on Windows.
+    assert!(path_ends_with_ascii_ci(
+      Path::new("C:\\root\\member\\deno.json"),
+      b"/deno.json",
+    ));
+    assert!(path_ends_with_ascii_ci(
+      Path::new("/root/member/deno.json"),
+      b"/deno.json",
+    ));
+    // case-insensitive
+    assert!(path_ends_with_ascii_ci(
+      Path::new("C:\\root\\member\\DENO.JSON"),
+      b"/deno.json",
+    ));
+    // a genuinely different suffix is still rejected
+    assert!(!path_ends_with_ascii_ci(
+      Path::new("C:\\root\\member\\package.json"),
+      b"/deno.json",
+    ));
+  }
+
+  #[test]
+  fn glob_pattern_can_match_under() {
+    let pattern = GlobPattern::new("/root/src/a*/**/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::from("/root/src"));
+    // base equal to the pattern's own base always applies
+    assert!(pattern.can_match_under(Path::new("")));
+    // `a*` matches `abc`, so files under it may match
+    assert!(pattern.can_match_under(Path::new("abc")));
+    // `a*` cannot match `bbb`, so nothing under it will ever match
+    assert!(!pattern.can_match_under(Path::new("bbb")));
+    // `**` matches any number of segments below
+    assert!(pattern.can_match_under(Path::new("abc/deep/nested")));
+
+    // pattern shallower than the base with no `**` cannot reach under it
+    let shallow = GlobPattern::new("/root/*.ts").unwrap();
+    assert!(shallow.can_match_under(Path::new("")));
+    assert!(!shallow.can_match_under(Path::new("nested")));
+  }
+
+  #[test]
+  fn file_patterns_split_by_base_dir_pruned_to_empty() {
+    // A negated exclude creates a base (`src/bbb`) whose only inherited include
+    // pattern (`src/a*/**/*.ts`) can never match under it, so `can_match_under`
+    // prunes it away. The pruned base must keep a closed (empty) include set:
+    // collapsing it to `None` would flip the closed include set into
+    // include-everything and collect files that were never included.
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_string_lossy().replace('\\', "/");
+    let patterns = FilePatterns {
+      base: temp_dir.path().to_path_buf(),
+      include: Some(PathOrPatternSet::new(vec![PathOrPattern::Pattern(
+        GlobPattern::new(&format!("{}/src/a*/**/*.ts", root)).unwrap(),
+      )])),
+      exclude: PathOrPatternSet::new(vec![
+        PathOrPattern::from_relative(temp_dir.path(), "!./src/bbb/*.log")
+          .unwrap(),
+      ]),
+    };
+    let split = ComparableFilePatterns::from_split(
+      temp_dir.path(),
+      &patterns.split_by_base(),
+    );
+    let bbb = split
+      .iter()
+      .find(|p| p.base == "src/bbb")
+      .expect("expected a split base for the negated exclude");
+    // closed empty set, not `None`
+    assert_eq!(bbb.include, Some(vec![]));
   }
 
   #[test]

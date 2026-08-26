@@ -136,7 +136,7 @@ class SampledLRUCache {
       if (MathRandom() < this.#sampleRate) {
         // if the map is at capacity, delete the oldest (first) element
         if (this.#map.size > this.#capacity) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           this.#map.delete(this.#map.keys().next().value);
         }
         // insert the new value

@@ -23,6 +23,10 @@
     "sni_callback_error": {
       "args": "run --allow-all sni_callback_error.ts",
       "output": "sni_callback_error.out"
+    },
+    "alpn_no_overlap": {
+      "args": "run --allow-all alpn_no_overlap.ts",
+      "output": "alpn_no_overlap.out"
     }
   }
 }

@@ -632,6 +632,7 @@ fn compute_document_doc_diagnostics(
       unstable_bytes_imports: false,
       unstable_text_imports: false,
       unstable_css_imports: false,
+      unstable_config_imports: false,
     },
   ));
   if token.is_cancelled() {
@@ -1973,6 +1974,13 @@ async fn generate_no_slow_types_diagnostics(
   if config_data.member_dir.jsr_packages_for_publish().is_empty() {
     return Vec::new();
   }
+  // Respect the lint configuration: if `no-slow-types` is excluded (or not
+  // otherwise enabled) for this document, don't report its diagnostics. This
+  // keeps the LSP in sync with `deno lint`, which filters the rule out.
+  let linter = snapshot.linter_resolver.for_module(module);
+  if !linter.inner.has_package_rule("no-slow-types") {
+    return Vec::new();
+  }
   let scope = config_data.scope.clone();
   let cell = no_slow_types_cache
     .entry(scope.clone())
@@ -2051,6 +2059,7 @@ fn collect_scope_no_slow_types_diagnostics(
           packages: &packages,
           build_fast_check_graph: true,
           validate_graph: false,
+          skip_unanalyzable_exports: true,
         })
         .await?;
       let mut diagnostics_by_specifier: HashMap<

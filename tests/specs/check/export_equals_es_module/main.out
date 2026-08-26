@@ -1,0 +1,7 @@
+Check [WILDCARD]main.ts
+TS1203 [ERROR]: Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead.
+export = f;
+~~~~~~~~~~~
+    at file:///[WILDLINE]/main.ts:4:1
+
+error: Type checking failed.

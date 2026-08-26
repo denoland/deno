@@ -78,6 +78,43 @@ fn publish_warning_not_in_graph() {
 }
 
 #[test]
+fn publish_rejects_invalid_identities_before_authentication() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("LICENSE").write("");
+  temp_dir.join("mod.ts").write("export const value = 1;");
+
+  for name in [
+    "@foo/../../other",
+    "@foo/package/other",
+    "@foo/package?other",
+    "@foo/package#other",
+    "@foo/package\\other",
+  ] {
+    temp_dir.join("deno.json").write_json(&json!({
+      "name": name,
+      "version": "1.0.0",
+      "exports": "./mod.ts",
+    }));
+
+    let output = context.new_command().arg("publish").run();
+    output.assert_exit_code(1);
+    assert_contains!(output.combined_output(), "Invalid package name");
+    assert_not_contains!(output.combined_output(), "No means to authenticate");
+  }
+
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/package",
+    "version": "1.0.0?other",
+    "exports": "./mod.ts",
+  }));
+  let output = context.new_command().arg("publish").run();
+  output.assert_exit_code(1);
+  assert_contains!(output.combined_output(), "Invalid package version");
+  assert_not_contains!(output.combined_output(), "No means to authenticate");
+}
+
+#[test]
 fn provenance() {
   TestContextBuilder::new()
     .use_http_server()
@@ -89,6 +126,31 @@ fn provenance() {
     .run()
     .assert_exit_code(0)
     .assert_matches_file("publish/successful_provenance.out");
+}
+
+/// A registry that rejects the attestation must not fail the publish — the
+/// version is already live and immutable — but it must say so. Regression test
+/// for jsr-io/jsr#1474, where this response was discarded and a registry that
+/// rejected every attestation was indistinguishable from one that accepted
+/// them.
+#[test]
+fn provenance_rejected_by_registry() {
+  let output = TestContextBuilder::new()
+    .use_http_server()
+    .envs(env_vars_for_jsr_provenance_tests())
+    .cwd("publish/provenance_rejected")
+    .build()
+    .new_command()
+    .args("publish")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file("publish/provenance_rejected.out");
+  // The success line must not claim a transparency-log entry the registry never
+  // accepted.
+  assert_not_contains!(
+    output.combined_output(),
+    "Provenance transparency log available at"
+  );
 }
 
 #[test]
