@@ -7276,16 +7276,24 @@ def456  other.zip
     // more than once. The warning belongs at the packager call site; these
     // two stay pure parses.
     //
-    // Pinned structurally rather than by capturing the log: what matters is
-    // that the source has no `log::` in either body.
+    // Pinned structurally rather than by capturing the log, which would need
+    // a global logger and race every other test in this binary. The guard is
+    // narrower than the invariant, so it also rejects a call to the warning
+    // helper next door — a parser reaching for that rather than `log::`
+    // directly is the likelier shape of the next slip.
     let src = include_str!("desktop.rs");
     for name in ["fn numeric_version_fields", "fn version_core_fields"] {
       let start = src.find(name).expect(name);
       let body_end = start + src[start..].find("\n}\n").expect("fn end");
-      assert!(
-        !src[start..body_end].contains("log::"),
-        "{name} must stay a pure parse - warn from the packager instead"
-      );
+      let body = &src[start..body_end];
+      for banned in ["log::", "warn_about_unusable_version"] {
+        assert!(
+          !body.contains(banned),
+          "{name} must stay a pure parse (found {banned:?}) - warn from the \
+           packager call site instead, or it fires from the renderer and \
+           twice on any path that parses the version more than once"
+        );
+      }
     }
   }
 
