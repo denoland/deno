@@ -45,7 +45,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  laufey::LAUFEY_API_VERSION == 30,
+  laufey::LAUFEY_API_VERSION == 34,
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
@@ -868,14 +868,17 @@ fn desktop_menu_item_to_laufey_menu_item(
       id,
       accelerator,
       enabled,
+      checked,
+      icon,
+      tooltip,
     } => laufey::MenuItem::Item {
       label,
       id,
       accelerator,
       enabled,
-      checked: false,
-      icon: None,
-      tooltip: None,
+      checked,
+      icon,
+      tooltip,
     },
     denort::desktop::MenuItem::Submenu { label, items } => {
       laufey::MenuItem::Submenu {
@@ -2137,6 +2140,9 @@ mod tests {
       id: Some("file.save".into()),
       accelerator: Some("CmdOrCtrl+S".into()),
       enabled: true,
+      checked: true,
+      icon: Some(vec![0x89, b'P', b'N', b'G']),
+      tooltip: Some("Save the current file".into()),
     };
     match desktop_menu_item_to_laufey_menu_item(item) {
       laufey::MenuItem::Item {
@@ -2144,12 +2150,17 @@ mod tests {
         id,
         accelerator,
         enabled,
-        ..
+        checked,
+        icon,
+        tooltip,
       } => {
         assert_eq!(label, "Save");
         assert_eq!(id.as_deref(), Some("file.save"));
         assert_eq!(accelerator.as_deref(), Some("CmdOrCtrl+S"));
         assert!(enabled);
+        assert!(checked);
+        assert_eq!(icon.as_deref(), Some(&[0x89, b'P', b'N', b'G'][..]));
+        assert_eq!(tooltip.as_deref(), Some("Save the current file"));
       }
       _ => panic!("expected Item"),
     }
@@ -2165,6 +2176,9 @@ mod tests {
           id: Some("open".into()),
           accelerator: None,
           enabled: false,
+          checked: false,
+          icon: None,
+          tooltip: None,
         },
         denort::desktop::MenuItem::Separator,
         denort::desktop::MenuItem::Role {
