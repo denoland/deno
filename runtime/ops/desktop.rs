@@ -1401,22 +1401,37 @@ async fn op_desktop_read_clipboard_text(
   // than leaving the caller's promise pending forever.
   let read =
     deno_core::unsync::spawn_blocking(move || api.read_clipboard_text());
+  // Reject rather than resolve on either failure. Resolving would hand back
+  // `""`, which is exactly what a genuinely empty clipboard returns, so a
+  // caller could not tell "nothing was copied" from "the owning app is
+  // wedged" — and `if (await navigator.clipboard.readText())` would quietly
+  // take the empty branch. The spec rejects here too.
+  //
+  // The two failures get different messages: a panic inside the backend has
+  // nothing to do with a timeout or with another application, and pointing
+  // someone at their window manager for it would be an actively wrong
+  // diagnosis.
   match tokio::time::timeout(CLIPBOARD_TIMEOUT, read).await {
     Ok(Ok(text)) => Ok(text),
-    // Reject rather than resolve. Resolving would hand back `""`, which is
-    // exactly what a genuinely empty clipboard returns, so a caller could
-    // not tell "nothing was copied" from "the owning app is wedged" — and
-    // `if (await navigator.clipboard.readText())` would quietly take the
-    // empty branch. The spec rejects here too.
-    _ => Err(clipboard_unavailable("read")),
+    Ok(Err(_join)) => Err(clipboard_failed("read")),
+    Err(_elapsed) => Err(clipboard_unavailable("read")),
   }
 }
 
-/// The error both clipboard ops reject with when the platform doesn't answer.
+/// The error a clipboard op rejects with when the backend call itself failed
+/// — i.e. it panicked, so the blocking task's join returned an error. Kept
+/// distinct from [`clipboard_unavailable`]: nothing timed out and no other
+/// application was involved.
+fn clipboard_failed(op: &str) -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::generic(format!("clipboard {op} failed"))
+}
+
+/// The error a clipboard op rejects with when the call didn't finish in time.
 ///
 /// Names the unresponsive-owner case specifically: on X11/Wayland the call is
 /// serviced by whichever application owns the selection, and that being stuck
-/// is the one thing a user can actually act on.
+/// is the one thing a user can actually act on. Only for the timeout — see
+/// [`clipboard_failed`] for a backend that failed outright.
 fn clipboard_unavailable(op: &str) -> deno_error::JsErrorBox {
   deno_error::JsErrorBox::generic(format!(
     "clipboard {op} did not complete within {}s - the application that owns \
@@ -1448,7 +1463,8 @@ async fn op_desktop_write_clipboard_text(
   // "Copied!" in precisely the case the timeout exists to catch.
   match tokio::time::timeout(CLIPBOARD_TIMEOUT, write).await {
     Ok(Ok(())) => Ok(()),
-    _ => Err(clipboard_unavailable("write")),
+    Ok(Err(_join)) => Err(clipboard_failed("write")),
+    Err(_elapsed) => Err(clipboard_unavailable("write")),
   }
 }
 

@@ -708,12 +708,13 @@ pub const DESKTOP_JS: &str = r#"
   // Promise that looks like it couldn't. They reject rather than resolve if
   // that owner never answers — `""` is indistinguishable from an empty
   // clipboard, and a resolved `writeText()` has to mean the write happened.
-  // The richer `read()` / `write()`
-  // (`ClipboardItem` / arbitrary MIME types) aren't backed by laufey, so
-  // they're omitted rather than stubbed. Per spec the read/write are gated on
-  // the `clipboard-read` / `clipboard-write` permissions, but laufey has no
-  // clipboard permission model, so access isn't gated here (mirroring how the
-  // desktop Notification surface degrades).
+  //
+  // The richer `read()` / `write()` (`ClipboardItem` / arbitrary MIME types)
+  // aren't backed by laufey, so they're omitted rather than stubbed. Per spec
+  // the read/write are gated on the `clipboard-read` / `clipboard-write`
+  // permissions, but laufey has no clipboard permission model, so access
+  // isn't gated here (mirroring how the desktop Notification surface
+  // degrades).
   const webidl = internals.webidl;
   class Clipboard extends EventTarget {
     constructor() {
