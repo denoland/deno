@@ -3252,6 +3252,18 @@ fn render_macos_info_plist(
           .collect::<Vec<_>>()
           .join(".")
       });
+  // The plist keys accept only period-separated integers, so a non-numeric
+  // version leaves the defaults in place. Say so rather than silently
+  // shipping `1.0` — the deb/rpm path rejects the same `deno.json` outright.
+  if let Some(version) = config_version
+    && numeric_version.is_none()
+  {
+    log::warn!(
+      "deno.json `version` \"{version}\" is not numeric; the bundle will \
+       carry CFBundleShortVersionString 1.0 / CFBundleVersion 1.0.0 \
+       (both accept only period-separated integers)"
+    );
+  }
   let short_version = numeric_version.as_deref().unwrap_or("1.0");
   let bundle_version = numeric_version.as_deref().unwrap_or("1.0.0");
   format!(
@@ -4319,22 +4331,6 @@ struct MsiFile {
   abs_path: PathBuf,
 }
 
-/// Wrap a Windows app directory in a Windows Installer `.msi` package.
-///
-/// The MSI database is authored entirely in pure Rust via the `msi` crate, with
-/// the file payload stored in an embedded MSZIP cabinet (`cab` crate), so it
-/// cross-compiles from any host — only the *target* must be Windows. The app is
-/// installed per-machine under `ProgramFiles64Folder\<AppName>\`, mirroring the
-/// staged app-dir tree exactly; uninstall removes it. Layout:
-///
-/// ```text
-/// %ProgramFiles%\<AppName>\
-///   <AppName>.bat          (launcher)
-///   laufey.exe             (CEF backend)
-///   libcef.dll, ...        (CEF support files)
-///   denort.dll             (compiled runtime + user code)
-///   ...                    (nested dirs preserved)
-/// ```
 /// Reduce a configured version to the numeric `major.minor.build` form MSI's
 /// ProductVersion accepts, dropping semver prerelease/build suffixes. Returns
 /// the packaging default when nothing numeric is configured, and errors when
@@ -4346,6 +4342,14 @@ fn msi_product_version(
     return Ok("1.0.0".to_string());
   };
   let Some(fields) = numeric_version_fields(version) else {
+    // MSI's ProductVersion can't express a non-numeric version at all, so
+    // the default is the only way through. Say so: on the deb/rpm path the
+    // same `deno.json` is a hard error, and silently shipping a version the
+    // user didn't write is the class of bug this whole change exists to fix.
+    log::warn!(
+      "deno.json `version` \"{version}\" is not numeric; the .msi will be \
+       built with ProductVersion 1.0.0 (MSI accepts only major.minor.build)"
+    );
     return Ok("1.0.0".to_string());
   };
   // Windows Installer packs ProductVersion into 8/8/16 bits, so a field that
@@ -4358,7 +4362,13 @@ fn msi_product_version(
   for (field, (limit, name)) in fields.iter().zip(LIMITS) {
     if *field > limit {
       bail!(
-        "deno.json `version` \"{version}\" cannot be used as an MSI ProductVersion: the {name} field {field} exceeds the maximum of {limit}"
+        "deno.json `version` \"{version}\" cannot be used as an MSI \
+         ProductVersion: the {name} field {field} exceeds the maximum of \
+         {limit}. Windows Installer packs ProductVersion into \
+         major(0-255).minor(0-255).build(0-65535), so a CalVer-style version \
+         has no valid encoding. Either use a version within those bounds, or \
+         build a non-MSI format (.deb/.rpm/.appimage/.app carry the version \
+         verbatim)."
       );
     }
   }
@@ -4375,6 +4385,10 @@ fn msi_product_version(
 /// any semver prerelease/build suffix. `None` when the version isn't numeric
 /// at all (`weird`, `1.beta.2`) — the packagers that need a numeric version
 /// fall back to their default in that case.
+///
+/// Fields are returned parsed, so callers re-emit them normalised: a padded
+/// `01.02.03` becomes `1.2.3`. Both target formats compare these as integers,
+/// so the padding carries no meaning to drop.
 fn numeric_version_fields(version: &str) -> Option<Vec<u64>> {
   let core = version.split(['-', '+']).next().unwrap_or(version);
   core
@@ -4384,6 +4398,22 @@ fn numeric_version_fields(version: &str) -> Option<Vec<u64>> {
     .collect::<Option<Vec<_>>>()
 }
 
+/// Wrap a Windows app directory in a Windows Installer `.msi` package.
+///
+/// The MSI database is authored entirely in pure Rust via the `msi` crate, with
+/// the file payload stored in an embedded MSZIP cabinet (`cab` crate), so it
+/// cross-compiles from any host — only the *target* must be Windows. The app is
+/// installed per-machine under `ProgramFiles64Folder\<AppName>\`, mirroring the
+/// staged app-dir tree exactly; uninstall removes it. Layout:
+///
+/// ```text
+/// %ProgramFiles%\<AppName>\
+///   <AppName>.bat          (launcher)
+///   laufey.exe             (CEF backend)
+///   libcef.dll, ...        (CEF support files)
+///   denort.dll             (compiled runtime + user code)
+///   ...                    (nested dirs preserved)
+/// ```
 fn create_windows_msi(
   app_dir: &Path,
   msi_path: &Path,
@@ -7201,6 +7231,9 @@ def456  other.zip
     assert_eq!(msi_product_version(Some("2.3.4-beta.1")).unwrap(), "2.3.4");
     assert_eq!(msi_product_version(Some("2.3")).unwrap(), "2.3");
     assert_eq!(msi_product_version(Some("1.2.3.4")).unwrap(), "1.2.3");
+    // Fields are re-emitted from parsed integers, so padding is dropped.
+    // Both formats compare these numerically, so nothing is lost.
+    assert_eq!(msi_product_version(Some("01.02.03")).unwrap(), "1.2.3");
     assert_eq!(msi_product_version(None).unwrap(), "1.0.0");
     // Not numeric at all: fall back rather than emit a partial version.
     assert_eq!(msi_product_version(Some("weird")).unwrap(), "1.0.0");
