@@ -3143,7 +3143,7 @@ async fn package_macos_app_bundle(
   // accept only period-separated integers, so a non-numeric version leaves
   // the defaults in place — say so, since the deb/rpm path rejects the same
   // `deno.json` outright.
-  warn_if_version_not_numeric(
+  warn_about_unusable_version(
     config_package_version(cli_options).as_deref(),
     "the bundle will carry CFBundleShortVersionString 1.0 / CFBundleVersion \
      1.0.0 (both accept only period-separated integers)",
@@ -4341,14 +4341,9 @@ fn msi_product_version(
   };
   let Some(fields) = numeric_version_fields(version) else {
     // MSI's ProductVersion can't express a non-numeric version at all, so
-    // the default is the only way through. Say so: on the deb/rpm path the
-    // same `deno.json` is a hard error, and silently shipping a version the
-    // user didn't write is the class of bug this whole change exists to fix.
-    warn_if_version_not_numeric(
-      Some(version),
-      "the .msi will be built with ProductVersion 1.0.0 (MSI accepts only \
-       major.minor.build)",
-    );
+    // the default is the only way through. `create_windows_msi` warns about
+    // it; this stays a pure reduction so tests and the plist path can call
+    // it without logging.
     return Ok("1.0.0".to_string());
   };
   // Windows Installer packs ProductVersion into 8/8/16 bits, so a field that
@@ -4380,22 +4375,37 @@ fn msi_product_version(
   )
 }
 
-/// Warn that a configured version isn't numeric and a default is being used
-/// in its place.
+/// Warn when a configured version can't be carried into a format that needs
+/// a numeric one, and something other than what the user wrote will ship.
 ///
-/// The formats that need a numeric version (MSI's ProductVersion, the plist
-/// version keys) can't express one that isn't, so falling back is the only
-/// way through — but the deb/rpm path rejects the very same `deno.json`, and
-/// quietly shipping a version the user didn't write is the failure #36503 is
-/// about. `consequence` names what the build will carry instead.
-fn warn_if_version_not_numeric(
+/// Covers both ways that happens — not numeric at all, or more fields than
+/// the format holds. Neither is an error: MSI's ProductVersion and the plist
+/// version keys simply can't express those versions, so falling back or
+/// truncating is the only way through. But the deb/rpm path rejects the very
+/// same `deno.json`, and quietly shipping a version the user didn't write is
+/// the failure #36503 is about. `consequence` names what will ship instead.
+///
+/// Call this once per build, from the packager rather than from a helper:
+/// keeping it out of `numeric_version_fields` is what stops every caller of
+/// that function logging, and what stops a version being warned about twice
+/// on a path that parses it more than once.
+fn warn_about_unusable_version(
   config_version: Option<&str>,
   consequence: &str,
 ) {
-  if let Some(version) = config_version
-    && numeric_version_fields(version).is_none()
-  {
+  let Some(version) = config_version else {
+    return;
+  };
+  if numeric_version_fields(version).is_none() {
     log::warn!("deno.json `version` {version:?} is not numeric; {consequence}");
+  } else if version_core_fields(version).len() > 3 {
+    // Three is all either target can hold (MSI's ProductVersion has three
+    // fields, `CFBundleVersion` accepts at most three integers), so the
+    // output is right — this is only about saying so.
+    log::warn!(
+      "deno.json `version` {version:?} has more than three numeric fields; \
+       only the leading major.minor.build are used"
+    );
   }
 }
 
@@ -4408,25 +4418,21 @@ fn warn_if_version_not_numeric(
 /// `01.02.03` becomes `1.2.3`. Both target formats compare these as integers,
 /// so the padding carries no meaning to drop.
 fn numeric_version_fields(version: &str) -> Option<Vec<u64>> {
-  let core = version.split(['-', '+']).next().unwrap_or(version);
-  let all: Vec<&str> = core.split('.').collect();
-  let fields = all
+  version_core_fields(version)
     .iter()
     .take(3)
     .map(|p| p.parse::<u64>().ok())
-    .collect::<Option<Vec<_>>>()?;
-  // A fourth field is dropped rather than rejected: three is all either
-  // target can hold (MSI's ProductVersion has three, `CFBundleVersion`
-  // accepts at most three integers), so the output is right either way.
-  // Still worth saying, since the non-numeric truncation next door warns.
-  if all.len() > 3 {
-    log::warn!(
-      "deno.json `version` {version:?} has more than three numeric fields; \
-       only the leading major.minor.build are used for the .msi and .app \
-       versions"
-    );
-  }
-  Some(fields)
+    .collect::<Option<Vec<_>>>()
+}
+
+/// The dot-separated fields of a version's numeric core, i.e. everything
+/// before a semver prerelease/build suffix. Kept separate from
+/// [`numeric_version_fields`] so the field *count* is available without
+/// re-deriving the split — `numeric_version_fields` only ever returns the
+/// leading three.
+fn version_core_fields(version: &str) -> Vec<&str> {
+  let core = version.split(['-', '+']).next().unwrap_or(version);
+  core.split('.').collect()
 }
 
 /// Wrap a Windows app directory in a Windows Installer `.msi` package.
@@ -4468,6 +4474,11 @@ fn create_windows_msi(
   // prerelease/build suffix would fail MSI validation); the default matches
   // the macOS bundle's CFBundleVersion and the Linux package default
   // (#36503).
+  warn_about_unusable_version(
+    config_version,
+    "the .msi will be built with ProductVersion 1.0.0 (MSI accepts only \
+     major.minor.build)",
+  );
   let version = msi_product_version(config_version)?;
   let version = version.as_str();
   let identifier = desktop_flags
@@ -7255,6 +7266,38 @@ def456  other.zip
         "`{bad}` must be rejected, got: {err}"
       );
     }
+  }
+
+  #[test]
+  fn version_parsing_helpers_do_not_log() {
+    // `numeric_version_fields` is on every version path, including inside
+    // `render_macos_info_plist`, so a warning here would fire from the
+    // renderer and fire twice on any path that parses the same version
+    // more than once. The warning belongs at the packager call site; these
+    // two stay pure parses.
+    //
+    // Pinned structurally rather than by capturing the log: what matters is
+    // that the source has no `log::` in either body.
+    let src = include_str!("desktop.rs");
+    for name in ["fn numeric_version_fields", "fn version_core_fields"] {
+      let start = src.find(name).expect(name);
+      let body_end = start + src[start..].find("\n}\n").expect("fn end");
+      assert!(
+        !src[start..body_end].contains("log::"),
+        "{name} must stay a pure parse - warn from the packager instead"
+      );
+    }
+  }
+
+  #[test]
+  fn version_core_fields_splits_on_the_numeric_core() {
+    assert_eq!(version_core_fields("1.2.3"), vec!["1", "2", "3"]);
+    assert_eq!(version_core_fields("1.2.3.4"), vec!["1", "2", "3", "4"]);
+    // The prerelease/build suffix isn't part of the core, so it can't make
+    // a three-field version look like a four-field one.
+    assert_eq!(version_core_fields("1.2.3-beta.1"), vec!["1", "2", "3"]);
+    assert_eq!(version_core_fields("1.2.3+build.5"), vec!["1", "2", "3"]);
+    assert_eq!(version_core_fields("weird"), vec!["weird"]);
   }
 
   #[test]
