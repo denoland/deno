@@ -13,8 +13,7 @@
       "steps": [
         {
           "args": "add jsr:@denotest/unstable",
-          "output": "add_jsr.out",
-          "exitCode": 1
+          "output": "add_jsr.out"
         }
       ]
     }
