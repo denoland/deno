@@ -3136,6 +3136,11 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Optional)
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
+    ArgDef::new("backend-args")
+      .long("backend-args")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+.help("Command-Line arguments for the chosen backend")
   ],
   arg_groups: &[
     UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,

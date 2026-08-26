@@ -192,6 +192,10 @@ pub fn native_tsc_bin_path() -> Option<PathRef> {
   None
 }
 
+pub fn native_laufey_cache_dir() -> PathRef {
+  root_path().join("target").join(".native_laufey")
+}
+
 pub fn prebuilt_path() -> PathRef {
   third_party_path().join("prebuilt")
 }
@@ -308,6 +312,19 @@ pub fn denort_exe_path() -> PathRef {
     p.set_extension("exe");
   }
   PathRef::new(p)
+}
+
+/// Path to the desktop runtime shared library (`denort_desktop` cdylib)
+/// in the same artifact directory as the `deno` binary.
+pub fn libdenort_path() -> PathRef {
+  let file_name = if cfg!(target_os = "macos") {
+    "libdenort.dylib"
+  } else if cfg!(windows) {
+    "denort.dll"
+  } else {
+    "libdenort.so"
+  };
+  target_dir().join(file_name)
 }
 
 pub fn prebuilt_tool_path(tool: &str) -> PathRef {

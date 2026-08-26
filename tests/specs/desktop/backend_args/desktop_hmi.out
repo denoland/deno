@@ -1,0 +1,6 @@
+[WILDCARD]
+Runtime loaded successfully from: [WILDCARD]/hello3.so
+Runtime started
+[desktop] dylib path: "[WILDCARD]/hello3.so"
+Listening on http://127.0.0.1:[WILDCARD]/
+potato

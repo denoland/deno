@@ -285,7 +285,8 @@ pub fn main() {
       .hash_dir(tests.join("registry"))
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path())
-      .hash_file(test_util::denort_exe_path());
+      .hash_file(test_util::denort_exe_path())
+      .hash_file(test_util::libdenort_path());
   });
   if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
     return;

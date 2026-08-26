@@ -927,6 +927,13 @@ struct SerializedDesktopAppConfig {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+struct SerializedDesktopBackendArgsConfig {
+  pub cef: Option<String>,
+  pub webview: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 struct SerializedDesktopOutputConfig {
   pub macos: Option<String>,
   pub windows: Option<String>,
@@ -962,6 +969,8 @@ struct SerializedDesktopMacOSConfig {
 struct SerializedDesktopConfig {
   pub app: Option<SerializedDesktopAppConfig>,
   pub backend: Option<String>,
+  #[serde(alias = "backendArgs")]
+  pub backend_args: Option<SerializedDesktopBackendArgsConfig>,
   pub output: Option<SerializedDesktopOutputConfig>,
   pub release: Option<SerializedDesktopReleaseConfig>,
   #[serde(rename = "errorReporting")]
@@ -1005,6 +1014,10 @@ impl SerializedDesktopConfig {
         }),
       }),
       backend: self.backend,
+      backend_args: self.backend_args.map(|o| DesktopBackendArgsConfig {
+        cef: o.cef,
+        webview: o.webview,
+      }),
       output: self.output.map(|o| DesktopOutputConfig {
         macos: o.macos,
         windows: o.windows,
@@ -1053,6 +1066,12 @@ pub struct DesktopAppConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopBackendArgsConfig {
+  pub cef: Option<String>,
+  pub webview: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct DesktopOutputConfig {
   pub macos: Option<String>,
   pub windows: Option<String>,
@@ -1078,6 +1097,7 @@ pub struct DesktopMacOSConfig {
 pub struct DesktopConfig {
   pub app: Option<DesktopAppConfig>,
   pub backend: Option<String>,
+  pub backend_args: Option<DesktopBackendArgsConfig>,
   pub output: Option<DesktopOutputConfig>,
   pub release: Option<DesktopReleaseConfig>,
   pub error_reporting: Option<DesktopErrorReportingConfig>,
@@ -2884,6 +2904,30 @@ mod tests {
     let path = testdata_path().join("404.json");
     let error = ConfigFile::read(&RealSys, path.as_path()).err().unwrap();
     assert!(error.to_string().contains("404.json"));
+  }
+
+  #[test]
+  fn desktop_config_accepts_backend_args_camel_case() {
+    let config_text = r#"{
+      "desktop": {
+        "backend": "cef",
+        "backendArgs": {
+          "cef": "--user-agent=potato"
+        }
+      }
+    }"#;
+    let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+
+    let desktop_config = config_file.to_desktop_config().unwrap();
+    assert_eq!(desktop_config.backend, Some("cef".to_string()));
+    assert_eq!(
+      desktop_config.backend_args,
+      Some(DesktopBackendArgsConfig {
+        cef: Some("--user-agent=potato".to_string()),
+        webview: None,
+      })
+    );
   }
 
   #[test]

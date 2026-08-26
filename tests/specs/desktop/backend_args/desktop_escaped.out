@@ -1,0 +1,5 @@
+Runtime loaded successfully from: [WILDCARD]/hello_escaped/hello_escaped.so
+Runtime started
+[desktop] dylib path: "[WILDCARD]/hello_escaped/hello_escaped.so"
+Listening on http://127.0.0.1:[WILDCARD]/
+a "quoted" agent

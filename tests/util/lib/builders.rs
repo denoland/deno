@@ -226,6 +226,17 @@ impl TestContextBuilder {
     // The `denort` binary is in the same artifact directory as the `deno` binary.
     let denort_bin = denort_exe_path();
     self = self.env("DENORT_BIN", denort_bin.to_string());
+    // Same idea for `deno desktop` tests: point at the libdenort built from
+    // this checkout so a stale libdenort restored from a CI target cache
+    // (or downloaded from dl.deno.land) is never loaded — a runtime from a
+    // different commit can fail to deserialize the metadata this CLI writes.
+    // Only set when the file exists; otherwise leave it to the CLI's own
+    // resolution (dev paths, then download) so local runs without a built
+    // libdenort keep working.
+    let libdenort = crate::libdenort_path();
+    if libdenort.exists() {
+      self = self.env("DENORT_DESKTOP_BIN", libdenort.to_string());
+    }
     self
   }
 
@@ -302,6 +313,22 @@ impl TestContextBuilder {
       if let Some(tsc_bin) = tsc_bin {
         envs.insert("DENO_TSC_BIN".to_string(), tsc_bin);
       }
+    }
+
+    // Same idea as `DENO_TSC_BIN` above, but for `deno desktop`'s "laufey"
+    // backend downloads: point every test's fresh `DENO_DIR` at one shared
+    // cache dir instead of re-downloading the (100+ MB) backend archive per
+    // test. An explicit ambient `DENO_LAUFEY_CACHE_DIR` still wins, as does a
+    // value a test sets itself.
+    if !envs.contains_key("DENO_LAUFEY_CACHE_DIR") {
+      let laufey_cache_dir = std::env::var_os("DENO_LAUFEY_CACHE_DIR")
+        .map(|v| v.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+          crate::native_laufey_cache_dir()
+            .to_string_lossy()
+            .into_owned()
+        });
+      envs.insert("DENO_LAUFEY_CACHE_DIR".to_string(), laufey_cache_dir);
     }
 
     TestContext {
@@ -828,19 +855,35 @@ impl TestCommandBuilder {
 
     let status = process.wait().unwrap();
     // Drop the sender to cancel the watchdog, then check if it timed out
-    if let Some((cancel_tx, handle)) = timeout_handle {
+    let timed_out = timeout_handle.is_some_and(|(cancel_tx, handle)| {
       drop(cancel_tx);
-      let timed_out = handle.join().unwrap_or(true);
-      if timed_out {
-        panic!("Test command timed out");
-      }
-    }
+      handle.join().unwrap_or(true)
+    });
+    // Join the output threads before panicking on a timeout so that
+    // everything the process printed can be included in the diagnostic.
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
         sanitize_output(stdout.join().unwrap(), &args),
         sanitize_output(stderr.join().unwrap(), &args),
       )
     });
+    if timed_out {
+      use std::fmt::Write;
+      let mut msg = String::from("Test command timed out");
+      if let Some(combined) = &combined {
+        let _ = write!(
+          msg,
+          "\n---- captured output ----\n{combined}\n------------------------"
+        );
+      }
+      if let Some((stdout, stderr)) = &std_out_err {
+        let _ = write!(
+          msg,
+          "\n---- captured stdout ----\n{stdout}\n---- captured stderr ----\n{stderr}\n------------------------"
+        );
+      }
+      panic!("{msg}");
+    }
     let exit_code = status.code();
     #[cfg(unix)]
     let signal = {

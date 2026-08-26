@@ -2726,6 +2726,7 @@ fn desktop_parse(
     inspect_renderer,
     compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    backend_args: result.get_one("backend-args").map(|s| s.to_string()),
     engine: result
       .get_one("engine")
       .map(|value| value.parse().expect("engine is validated by the parser"))
