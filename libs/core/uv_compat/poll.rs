@@ -1133,6 +1133,44 @@ mod tests {
 
   #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
+  async fn poll_owner_invalidation_suppresses_queued_callback() {
+    let (read_fd, write_fd) = pipe();
+    let mut runtime = JsRuntime::new(Default::default());
+    let loop_ = runtime_loop(&runtime);
+    let owner = unsafe { new_poll_owner(loop_) };
+    let state = Box::new(PollCallbackState {
+      calls: Cell::new(0),
+    });
+    let mut handle = std::mem::MaybeUninit::<uv_poll_t>::uninit();
+    unsafe {
+      assert_eq!(
+        uv_poll_init(
+          loop_,
+          handle.as_mut_ptr(),
+          read_fd.as_raw_fd(),
+          owner.clone()
+        ),
+        0
+      );
+      (*handle.as_mut_ptr()).data =
+        (&*state as *const PollCallbackState).cast_mut().cast();
+      assert_eq!(
+        uv_poll_start(handle.as_mut_ptr(), UV_READABLE, Some(count_callback)),
+        0
+      );
+    }
+    write_byte(&write_fd);
+    wait_for_queued_ready(loop_).await;
+
+    owner.invalidate();
+    tick(&mut runtime).await;
+    assert_eq!(state.calls.get(), 0);
+
+    unsafe { uv_poll_close(handle.as_mut_ptr()) };
+  }
+
+  #[cfg(not(miri))] // needs I/O
+  #[tokio::test(flavor = "current_thread")]
   async fn poll_owner_invalidation_wakes_a_pending_loop() {
     let (read_fd, _write_fd) = pipe();
     let mut runtime = JsRuntime::new(Default::default());

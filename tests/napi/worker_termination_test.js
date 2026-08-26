@@ -32,8 +32,10 @@ async function testActivePollTerminationProtocol(message) {
   await waitForMessage(worker, "ready");
   worker.postMessage(message);
   await waitForMessage(worker, "armed");
-  // The worker sends "armed" only after registering cleanup for the ready
-  // active poll. This test exercises that protocol but does not await shutdown.
+  // This is end-to-end smoke coverage for Web Worker termination. The worker
+  // sends "armed" only after registering cleanup for the ready active poll,
+  // but this API cannot observe runtime destruction. The Rust unit test
+  // `active_napi_poll_teardown_joins_runtime_thread` separately waits for it.
   worker.terminate();
 }
 
@@ -41,6 +43,8 @@ async function testActivePollTerminationProtocol(message) {
 Deno.test({
   name: "napi uv poll worker termination arms a refed poll",
   ignore: Deno.build.os === "windows",
+  sanitizeOps: true,
+  sanitizeResources: true,
   async fn() {
     await testActivePollTerminationProtocol("arm_refed_poll");
   },
@@ -49,6 +53,8 @@ Deno.test({
 Deno.test({
   name: "napi uv poll worker termination arms an unrefed poll",
   ignore: Deno.build.os === "windows",
+  sanitizeOps: true,
+  sanitizeResources: true,
   async fn() {
     await testActivePollTerminationProtocol("arm_unrefed_poll");
   },
