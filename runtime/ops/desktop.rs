@@ -1359,8 +1359,8 @@ fn op_desktop_prompt(
 /// Thread-safety: in a packaged desktop app the runtime already runs on its
 /// own `deno-desktop-runtime` thread (`run_on_runtime_thread` in
 /// `cli/rt_desktop`), never the laufey UI thread, so the existing call was
-/// already an off-UI-thread one that the backend marshals; the thread spawned
-/// here is in the same position, not a new kind of caller.
+/// already an off-UI-thread one that the backend marshals; the pool thread
+/// used here is in the same position, not a new kind of caller.
 #[op2]
 #[string]
 async fn op_desktop_read_clipboard_text(
@@ -1371,17 +1371,21 @@ async fn op_desktop_read_clipboard_text(
     s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
   };
   let api = api?;
-  let (tx, rx) = tokio::sync::oneshot::channel();
-  std::thread::spawn(move || {
-    let _ = tx.send(api.read_clipboard_text());
-  });
-  // A dropped sender (a backend that panics mid-read) resolves to `None`
-  // rather than leaving the caller's promise pending forever.
-  rx.await.ok().flatten()
+  // The runtime's bounded blocking pool, not a fresh thread per call:
+  // `readText()` is an ordinary API an app may poll on an interval, and
+  // nothing here rate-limits it.
+  //
+  // A join error (a backend that panics mid-read) yields `None` rather than
+  // leaving the caller's promise pending forever.
+  deno_core::unsync::spawn_blocking(move || api.read_clipboard_text())
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Write the clipboard's text off the JS thread. Blocking semantics — and the
-/// reason for the extra thread — as `op_desktop_read_clipboard_text`.
+/// reason for going through the blocking pool — as
+/// `op_desktop_read_clipboard_text`.
 #[op2]
 async fn op_desktop_write_clipboard_text(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
@@ -1394,12 +1398,10 @@ async fn op_desktop_write_clipboard_text(
   let Some(api) = api else {
     return;
   };
-  let (tx, rx) = tokio::sync::oneshot::channel();
-  std::thread::spawn(move || {
+  let _ = deno_core::unsync::spawn_blocking(move || {
     api.write_clipboard_text(&text);
-    let _ = tx.send(());
-  });
-  let _ = rx.await;
+  })
+  .await;
 }
 
 fn permission_state_to_web_string(state: PermissionState) -> &'static str {
