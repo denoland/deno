@@ -1250,6 +1250,14 @@ async fn op_desktop_alert_async(
   });
   // Three ways out, all of which must let the caller exit: dismissed, the
   // backend panicked (join error), or nobody could click it.
+  //
+  // The timeout bounds the *wait*, not the dialog. A `spawn_blocking` task
+  // can't be cancelled, so on timeout the pool thread stays inside
+  // `api.alert` until it returns — which in that case is never — and
+  // `ErrorDialogGuard` therefore never drops, leaving
+  // `ERROR_DIALOG_SHOWING` set for the rest of the process. That is the
+  // safe direction: it means no later caller can park a second thread. The
+  // caller exits either way, which is the point.
   let _ = tokio::time::timeout(ERROR_DIALOG_TIMEOUT, dialog).await;
 }
 
@@ -2310,16 +2318,37 @@ mod tests {
   // --- error dialog single-flight ---
 
   #[test]
-  fn error_dialog_guard_clears_the_flag_on_panic() {
+  fn error_dialog_flag_is_single_flight_and_panic_safe() {
     use std::sync::atomic::Ordering;
 
     use super::ERROR_DIALOG_SHOWING;
     use super::ErrorDialogGuard;
 
-    // The flag is what stops a caller in a loop parking a pool thread per
-    // call. If a panic inside `DesktopApi::alert` could leave it set, no
-    // error dialog would ever show again for the life of the process, so
-    // the guard has to clear it while unwinding rather than after the call.
+    // One test, not two: `ERROR_DIALOG_SHOWING` is a process-global static
+    // and cargo runs tests on parallel threads within one binary, so two
+    // tests asserting on exact `swap` results would interleave and flake.
+    // Anything else added here has to join this test rather than sit
+    // alongside it.
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
+
+    // First caller takes the slot; everyone arriving while it's held is
+    // turned away rather than parking another thread in a modal dialog.
+    assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+
+    // Dropping the guard frees the slot for the next error.
+    {
+      let _guard = ErrorDialogGuard;
+    }
+    assert!(
+      !ERROR_DIALOG_SHOWING.load(Ordering::SeqCst),
+      "the guard must clear the flag on the normal path"
+    );
+
+    // And it clears it while unwinding too. A plain `store` after the call
+    // would leave the flag stuck at `true` if `DesktopApi::alert` panicked,
+    // suppressing every later error dialog for the life of the process.
     ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
     let panicked = std::panic::catch_unwind(|| {
       let _guard = ErrorDialogGuard;
@@ -2334,27 +2363,7 @@ mod tests {
       !ERROR_DIALOG_SHOWING.load(Ordering::SeqCst),
       "the flag must be clear again so later errors can still show a dialog"
     );
-  }
 
-  #[test]
-  fn error_dialog_flag_is_single_flight() {
-    use std::sync::atomic::Ordering;
-
-    use super::ERROR_DIALOG_SHOWING;
-    use super::ErrorDialogGuard;
-
-    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
-    // First caller takes the slot...
-    assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
-    // ...and every caller while it is held is turned away rather than
-    // spawning a second dialog.
-    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
-    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
-    {
-      let _guard = ErrorDialogGuard;
-    }
-    // Once the dialog is done the slot frees up for the next error.
-    assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
     ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
   }
 
