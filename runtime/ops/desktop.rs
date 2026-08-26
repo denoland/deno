@@ -1377,12 +1377,14 @@ const CLIPBOARD_TIMEOUT: std::time::Duration =
 #[string]
 async fn op_desktop_read_clipboard_text(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
-) -> Option<String> {
+) -> Result<Option<String>, deno_error::JsErrorBox> {
   let api = {
     let s = state.borrow();
     s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
   };
-  let api = api?;
+  let Some(api) = api else {
+    return Ok(None);
+  };
   // The runtime's bounded blocking pool, not a fresh thread per call:
   // `readText()` is an ordinary API an app may poll on an interval, and
   // nothing here rate-limits it.
@@ -1400,11 +1402,27 @@ async fn op_desktop_read_clipboard_text(
   let read =
     deno_core::unsync::spawn_blocking(move || api.read_clipboard_text());
   match tokio::time::timeout(CLIPBOARD_TIMEOUT, read).await {
-    Ok(Ok(text)) => text,
-    // Timed out, or the backend panicked. `readText()` resolves to `""`
-    // either way, matching the empty-clipboard case rather than hanging.
-    _ => None,
+    Ok(Ok(text)) => Ok(text),
+    // Reject rather than resolve. Resolving would hand back `""`, which is
+    // exactly what a genuinely empty clipboard returns, so a caller could
+    // not tell "nothing was copied" from "the owning app is wedged" — and
+    // `if (await navigator.clipboard.readText())` would quietly take the
+    // empty branch. The spec rejects here too.
+    _ => Err(clipboard_unavailable("read")),
   }
+}
+
+/// The error both clipboard ops reject with when the platform doesn't answer.
+///
+/// Names the unresponsive-owner case specifically: on X11/Wayland the call is
+/// serviced by whichever application owns the selection, and that being stuck
+/// is the one thing a user can actually act on.
+fn clipboard_unavailable(op: &str) -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::generic(format!(
+    "clipboard {op} did not complete within {}s - the application that owns \
+     the clipboard may be unresponsive",
+    CLIPBOARD_TIMEOUT.as_secs()
+  ))
 }
 
 /// Write the clipboard's text off the JS thread. Blocking semantics — and the
@@ -1414,18 +1432,24 @@ async fn op_desktop_read_clipboard_text(
 async fn op_desktop_write_clipboard_text(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
   #[string] text: String,
-) {
+) -> Result<(), deno_error::JsErrorBox> {
   let api = {
     let s = state.borrow();
     s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
   };
   let Some(api) = api else {
-    return;
+    return Ok(());
   };
   let write = deno_core::unsync::spawn_blocking(move || {
     api.write_clipboard_text(&text);
   });
-  let _ = tokio::time::timeout(CLIPBOARD_TIMEOUT, write).await;
+  // `writeText()`'s whole contract is that resolution means the write
+  // happened, so discarding the timeout here would make an app report
+  // "Copied!" in precisely the case the timeout exists to catch.
+  match tokio::time::timeout(CLIPBOARD_TIMEOUT, write).await {
+    Ok(Ok(())) => Ok(()),
+    _ => Err(clipboard_unavailable("write")),
+  }
 }
 
 fn permission_state_to_web_string(state: PermissionState) -> &'static str {

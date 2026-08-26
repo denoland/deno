@@ -705,7 +705,10 @@ pub const DESKTOP_JS: &str = r#"
   // genuinely async: laufey's clipboard calls block their calling thread, and
   // on X11/Wayland a read is serviced by whichever app owns the selection, so
   // an unresponsive owner would otherwise freeze the whole runtime behind a
-  // Promise that looks like it couldn't. The richer `read()` / `write()`
+  // Promise that looks like it couldn't. They reject rather than resolve if
+  // that owner never answers — `""` is indistinguishable from an empty
+  // clipboard, and a resolved `writeText()` has to mean the write happened.
+  // The richer `read()` / `write()`
   // (`ClipboardItem` / arbitrary MIME types) aren't backed by laufey, so
   // they're omitted rather than stubbed. Per spec the read/write are gated on
   // the `clipboard-read` / `clipboard-write` permissions, but laufey has no

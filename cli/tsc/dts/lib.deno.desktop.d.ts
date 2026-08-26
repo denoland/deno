@@ -245,10 +245,18 @@ declare interface Permissions {
  * only the text methods are backed by `deno desktop`. */
 declare interface Clipboard extends EventTarget {
   /** Resolve with the clipboard's text content, or an empty string when the
-   * clipboard is empty or holds no text. */
+   * clipboard is empty or holds no text.
+   *
+   * Rejects if the clipboard doesn't respond — on Linux the read is serviced
+   * by whichever application owns the selection, so an unresponsive one
+   * fails rather than resolving to an empty string it can't be told apart
+   * from. */
   readText(): Promise<string>;
   /** Replace the clipboard's content with `data`. An empty string clears the
-   * clipboard. */
+   * clipboard.
+   *
+   * Resolving means the write completed; it rejects if the clipboard doesn't
+   * respond. */
   writeText(data: string): Promise<void>;
 }
 
