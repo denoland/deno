@@ -3296,16 +3296,16 @@ impl TLSWrap {
     // No-op for rustls
   }
 
-  /// Set the serialized TLS session for client resumption.
-  /// In Node.js, client connections only attempt session resumption when
-  /// `options.session` is provided (or `setSession()` is called).
-  /// This enables resumption on the underlying `NodeClientSessionStoreWrapper`.
+  /// Allow or disallow offering cached sessions for resumption on this
+  /// connection. In Node.js, client connections only attempt session
+  /// resumption when `options.session` is provided (or `setSession()` is
+  /// called); the JS layer validates the session buffer against the
+  /// destination and toggles this flag on the underlying
+  /// `NodeClientSessionStoreWrapper`.
   #[fast]
-  fn set_session(&self, #[buffer] session: &[u8]) {
+  fn set_session_allowed(&self, allowed: bool) {
     let inner = unsafe { &*self.inner.as_ptr() };
-    inner
-      .allow_resumption
-      .store(!session.is_empty(), Ordering::Relaxed);
+    inner.allow_resumption.store(allowed, Ordering::Relaxed);
   }
 
   /// Check if the TLS session was resumed (reused from a previous connection).
