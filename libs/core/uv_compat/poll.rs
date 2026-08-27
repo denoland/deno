@@ -71,6 +71,9 @@ enum PollCommand {
 type PollFn =
   Arc<dyn Fn(&mut [libc::pollfd], c_int) -> Result<c_int, c_int> + Send + Sync>;
 
+#[cfg(test)]
+type JoinFn = Box<dyn FnOnce(JoinHandle<()>) + Send>;
+
 struct PollControlState {
   commands: VecDeque<PollCommand>,
   ready: VecDeque<PollReady>,
@@ -103,6 +106,8 @@ pub(crate) struct PollDriver {
   worker_starts: usize,
   #[cfg(test)]
   upsert_hook: Option<PollUpsertHook>,
+  #[cfg(test)]
+  join: Option<JoinFn>,
 }
 
 #[cfg(test)]
@@ -146,6 +151,8 @@ impl PollDriver {
       worker_starts: 0,
       #[cfg(test)]
       upsert_hook: None,
+      #[cfg(test)]
+      join: None,
     }
   }
 
@@ -169,6 +176,17 @@ impl PollDriver {
   ) -> Self {
     let mut driver = Self::new_with_poll_for_test(shared, poll);
     driver.upsert_hook = Some(upsert_hook);
+    driver
+  }
+
+  #[cfg(test)]
+  pub(crate) fn new_with_poll_and_join_for_test(
+    shared: Arc<LoopShared>,
+    poll: PollFn,
+    join: JoinFn,
+  ) -> Self {
+    let mut driver = Self::new_with_poll_for_test(shared, poll);
+    driver.join = Some(join);
     driver
   }
 
@@ -217,6 +235,13 @@ impl PollDriver {
       }
     }
     if let Some(worker) = self.worker.take() {
+      #[cfg(test)]
+      if let Some(join) = self.join.take() {
+        join(worker);
+      } else {
+        let _ = worker.join();
+      }
+      #[cfg(not(test))]
       let _ = worker.join();
     }
   }
@@ -1616,20 +1641,76 @@ mod tests {
   #[test]
   fn shutdown_joins_worker() {
     let (read_fd, _write_fd) = pipe();
+    let (poll_entered_sender, poll_entered_receiver) = mpsc::sync_channel(1);
+    let (release_poll_sender, release_poll_receiver) = mpsc::sync_channel(0);
+    let release_poll_receiver = Arc::new(Mutex::new(release_poll_receiver));
+    let release_poll_receiver_for_worker = release_poll_receiver.clone();
+    let (poll_returned_sender, poll_returned_receiver) = mpsc::sync_channel(1);
+    let (join_began_sender, join_began_receiver) = mpsc::sync_channel(1);
+    let (join_returned_sender, join_returned_receiver) = mpsc::sync_channel(1);
+    let poll_started = Arc::new(AtomicBool::new(false));
+    let poll_started_for_worker = poll_started.clone();
     let shared = LoopShared::new();
-    let mut driver = PollDriver::new(shared);
+    let mut driver = PollDriver::new_with_poll_and_join_for_test(
+      shared,
+      Arc::new(move |fds, timeout| {
+        if !poll_started_for_worker.swap(true, Ordering::SeqCst) {
+          let _ = poll_entered_sender.send(());
+          let _ = release_poll_receiver_for_worker
+            .lock()
+            .unwrap()
+            .recv_timeout(DEADLINE);
+        }
+        let result = default_poll(fds, timeout);
+        let _ = poll_returned_sender.try_send(());
+        result
+      }),
+      Box::new(move |worker| {
+        let _ = join_began_sender.send(());
+        let _ = worker.join();
+        let _ = join_returned_sender.send(());
+      }),
+    );
     driver
       .upsert(watch(1, read_fd.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
+    poll_entered_receiver
+      .recv_timeout(DEADLINE)
+      .expect("poll worker did not enter the injected poll");
 
     let (shutdown_complete, shutdown_done) = mpsc::sync_channel(1);
+    let control = driver.control.clone();
     let shutdown = std::thread::spawn(move || {
       driver.shutdown();
       let _ = shutdown_complete.send(());
     });
+
+    // Wait until shutdown has started synchronously joining the worker while
+    // the worker is still blocked in the injected poll.
+    let deadline = Instant::now() + DEADLINE;
+    while !lock_state(&control).shutdown {
+      assert!(
+        Instant::now() < deadline,
+        "shutdown did not request worker termination within {DEADLINE:?}"
+      );
+      std::thread::yield_now();
+    }
+    join_began_receiver
+      .recv_timeout(DEADLINE)
+      .expect("shutdown did not begin joining the worker");
+
+    release_poll_sender
+      .send(())
+      .expect("poll worker release receiver disconnected");
+    poll_returned_receiver
+      .recv_timeout(DEADLINE)
+      .expect("poll worker did not return from the injected poll");
+    join_returned_receiver
+      .recv_timeout(DEADLINE)
+      .expect("shutdown join did not return after the poll worker exited");
     shutdown_done
       .recv_timeout(DEADLINE)
-      .expect("shutdown did not join promptly");
+      .expect("shutdown did not complete after the poll worker returned");
     assert!(shutdown.join().is_ok(), "shutdown thread panicked");
   }
 }
