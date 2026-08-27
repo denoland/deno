@@ -785,6 +785,9 @@ mod tests {
 
   #[test]
   fn uv_events_translate_to_poll_events() {
+    assert_eq!(uv_events_to_poll_events(UV_READABLE), libc::POLLIN);
+    assert_eq!(uv_events_to_poll_events(UV_WRITABLE), libc::POLLOUT);
+    assert_eq!(uv_events_to_poll_events(UV_PRIORITIZED), libc::POLLPRI);
     assert_eq!(
       uv_events_to_poll_events(UV_READABLE | UV_WRITABLE | UV_PRIORITIZED),
       libc::POLLIN | libc::POLLOUT | libc::POLLPRI,
@@ -810,6 +813,18 @@ mod tests {
   #[test]
   fn poll_revents_translate_to_uv_callback_args() {
     assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLIN, UV_READABLE),
+      (0, UV_READABLE),
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLOUT, UV_WRITABLE),
+      (0, UV_WRITABLE),
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLPRI, UV_PRIORITIZED),
+      (0, UV_PRIORITIZED),
+    );
+    assert_eq!(
       poll_revents_to_uv_callback_args(
         libc::POLLIN | libc::POLLOUT | libc::POLLPRI,
         UV_READABLE | UV_WRITABLE | UV_DISCONNECT | UV_PRIORITIZED,
@@ -826,6 +841,13 @@ mod tests {
         UV_PRIORITIZED,
       ),
       (0, UV_PRIORITIZED),
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(
+        libc::POLLERR | libc::POLLPRI,
+        UV_READABLE | UV_PRIORITIZED,
+      ),
+      (0, UV_READABLE | UV_PRIORITIZED),
     );
     assert_eq!(
       poll_revents_to_uv_callback_args(
@@ -849,7 +871,7 @@ mod tests {
       target_os = "illumos",
     ))]
     assert_eq!(
-      poll_revents_to_uv_callback_args(libc::POLLRDHUP, UV_READABLE),
+      poll_revents_to_uv_callback_args(libc::POLLRDHUP, UV_DISCONNECT),
       (0, UV_DISCONNECT),
     );
   }
