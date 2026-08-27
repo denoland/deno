@@ -3425,40 +3425,6 @@ pub static UNLINK_SUBCOMMAND: CommandDef = CommandDef {
   keep_double_dash: false,
 };
 
-pub static SYNC_TYPES_SUBCOMMAND: CommandDef = CommandDef {
-  name: "sync-types",
-  about: "Generate a tsconfig.json and type mappings so stock TypeScript tooling can type-check the project",
-  aliases: &[],
-  args: &[
-    ArgDef::new("roots")
-      .positional()
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-.help("Module graph roots to use for dependency discovery"),
-    ArgDef::new("allow-import")
-      .short('I')
-      .long("allow-import")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(',')
-.help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443"),
-    ArgDef::new("deny-import")
-      .long("deny-import")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(',')
-.help("Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary."),
-  ],
-  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
-  subcommands: &[],
-  default_subcommand: None,
-  trailing_var_arg: false,
-  passthrough: false,
-  keep_double_dash: false,
-};
-
 pub static DENO_ROOT: CommandDef = CommandDef {
   name: "deno",
   about: "A modern JavaScript and TypeScript runtime",
@@ -3501,7 +3467,6 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     LIST_SUBCOMMAND,
     LINK_SUBCOMMAND,
     UNLINK_SUBCOMMAND,
-    SYNC_TYPES_SUBCOMMAND,
     APPROVE_SCRIPTS_SUBCOMMAND,
     LSP_SUBCOMMAND,
     VENDOR_SUBCOMMAND,
