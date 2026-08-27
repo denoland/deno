@@ -1950,7 +1950,7 @@ mod tests {
 
   #[cfg(unix)]
   unsafe fn new_test_napi_env(runtime: &mut deno_core::JsRuntime) -> *mut Env {
-    let core_loop = runtime
+    let uv_loop = runtime
       .uv_loop_ptr()
       .expect("N-API-enabled JsRuntime should have a uv loop");
     let (
@@ -1977,8 +1977,8 @@ mod tests {
     let isolate_ptr = unsafe { runtime.v8_isolate().as_raw_isolate_ptr() };
     let (uv_loop_liveness, poll_owner) = unsafe {
       (
-        uv_compat::uv_loop_liveness(core_loop),
-        uv_compat::new_poll_owner(core_loop),
+        uv_compat::uv_loop_liveness(uv_loop),
+        uv_compat::new_poll_owner(uv_loop),
       )
     };
     let env_ptr = {
@@ -2005,7 +2005,7 @@ mod tests {
         cleanup_hooks,
         ref_tracker,
         external_ops_tracker,
-        core_loop,
+        uv_loop,
         uv_loop_liveness,
         poll_owner,
       );

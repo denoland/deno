@@ -978,19 +978,6 @@ fn op_napi_open<'scope>(
     )
   };
 
-  #[cfg(unix)]
-  let (uv_loop, uv_loop_liveness, poll_owner) = {
-    let op_state = op_state.borrow();
-    let uv_loop = &**op_state.borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      as *const deno_core::uv_compat::UvLoop
-      as *mut deno_core::uv_compat::uv_loop_t;
-    (
-      uv_loop,
-      unsafe { deno_core::uv_compat::uv_loop_liveness(uv_loop) },
-      unsafe { deno_core::uv_compat::new_poll_owner(uv_loop) },
-    )
-  };
-
   // Register the uv_compat loop so that our libuv-ABI `uv_timer_*`
   // polyfills bridge onto Deno's event loop instead of degrading to
   // no-ops. The loop pointer is opaque to addons — they only pass it
@@ -1006,6 +993,24 @@ fn op_napi_open<'scope>(
       crate::uv::register_default_uv_loop(loop_ptr);
     }
   }
+
+  // Unix uv_poll forwards to the backing libuv-compatible loop.
+  // `poll_owner` and `uv_loop_liveness` cover independent teardown orders:
+  // the owner suppresses queued callbacks after this Env begins cleanup while
+  // the loop remains live; liveness prevents Env cleanup from accessing a loop
+  // already in teardown.
+  #[cfg(unix)]
+  let (uv_loop, uv_loop_liveness, poll_owner) = {
+    let op_state = op_state.borrow();
+    let uv_loop = &**op_state.borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      as *const deno_core::uv_compat::UvLoop
+      as *mut deno_core::uv_compat::uv_loop_t;
+    (
+      uv_loop,
+      unsafe { deno_core::uv_compat::uv_loop_liveness(uv_loop) },
+      unsafe { deno_core::uv_compat::new_poll_owner(uv_loop) },
+    )
+  };
 
   // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
   // addon can be unwrapped by another. Lazily create on first addon load.

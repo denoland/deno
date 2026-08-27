@@ -348,7 +348,7 @@ pub struct uv_poll_t {
   internal_token: u64,
   internal_generation: u64,
   internal_fd: c_int,
-  internal_events: c_int,
+  internal_requested_events: c_int,
   internal_cb: Option<uv_poll_cb>,
   internal_stop_cb: Option<unsafe extern "C" fn(*mut uv_poll_t)>,
   internal_owner: Option<UvPollOwner>,
@@ -429,9 +429,9 @@ impl UvLoopInner {
       #[cfg(unix)]
       poll_driver: RefCell::new(poll_driver),
       #[cfg(unix)]
-      poll_handles: RefCell::new(HashMap::with_capacity(4)),
+      poll_handles: RefCell::new(HashMap::new()),
       #[cfg(unix)]
-      fd_watchers: RefCell::new(HashMap::with_capacity(4)),
+      fd_watchers: RefCell::new(HashMap::new()),
       #[cfg(unix)]
       next_poll_token: Cell::new(1),
       #[cfg(unix)]
@@ -1057,7 +1057,7 @@ impl UvLoopInner {
     let generation = handle_ref.internal_generation;
     handle_ref.internal_generation = generation.wrapping_add(1);
     handle_ref.flags &= !UV_HANDLE_ACTIVE;
-    handle_ref.internal_events = 0;
+    handle_ref.internal_requested_events = 0;
     handle_ref.internal_cb = None;
 
     // Release fd ownership before notifying the embedding: its stop hook or a
@@ -1107,7 +1107,7 @@ impl UvLoopInner {
             } else {
               poll::poll_revents_to_uv_callback_args(
                 ready.revents,
-                handle.internal_events,
+                handle.internal_requested_events,
               )
             };
             handle
@@ -1354,7 +1354,7 @@ pub unsafe fn uv_poll_init(
         internal_token: token,
         internal_generation: 0,
         internal_fd: fd,
-        internal_events: 0,
+        internal_requested_events: 0,
         internal_cb: None,
         internal_stop_cb: None,
         internal_owner: Some(owner),
@@ -1428,7 +1428,7 @@ pub unsafe fn uv_poll_start(
     generation,
     owner: owner.id,
     fd: handle_ref.internal_fd,
-    events: poll::uv_events_to_poll_events(events),
+    poll_events: poll::uv_events_to_poll_events(events),
   };
   // Commit loop state only after lazy worker startup accepts the watch, so a
   // failure leaves an existing registration, generation, and fd owner intact.
@@ -1437,7 +1437,7 @@ pub unsafe fn uv_poll_start(
     return -errno;
   }
   handle_ref.internal_generation = generation;
-  handle_ref.internal_events = events;
+  handle_ref.internal_requested_events = events;
   handle_ref.internal_cb = cb;
   handle_ref.flags |= UV_HANDLE_ACTIVE;
   inner

@@ -43,7 +43,7 @@ pub(crate) struct PollWatch {
   // Embedding scope whose teardown stops all of its watches together.
   pub owner: u64,
   pub fd: c_int,
-  pub events: c_short,
+  pub poll_events: c_short,
 }
 
 // Worker-to-loop handoff: the worker has disarmed this token/generation, and
@@ -242,8 +242,8 @@ impl PollDriver {
       state
         .control_read
         .as_ref()
-        .map(AsRawFd::as_raw_fd)
-        .unwrap_or(-1)
+        .expect("control pipe must be initialized")
+        .as_raw_fd()
     };
 
     // `control_fd` borrows `state.control_read`. The `Arc<PollControl>` moved
@@ -468,15 +468,15 @@ fn worker_loop(control: Arc<PollControl>, control_fd: c_int) {
       events: libc::POLLIN,
       revents: 0,
     }];
-    let mut captured = Vec::new();
+    let mut snapshot = Vec::new();
     for worker_watch in watches.values() {
       if worker_watch.armed {
         fds.push(libc::pollfd {
           fd: worker_watch.watch.fd,
-          events: worker_watch.watch.events,
+          events: worker_watch.watch.poll_events,
           revents: 0,
         });
-        captured
+        snapshot
           .push((worker_watch.watch.token, worker_watch.watch.generation));
       }
     }
@@ -487,8 +487,10 @@ fn worker_loop(control: Arc<PollControl>, control_fd: c_int) {
     let poll_result = default_poll(&mut fds, -1);
 
     match poll_result {
-      Ok(_) => {
+      Ok(num_ready_fds) => {
+        let mut remaining = num_ready_fds as usize;
         if fds[0].revents != 0 {
+          remaining -= 1;
           drain_control_fd(control_fd);
           // Commands may replace or stop watches captured by this poll, so
           // apply them first. Generation and armed checks prevent an old
@@ -500,11 +502,15 @@ fn worker_loop(control: Arc<PollControl>, control_fd: c_int) {
         }
 
         let mut ready = Vec::new();
-        for (index, (token, generation)) in captured.into_iter().enumerate() {
+        for (index, (token, generation)) in snapshot.into_iter().enumerate() {
+          if remaining == 0 {
+            break;
+          }
           let revents = fds[index + 1].revents;
           if revents == 0 {
             continue;
           }
+          remaining -= 1;
           if let Some(worker_watch) = watches.get_mut(&token)
             && worker_watch.armed
             && worker_watch.watch.generation == generation
@@ -840,7 +846,7 @@ mod tests {
       generation,
       owner: 999,
       fd,
-      events: libc::POLLIN,
+      poll_events: libc::POLLIN,
     }
   }
 
