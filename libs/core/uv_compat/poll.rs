@@ -1202,7 +1202,12 @@ mod tests {
     let wake_count = Arc::new(AtomicUsize::new(0));
     let waker = Waker::from(Arc::new(WakeCounter(wake_count.clone())));
     let mut cx = Context::from_waker(&waker);
-    let _ = runtime.poll_event_loop(&mut cx, PollEventLoopOptions::default());
+    assert!(
+      runtime
+        .poll_event_loop(&mut cx, PollEventLoopOptions::default())
+        .is_pending(),
+      "event loop should be pending before owner invalidation"
+    );
     wake_count.store(0, Ordering::SeqCst);
 
     std::thread::spawn(move || owner.invalidate())
