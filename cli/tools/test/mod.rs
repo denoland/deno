@@ -999,7 +999,13 @@ async fn test_specifier_inner(
     .dispatch_beforeunload_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   worker
+    .dispatch_process_beforeexit_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker
     .dispatch_unload_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker
+    .dispatch_process_exit_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   // Run any pending Node-API finalizers before the worker is torn down. This
