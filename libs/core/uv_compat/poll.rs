@@ -1471,17 +1471,51 @@ mod tests {
   #[test]
   fn ready_watch_waits_for_rearm() {
     let (read_fd, write_fd) = pipe();
+    let (disarmed_sender, disarmed_receiver) = mpsc::channel();
+    let (rearmed_sender, rearmed_receiver) = mpsc::channel();
+    let first_ready = Arc::new(AtomicBool::new(false));
+    let first_ready_for_poll = first_ready.clone();
+    let watched_fd = read_fd.as_raw_fd();
     let shared = LoopShared::new();
-    let mut driver = PollDriver::new(shared);
+    let mut driver = PollDriver::new_with_poll_for_test(
+      shared,
+      Arc::new(move |fds, timeout| {
+        let includes_watched_fd =
+          fds.iter().any(|poll_fd| poll_fd.fd == watched_fd);
+        if first_ready_for_poll.load(Ordering::Acquire) {
+          if includes_watched_fd {
+            let _ = rearmed_sender.send(());
+          } else {
+            let _ = disarmed_sender.send(());
+          }
+        }
+
+        let result = default_poll(fds, timeout);
+        if !first_ready_for_poll.load(Ordering::Acquire)
+          && result.is_ok()
+          && fds
+            .iter()
+            .any(|poll_fd| poll_fd.fd == watched_fd && poll_fd.revents != 0)
+        {
+          first_ready_for_poll.store(true, Ordering::Release);
+        }
+        result
+      }),
+    );
     driver
       .upsert(watch(1, read_fd.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
 
     write_byte(&write_fd);
     assert_eq!(wait_for_ready(&driver, 1).len(), 1);
-    assert!(driver.drain_ready().is_empty());
+    disarmed_receiver
+      .recv_timeout(DEADLINE)
+      .expect("worker did not poll without the ready watch");
 
     assert_eq!(driver.rearm(1, 1), Ok(()));
+    rearmed_receiver
+      .recv_timeout(DEADLINE)
+      .expect("worker did not poll with the rearmed watch");
     assert_eq!(wait_for_ready(&driver, 1).len(), 1);
     driver.shutdown();
   }
