@@ -59,7 +59,7 @@ const workflow = createWorkflow({
       step({
         name: "Purge CDN cache",
         env: {
-          CLOUDFLARE_ZONE_ID: "${{ vars.CLOUDFLARE_ZONE_ID }}",
+          CLOUDFLARE_ZONE_ID: "${{ secrets.CLOUDFLARE_ZONE_ID }}",
           CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}",
         },
         run: [
