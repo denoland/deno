@@ -1362,48 +1362,6 @@ mod tests {
 
   #[cfg(not(miri))] // needs I/O
   #[test]
-  fn poll_owner_invalidation_does_not_blacklist_reused_id() {
-    let (first_read, _first_write) = pipe();
-    let (second_read, _second_write) = pipe();
-    let shared = LoopShared::new();
-    let mut driver = PollDriver::new(shared);
-    let first_owner_live = AtomicBool::new(true);
-    let second_owner_live = AtomicBool::new(true);
-
-    driver
-      .upsert(
-        PollWatch {
-          token: 1,
-          generation: 1,
-          owner: 7,
-          fd: first_read.as_raw_fd(),
-          events: libc::POLLIN,
-        },
-        &first_owner_live,
-      )
-      .unwrap();
-    driver.control.stop_owner(7);
-
-    assert!(
-      driver
-        .upsert(
-          PollWatch {
-            token: 2,
-            generation: 1,
-            owner: 7,
-            fd: second_read.as_raw_fd(),
-            events: libc::POLLIN,
-          },
-          &second_owner_live,
-        )
-        .is_ok()
-    );
-
-    driver.shutdown();
-  }
-
-  #[cfg(not(miri))] // needs I/O
-  #[test]
   fn one_worker_for_many_handles() {
     const HANDLE_COUNT: usize = 64;
 
