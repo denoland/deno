@@ -1,6 +1,7 @@
 Check mod.js
 TS2769 [ERROR]: No overload matches this call.
-  [WILDCARD]
+  The last overload gave the following error.
+    Type '123' has no properties in common with type 'ReadFileSyncOptions'.
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
     at file:///[WILDCARD]/mod.js:3:52
