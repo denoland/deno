@@ -1095,6 +1095,12 @@ Deno.test(function responseRedirect() {
   assertEquals(redir.type, "default");
 });
 
+Deno.test(function responseRedirectHeadersAreMutable() {
+  const redir = Response.redirect("http://example.com/newLocation");
+  redir.headers.set("X-Test", "value");
+  assertEquals(redir.headers.get("X-Test"), "value");
+});
+
 Deno.test(function responseRedirectTakeURLObjectAsParameter() {
   const redir = Response.redirect(new URL("https://example.com/"));
   assertEquals(
