@@ -36,6 +36,9 @@ denort = { path = "../rt", default-features = false }
 laufey = "0.7.0"
 libsui.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 log = { workspace = true, features = ["serde"] }
 raw-window-handle.workspace = true
 rustls.workspace = true
