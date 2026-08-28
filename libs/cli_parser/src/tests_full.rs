@@ -9838,4 +9838,51 @@ fn deploy_sandbox_subcommand() {
       ..Flags::default()
     }
   );
+
+#[test]
+fn bundle_sourcemap_bare_does_not_consume_entrypoint() {
+  // `--sourcemap` takes an optional value that must be attached with `=`.
+  // Regression test for a bug where it was defined as taking exactly one
+  // value, so `--sourcemap main.ts` swallowed the entrypoint and left the
+  // bundle with no modules at all.
+  let flags =
+    flags_from_vec(svec!["deno", "bundle", "--sourcemap", "main.ts"]).unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.entrypoints, svec!["main.ts"]);
+  assert_eq!(b.sourcemap, Some(SourceMapType::Linked));
+}
+
+#[test]
+fn bundle_sourcemap_values() {
+  let cases = [
+    ("--sourcemap=linked", SourceMapType::Linked),
+    ("--sourcemap=inline", SourceMapType::Inline),
+    ("--sourcemap=external", SourceMapType::External),
+  ];
+  for (flag, expected) in cases {
+    let flags = flags_from_vec(svec!["deno", "bundle", flag, "main.ts"])
+      .unwrap_or_else(|e| panic!("{flag} should parse: {e:?}"));
+    let DenoSubcommand::Bundle(b) = flags.subcommand else {
+      unreachable!()
+    };
+    assert_eq!(b.entrypoints, svec!["main.ts"], "{flag}");
+    assert_eq!(b.sourcemap, Some(expected), "{flag}");
+  }
+
+  // Absent means no source map at all.
+  let flags = flags_from_vec(svec!["deno", "bundle", "main.ts"]).unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.sourcemap, None);
+}
+
+#[test]
+fn bundle_sourcemap_rejects_invalid_value() {
+  // Invalid values must error rather than being silently coerced to 'linked'.
+  let r =
+    flags_from_vec(svec!["deno", "bundle", "--sourcemap=bogus", "main.ts"]);
+  assert!(r.is_err(), "expected --sourcemap=bogus to be rejected");
 }

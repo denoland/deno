@@ -3201,11 +3201,17 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
     "browser" => BundlePlatform::Browser,
     _ => BundlePlatform::Deno,
   };
-  let sourcemap = result.get_one("sourcemap").map(|s| match s {
-    "inline" => SourceMapType::Inline,
-    "external" => SourceMapType::External,
-    _ => SourceMapType::Linked,
-  });
+  // `--sourcemap` takes an optional value that must be attached with `=`, so a
+  // bare `--sourcemap` means "linked" and never swallows the next argument.
+  let sourcemap = if result.contains("sourcemap") {
+    Some(match result.get_one("sourcemap").unwrap_or("linked") {
+      "inline" => SourceMapType::Inline,
+      "external" => SourceMapType::External,
+      _ => SourceMapType::Linked,
+    })
+  } else {
+    None
+  };
   let external = result
     .get_many("external")
     .map(|v| v.to_vec())
