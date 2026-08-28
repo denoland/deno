@@ -9838,6 +9838,7 @@ fn deploy_sandbox_subcommand() {
       ..Flags::default()
     }
   );
+}
 
 #[test]
 fn bundle_sourcemap_bare_does_not_consume_entrypoint() {
