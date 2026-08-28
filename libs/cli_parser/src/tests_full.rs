@@ -9768,6 +9768,79 @@ fn use_env_proxy_flags() {
 }
 
 #[test]
+fn deploy_subcommand() {
+  let r = flags_from_vec(svec!["deno", "deploy"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      ..Flags::default()
+    }
+  );
+
+  // `deploy` is a passthrough subcommand: every arg after it is forwarded
+  // verbatim, exactly once. Regression test for a duplication bug where the
+  // args were written to `argv` both by `deploy_parse` and by the generic
+  // trailing-arg handling, turning `--prod` into `--prod --prod`.
+  let r = flags_from_vec(svec!["deno", "deploy", "--prod"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod"],
+      ..Flags::default()
+    }
+  );
+
+  let r =
+    flags_from_vec(svec!["deno", "deploy", "--project=myapp", "--prod", "-y"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--project=myapp", "--prod", "-y"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_subcommand_passthrough_is_verbatim() {
+  // Everything after the subcommand is handed to deployctl untouched, so
+  // `--`, deno-looking flags and repeated flags must all survive as-is
+  // rather than being interpreted (or duplicated) by the deno parser.
+  let r = flags_from_vec(svec![
+    "deno",
+    "deploy",
+    "--prod",
+    "--",
+    "--allow-net",
+    "-A"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod", "--", "--allow-net", "-A"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_sandbox_subcommand() {
+  let r = flags_from_vec(svec!["deno", "sandbox", "--prod", "arg"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: true }),
+      argv: svec!["--prod", "arg"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
 fn bundle_sourcemap_bare_does_not_consume_entrypoint() {
   // `--sourcemap` takes an optional value that must be attached with `=`.
   // Regression test for a bug where it was defined as taking exactly one

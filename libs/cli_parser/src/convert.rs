@@ -211,8 +211,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("types") => types_parse(&mut flags),
     Some("lsp") => lsp_parse(&mut flags),
     Some("vendor") => vendor_parse(&mut flags),
-    Some("deploy") => deploy_parse(&result, &mut flags, false),
-    Some("sandbox") => deploy_parse(&result, &mut flags, true),
+    Some("deploy") => deploy_parse(&mut flags, false),
+    Some("sandbox") => deploy_parse(&mut flags, true),
     Some("bundle") => bundle_parse(&result, &mut flags),
     Some("audit") => audit_parse(&result, &mut flags)?,
     Some("why") => why_parse(&result, &mut flags),
@@ -2960,9 +2960,10 @@ fn vendor_parse(flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Vendor;
 }
 
-fn deploy_parse(result: &ParseResult, flags: &mut Flags, sandbox: bool) {
-  // deploy/sandbox are passthrough - all args go into argv
-  flags.argv = result.trailing.clone();
+fn deploy_parse(flags: &mut Flags, sandbox: bool) {
+  // deploy/sandbox are passthrough - all args go into argv. Note that argv is
+  // filled in by the shared trailing-arg handling in `flags_from_vec`, so this
+  // must not copy `result.trailing` itself or every arg would be duplicated.
   flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox });
 }
 
