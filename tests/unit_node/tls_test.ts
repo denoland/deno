@@ -1755,3 +1755,87 @@ Deno.test("tls autoSelectFamily fallback preserves a validated session", async (
     await closeServer(server);
   }
 });
+
+// Regression test: each buffer of a corked/writev batch must be encrypted
+// into its own TLS record(s), matching Node's TLSWrap::DoWrite which calls
+// SSL_write once per buffer. tedious/mssql relies on this: SQL Server's
+// TDS-over-TLS drops the connection when a TLS record crosses a TDS packet
+// boundary, so a >2-packet INSERT (where the stream machinery batches
+// packets 2..n into one writev) failed with "socket hang up".
+Deno.test(
+  "tls js-backed duplex client keeps writev chunk boundaries in TLS records",
+  async () => {
+    const chunkSizes = [4096, 4096, 54];
+    const total = chunkSizes.reduce((a, b) => a + b, 0);
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const server = tls.createServer({ key, cert }, (sock) => {
+      let received = 0;
+      sock.on("data", (d: Uint8Array) => {
+        received += d.length;
+        if (received >= total) sock.write("done");
+      });
+      sock.on("error", () => {});
+    });
+
+    // Parse client->server TLS records from the wire.
+    const recordLens: number[] = [];
+    let wire = Buffer.alloc(0);
+    const parseRecords = (chunk: Uint8Array) => {
+      wire = Buffer.concat([wire, chunk]);
+      while (wire.length >= 5) {
+        const type = wire[0];
+        const len = wire.readUInt16BE(3);
+        if (wire.length < 5 + len) break;
+        if (type === 23) recordLens.push(len); // application_data
+        wire = wire.subarray(5 + len);
+      }
+    };
+
+    let clientTls: tls.TLSSocket | undefined;
+    let raw: net.Socket | undefined;
+    server.listen(0, () => {
+      const { port } = server.address() as net.AddressInfo;
+      raw = net.connect(port, "localhost", () => {
+        const { socket1, socket2 } = backToBackDuplexPair();
+        raw!.pipe(socket2);
+        socket2.pipe(raw!);
+        socket2.on("data", parseRecords); // taps client->server bytes
+        clientTls = tls.connect({
+          socket: socket1 as net.Socket,
+          servername: "localhost",
+          rejectUnauthorized: false,
+          // tedious forces TLS 1.2; also keeps alerts distinguishable from
+          // application_data records in the parser above.
+          maxVersion: "TLSv1.2",
+        });
+        clientTls.on("error", reject);
+        clientTls.on("secureConnect", () => {
+          // Cork so the chunks flow through a single _writev batch, like a
+          // Writable draining queued packets after an in-flight write.
+          clientTls!.cork();
+          for (const size of chunkSizes) {
+            clientTls!.write(Buffer.alloc(size, 0x78));
+          }
+          clientTls!.uncork();
+        });
+        clientTls.on("data", () => resolve());
+      });
+      raw.on("error", reject);
+    });
+
+    await deadline(promise, 10_000);
+    // One record per chunk: normalize by the constant per-record cipher
+    // overhead (nonce/tag) derived from the first record.
+    assertEquals(recordLens.length, chunkSizes.length);
+    const overhead = recordLens[0] - chunkSizes[0];
+    assert(overhead >= 0 && overhead <= 64, `overhead=${overhead}`);
+    assertEquals(
+      recordLens.map((l) => l - overhead),
+      chunkSizes,
+    );
+    clientTls?.destroy();
+    raw?.destroy();
+    server.close();
+  },
+);

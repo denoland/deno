@@ -1093,6 +1093,13 @@ struct TLSWrapInner {
   // and copy the remaining tail on every chunk (O(n²) for large writes).
   pending_cleartext: Vec<u8>,
   pending_cleartext_offset: usize,
+  // End offsets of the caller's write chunks inside `pending_cleartext`.
+  // clear_in never passes bytes from two chunks to a single rustls
+  // `writer().write()` call, so each chunk gets its own TLS record(s),
+  // matching Node's per-buffer SSL_write. Protocols that tunnel framed
+  // data over TLS rely on this: SQL Server (TDS) drops the connection
+  // when a record crosses a TDS packet boundary.
+  pending_cleartext_boundaries: Vec<usize>,
 
   // Buffered encrypted output that failed to write (e.g. EBADF because the
   // underlying stream wasn't connected yet).  Retried on the next enc_out().
@@ -1287,6 +1294,7 @@ impl TLSWrapInner {
       enc_writes_in_flight: 0,
       pending_cleartext: Vec::new(),
       pending_cleartext_offset: 0,
+      pending_cleartext_boundaries: Vec::new(),
       pending_enc_out: Vec::new(),
       underlying: UnderlyingStream::None,
       js_handle: None,
@@ -1484,22 +1492,39 @@ impl TLSWrapInner {
     // Consumed bytes are tracked via pending_cleartext_offset instead of
     // re-allocating the unwritten tail on every chunk.
     const MAX_CLEAR_IN: usize = 48 * 1024;
-    let feed_end = data.len().min(MAX_CLEAR_IN);
-    let mut offset = 0;
+    let total = self.pending_cleartext.len();
+    let start = self.pending_cleartext_offset;
+    let feed_end = total.min(start + MAX_CLEAR_IN);
+    let mut offset = start;
     let mut write_error = false;
-    while offset < feed_end {
-      match conn.writer().write(&data[offset..feed_end]) {
-        Ok(0) => break,
-        Ok(n) => offset += n,
-        Err(e) => {
-          // Store the error so it can be surfaced to JS.
-          self.error = Some(format!("SSL write error: {e}"));
-          write_error = true;
-          break;
+    'feed: while offset < feed_end {
+      // Never hand rustls bytes from two write chunks in one write() call:
+      // rustls fragments records per write() call, and record boundaries
+      // must match the caller's chunk boundaries (see field comment).
+      let seg_end = self
+        .pending_cleartext_boundaries
+        .iter()
+        .copied()
+        .find(|&b| b > offset)
+        .unwrap_or(total)
+        .min(feed_end);
+      while offset < seg_end {
+        match conn
+          .writer()
+          .write(&self.pending_cleartext[offset..seg_end])
+        {
+          Ok(0) => break 'feed,
+          Ok(n) => offset += n,
+          Err(e) => {
+            // Store the error so it can be surfaced to JS.
+            self.error = Some(format!("SSL write error: {e}"));
+            write_error = true;
+            break 'feed;
+          }
         }
       }
     }
-    self.pending_cleartext_offset += offset;
+    self.pending_cleartext_offset = offset;
     if write_error
       || self.pending_cleartext_offset >= self.pending_cleartext.len()
     {
@@ -1507,6 +1532,7 @@ impl TLSWrapInner {
       // behavior of not restoring the tail) — release the buffer.
       self.pending_cleartext = Vec::new();
       self.pending_cleartext_offset = 0;
+      self.pending_cleartext_boundaries = Vec::new();
     }
   }
 
@@ -2111,7 +2137,19 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let byte_length = data.len();
+    self.write_data_segments(req_wrap_obj, &[data], scope, op_state)
+  }
+
+  /// Like `write_data`, but each segment keeps its own TLS record
+  /// boundary (Node encrypts each writev buffer with its own SSL_write).
+  fn write_data_segments(
+    &self,
+    req_wrap_obj: v8::Local<v8::Object>,
+    segments: &[&[u8]],
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    let byte_length = segments.iter().map(|s| s.len()).sum::<usize>();
     let inner = unsafe { self.inner.as_mut() };
 
     if inner.tls_conn.is_none() {
@@ -2121,7 +2159,12 @@ impl TLSWrap {
         inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
         inner.current_write_bytes = byte_length;
         inner.write_callback_scheduled = true;
-        inner.pending_cleartext.extend_from_slice(data);
+        for seg in segments {
+          inner.pending_cleartext.extend_from_slice(seg);
+          inner
+            .pending_cleartext_boundaries
+            .push(inner.pending_cleartext.len());
+        }
 
         let state_global = &op_state.borrow::<StreamBaseState>().array;
         let state_array = v8::Local::new(scope, state_global);
@@ -2159,8 +2202,14 @@ impl TLSWrap {
     // clear_in() feeds up to 48KB to rustls per call, preventing
     // the TCP send buffer from being overwhelmed.
     inner.pending_cleartext.clear();
-    inner.pending_cleartext.extend_from_slice(data);
+    inner.pending_cleartext_boundaries.clear();
     inner.pending_cleartext_offset = 0;
+    for seg in segments {
+      inner.pending_cleartext.extend_from_slice(seg);
+      inner
+        .pending_cleartext_boundaries
+        .push(inner.pending_cleartext.len());
+    }
     inner.in_dowrite = true;
     inner.clear_in();
     let enc_action = inner.enc_out_collect();
@@ -2586,7 +2635,8 @@ impl TLSWrap {
     0
   }
 
-  /// Writev — collect multiple buffers into one and write through TLS.
+  /// Writev - write multiple buffers through TLS, one record boundary per
+  /// buffer (Node's TLSWrap::DoWrite calls SSL_write per buffer).
   /// Without this override, the base LibUvStreamWrap::writev would bypass
   /// TLS and write directly to the underlying TCP stream.
   #[nofast]
@@ -2598,7 +2648,7 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let mut data = Vec::new();
+    let mut segments: Vec<Vec<u8>> = Vec::new();
     if all_buffers {
       let len = chunks.length();
       for i in 0..len {
@@ -2621,7 +2671,7 @@ impl TLSWrap {
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          data.extend_from_slice(slice);
+          segments.push(slice.to_vec());
         }
       }
     } else {
@@ -2645,7 +2695,7 @@ impl TLSWrap {
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          data.extend_from_slice(slice);
+          segments.push(slice.to_vec());
         } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
         {
           let encoding_idx = i * 2 + 1;
@@ -2660,12 +2710,14 @@ impl TLSWrap {
           );
           // SAFETY: written bytes are initialized by write_utf8_uninit_v2
           unsafe { buf.set_len(written) };
-          data.extend_from_slice(&buf);
+          segments.push(buf);
         }
       }
     }
 
-    self.write_data(req_wrap_obj, &data, scope, op_state)
+    let seg_slices: Vec<&[u8]> =
+      segments.iter().map(|s| s.as_slice()).collect();
+    self.write_data_segments(req_wrap_obj, &seg_slices, scope, op_state)
   }
 
   /// DoWrite — encrypt cleartext and write to underlying stream.
