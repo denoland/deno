@@ -43,5 +43,8 @@ serde_json.workspace = true
 tokio.workspace = true
 v8.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
