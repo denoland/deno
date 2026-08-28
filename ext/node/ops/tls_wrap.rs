@@ -1275,6 +1275,22 @@ fn rustls_error_to_node_error(
   }
 }
 
+/// End offset of the write chunk containing `offset`, i.e. the first
+/// boundary greater than `offset` (or `total` when the boundaries are
+/// unknown/exhausted). `idx` is a cursor into the ascending `boundaries`
+/// so repeated calls walking `offset` forward stay linear.
+fn chunk_end(
+  boundaries: &[usize],
+  idx: &mut usize,
+  offset: usize,
+  total: usize,
+) -> usize {
+  while boundaries.get(*idx).is_some_and(|&b| b <= offset) {
+    *idx += 1;
+  }
+  boundaries.get(*idx).copied().unwrap_or(total)
+}
+
 impl TLSWrapInner {
   fn new(kind: Kind, task_spawner: Option<V8TaskSpawner>) -> Self {
     Self {
@@ -1497,17 +1513,21 @@ impl TLSWrapInner {
     let feed_end = total.min(start + MAX_CLEAR_IN);
     let mut offset = start;
     let mut write_error = false;
+    // Cursor into the ascending boundary list, advanced by chunk_end.
+    let mut boundary_idx = self
+      .pending_cleartext_boundaries
+      .partition_point(|&b| b <= offset);
     'feed: while offset < feed_end {
       // Never hand rustls bytes from two write chunks in one write() call:
       // rustls fragments records per write() call, and record boundaries
       // must match the caller's chunk boundaries (see field comment).
-      let seg_end = self
-        .pending_cleartext_boundaries
-        .iter()
-        .copied()
-        .find(|&b| b > offset)
-        .unwrap_or(total)
-        .min(feed_end);
+      let seg_end = chunk_end(
+        &self.pending_cleartext_boundaries,
+        &mut boundary_idx,
+        offset,
+        total,
+      )
+      .min(feed_end);
       while offset < seg_end {
         match conn
           .writer()
@@ -2137,19 +2157,22 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    self.write_data_segments(req_wrap_obj, &[data], scope, op_state)
+    self.write_data_segments(req_wrap_obj, data, &[data.len()], scope, op_state)
   }
 
-  /// Like `write_data`, but each segment keeps its own TLS record
-  /// boundary (Node encrypts each writev buffer with its own SSL_write).
+  /// Like `write_data`, but `boundaries` (ascending end offsets into `data`,
+  /// last one == `data.len()`) splits it into the caller's write chunks, each
+  /// of which keeps its own TLS record boundary (Node encrypts each writev
+  /// buffer with its own SSL_write).
   fn write_data_segments(
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
-    segments: &[&[u8]],
+    data: &[u8],
+    boundaries: &[usize],
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let byte_length = segments.iter().map(|s| s.len()).sum::<usize>();
+    let byte_length = data.len();
     let inner = unsafe { self.inner.as_mut() };
 
     if inner.tls_conn.is_none() {
@@ -2159,12 +2182,11 @@ impl TLSWrap {
         inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
         inner.current_write_bytes = byte_length;
         inner.write_callback_scheduled = true;
-        for seg in segments {
-          inner.pending_cleartext.extend_from_slice(seg);
-          inner
-            .pending_cleartext_boundaries
-            .push(inner.pending_cleartext.len());
-        }
+        let base = inner.pending_cleartext.len();
+        inner.pending_cleartext.extend_from_slice(data);
+        inner
+          .pending_cleartext_boundaries
+          .extend(boundaries.iter().map(|b| base + b));
 
         let state_global = &op_state.borrow::<StreamBaseState>().array;
         let state_array = v8::Local::new(scope, state_global);
@@ -2202,14 +2224,12 @@ impl TLSWrap {
     // clear_in() feeds up to 48KB to rustls per call, preventing
     // the TCP send buffer from being overwhelmed.
     inner.pending_cleartext.clear();
+    inner.pending_cleartext.extend_from_slice(data);
     inner.pending_cleartext_boundaries.clear();
+    inner
+      .pending_cleartext_boundaries
+      .extend_from_slice(boundaries);
     inner.pending_cleartext_offset = 0;
-    for seg in segments {
-      inner.pending_cleartext.extend_from_slice(seg);
-      inner
-        .pending_cleartext_boundaries
-        .push(inner.pending_cleartext.len());
-    }
     inner.in_dowrite = true;
     inner.clear_in();
     let enc_action = inner.enc_out_collect();
@@ -2648,7 +2668,8 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let mut segments: Vec<Vec<u8>> = Vec::new();
+    let mut data = Vec::new();
+    let mut boundaries = Vec::new();
     if all_buffers {
       let len = chunks.length();
       for i in 0..len {
@@ -2671,7 +2692,8 @@ impl TLSWrap {
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          segments.push(slice.to_vec());
+          data.extend_from_slice(slice);
+          boundaries.push(data.len());
         }
       }
     } else {
@@ -2695,7 +2717,8 @@ impl TLSWrap {
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          segments.push(slice.to_vec());
+          data.extend_from_slice(slice);
+          boundaries.push(data.len());
         } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
         {
           let encoding_idx = i * 2 + 1;
@@ -2710,14 +2733,13 @@ impl TLSWrap {
           );
           // SAFETY: written bytes are initialized by write_utf8_uninit_v2
           unsafe { buf.set_len(written) };
-          segments.push(buf);
+          data.extend_from_slice(&buf);
+          boundaries.push(data.len());
         }
       }
     }
 
-    let seg_slices: Vec<&[u8]> =
-      segments.iter().map(|s| s.as_slice()).collect();
-    self.write_data_segments(req_wrap_obj, &seg_slices, scope, op_state)
+    self.write_data_segments(req_wrap_obj, &data, &boundaries, scope, op_state)
   }
 
   /// DoWrite — encrypt cleartext and write to underlying stream.
@@ -5208,5 +5230,35 @@ mod tests {
       "payload was not fully consumed"
     );
     assert_eq!(inner.pending_cleartext_offset, 0);
+  }
+
+  /// chunk_end must stop at every write-chunk boundary so no rustls
+  /// write() call (and therefore no TLS record) spans two chunks.
+  #[test]
+  fn chunk_end_walks_write_chunk_boundaries() {
+    // Chunks of 4096 / 4096 / 54, as tedious writes TDS packets.
+    let boundaries = [4096, 8192, 8246];
+    let total = 8246;
+    let mut idx = 0;
+    let mut offset = 0;
+    let mut ends = Vec::new();
+    while offset < total {
+      let end = chunk_end(&boundaries, &mut idx, offset, total);
+      ends.push(end);
+      offset = end;
+    }
+    assert_eq!(ends, boundaries);
+
+    // Resuming mid-chunk (clear_in stopped at MAX_CLEAR_IN) must not
+    // merge the remainder of the chunk with the next one.
+    let mut idx = boundaries.partition_point(|&b| b <= 6000);
+    assert_eq!(chunk_end(&boundaries, &mut idx, 6000, total), 8192);
+
+    // Empty chunks are skipped, and an empty boundary list (pending
+    // cleartext installed without boundaries) feeds everything at once.
+    let mut idx = 0;
+    assert_eq!(chunk_end(&[4096, 4096, 8192], &mut idx, 4096, 8192), 8192);
+    let mut idx = 0;
+    assert_eq!(chunk_end(&[], &mut idx, 0, total), total);
   }
 }
