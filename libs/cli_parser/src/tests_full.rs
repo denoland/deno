@@ -9766,3 +9766,53 @@ fn use_env_proxy_flags() {
   ]);
   assert!(r.is_err());
 }
+
+#[test]
+fn deploy_subcommand() {
+  let r = flags_from_vec(svec!["deno", "deploy"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      ..Flags::default()
+    }
+  );
+
+  // `deploy` is a passthrough subcommand: every arg after it is forwarded
+  // verbatim, exactly once. Regression test for a duplication bug where the
+  // args were written to `argv` both by `deploy_parse` and by the generic
+  // trailing-arg handling, turning `--prod` into `--prod --prod`.
+  let r = flags_from_vec(svec!["deno", "deploy", "--prod"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod"],
+      ..Flags::default()
+    }
+  );
+
+  let r =
+    flags_from_vec(svec!["deno", "deploy", "--project=myapp", "--prod", "-y"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--project=myapp", "--prod", "-y"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_sandbox_subcommand() {
+  let r = flags_from_vec(svec!["deno", "sandbox", "--prod", "arg"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: true }),
+      argv: svec!["--prod", "arg"],
+      ..Flags::default()
+    }
+  );
+}
