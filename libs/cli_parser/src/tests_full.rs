@@ -9805,6 +9805,29 @@ fn deploy_subcommand() {
 }
 
 #[test]
+fn deploy_subcommand_passthrough_is_verbatim() {
+  // Everything after the subcommand is handed to deployctl untouched, so
+  // `--`, deno-looking flags and repeated flags must all survive as-is
+  // rather than being interpreted (or duplicated) by the deno parser.
+  let r = flags_from_vec(svec![
+    "deno",
+    "deploy",
+    "--prod",
+    "--",
+    "--allow-net",
+    "-A"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod", "--", "--allow-net", "-A"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
 fn deploy_sandbox_subcommand() {
   let r = flags_from_vec(svec!["deno", "sandbox", "--prod", "arg"]);
   assert_eq!(
