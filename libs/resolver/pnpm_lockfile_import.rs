@@ -524,12 +524,30 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
     .filter_map(|(name, value)| {
       let ver = value.into_string()?;
       let ver = strip_peer_suffix(&ver);
-      Some(format!("{}@{}", name, ver))
+      if is_aliased_dep(ver) {
+        // deno.lock spells an alias `key@npm:name@version`.
+        Some(format!("{}@npm:{}", name, ver))
+      } else {
+        Some(format!("{}@{}", name, ver))
+      }
     })
     .collect();
   out.sort();
   out.dedup();
   out
+}
+
+/// A pnpm dependency value is normally a bare version (`4.3.0`), but an
+/// aliased dependency names the package it resolves to instead, e.g.
+/// `string-width-cjs: string-width@4.2.3`.
+fn is_aliased_dep(value: &str) -> bool {
+  match value.rfind('@') {
+    // A leading `@` is a scope, not a separator.
+    Some(idx) if idx > 0 => {
+      value[idx + 1..].starts_with(|c: char| c.is_ascii_digit())
+    }
+    _ => false,
+  }
 }
 
 /// In pnpm v6 the keys in `packages` and reference paths are prefixed with
@@ -754,6 +772,66 @@ snapshots:
     assert!(v.get("specifiers").is_none());
     // The resolved package itself is still captured in the npm section.
     assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-AAA");
+  }
+
+  #[test]
+  fn aliased_snapshot_dependency() {
+    // `string-width-cjs: string-width@4.2.3` names a package, not a version,
+    // so it must not collapse into `string-width-cjs@string-width@4.2.3`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      wrap-ansi:
+        specifier: ^8.1.0
+        version: 8.1.0
+
+packages:
+  wrap-ansi@8.1.0:
+    resolution: {integrity: sha512-WRAP}
+  ansi-styles@6.2.1:
+    resolution: {integrity: sha512-ANSI}
+  string-width@4.2.3:
+    resolution: {integrity: sha512-WIDTH}
+  '@scope/pkg@1.0.0':
+    resolution: {integrity: sha512-SCOPED}
+
+snapshots:
+  wrap-ansi@8.1.0:
+    dependencies:
+      ansi-styles: 6.2.1
+      string-width-cjs: string-width@4.2.3
+      scoped-alias: '@scope/pkg@1.0.0'
+  ansi-styles@6.2.1: {}
+  string-width@4.2.3: {}
+  '@scope/pkg@1.0.0': {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // Every entry has to survive the parsers that read a deno.lock back in.
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for pkg in content.packages.npm.values() {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
+
+    let deps = v["npm"]["wrap-ansi@8.1.0"]["dependencies"]
+      .as_array()
+      .unwrap();
+    assert_eq!(
+      deps.as_slice(),
+      [
+        "ansi-styles@6.2.1",
+        "scoped-alias@npm:@scope/pkg@1.0.0",
+        "string-width-cjs@npm:string-width@4.2.3",
+      ]
+    );
   }
 
   #[test]
