@@ -44,10 +44,7 @@ pub fn pnpm_lock_to_deno_lock_v5(
   let syntax =
     yaml_parser::parse(yaml_text).map_err(PnpmLockfileImportError::Parse)?;
   let root_map = Root::cast(syntax)
-    .and_then(|root| root.documents().next())
-    .and_then(|doc| doc.block())
-    .and_then(|block| block.block_map())
-    .map(MapNode::Block)
+    .and_then(select_project_document)
     .ok_or(PnpmLockfileImportError::EmptyOrInvalid)?;
 
   let version = root_map
@@ -569,6 +566,46 @@ fn starts_with_digit(value: &str) -> bool {
   value.starts_with(|c: char| c.is_ascii_digit())
 }
 
+/// Pick the document that describes the project.
+///
+/// pnpm writes `pnpm-lock.yaml` as more than one YAML document once the
+/// project pins its own package manager: the packages that make up pnpm
+/// itself come first, in a document whose importers carry
+/// `packageManagerDependencies`, and the project's lockfile comes last.
+fn select_project_document(root: Root) -> Option<MapNode> {
+  let mut package_manager_doc = None;
+  let mut project_doc = None;
+  for doc in root.documents() {
+    let Some(map) = doc
+      .block()
+      .and_then(|block| block.block_map())
+      .map(MapNode::Block)
+    else {
+      continue;
+    };
+    if is_package_manager_document(&map) {
+      package_manager_doc.get_or_insert(map);
+    } else {
+      project_doc = Some(map);
+    }
+  }
+  // Fall back to the package manager's document rather than nothing at all,
+  // so a lockfile that only has one stays readable whatever it holds.
+  project_doc.or(package_manager_doc)
+}
+
+fn is_package_manager_document(doc: &MapNode) -> bool {
+  let Some(importers) = doc.get("importers").and_then(Node::into_map) else {
+    return false;
+  };
+  importers.entries().into_iter().any(|(_, importer)| {
+    importer
+      .into_map()
+      .and_then(|importer| importer.get("packageManagerDependencies"))
+      .is_some()
+  })
+}
+
 /// In pnpm v6 the keys in `packages` and reference paths are prefixed with
 /// `/`, e.g. `/lodash@4.17.21` or `/@babel/core@7.0.0`. Strip it.
 fn normalize_package_key(key: &str) -> String {
@@ -612,6 +649,8 @@ fn is_supported_spec(req: &str) -> bool {
     && !req.starts_with("http:")
     && !req.starts_with("https:")
     && !req.starts_with("npm:")
+    // `runtime:` pins a language runtime, e.g. `node: runtime:26.8.1`.
+    && !req.starts_with("runtime:")
   // `catalog:` specifiers are resolved before this check (see
   // `collect_importer_specifiers`), so they never reach here.
 }
@@ -994,6 +1033,61 @@ packages:
         );
       }
     }
+  }
+
+  #[test]
+  fn multi_document_lockfile() {
+    // The packages that make up pnpm itself come first; the project's own
+    // lockfile is the document after it.
+    let input = r#"---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 11.10.0
+        version: 11.10.0
+
+packages:
+
+  pnpm@11.10.0:
+    resolution: {integrity: sha512-PNPM}
+    hasBin: true
+
+snapshots:
+
+  pnpm@11.10.0: {}
+---
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+      node:
+        specifier: runtime:26.8.1
+        version: runtime:26.8.1
+
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+
+snapshots:
+  lodash@4.17.21: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["specifiers"]["npm:lodash@^4.17.21"], "4.17.21");
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    // pnpm's own packages are not the project's dependencies.
+    assert!(v["npm"].get("pnpm@11.10.0").is_none());
+    // A pinned runtime is not an npm package either.
+    assert!(v["specifiers"].as_object().unwrap().len() == 1);
   }
 
   #[test]
