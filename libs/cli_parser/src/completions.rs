@@ -46,15 +46,14 @@ fn generate_bash(cmd: &CommandDef) -> Vec<u8> {
   // Add subcommand detection
   for sub in cmd.subcommands {
     out.push_str(&format!(
-            "            \"{name},{}\")\\n                cmd=\"{name}__{}\"\n                ;;\n",
+            "            \"{name},{}\")\n                cmd=\"{name}__{}\"\n                ;;\n",
             sub.name,
             sub.name.replace('-', "__"),
         ));
   }
 
-  out.push_str(
-    "            *)\\n                ;;\n        esac\n    done\n\n",
-  );
+  out
+    .push_str("            *)\n                ;;\n        esac\n    done\n\n");
 
   // Root command completions
   let root_flags: Vec<String> = cmd
@@ -707,6 +706,16 @@ mod tests {
     assert_eq!(&v[0..2], &["build", "test"], "{v:?}");
     // ...then the subcommand's long flags (e.g. --config) are also offered.
     assert!(v.iter().any(|f| f.starts_with("--")), "{v:?}");
+  }
+
+  #[test]
+  fn generate_bash_uses_real_newlines() {
+    let s = String::from_utf8(generate("bash", &DENO_ROOT)).unwrap();
+    assert!(
+      s.contains("\"deno,run\")\n                cmd=\"deno__run\""),
+      "{s}"
+    );
+    assert!(s.contains("            *)\n                ;;"), "{s}");
   }
 
   #[test]
