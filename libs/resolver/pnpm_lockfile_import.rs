@@ -181,6 +181,15 @@ pub fn pnpm_lock_to_deno_lock_v5(
   }
   // pnpm v6 places top-level deps directly on the document root.
   if major == 6 {
+    // 6.0 gives each of them the same `{ specifier, version }` shape an
+    // importer uses. Older 6.x lockfiles instead put the resolved version
+    // here and the requirement in a separate `specifiers` section, which the
+    // loop below reads.
+    root_dep_keys.extend(collect_importer_specifiers(
+      &root_map,
+      &catalogs,
+      &mut specifiers,
+    ));
     let specifiers_section =
       root_map.get("specifiers").and_then(Node::into_map);
     for section in ["dependencies", "devDependencies", "optionalDependencies"] {
@@ -753,6 +762,46 @@ packages:
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["specifiers"]["npm:lodash@^4.17.21"], "4.17.21");
     assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+  }
+
+  #[test]
+  fn translates_v6_root_dependencies() {
+    // A single-project pnpm 6.0 lockfile has no `specifiers` section: the
+    // root deps carry their own `specifier` the way an importer's do.
+    let input = r#"
+lockfileVersion: '6.0'
+
+settings:
+  autoInstallPeers: true
+
+dependencies:
+  '@vueuse/core':
+    specifier: ^9.13.0
+    version: 9.13.0(vue@3.2.47)
+  lodash:
+    specifier: ^4.17.21
+    version: 4.17.21
+
+devDependencies:
+  typescript:
+    specifier: ^5.0.0
+    version: 5.0.4
+
+packages:
+  /@vueuse/core@9.13.0:
+    resolution: {integrity: sha512-VUSE}
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  /typescript@5.0.4:
+    resolution: {integrity: sha512-TS}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // The peer suffix on the resolved version is dropped, as elsewhere.
+    assert_eq!(v["specifiers"]["npm:@vueuse/core@^9.13.0"], "9.13.0");
+    assert_eq!(v["specifiers"]["npm:lodash@^4.17.21"], "4.17.21");
+    assert_eq!(v["specifiers"]["npm:typescript@^5.0.0"], "5.0.4");
+    assert_eq!(v["npm"]["@vueuse/core@9.13.0"]["integrity"], "sha512-VUSE");
   }
 
   #[test]
