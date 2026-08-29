@@ -523,6 +523,9 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
     .into_iter()
     .filter_map(|(name, value)| {
       let value = value.into_string()?;
+      // pnpm v6 prefixes ids with `/` in dependency values too, not just in
+      // the `packages` keys.
+      let value = normalize_package_key(&value);
       dep_entry(&name, strip_peer_suffix(&value))
     })
     .collect();
@@ -887,6 +890,59 @@ snapshots:
     for pkg in content.packages.npm.values() {
       for dep in pkg.dependencies.values() {
         deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
+  }
+
+  #[test]
+  fn v6_aliased_snapshot_dependency() {
+    // pnpm v6 prefixes ids with `/` in dependency values too, so
+    // `string-width-cjs: /string-width@4.2.3` has to end up pointing at the
+    // same package as the `/string-width@4.2.3` key.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  '@isaacs/cliui': ^8.0.2
+
+dependencies:
+  '@isaacs/cliui': 8.0.2
+
+packages:
+  /@isaacs/cliui@8.0.2:
+    resolution: {integrity: sha512-CLIUI}
+    dependencies:
+      string-width: 5.1.2
+      string-width-cjs: /string-width@4.2.3
+  /string-width@5.1.2:
+    resolution: {integrity: sha512-W512}
+  /string-width@4.2.3:
+    resolution: {integrity: sha512-W423}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+      v["npm"]["@isaacs/cliui@8.0.2"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      [
+        "string-width-cjs@npm:string-width@4.2.3",
+        "string-width@5.1.2"
+      ]
+    );
+
+    // Both point at packages the lock actually has.
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
       }
     }
   }
