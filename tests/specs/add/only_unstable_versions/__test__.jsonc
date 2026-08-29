@@ -14,6 +14,13 @@
         {
           "args": "add jsr:@denotest/unstable",
           "output": "add_jsr.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "add_jsr_deno.json.out"
         }
       ]
     }
