@@ -522,14 +522,8 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
     .entries()
     .into_iter()
     .filter_map(|(name, value)| {
-      let ver = value.into_string()?;
-      let ver = strip_peer_suffix(&ver);
-      if is_aliased_dep(ver) {
-        // deno.lock spells an alias `key@npm:name@version`.
-        Some(format!("{}@npm:{}", name, ver))
-      } else {
-        Some(format!("{}@{}", name, ver))
-      }
+      let value = value.into_string()?;
+      dep_entry(&name, strip_peer_suffix(&value))
     })
     .collect();
   out.sort();
@@ -537,17 +531,30 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
   out
 }
 
-/// A pnpm dependency value is normally a bare version (`4.3.0`), but an
-/// aliased dependency names the package it resolves to instead, e.g.
-/// `string-width-cjs: string-width@4.2.3`.
-fn is_aliased_dep(value: &str) -> bool {
-  match value.rfind('@') {
-    // A leading `@` is a scope, not a separator.
-    Some(idx) if idx > 0 => {
-      value[idx + 1..].starts_with(|c: char| c.is_ascii_digit())
-    }
-    _ => false,
+/// Build the deno.lock dependency entry for one pnpm dependency mapping.
+///
+/// The value is normally a bare version (`ansi-styles: 4.3.0`), but an aliased
+/// dependency names the package it resolves to instead
+/// (`string-width-cjs: string-width@4.2.3`) and a workspace dependency points
+/// at a directory (`vite: link:packages/vite`).
+fn dep_entry(name: &str, value: &str) -> Option<String> {
+  if starts_with_digit(value) {
+    return Some(format!("{}@{}", name, value));
   }
+  match value.rfind('@') {
+    // A leading `@` is a scope, not a separator. deno.lock spells an alias
+    // `key@npm:name@version`.
+    Some(idx) if idx > 0 && starts_with_digit(&value[idx + 1..]) => {
+      Some(format!("{}@npm:{}", name, value))
+    }
+    // `link:`/`file:` paths and urls have no deno.lock spelling, so leave
+    // them out and let resolution handle them.
+    _ => None,
+  }
+}
+
+fn starts_with_digit(value: &str) -> bool {
+  value.starts_with(|c: char| c.is_ascii_digit())
 }
 
 /// In pnpm v6 the keys in `packages` and reference paths are prefixed with
@@ -832,6 +839,56 @@ snapshots:
         "string-width-cjs@npm:string-width@4.2.3",
       ]
     );
+  }
+
+  #[test]
+  fn workspace_link_snapshot_dependency() {
+    // A dependency satisfied by a workspace package is recorded as
+    // `vite: link:packages/vite`. That has no deno.lock spelling, so it must
+    // be left out rather than turned into `vite@link:packages/vite`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      some-plugin:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  some-plugin@1.0.0:
+    resolution: {integrity: sha512-PLUGIN}
+  cac@7.0.0:
+    resolution: {integrity: sha512-CAC}
+
+snapshots:
+  some-plugin@1.0.0:
+    dependencies:
+      cac: 7.0.0
+    optionalDependencies:
+      vite: link:packages/vite
+  cac@7.0.0: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let plugin = &v["npm"]["some-plugin@1.0.0"];
+    assert_eq!(
+      plugin["dependencies"].as_array().unwrap().as_slice(),
+      ["cac@7.0.0"]
+    );
+    // The only optional dependency was the workspace link.
+    assert!(plugin.get("optionalDependencies").is_none());
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for pkg in content.packages.npm.values() {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
   }
 
   #[test]
