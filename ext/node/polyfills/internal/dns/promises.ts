@@ -114,11 +114,14 @@ function createLookupPromise(
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
-      if (all) {
-        resolve([]);
-      } else {
-        resolve({ address: null, family: family === 6 ? 6 : 4 });
-      }
+      reject(
+        new ERR_INVALID_ARG_VALUE(
+          "hostname",
+          hostname,
+          "must be a non-empty string",
+        ),
+      );
+
       return;
     }
 
