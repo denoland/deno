@@ -424,8 +424,8 @@ pub(crate) fn poll_revents_to_uv_callback_args(
   if revents & libc::POLLNVAL != 0 {
     return (super::UV_EBADF, 0);
   }
-  // libuv preserves POLLERR | POLLPRI as prioritized readiness. Linux and
-  // FreeBSD sysfs/kernfs use that combination, so it is not an EBADF error.
+  // libuv treats POLLERR as UV_EBADF only when POLLPRI is absent because
+  // sysfs/GPIO polling can return POLLERR | POLLPRI.
   if revents & libc::POLLERR != 0 && revents & libc::POLLPRI == 0 {
     return (super::UV_EBADF, 0);
   }

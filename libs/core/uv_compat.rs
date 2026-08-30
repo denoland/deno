@@ -279,6 +279,9 @@ pub type uv_poll_cb = unsafe extern "C" fn(*mut uv_poll_t, c_int, c_int);
 /// and new starts. Loop-side handle state and fd ownership remain until each
 /// handle is stopped or closed. The worker sees only this numeric owner id; it
 /// never retains an addon or ABI-handle pointer.
+///
+/// Unlike `UvLoopLiveness`, invalidation is limited to this owner's poll
+/// handles and does not guard access to loop-associated state.
 #[cfg(unix)]
 #[derive(Clone)]
 pub struct UvPollOwner {
@@ -288,6 +291,11 @@ pub struct UvPollOwner {
 }
 
 #[cfg(unix)]
+/// Coordinates access to loop-associated state with loop teardown.
+///
+/// `uv_loop_operation_guard` holds this mutex during an operation. Teardown
+/// takes the same mutex before invalidating the token, so it waits for
+/// in-flight operations and later guards return `None`.
 pub struct UvLoopLiveness {
   live: AtomicBool,
   lock: Mutex<()>,
@@ -1079,9 +1087,7 @@ impl UvLoopInner {
     }
   }
 
-  /// Drain exactly one worker-ready snapshot and invoke callbacks on the
-  /// loop thread. No registry borrow survives a callback: it may close or
-  /// restart the same handle, including through a higher-level ABI bridge.
+  /// Dispatch the poll worker's currently queued readiness on the loop thread.
   #[cfg(unix)]
   unsafe fn run_poll_io(&self) -> bool {
     let ready = self.poll_driver.borrow().drain_ready();
@@ -1089,6 +1095,8 @@ impl UvLoopInner {
 
     for ready in ready {
       let snapshot = unsafe {
+        // Keep the registry borrow scoped to this block so the callback can
+        // close or restart the handle.
         let handles = self.poll_handles.borrow();
         if let Some(handle_ptr) = handles.get(&ready.token) {
           let handle = &mut **handle_ptr;
@@ -1292,9 +1300,9 @@ pub unsafe fn uv_loop_get_inner_ptr(
   unsafe { (*loop_).internal as *const std::ffi::c_void }
 }
 
-/// Create an invalidation owner for core poll handles on `loop_`.
+/// Create an invalidation owner for poll handles registered with `loop_`.
 ///
-/// # Safety
+/// ### Safety
 /// `loop_` must be a valid loop initialized by `uv_loop_init`.
 #[cfg(unix)]
 pub unsafe fn new_poll_owner(loop_: *mut uv_loop_t) -> UvPollOwner {
@@ -1311,17 +1319,14 @@ pub unsafe fn new_poll_owner(loop_: *mut uv_loop_t) -> UvPollOwner {
 
 /// Returns the shared operation/lifetime token for an initialized uv loop.
 ///
-/// # Safety
-///
+/// ### Safety
 /// `loop_` must point to a live initialized loop.
 #[cfg(unix)]
 pub unsafe fn uv_loop_liveness(loop_: *mut uv_loop_t) -> Arc<UvLoopLiveness> {
   unsafe { get_inner(loop_) }.liveness.clone()
 }
 
-/// Initialize a Unix poll handle managed by the core loop.
-///
-/// # Safety
+/// ### Safety
 /// `loop_` must be initialized and `handle` must be valid writable storage.
 #[cfg(unix)]
 pub unsafe fn uv_poll_init(
@@ -1367,8 +1372,7 @@ pub unsafe fn uv_poll_init(
 
 /// Install a loop-thread notification invoked whenever a poll handle stops.
 ///
-/// # Safety
-///
+/// ### Safety
 /// `handle` must be a live initialized poll handle.
 #[cfg(unix)]
 pub unsafe fn uv_poll_set_stop_callback(
@@ -1378,9 +1382,9 @@ pub unsafe fn uv_poll_set_stop_callback(
   unsafe { (*handle).internal_stop_cb = callback };
 }
 
-/// Start or update a core poll handle.
+/// Start or update a poll handle.
 ///
-/// # Safety
+/// ### Safety
 /// `handle` must have been initialized by `uv_poll_init` and remain valid.
 #[cfg(unix)]
 pub unsafe fn uv_poll_start(
@@ -1432,6 +1436,9 @@ pub unsafe fn uv_poll_start(
   };
   // Commit loop state only after lazy worker startup accepts the watch, so a
   // failure leaves an existing registration, generation, and fd owner intact.
+  // This leaves fd ownership unpublished during upsert, which is safe because
+  // uv_poll_start and upsert run synchronously and non-reentrantly on the loop
+  // thread. Reserve the fd before upsert if either assumption changes.
   if let Err(errno) = inner.poll_driver.borrow_mut().upsert(watch, &owner.live)
   {
     return -errno;
@@ -1447,9 +1454,10 @@ pub unsafe fn uv_poll_start(
   0
 }
 
-/// Stop a core poll handle and invalidate its currently queued generation.
+/// Stop a poll handle and invalidate queued readiness for its current
+/// generation.
 ///
-/// # Safety
+/// ### Safety
 /// `handle` must have been initialized by `uv_poll_init` and remain valid.
 #[cfg(unix)]
 pub unsafe fn uv_poll_stop(handle: *mut uv_poll_t) -> c_int {
@@ -1466,9 +1474,7 @@ pub unsafe fn uv_poll_stop(handle: *mut uv_poll_t) -> c_int {
   0
 }
 
-/// Remove a core poll handle from its loop registry.
-///
-/// # Safety
+/// ### Safety
 /// `handle` must have been initialized by `uv_poll_init` and remain valid.
 #[cfg(unix)]
 pub unsafe fn uv_poll_close(handle: *mut uv_poll_t) {

@@ -551,9 +551,10 @@ struct PollBridge {
 
 // Heap-allocated bridge owned by the N-API layer after Box::into_raw transfers
 // it out of this initializer. It cannot live in the addon's fixed-size
-// `uv_poll_t`, whose libuv layout must stay intact. `inner` is first so a core
-// callback can cast its handle pointer back to this bridge; the aggregate
-// worker receives numeric state only and never an addon pointer.
+// `uv_poll_t`, whose libuv layout must stay intact. `inner` is first so
+// `napi_poll_trampoline` and `napi_poll_stopped` can cast their handle pointer
+// back to this bridge. The poll worker receives numeric state only and never
+// an addon pointer.
 #[cfg(unix)]
 #[repr(C)]
 struct NapiPollBridge {
@@ -602,8 +603,6 @@ unsafe fn napi_poll_mark_stopped(poll: *mut uv_poll_t) {
   unsafe {
     if (*poll).active {
       (*poll).active = false;
-      // The active transition is shared by explicit stop, terminal errors,
-      // and close. Gate the unref here so those paths balance one reference.
       if (*poll).refed {
         (&mut *(*poll).r#loop).external_ops_tracker.unref_op();
       }
@@ -966,10 +965,10 @@ unsafe extern "C" fn uv_poll_init_socket(
       addr_of_mut!((*poll).bridge).write(bridge);
       addr_of_mut!((*poll).active).write(false);
       addr_of_mut!((*poll).refed).write(true);
-      // Core stores a non-owning `inner` pointer in its registry. Normal close
-      // removes that registry entry before freeing this Box. After loop
-      // liveness is invalidated, teardown no longer dispatches registry
-      // pointers.
+      // UvLoopInner's poll-handle registry keeps a non-owning pointer to
+      // `inner`. Normal close unregisters it before freeing this Box. Once
+      // loop liveness is invalidated, the loop no longer dispatches that
+      // handle.
       let _ = Box::into_raw(bridge_box);
       0
     }
@@ -1089,10 +1088,9 @@ unsafe fn uv_poll_close(poll: *mut uv_poll_t) {
     #[cfg(unix)]
     {
       let env = &*(*poll).r#loop;
-      // While this guard succeeds, close removes the core registry before
-      // freeing the bridge. If teardown already invalidated the loop, core
-      // owns remaining registry and worker teardown and will not dispatch this
-      // bridge again.
+      // With the guard held, close unregisters the handle from UvLoopInner's
+      // poll registry before freeing the bridge. Once loop liveness is
+      // invalidated, the loop no longer dispatches that handle.
       if let Some(_guard) =
         uv_compat::uv_loop_operation_guard(&env.uv_loop_liveness)
       {
@@ -1940,8 +1938,7 @@ mod tests {
         "no queued poll callback may reach addon storage during teardown"
       );
 
-      // This is the same production ABI cleanup path used by uv_close in the
-      // native fixture: stop the core bridge, balance its ref, then free it.
+      // Exercise the same production ABI cleanup path as the native fixture.
       uv_poll_close(cleanup.poll);
       drop(Box::from_raw(cleanup.poll));
       cleanup.storage_freed.store(true, Ordering::SeqCst);

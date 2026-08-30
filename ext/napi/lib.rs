@@ -497,8 +497,9 @@ impl Drop for NapiState {
       crate::js_native_api::detach_external_string_env(*env_ptr);
     }
 
-    // Suppress queued core-poll callbacks before addon cleanup hooks can stop
-    // or close their ABI handles. The worker knows only the owner token.
+    // Invalidate each Env's poll owner before addon cleanup hooks run, so
+    // queued readiness cannot invoke addon callbacks during cleanup. The
+    // worker identifies the owner only by token.
     #[cfg(unix)]
     for env_ptr in &self.env_ptrs {
       unsafe { (*(*env_ptr)).poll_owner.invalidate() };
