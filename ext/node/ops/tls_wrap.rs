@@ -2668,10 +2668,11 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
+    let len = chunks.length();
     let mut data = Vec::new();
-    let mut boundaries = Vec::new();
+    let boundary_count = if all_buffers { len } else { len / 2 };
+    let mut boundaries = Vec::with_capacity(boundary_count as _);
     if all_buffers {
-      let len = chunks.length();
       for i in 0..len {
         let Some(chunk) = chunks.get_index(scope, i) else {
           continue;
@@ -2697,7 +2698,6 @@ impl TLSWrap {
         }
       }
     } else {
-      let len = chunks.length();
       let count = len / 2;
       for i in 0..count {
         let Some(chunk) = chunks.get_index(scope, i * 2) else {
