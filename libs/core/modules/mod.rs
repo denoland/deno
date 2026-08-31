@@ -282,11 +282,14 @@ pub type CustomModuleEvaluationCb = Box<
 
 /// A callback to get the code cache for a script.
 /// (specifier, code) -> ...
+///
+/// The source arrives as UTF-16 code units, not a `&str`: implementations key
+/// the cache on the source contents, and a lossy UTF-8 conversion would map
+/// sources differing only in unpaired surrogates onto the same key. Returning
+/// `Err` degrades to an uncached compile rather than failing the evaluation,
+/// so implementations should log their own errors if they care about them.
 pub type EvalContextGetCodeCacheCb = Box<
-  dyn Fn(
-    &Url,
-    &v8::String,
-  ) -> Result<SourceCodeCacheInfo, deno_error::JsErrorBox>,
+  dyn Fn(&Url, &[u16]) -> Result<SourceCodeCacheInfo, deno_error::JsErrorBox>,
 >;
 
 /// Callback when the code cache is ready.
