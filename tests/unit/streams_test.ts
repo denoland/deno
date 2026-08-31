@@ -578,6 +578,44 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
   assertEquals(result, new Uint8Array([1]));
 });
 
+async function compressChunks(
+  format: "deflate" | "deflate-raw" | "gzip",
+  chunks: string[],
+) {
+  const stream = new CompressionStream(format);
+  const writer = stream.writable.getWriter();
+  const output = Array.fromAsync(stream.readable.values());
+  const encoder = new TextEncoder();
+
+  for (const chunk of chunks) {
+    await writer.write(encoder.encode(chunk));
+  }
+  await writer.close();
+
+  const outputChunks = await output;
+  const length = outputChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of outputChunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+Deno.test(async function compressionStreamOutputIsIndependentOfChunking() {
+  for (const format of ["deflate", "deflate-raw", "gzip"] as const) {
+    const singleChunk = await compressChunks(format, [
+      "hello world hello world",
+    ]);
+    const multipleChunks = await compressChunks(format, [
+      "hello world ",
+      "hello world",
+    ]);
+    assertEquals(multipleChunks, singleChunk);
+  }
+});
+
 Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
   const cs = new CompressionStream("brotli");
   const ds = new DecompressionStream("brotli");

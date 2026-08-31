@@ -224,7 +224,6 @@ pub fn op_compression_write(
     }
     Inner::DeflateEncoder(d) => {
       d.write_all(input).map_err(CompressionError::IoTypeError)?;
-      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
@@ -234,7 +233,6 @@ pub fn op_compression_write(
     }
     Inner::DeflateRawEncoder(d) => {
       d.write_all(input).map_err(CompressionError::IoTypeError)?;
-      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
@@ -244,7 +242,6 @@ pub fn op_compression_write(
     }
     Inner::GzEncoder(d) => {
       d.write_all(input).map_err(CompressionError::IoTypeError)?;
-      d.flush().map_err(CompressionError::Io)?;
       d.get_mut().drain(..)
     }
     Inner::BrotliDecoder(d) => {
