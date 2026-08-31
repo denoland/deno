@@ -190,7 +190,7 @@ pub trait ModuleLoader {
   fn get_code_cache(
     &self,
     _specifier: &ModuleSpecifier,
-    _source: &v8::String,
+    _source: &str,
   ) -> Option<SourceCodeCacheInfo> {
     None
   }

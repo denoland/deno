@@ -382,16 +382,13 @@ impl ModuleMap {
     // this, residual ESM (node:process, node:module, the stream/net/tty
     // closure) re-pays parse+compile in every isolate on every cold start.
     let source_code = ModuleSource::get_string_source(source.code);
-    // Hash key for the on-disk cache. `v8_string` borrows `&source_code`, so it
-    // stays usable for the compile below.
-    let v8_source = source_code.v8_string(scope).unwrap();
     // Build a `CodeCacheInfo` whenever the loader returns `Some` — even when
     // `data` is `None` (cold run). The `Some`-with-`data: None` case is what
     // arms the write side so the first run stores; warm runs consume.
     let code_cache_info = self
       .loader
       .borrow()
-      .get_code_cache(&specifier, &v8_source)
+      .get_code_cache(&specifier, AsRef::<str>::as_ref(&source_code))
       .map(|info| {
         let loader = self.loader.borrow().clone();
         CodeCacheInfo {
@@ -647,9 +644,12 @@ impl ModuleMap {
     // stores; warm runs consume and skip parse+compile. Producing and consuming
     // binary are identical, so the cache is always accepted.
     let cache_specifier = crate::ModuleSpecifier::parse(&specifier_str).ok();
-    let code_cache_info = cache_specifier
-      .as_ref()
-      .and_then(|spec| self.loader.borrow().get_code_cache(spec, &v8_source));
+    let code_cache_info = cache_specifier.as_ref().and_then(|spec| {
+      self
+        .loader
+        .borrow()
+        .get_code_cache(spec, AsRef::<str>::as_ref(&source))
+    });
     let (mut compile_source, compile_options) =
       match code_cache_info.as_ref().and_then(|i| i.data.as_ref()) {
         Some(data) => (

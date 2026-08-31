@@ -1832,16 +1832,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   fn get_code_cache(
     &self,
     specifier: &ModuleSpecifier,
-    source: &deno_core::v8::String,
+    source: &str,
   ) -> Option<SourceCodeCacheInfo> {
     let cache = self.0.shared.code_cache.as_ref()?;
-    let source_hash = {
-      use std::hash::Hash;
-      use std::hash::Hasher;
-      let mut hasher = twox_hash::XxHash64::default();
-      source.hash(&mut hasher);
-      hasher.finish()
-    };
+    let source_hash = FastInsecureHasher::new_deno_versioned()
+      .write_hashable(source)
+      .finish();
     let data = cache
       .get_sync(specifier, code_cache::CodeCacheType::EsModule, source_hash)
       .inspect(|_| {
