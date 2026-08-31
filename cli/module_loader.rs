@@ -1832,16 +1832,20 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   fn get_code_cache(
     &self,
     specifier: &ModuleSpecifier,
-    source: &deno_core::v8::String,
+    source: &str,
   ) -> Option<SourceCodeCacheInfo> {
     let cache = self.0.shared.code_cache.as_ref()?;
-    let source_hash = {
-      use std::hash::Hash;
-      use std::hash::Hasher;
-      let mut hasher = twox_hash::XxHash64::default();
-      source.hash(&mut hasher);
-      hasher.finish()
-    };
+    // Key on the full source contents. V8 only checks the source length when
+    // validating cached data, so an equal-length edit would otherwise be
+    // served stale bytecode.
+    //
+    // This hashes a `&str` while `code_source_to_module_source` hashes a
+    // `ModuleSourceCode`, so the two never share an entry. That's fine: this
+    // path only ever sees residual `ext:`/`node:` specifiers, which never go
+    // through `load()`.
+    let source_hash = FastInsecureHasher::new_deno_versioned()
+      .write_hashable(source)
+      .finish();
     let data = cache
       .get_sync(specifier, code_cache::CodeCacheType::EsModule, source_hash)
       .inspect(|_| {

@@ -5,6 +5,7 @@
 )]
 use pretty_assertions::assert_eq;
 
+use crate::convert::flags_from_vec;
 use crate::*;
 
 /// Helper: create Vec<String> from string literals.
@@ -707,6 +708,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: true,
     },
     CommandDef {
       name: "serve",
@@ -718,6 +720,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "eval",
@@ -729,6 +732,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "fmt",
@@ -740,6 +744,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "lint",
@@ -751,6 +756,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "test",
@@ -762,6 +768,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "upgrade",
@@ -773,6 +780,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "deploy",
@@ -784,11 +792,13 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: true,
+      keep_double_dash: false,
     },
   ],
   default_subcommand: Some("run"),
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 // ---- Tests ----
@@ -1468,4 +1478,204 @@ fn levenshtein_basics() {
   )
   .unwrap_err();
   assert!(err.suggestion.as_ref().unwrap().contains("--allow-read"));
+}
+
+/// Every non-hidden option should carry a description in `--help`. The
+/// cutover from clap silently dropped all of them once already; this keeps
+/// the arg tables and the help renderer honest.
+///
+/// The permission args are not covered here: they are hidden from the
+/// options table and documented in the "Permission options" section
+/// instead, which `permission_help_section_is_rendered` covers.
+#[test]
+fn args_have_help_text() {
+  const EXEMPT: &[&str] = &[
+    // No help text on the clap side either.
+    "branch",
+    "builtin",
+    "enable-testing-features",
+    "eszip-internal-do-not-use",
+    "external",
+    "format",
+    "help",
+    "ext",
+    "inspect-publish-uid",
+    "json",
+    "no-use-env-proxy",
+    "pr",
+    "unstable-byonm",
+  ];
+
+  fn walk(cmd: &CommandDef, path: &str, missing: &mut Vec<String>) {
+    let args = cmd
+      .args
+      .iter()
+      .chain(cmd.arg_groups.iter().copied().flatten());
+    for arg in args {
+      if arg.hidden || arg.positional || arg.help.is_empty() {
+        if !arg.hidden && !arg.positional && !EXEMPT.contains(&arg.name) {
+          missing.push(format!("{path} --{}", arg.name));
+        }
+        continue;
+      }
+    }
+    for sub in cmd.subcommands {
+      walk(sub, &format!("{path} {}", sub.name), missing);
+    }
+  }
+
+  let mut missing = Vec::new();
+  walk(&defs::DENO_ROOT, "deno", &mut missing);
+  missing.sort();
+  missing.dedup();
+  assert!(
+    missing.is_empty(),
+    "these options render with no description in --help:\n  {}",
+    missing.join("\n  ")
+  );
+}
+
+/// The permission flags are hidden from the options table, so the
+/// "Permission options" section is the only place they are documented.
+#[test]
+fn permission_help_section_is_rendered() {
+  let run = help::render_subcommand_help(&defs::DENO_ROOT, "run").unwrap();
+  assert!(run.contains("Permission options:"));
+  assert!(run.contains("Allow file system read access"));
+  assert!(run.contains("DENO_TRACE_PERMISSIONS"));
+  // Hidden from the table above, documented in the section below.
+  assert!(!run.contains("  -R, --allow-read[=VALUE...]  \n"));
+
+  // Commands without permission args don't get the section.
+  let fmt = help::render_subcommand_help(&defs::DENO_ROOT, "fmt").unwrap();
+  assert!(!fmt.contains("Permission options:"));
+}
+
+/// Commands that resolve a module graph but never run it take only the
+/// import permissions — not the full permission set. These wrongly accepted
+/// every permission flag during the clap cutover.
+#[test]
+fn graph_only_commands_take_only_import_permissions() {
+  for cmd in ["bundle", "cache", "check", "doc", "info"] {
+    let sub = defs::DENO_ROOT.find_subcommand(cmd).unwrap();
+    let names: Vec<&str> = sub
+      .args
+      .iter()
+      .chain(sub.arg_groups.iter().copied().flatten())
+      .map(|a| a.name)
+      .collect();
+
+    assert!(
+      names.contains(&"allow-import") && names.contains(&"deny-import"),
+      "`deno {cmd}` should accept the import permissions"
+    );
+    for denied in [
+      "allow-all",
+      "allow-read",
+      "allow-write",
+      "allow-net",
+      "allow-env",
+      "allow-run",
+      "allow-sys",
+      "allow-ffi",
+      "no-prompt",
+      "permission-set",
+    ] {
+      assert!(
+        !names.contains(&denied),
+        "`deno {cmd}` should not accept --{denied}"
+      );
+    }
+  }
+}
+
+/// Flags that landed on `main` after this branch forked and were only wired
+/// into the clap tables. The `--long` diff that caught the missing *flags*
+/// can't see missing value choices, conflicts, or conversion wiring, so pin
+/// them here.
+#[test]
+fn post_fork_flag_wiring() {
+  // #36149: `deno fmt --ext` gained xml/svg.
+  let fmt = defs::DENO_ROOT.find_subcommand("fmt").unwrap();
+  let ext = fmt.all_args().find(|a| a.name == "ext").unwrap();
+  let ValueParser::Choices(choices) = ext.value_parser.as_ref().unwrap() else {
+    panic!("fmt --ext should validate against a fixed list");
+  };
+  assert!(choices.contains(&"xml"));
+  assert!(choices.contains(&"svg"));
+
+  // #35748: `deno task --members` conflicts with --recursive and --filter.
+  let task = defs::DENO_ROOT.find_subcommand("task").unwrap();
+  let members = task.all_args().find(|a| a.name == "members").unwrap();
+  assert!(members.conflicts.contains(&"recursive"));
+  assert!(members.conflicts.contains(&"filter"));
+  let err =
+    flags_from_vec(svec!["deno", "task", "--members", "--recursive", "dev"])
+      .unwrap_err();
+  assert!(
+    err
+      .to_string()
+      .contains("the argument '--members' cannot be used with '--recursive'"),
+    "got: {err}"
+  );
+
+  // #36099: --minimum-dependency-age reaches add/remove/info, not just the
+  // runtime subcommands.
+  for args in [
+    svec!["deno", "add", "--min-dep-age=0", "jsr:@std/path"],
+    svec!["deno", "remove", "--min-dep-age=0", "@std/path"],
+    svec!["deno", "info", "--min-dep-age=0", "main.ts"],
+  ] {
+    let cmd = args[1].clone();
+    let flags = flags_from_vec(args).unwrap();
+    assert!(
+      flags.minimum_dependency_age.is_some(),
+      "`deno {cmd}` dropped --min-dep-age"
+    );
+  }
+}
+
+/// clap attached the unstable flags to every subcommand via its shared
+/// `command()` builder, so a command that omits them rejects flags the old
+/// parser accepted. Eight commands were missing them after the cutover.
+#[test]
+fn every_subcommand_accepts_unstable_flags() {
+  fn accepts_unstable(cmd: &CommandDef) -> bool {
+    cmd.all_args().any(|a| a.name == "unstable-kv")
+      && cmd.all_args().any(|a| a.name == "unstable")
+  }
+
+  let mut missing = Vec::new();
+  for sub in defs::DENO_ROOT.subcommands {
+    // `help` is the one command clap builds without them.
+    if sub.name == "help" || sub.name.starts_with("json_reference") {
+      continue;
+    }
+    if !accepts_unstable(sub) {
+      missing.push(sub.name);
+    }
+  }
+  assert!(
+    missing.is_empty(),
+    "these subcommands reject --unstable-* flags: {missing:?}"
+  );
+
+  // They stay hidden from `--help`, as they were under clap.
+  let init = defs::DENO_ROOT.find_subcommand("init").unwrap();
+  assert!(
+    init
+      .all_args()
+      .find(|a| a.name == "unstable")
+      .unwrap()
+      .hidden
+  );
+  // ...except on `vendor`, which documents the deprecation notice.
+  let vendor = defs::DENO_ROOT.find_subcommand("vendor").unwrap();
+  assert!(
+    !vendor
+      .all_args()
+      .find(|a| a.name == "unstable")
+      .unwrap()
+      .hidden
+  );
 }

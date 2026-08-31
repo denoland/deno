@@ -54,12 +54,27 @@ const {
   PromiseResolve,
   queueMicrotask,
   ReflectApply,
+  ReflectOwnKeys,
   StringPrototypePadEnd,
   Symbol,
   SymbolDispose,
   SymbolIterator,
   TypeError,
+  Uint8ArrayPrototype,
+  uncurryThis,
 } = primordials;
+
+function getSafeOwnPropertyDescriptors(object) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(object);
+  const safeDescriptors = { __proto__: null };
+  const keys = ReflectOwnKeys(descriptors);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    safeDescriptors[key] = { __proto__: null, ...descriptors[key] };
+  }
+  return safeDescriptors;
+}
+
 const {
   isNativeError,
 } = core;
@@ -663,7 +678,7 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_deno_version",
   "op_jupyter_typescript_version",
   // Used in jupyter API
-  "op_base64_encode",
+  "op_base64_encode_from_buffer",
 
   // Used in the lint API
   "op_lint_report",
@@ -713,6 +728,8 @@ const NOT_IMPORTED_OPS = [
   "op_desktop_alert",
   "op_desktop_confirm",
   "op_desktop_prompt",
+  "op_desktop_read_clipboard_text",
+  "op_desktop_write_clipboard_text",
   "op_desktop_send_error_report",
   "op_desktop_request_notification_permission",
   "op_desktop_query_notification_permission",
@@ -723,10 +740,28 @@ const NOT_IMPORTED_OPS = [
   "op_deploy_token_delete",
 ];
 
-function removeImportedOps() {
+// Ops from NOT_IMPORTED_OPS that stay out of worker scope.
+//
+// The Clipboard API is `partial interface Navigator` in the spec, so the web
+// exposes `navigator.clipboard` on Window only; `WorkerNavigator` has no
+// clipboard. The desktop init script installs the JS API in the main scope
+// for the same reason, so leaving the raw ops reachable in workers would give
+// a plain `new Worker(...)` the ability to read whatever the user last copied
+// with no matching API and no way to ask for it. The other desktop ops are
+// dialogs, notifications and update plumbing: either user-visible or inert.
+const WORKER_EXCLUDED_OPS = [
+  "op_desktop_read_clipboard_text",
+  "op_desktop_write_clipboard_text",
+];
+
+function removeImportedOps(isWorker = false) {
   const allOpNames = ObjectKeys(ops);
   for (let i = 0; i < allOpNames.length; i++) {
     const opName = allOpNames[i];
+    if (isWorker && ArrayPrototypeIncludes(WORKER_EXCLUDED_OPS, opName)) {
+      delete ops[opName];
+      continue;
+    }
     if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
       delete ops[opName];
     }
@@ -736,7 +771,7 @@ function removeImportedOps() {
 // `Deno[Deno.internal]` is reachable from user code. Preserve its existing
 // internal compatibility surface, but keep extension-loading capabilities on
 // the core object imported through `ext:core/mod.js`.
-const userVisibleCoreDescriptors = ObjectGetOwnPropertyDescriptors(core);
+const userVisibleCoreDescriptors = getSafeOwnPropertyDescriptors(core);
 delete userVisibleCoreDescriptors.createLazyLoader;
 delete userVisibleCoreDescriptors.loadExtScript;
 const userVisibleCore = ObjectFreeze(ObjectDefineProperties(
@@ -782,7 +817,7 @@ const finalDenoNs = ObjectDefineProperties(
       },
     },
   },
-  ObjectGetOwnPropertyDescriptors(denoNs),
+  getSafeOwnPropertyDescriptors(denoNs),
 );
 
 ObjectDefineProperties(finalDenoNs, {
@@ -880,11 +915,30 @@ function disableProtoAccessor() {
   });
 }
 
+// The TC39 arraybuffer-base64 methods land on Uint8Array.prototype during
+// V8's InstallConditionalFeatures, after snapshot deserialization, so the
+// snapshotted primordials cannot include them. Capture them here, before any
+// user code runs, for ext:deno_node/internal/buffer.mjs; when a method is
+// unavailable the slot stays undefined and the consumer uses its JS codec.
+// TODO(tomas-zijdemans): move these to primordials once V8 ships the methods
+// unconditionally (no --js-arraybuffer-base64 flag).
+function captureHexMethods() {
+  const toHex = Uint8ArrayPrototype.toHex;
+  const setFromHex = Uint8ArrayPrototype.setFromHex;
+  internals.uint8ArrayToHex = typeof toHex === "function"
+    ? uncurryThis(toHex)
+    : undefined;
+  internals.uint8ArraySetFromHex = typeof setFromHex === "function"
+    ? uncurryThis(setFromHex)
+    : undefined;
+}
+
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+    captureHexMethods();
 
     const {
       0: denoVersion,
@@ -1089,7 +1143,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       if (unstable) {
         ObjectDefineProperties(
           finalDenoNs,
-          ObjectGetOwnPropertyDescriptors(unstable),
+          getSafeOwnPropertyDescriptors(unstable),
         );
       }
     }
@@ -1156,6 +1210,7 @@ function bootstrapWorkerRuntime(
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+    captureHexMethods();
 
     const {
       0: denoVersion,
@@ -1176,7 +1231,7 @@ function bootstrapWorkerRuntime(
 
     closeOnIdle = runtimeOptions[14];
 
-    removeImportedOps();
+    removeImportedOps(true);
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -1247,7 +1302,7 @@ function bootstrapWorkerRuntime(
       if (unstable) {
         ObjectDefineProperties(
           finalDenoNs,
-          ObjectGetOwnPropertyDescriptors(unstable),
+          getSafeOwnPropertyDescriptors(unstable),
         );
       }
     }

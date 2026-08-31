@@ -6,6 +6,7 @@ import {
   PerformanceObserver,
 } from "node:perf_hooks";
 import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
 // Basic performance API tests removed - covered by Node compat tests:
@@ -177,6 +178,137 @@ Deno.test("[perf_hooks]: PerformanceObserver observes node:http server entries",
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     observer?.disconnect();
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => err ? reject(err) : resolve())
+    );
+  }
+});
+
+// Waits for the first `http` entry named `name` and returns its `detail`.
+function observeHttpEntry(name: string) {
+  const { promise, resolve, reject } = Promise.withResolvers<
+    // deno-lint-ignore no-explicit-any
+    any
+  >();
+  const timer = setTimeout(
+    () => reject(new Error(`Timed out waiting for ${name} entry`)),
+    5000,
+  );
+  const observer = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (entry.entryType === "http" && entry.name === name) {
+        clearTimeout(timer);
+        // deno-lint-ignore no-explicit-any
+        resolve((entry as any).detail);
+      }
+    }
+  });
+  observer.observe({ entryTypes: ["http"] });
+  return {
+    detail: promise,
+    dispose() {
+      clearTimeout(timer);
+      observer.disconnect();
+    },
+  };
+}
+
+// The reported URL must include the port when it is non-default, rather than
+// falling back to the bare hostname.
+// Refs: https://github.com/nodejs/node/issues/59625
+Deno.test("[perf_hooks]: HttpClient url reports a non-default port", async () => {
+  const server = http.createServer((_req, res) => res.end("ok"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+
+  const observed = observeHttpEntry("HttpClient");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/observed",
+        // No explicit Host header - the URL has to come from the request
+        // authority, not from `req.host`, which carries no port.
+        setHost: false,
+      }, (res) => {
+        res.resume();
+        res.on("end", resolve);
+      }).on("error", reject).end();
+    });
+
+    const detail = await observed.detail;
+    assertEquals(detail.req.url, `http://127.0.0.1:${port}/observed`);
+  } finally {
+    observed.dispose();
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => err ? reject(err) : resolve())
+    );
+  }
+});
+
+// When a request path has been rewritten to absolute-form for proxying, the
+// entry must report it as-is instead of appending it to the authority again.
+// Refs: https://github.com/nodejs/node/issues/59625
+Deno.test("[perf_hooks]: HttpClient url is not duplicated when proxied", async () => {
+  // Short-circuiting proxy: it never forwards, so the target need not exist.
+  const proxy = http.createServer((_req, res) => res.end("via-proxy"));
+  await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  const proxyPort = (proxy.address() as AddressInfo).port;
+
+  const observed = observeHttpEntry("HttpClient");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      http.request({
+        hostname: "127.0.0.1",
+        port: 8080,
+        path: "/foo",
+        agent: new http.Agent({
+          proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+          // deno-lint-ignore no-explicit-any
+        } as any),
+      }, (res) => {
+        res.resume();
+        res.on("end", resolve);
+      }).on("error", reject).end();
+    });
+
+    const detail = await observed.detail;
+    assertEquals(detail.req.url, "http://127.0.0.1:8080/foo");
+  } finally {
+    observed.dispose();
+    await new Promise<void>((resolve, reject) =>
+      proxy.close((err) => err ? reject(err) : resolve())
+    );
+  }
+});
+
+// The URL is built from the request authority, so an explicitly supplied Host
+// header does not change it. Node reports the same, as both derive the URL
+// from `options`, not from the outgoing headers.
+Deno.test("[perf_hooks]: HttpClient url ignores an explicit Host header", async () => {
+  const server = http.createServer((_req, res) => res.end("ok"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+
+  const observed = observeHttpEntry("HttpClient");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/observed",
+        headers: { host: "someone.else" },
+      }, (res) => {
+        res.resume();
+        res.on("end", resolve);
+      }).on("error", reject).end();
+    });
+
+    const detail = await observed.detail;
+    assertEquals(detail.req.url, `http://127.0.0.1:${port}/observed`);
+  } finally {
+    observed.dispose();
     await new Promise<void>((resolve, reject) =>
       server.close((err) => err ? reject(err) : resolve())
     );

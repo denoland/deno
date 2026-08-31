@@ -1555,3 +1555,203 @@ Deno.test("tls write after underlying handle closed does not panic", async () =>
   server.close(() => resolveClosed());
   await closed;
 });
+
+function startTlsEchoServer(): Promise<tls.Server> {
+  const { promise, resolve } = Promise.withResolvers<tls.Server>();
+  const server = tls.createServer({ cert, key }, (socket: net.Socket) => {
+    socket.write("pong");
+    socket.end();
+  });
+  server.listen(0, "127.0.0.1", () => resolve(server));
+  return promise;
+}
+
+function closeServer(server: tls.Server): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.close(() => resolve());
+  return promise;
+}
+
+// deno-lint-ignore no-explicit-any
+function connectTlsClient(options: any, session?: Buffer | null) {
+  const { promise, resolve, reject } = Promise.withResolvers<{
+    isReused: boolean;
+    session: Buffer | null;
+    attemptedAddresses: string[] | undefined;
+  }>();
+  let sessionData: Buffer | null = null;
+  let isReused = false;
+  const client = tls.connect({ rejectUnauthorized: false, ...options });
+  if (session !== undefined) {
+    // deno-lint-ignore no-explicit-any
+    (client as any).setSession(session);
+  }
+  client.on("session", (s: Buffer) => {
+    sessionData = s;
+  });
+  client.on("secureConnect", () => {
+    isReused = client.isSessionReused();
+    client.end();
+  });
+  client.on("data", () => {});
+  client.on("close", () => {
+    resolve({
+      isReused,
+      session: sessionData,
+      // deno-lint-ignore no-explicit-any
+      attemptedAddresses: (client as any).autoSelectFamilyAttemptedAddresses,
+    });
+  });
+  client.on("error", reject);
+  client.resume();
+  return deadline(promise, 5000);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/36228
+// Multiple client connections to the same host without options.session
+// must not automatically resume TLS sessions (which breaks database connection
+// pools like mssql/tedious where the server does not support session resumption).
+// Session resumption must be strictly opt-in via options.session or setSession().
+Deno.test("tls client session resumption is opt-in per connection", async (t) => {
+  const server = await startTlsEchoServer();
+  const { port } = server.address() as net.AddressInfo;
+  let firstSession: Buffer | null = null;
+
+  await t.step("initial connection is a full handshake", async () => {
+    const res = await connectTlsClient({ port, host: "127.0.0.1" });
+    assertEquals(res.isReused, false);
+    assert(res.session !== null, "expected session data from connection 1");
+    firstSession = res.session;
+  });
+
+  await t.step(
+    "connection without options.session does not resume",
+    async () => {
+      const res = await connectTlsClient({ port, host: "127.0.0.1" });
+      assertEquals(res.isReused, false);
+    },
+  );
+
+  await t.step("options.session enables resumption", async () => {
+    const res = await connectTlsClient({
+      port,
+      host: "127.0.0.1",
+      session: firstSession!,
+    });
+    assertEquals(res.isReused, true);
+  });
+
+  await t.step("setSession() enables resumption", async () => {
+    const res = await connectTlsClient(
+      { port, host: "127.0.0.1" },
+      firstSession,
+    );
+    assertEquals(res.isReused, true);
+  });
+
+  await t.step("malformed session buffer does not resume", async () => {
+    const res = await connectTlsClient({
+      port,
+      host: "127.0.0.1",
+      session: Buffer.from("invalid-session-data"),
+    });
+    assertEquals(res.isReused, false);
+  });
+
+  await t.step(
+    "session for a different host:port does not resume",
+    async () => {
+      // A well-formed synthetic session issued for another server must fail
+      // syntheticSessionMatches() and keep resumption disabled, even though
+      // the shared cache holds tickets for this host.
+      const serverB = await startTlsEchoServer();
+      try {
+        const { port: portB } = serverB.address() as net.AddressInfo;
+        const res = await connectTlsClient({
+          port: portB,
+          host: "127.0.0.1",
+          session: firstSession!,
+        });
+        assertEquals(res.isReused, false);
+      } finally {
+        await closeServer(serverB);
+      }
+    },
+  );
+
+  await closeServer(server);
+});
+
+// Opt-in resumption must keep working when a process-level custom CA is
+// installed: rustls only offers a stored session when the config's verifier
+// is the same instance the session was stored under, so build_client_config
+// must stay on the cached-verifier path after setDefaultCACertificates().
+Deno.test("tls client session resumption works with setDefaultCACertificates", async () => {
+  // deno-lint-ignore no-explicit-any
+  (tls as any).setDefaultCACertificates([rootCaCert]);
+  const server = await startTlsEchoServer();
+  try {
+    const { port } = server.address() as net.AddressInfo;
+    const res1 = await connectTlsClient({ port, host: "127.0.0.1" });
+    assertEquals(res1.isReused, false);
+    assert(res1.session !== null, "expected session data");
+    const res2 = await connectTlsClient({
+      port,
+      host: "127.0.0.1",
+      session: res1.session!,
+    });
+    assertEquals(res2.isReused, true);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// When autoSelectFamily falls back to another address, kReinitializeHandle
+// re-creates the TLSWrap; a session that passed setSession() validation must
+// stay applied to the new handle.
+Deno.test("tls autoSelectFamily fallback preserves a validated session", async () => {
+  const server = await startTlsEchoServer();
+  try {
+    const { port } = server.address() as net.AddressInfo;
+    // Resolve to an unreachable ::1 first so the connection falls back to
+    // 127.0.0.1, re-creating the TLS handle for the second attempt.
+    const lookup = (
+      _host: string,
+      opts: { all?: boolean },
+      cb: (
+        err: Error | null,
+        addr: string | { address: string; family: number }[],
+        family?: number,
+      ) => void,
+    ) => {
+      if (opts.all) {
+        cb(null, [
+          { address: "::1", family: 6 },
+          { address: "127.0.0.1", family: 4 },
+        ]);
+      } else {
+        cb(null, "127.0.0.1", 4);
+      }
+    };
+    const options = {
+      port,
+      host: "happy-eyeballs.example",
+      lookup,
+      autoSelectFamily: true,
+    };
+    const res1 = await connectTlsClient(options);
+    assertEquals(res1.isReused, false);
+    assert(res1.session !== null, "expected session data");
+
+    const res2 = await connectTlsClient({ ...options, session: res1.session! });
+    // Both addresses must have been attempted, proving the resumed
+    // handshake ran on the re-created fallback handle.
+    assertEquals(res2.attemptedAddresses, [
+      `::1:${port}`,
+      `127.0.0.1:${port}`,
+    ]);
+    assertEquals(res2.isReused, true);
+  } finally {
+    await closeServer(server);
+  }
+});

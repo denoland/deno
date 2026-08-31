@@ -207,7 +207,10 @@ const rootCertificates = new Proxy([] as string[], {
   },
   defineProperty(target, prop, descriptor) {
     ensureLazyRootCertificates(target);
-    return ReflectDefineProperty(target, prop, descriptor);
+    return ReflectDefineProperty(target, prop, {
+      __proto__: null,
+      ...descriptor,
+    });
   },
   deleteProperty(target, prop) {
     ensureLazyRootCertificates(target);
