@@ -1623,7 +1623,7 @@ fn eval_context_with_code_cache() {
   let code_cache = {
     let updated_code_cache = Arc::new(Mutex::new(HashMap::new()));
 
-    let get_code_cache_cb = Box::new(|_: &Url, source: &v8::String| {
+    let get_code_cache_cb = Box::new(|_: &Url, source: &[u16]| {
       Ok(SourceCodeCacheInfo {
         data: None,
         hash: hash_source(source),
@@ -1660,15 +1660,14 @@ fn eval_context_with_code_cache() {
     let updated_code_cache = Arc::new(Mutex::new(HashMap::new()));
 
     let code_cache_clone = code_cache.clone();
-    let get_code_cache_cb =
-      Box::new(move |specifier: &Url, source: &v8::String| {
-        Ok(SourceCodeCacheInfo {
-          data: code_cache_clone
-            .get(specifier)
-            .map(|code_cache| Cow::Owned(code_cache.clone())),
-          hash: hash_source(source),
-        })
-      });
+    let get_code_cache_cb = Box::new(move |specifier: &Url, source: &[u16]| {
+      Ok(SourceCodeCacheInfo {
+        data: code_cache_clone
+          .get(specifier)
+          .map(|code_cache| Cow::Owned(code_cache.clone())),
+        hash: hash_source(source),
+      })
+    });
 
     let updated_code_cache_clone = updated_code_cache.clone();
     let set_code_cache_cb =
@@ -1694,7 +1693,26 @@ fn eval_context_with_code_cache() {
   }
 }
 
-fn hash_source(source: &v8::String) -> u64 {
+#[test]
+fn eval_context_code_cache_error_is_cache_miss() {
+  let get_code_cache_cb = Box::new(|_: &Url, _: &[u16]| {
+    Err(JsErrorBox::generic("cache unavailable"))
+  });
+  let set_code_cache_cb = Box::new(|_: Url, _: u64, _: &[u8]| {});
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    eval_context_code_cache_cbs: Some((get_code_cache_cb, set_code_cache_cb)),
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "",
+      ascii_str!("Deno.core.evalContext('1 + 1', 'file:///foo.js');"),
+    )
+    .unwrap();
+}
+
+fn hash_source(source: &[u16]) -> u64 {
   use std::hash::Hash;
   use std::hash::Hasher;
   let mut hasher = twox_hash::XxHash64::default();

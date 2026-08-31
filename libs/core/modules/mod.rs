@@ -283,10 +283,7 @@ pub type CustomModuleEvaluationCb = Box<
 /// A callback to get the code cache for a script.
 /// (specifier, code) -> ...
 pub type EvalContextGetCodeCacheCb = Box<
-  dyn Fn(
-    &Url,
-    &v8::String,
-  ) -> Result<SourceCodeCacheInfo, deno_error::JsErrorBox>,
+  dyn Fn(&Url, &[u16]) -> Result<SourceCodeCacheInfo, deno_error::JsErrorBox>,
 >;
 
 /// Callback when the code cache is ready.

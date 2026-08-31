@@ -321,7 +321,11 @@ pub fn op_eval_context<'s, 'i>(
     .borrow()
     .as_ref()
     .map(|cb| {
-      let code_cache = cb(&specifier, &source).unwrap();
+      let mut source_code = vec![0; source.length()];
+      source.write_v2(tc_scope, 0, &mut source_code, v8::WriteFlags::empty());
+      let Ok(code_cache) = cb(&specifier, &source_code) else {
+        return (None, None);
+      };
       if let Some(code_cache_data) = &code_cache.data {
         let mut source = v8::script_compiler::Source::new_with_cached_data(
           source,
@@ -453,7 +457,11 @@ pub fn op_compile_function<'s, 'i>(
     .borrow()
     .as_ref()
     .map(|cb| {
-      let code_cache = cb(&specifier, &source).unwrap();
+      let mut source_code = vec![0; source.length()];
+      source.write_v2(tc_scope, 0, &mut source_code, v8::WriteFlags::empty());
+      let Ok(code_cache) = cb(&specifier, &source_code) else {
+        return (None, None);
+      };
       if let Some(code_cache_data) = &code_cache.data {
         let mut source = v8::script_compiler::Source::new_with_cached_data(
           source,
