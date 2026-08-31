@@ -399,16 +399,21 @@ Deno.test("zstd streaming compression supports an explicit flush", async () => {
   assertZstdRoundTrip(await compressedPromise, input);
 });
 
-Deno.test("zstd exact output chunk does not append an empty frame", () => {
+Deno.test("zstd exact-fill compression does not append an empty frame", async () => {
   const input = deterministicZstdInput(128);
   const reference = zstdCompressSync(input);
-  assert(reference.byteLength > constants.Z_MIN_CHUNK);
+  const chunkSize = reference.byteLength;
+  assert(chunkSize > constants.Z_MIN_CHUNK);
 
-  const compressed = zstdCompressSync(input, {
-    chunkSize: reference.byteLength,
+  const syncCompressed = zstdCompressSync(input, {
+    chunkSize,
   });
-  assertEquals(compressed.byteLength, reference.byteLength);
-  assertZstdRoundTrip(compressed, input);
+  const asyncCompressed = await zstdCompressAsync(input, chunkSize);
+
+  for (const compressed of [syncCompressed, asyncCompressed]) {
+    assertEquals(compressed.byteLength, reference.byteLength);
+    assertZstdRoundTrip(compressed, input);
+  }
 });
 
 // Every compression/decompression backend whose native handle writes the

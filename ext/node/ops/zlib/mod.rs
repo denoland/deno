@@ -1040,7 +1040,7 @@ use zstd::zstd_safe;
 struct ZstdCompressCtx {
   encoder: zstd_safe::CCtx<'static>,
   callback: v8::Global<v8::Function>,
-  end_complete: bool,
+  end_finished_on_exact_fill: bool,
 }
 
 struct ZstdWriteResult {
@@ -1063,19 +1063,21 @@ impl ZstdCompressCtx {
       _ => (ZSTD_EndDirective::ZSTD_e_continue, "compress"),
     };
 
-    // processChunk retries when the output buffer is exactly full. If the
-    // frame already ended, that retry must not start a new empty frame.
-    if self.end_complete
+    // processChunkSync and processCallback retry an exact-fill write with the
+    // same directive and no remaining input. Only those retry loops issue an
+    // empty-input e_end immediately after a completed frame. `reset` clears
+    // this state before reusing the context, and `close` drops the context.
+    if self.end_finished_on_exact_fill
       && end_op == ZSTD_EndDirective::ZSTD_e_end
       && input.is_empty()
     {
-      self.end_complete = false;
+      self.end_finished_on_exact_fill = false;
       return Ok(ZstdWriteResult {
         avail_out: output.len(),
-        avail_in: input.len(),
+        avail_in: 0,
       });
     }
-    self.end_complete = false;
+    self.end_finished_on_exact_fill = false;
 
     let input_len = input.len();
     let output_len = output.len();
@@ -1093,7 +1095,7 @@ impl ZstdCompressCtx {
     let avail_in = input_len - input.pos();
     let avail_out = output_len - output.pos();
 
-    self.end_complete = end_op == ZSTD_EndDirective::ZSTD_e_end
+    self.end_finished_on_exact_fill = end_op == ZSTD_EndDirective::ZSTD_e_end
       && remaining == 0
       && avail_in == 0
       && avail_out == 0;
@@ -1209,7 +1211,7 @@ impl ZstdCompress {
     self.ctx.borrow_mut().replace(ZstdCompressCtx {
       encoder,
       callback,
-      end_complete: false,
+      end_finished_on_exact_fill: false,
     });
     true
   }
@@ -1224,7 +1226,7 @@ impl ZstdCompress {
     let mut ctx = self.ctx.borrow_mut();
     if let Some(ctx) = ctx.as_mut() {
       let _ = ctx.encoder.reset(zstd_safe::ResetDirective::SessionOnly);
-      ctx.end_complete = false;
+      ctx.end_finished_on_exact_fill = false;
     }
   }
 
