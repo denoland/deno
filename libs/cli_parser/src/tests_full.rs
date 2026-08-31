@@ -7228,6 +7228,25 @@ fn x_ignore_scripts() {
       ..Flags::default()
     }
   );
+
+  for (flag, expected_error) in [
+    ("--ignore-scripts=npm:", "Invalid package requirement"),
+    (
+      "--ignore-scripts=jsr:@foo/bar",
+      "Only npm package constraints are supported",
+    ),
+    (
+      "--ignore-scripts=foo@latest",
+      "Tags are not supported in --ignore-scripts",
+    ),
+    ("--ignore-scripts=foo,", "Empty values are not allowed"),
+  ] {
+    let err = flags_from_vec(svec!["deno", "x", flag, "npm:foo"]).unwrap_err();
+    assert!(
+      err.to_string().contains(expected_error),
+      "expected to contain '{expected_error}' got '{err}'"
+    );
+  }
 }
 
 #[test]
