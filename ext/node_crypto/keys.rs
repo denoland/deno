@@ -245,13 +245,11 @@ impl AsymmetricPrivateKey {
         AsymmetricPublicKey::Ed25519(key.verifying_key())
       }
       AsymmetricPrivateKey::X448(key) => {
-        let mut scalar_bytes = [0u8; 57];
-        scalar_bytes[..56].copy_from_slice(&key[..56]);
-        let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
-          &scalar_bytes.into(),
+        let point = deno_crypto_provider::x448::x448(
+          key,
+          &deno_crypto_provider::x448::BASE_POINT,
         );
-        let point = &ed448_goldilocks::MontgomeryPoint::GENERATOR * &scalar;
-        AsymmetricPublicKey::X448(point.0)
+        AsymmetricPublicKey::X448(point)
       }
       AsymmetricPrivateKey::Ed448(key) => {
         AsymmetricPublicKey::Ed448(key.verifying_key())
@@ -4046,7 +4044,7 @@ pub fn op_node_export_private_key_pem(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
   #[string] cipher: Option<String>,
-  #[string] passphrase: Option<String>,
+  #[buffer] passphrase: Option<&[u8]>,
 ) -> Result<String, ExportPrivateKeyPemError> {
   let private_key = handle
     .as_private_key()
@@ -4060,24 +4058,15 @@ pub fn op_node_export_private_key_pem(
     _ => unreachable!("export_der would have errored"),
   };
 
-  match (&cipher, &passphrase) {
+  match (&cipher, passphrase) {
     (Some(cipher), Some(passphrase)) => {
       // Node.js uses PKCS#8 EncryptedPrivateKeyInfo for `pkcs8` exports with
       // a cipher (label "ENCRYPTED PRIVATE KEY"); for `pkcs1`/`sec1` it uses
       // the legacy OpenSSL PEM encryption format with Proc-Type/DEK-Info.
       if typ == "pkcs8" {
-        return encrypt_pkcs8_private_key_pem(
-          &data,
-          cipher,
-          passphrase.as_bytes(),
-        );
+        return encrypt_pkcs8_private_key_pem(&data, cipher, passphrase);
       }
-      return encrypt_private_key_pem(
-        label,
-        &data,
-        cipher,
-        passphrase.as_bytes(),
-      );
+      return encrypt_private_key_pem(label, &data, cipher, passphrase);
     }
     (Some(_), None) | (None, Some(_)) => {
       return Err(ExportPrivateKeyPemError::MissingCipherOrPassphrase);
@@ -4202,20 +4191,19 @@ pub fn op_node_export_private_key_der(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
   #[string] cipher: Option<String>,
-  #[string] passphrase: Option<String>,
+  #[buffer] passphrase: Option<&[u8]>,
 ) -> Result<Box<[u8]>, ExportPrivateKeyDerError> {
   let private_key = handle
     .as_private_key()
     .ok_or(AsymmetricPrivateKeyDerError::KeyIsNotAsymmetricPrivateKey)?;
   let data = private_key.export_der(typ)?;
 
-  match (&cipher, &passphrase) {
+  match (&cipher, passphrase) {
     (Some(cipher), Some(passphrase)) => {
       if typ != "pkcs8" {
         return Err(ExportPrivateKeyDerError::EncryptionRequiresPkcs8);
       }
-      let encrypted =
-        encrypt_private_key_pkcs8_der(&data, cipher, passphrase.as_bytes())?;
+      let encrypted = encrypt_private_key_pkcs8_der(&data, cipher, passphrase)?;
       Ok(encrypted.into_boxed_slice())
     }
     (Some(_), None) | (None, Some(_)) => {

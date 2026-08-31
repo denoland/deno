@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 123;
+const cacheVersion = 124;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -119,6 +119,10 @@ const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootConfig = {
   name: "Set up incremental LTO and sysroot build",
+  // This normally takes under a minute, but `apt-get update` has been seen to
+  // hang indefinitely when a mirror is unreachable, burning the job's whole
+  // timeout before a single test runs. Fail fast instead.
+  timeoutMinutes: 10,
   run: `# Setting up sysroot
 export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes

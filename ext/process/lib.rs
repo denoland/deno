@@ -1434,7 +1434,6 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
 
   fn is_empty(value: &OsString) -> bool {
     value.is_empty()
-      || value.to_str().map(|v| v.trim().is_empty()).unwrap_or(false)
   }
 
   let mut found_envs = env

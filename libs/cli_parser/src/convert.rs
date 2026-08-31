@@ -9,6 +9,7 @@
 
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
@@ -23,34 +24,84 @@ use crate::types::ParseResult;
 
 type UnstableFeatureEntry = (&'static str, Option<fn(&mut UnstableConfig)>);
 
-/// Parse a socket address string like "127.0.0.1:9229" into SocketAddr.
-fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
-  let default_port: u16 = 9229;
-  // Try parsing as-is first (e.g. "127.0.0.1:9229")
-  if let Ok(addr) = s.parse::<SocketAddr>() {
-    return Some(addr);
+/// Parse an `--inspect*` address.
+///
+/// Accepts a bare port (`9229`), a bare `:port`, a bare IP (`192.168.0.1`), a
+/// full `host:port`, and hostnames (`localhost`, `localhost:0`). Hostnames are
+/// resolved via DNS so Node's `--inspect=localhost:0` syntax works; IPv4
+/// results are preferred when the resolver returns both families, matching
+/// Node.
+fn parse_socket_addr(s: &str) -> Result<SocketAddr, CliError> {
+  const DEFAULT_HOST: IpAddr =
+    IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+  const DEFAULT_PORT: u16 = 9229;
+
+  fn invalid(message: String) -> CliError {
+    CliError::new(CliErrorKind::InvalidValue, message)
   }
-  // Try as just a port (e.g. "10000" or "0")
-  if let Ok(port) = s.parse::<u16>() {
-    return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
+
+  fn parse_port(port: &str) -> Result<u16, CliError> {
+    port
+      .parse::<u16>()
+      .map_err(|_| invalid(format!("Invalid inspector port '{port}'")))
   }
-  // Try as just an IP address without port (e.g. "192.168.0.1")
-  if let Ok(ip) = s.parse::<IpAddr>() {
-    return Some(SocketAddr::new(ip, default_port));
-  }
-  // Try as host:port where host might not be an IP
-  if let Some((host, port_str)) = s.rsplit_once(':')
-    && let Ok(port) = port_str.parse::<u16>()
-  {
-    if host.is_empty() {
-      // Handle ":10000" format
-      return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
-    }
+
+  fn resolve_host(host: &str) -> Result<IpAddr, CliError> {
     if let Ok(ip) = host.parse::<IpAddr>() {
-      return Some(SocketAddr::new(ip, port));
+      return Ok(ip);
     }
+    let addrs = (host, 0u16)
+      .to_socket_addrs()
+      .map_err(|e| invalid(format!("Invalid inspector host '{host}': {e}")))?
+      .collect::<Vec<_>>();
+    addrs
+      .iter()
+      .find(|a| a.is_ipv4())
+      .or_else(|| addrs.first())
+      .map(|a| a.ip())
+      .ok_or_else(|| {
+        invalid(format!("Could not resolve inspector host '{host}'"))
+      })
   }
-  None
+
+  if s.is_empty() {
+    return Err(invalid("Inspector address cannot be empty".to_string()));
+  }
+
+  if let Some(port_part) = s.strip_prefix(':') {
+    let port = if port_part.is_empty() {
+      DEFAULT_PORT
+    } else {
+      parse_port(port_part)?
+    };
+    return Ok(SocketAddr::new(DEFAULT_HOST, port));
+  }
+
+  if s.contains(':') {
+    // A bare IPv6 address (`::1`) or a full `host:port`.
+    if let Ok(addr) = s.parse::<SocketAddr>() {
+      return Ok(addr);
+    }
+    if let Ok(ip) = s.parse::<IpAddr>() {
+      return Ok(SocketAddr::new(ip, DEFAULT_PORT));
+    }
+
+    let (host_part, port_part) = s
+      .rsplit_once(':')
+      .ok_or_else(|| invalid(format!("Invalid inspector address '{s}'")))?;
+    let port = if port_part.is_empty() {
+      DEFAULT_PORT
+    } else {
+      parse_port(port_part)?
+    };
+    return Ok(SocketAddr::new(resolve_host(host_part)?, port));
+  }
+
+  if s.chars().all(|c| c.is_ascii_digit()) {
+    return Ok(SocketAddr::new(DEFAULT_HOST, parse_port(s)?));
+  }
+
+  Ok(SocketAddr::new(resolve_host(s)?, DEFAULT_PORT))
 }
 
 // ============================================================
@@ -123,8 +174,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
   match result.subcommand.as_deref() {
     Some("run") => run_parse(&result, &mut flags, false)?,
     Some("watch") => run_parse(&result, &mut flags, true)?,
-    Some("serve") => serve_parse(&result, &mut flags),
-    Some("eval") => eval_parse(&result, &mut flags),
+    Some("serve") => serve_parse(&result, &mut flags)?,
+    Some("eval") => eval_parse(&result, &mut flags)?,
     Some("fmt") => fmt_parse(&result, &mut flags),
     Some("lint") => lint_parse(&result, &mut flags),
     Some("test") => test_parse(&result, &mut flags)?,
@@ -134,10 +185,10 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("info") => info_parse(&result, &mut flags),
     Some("doc") => doc_parse(&result, &mut flags)?,
     Some("task") => task_parse(&result, &mut flags)?,
-    Some("bench") => bench_parse(&result, &mut flags),
-    Some("compile") => compile_parse(&result, &mut flags),
+    Some("bench") => bench_parse(&result, &mut flags)?,
+    Some("compile") => compile_parse(&result, &mut flags)?,
     Some("coverage") => coverage_parse(&result, &mut flags)?,
-    Some("repl") => repl_parse(&result, &mut flags, false),
+    Some("repl") => repl_parse(&result, &mut flags, false)?,
     Some("install" | "i") => install_parse(&result, &mut flags)?,
     Some("uninstall") => uninstall_parse(&result, &mut flags),
     Some("completions") => completions_parse(&result, &mut flags),
@@ -160,17 +211,17 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("types") => types_parse(&mut flags),
     Some("lsp") => lsp_parse(&mut flags),
     Some("vendor") => vendor_parse(&mut flags),
-    Some("deploy") => deploy_parse(&result, &mut flags, false),
-    Some("sandbox") => deploy_parse(&result, &mut flags, true),
+    Some("deploy") => deploy_parse(&mut flags, false),
+    Some("sandbox") => deploy_parse(&mut flags, true),
     Some("bundle") => bundle_parse(&result, &mut flags),
     Some("audit") => audit_parse(&result, &mut flags)?,
     Some("why") => why_parse(&result, &mut flags),
     Some("transpile") => transpile_parse(&result, &mut flags),
     Some("bump-version") => bump_version_parse(&result, &mut flags)?,
     Some("ci") => ci_parse(&result, &mut flags),
-    Some("desktop") => desktop_parse(&result, &mut flags),
+    Some("desktop") => desktop_parse(&result, &mut flags)?,
     Some("pack") => pack_parse(&result, &mut flags),
-    Some("x") => x_parse(&result, &mut flags),
+    Some("x") => x_parse(&result, &mut flags)?,
     Some("json_reference") => json_reference_parse(&mut flags),
     Some("help") => help_subcommand_parse(&result, &mut flags),
     None => default_parse(&result, &mut flags)?,
@@ -333,7 +384,7 @@ fn default_parse(
     }
 
     // Bare run - same as `deno run` but with bare=true
-    runtime_args_parse(result, flags, true, true);
+    runtime_args_parse(result, flags, true, true)?;
     ext_arg_parse(result, flags);
     flags.tunnel = result.get_bool("tunnel");
     flags.code_cache_enabled = !result.get_bool("no-code-cache");
@@ -387,7 +438,7 @@ fn default_parse(
     }
 
     // No script -> REPL with default command
-    repl_parse(result, flags, true);
+    repl_parse(result, flags, true)?;
   }
   Ok(())
 }
@@ -441,14 +492,14 @@ fn runtime_args_parse(
   flags: &mut Flags,
   include_perms: bool,
   include_inspector: bool,
-) {
+) -> Result<(), CliError> {
   compile_args_parse(result, flags);
   cached_only_arg_parse(result, flags);
   if include_perms {
     permission_args_parse(result, flags);
   }
   if include_inspector {
-    inspect_arg_parse(result, flags);
+    inspect_arg_parse(result, flags)?;
   }
   // `--allow-scripts` is validated and applied centrally in `convert()` so the
   // fallible parsing lives in one place (see `allow_scripts_arg_parse`).
@@ -461,6 +512,7 @@ fn runtime_args_parse(
   eszip_arg_parse(result, flags);
   preload_arg_parse(result, flags);
   require_arg_parse(result, flags);
+  Ok(())
 }
 
 /// Expand bare port entries (e.g. ":8080") into full host:port entries
@@ -545,18 +597,25 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
   }
 }
 
-fn inspect_arg_parse(result: &ParseResult, flags: &mut Flags) {
+fn inspect_arg_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
+  const DEFAULT: &str = "127.0.0.1:9229";
   if result.contains("inspect") {
-    let val = result.get_one("inspect").unwrap_or("127.0.0.1:9229");
-    flags.inspect = parse_socket_addr(val);
+    flags.inspect = Some(parse_socket_addr(
+      result.get_one("inspect").unwrap_or(DEFAULT),
+    )?);
   }
   if result.contains("inspect-brk") {
-    let val = result.get_one("inspect-brk").unwrap_or("127.0.0.1:9229");
-    flags.inspect_brk = parse_socket_addr(val);
+    flags.inspect_brk = Some(parse_socket_addr(
+      result.get_one("inspect-brk").unwrap_or(DEFAULT),
+    )?);
   }
   if result.contains("inspect-wait") {
-    let val = result.get_one("inspect-wait").unwrap_or("127.0.0.1:9229");
-    flags.inspect_wait = parse_socket_addr(val);
+    flags.inspect_wait = Some(parse_socket_addr(
+      result.get_one("inspect-wait").unwrap_or(DEFAULT),
+    )?);
   }
   if let Some(uid_str) = result.get_one("inspect-publish-uid") {
     let mut uid = InspectPublishUid {
@@ -572,6 +631,7 @@ fn inspect_arg_parse(result: &ParseResult, flags: &mut Flags) {
     }
     flags.inspect_publish_uid = Some(uid);
   }
+  Ok(())
 }
 
 fn config_args_parse(result: &ParseResult, flags: &mut Flags) {
@@ -959,34 +1019,44 @@ fn allow_scripts_arg_parse(
   Ok(())
 }
 
-fn ignore_scripts_value(result: &ParseResult) -> PackagesAllowedScripts {
+fn ignore_scripts_value(
+  result: &ParseResult,
+) -> Result<PackagesAllowedScripts, CliError> {
   let Some(values) = result.get_many("ignore-scripts") else {
-    return PackagesAllowedScripts::None;
+    return Ok(PackagesAllowedScripts::None);
   };
   if values.is_empty() {
-    PackagesAllowedScripts::All
-  } else {
-    PackagesAllowedScripts::Some(
-      values
-        .iter()
-        .flat_map(|s| {
-          escape_and_split_commas(s.to_string()).unwrap_or_default()
-        })
-        .filter_map(|s| {
-          let value = if s.starts_with("npm:") || s.starts_with("jsr:") {
-            s.to_string()
-          } else {
-            format!("npm:{}", s)
-          };
-          let dep = JsrDepPackageReq::from_str_loose(&value).ok()?;
-          if dep.kind != PackageKind::Npm {
-            return None;
-          }
-          Some(dep.req)
-        })
-        .collect(),
-    )
+    return Ok(PackagesAllowedScripts::All);
   }
+
+  let mut packages = Vec::new();
+  for value in values {
+    for value in escape_and_split_commas(value.to_string())? {
+      let value = if value.starts_with("npm:") || value.starts_with("jsr:") {
+        value
+      } else {
+        format!("npm:{value}")
+      };
+      let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+        CliError::new(CliErrorKind::InvalidValue, e.to_string())
+      })?;
+      if dep.kind != PackageKind::Npm {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("Only npm package constraints are supported: {value}"),
+        ));
+      }
+      if dep.req.version_req.tag().is_some() {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("Tags are not supported in --ignore-scripts: {value}"),
+        ));
+      }
+      packages.push(dep.req);
+    }
+  }
+
+  Ok(PackagesAllowedScripts::Some(packages))
 }
 
 fn no_check_arg_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1327,7 +1397,7 @@ fn run_parse(
   flags: &mut Flags,
   force_hmr: bool,
 ) -> Result<(), CliError> {
-  runtime_args_parse(result, flags, true, true);
+  runtime_args_parse(result, flags, true, true)?;
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
@@ -1403,7 +1473,10 @@ fn run_parse(
   Ok(())
 }
 
-fn serve_parse(result: &ParseResult, flags: &mut Flags) {
+fn serve_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   let port = result
     .get_one("port")
     .and_then(|s| s.parse::<u16>().ok())
@@ -1413,7 +1486,7 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
     .map(|s| s.to_string())
     .unwrap_or_else(|| "0.0.0.0".to_string());
 
-  runtime_args_parse(result, flags, true, true);
+  runtime_args_parse(result, flags, true, true)?;
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   flags.tunnel = result.get_bool("tunnel");
 
@@ -1435,10 +1508,11 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
     parallel,
     open_site: result.get_bool("open"),
   });
+  Ok(())
 }
 
-fn eval_parse(result: &ParseResult, flags: &mut Flags) {
-  runtime_args_parse(result, flags, false, true);
+fn eval_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
+  runtime_args_parse(result, flags, false, true)?;
   // eval implies allow all permissions
   flags.permissions.allow_all = true;
 
@@ -1452,6 +1526,7 @@ fn eval_parse(result: &ParseResult, flags: &mut Flags) {
     .unwrap_or_default();
 
   flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
+  Ok(())
 }
 
 fn fmt_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1564,7 +1639,7 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn test_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, true);
+  runtime_args_parse(result, flags, true, true)?;
   ext_arg_parse(result, flags);
 
   // deno test always uses --no-prompt
@@ -1991,9 +2066,12 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   Ok(())
 }
 
-fn bench_parse(result: &ParseResult, flags: &mut Flags) {
+fn bench_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, false);
+  runtime_args_parse(result, flags, true, false)?;
   ext_arg_parse(result, flags);
 
   // bench always uses --no-prompt
@@ -2019,11 +2097,15 @@ fn bench_parse(result: &ParseResult, flags: &mut Flags) {
     no_run,
     permit_no_files: result.get_bool("permit-no-files"),
   });
+  Ok(())
 }
 
-fn compile_parse(result: &ParseResult, flags: &mut Flags) {
+fn compile_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, false);
+  runtime_args_parse(result, flags, true, false)?;
 
   let source_file = result
     .get_one("source_file")
@@ -2072,6 +2154,7 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
       .map(|value| value.parse().expect("engine is validated by the parser"))
       .unwrap_or_default(),
   });
+  Ok(())
 }
 
 fn coverage_parse(
@@ -2133,11 +2216,15 @@ fn coverage_parse(
   Ok(())
 }
 
-fn repl_parse(result: &ParseResult, flags: &mut Flags, is_default: bool) {
+fn repl_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+  is_default: bool,
+) -> Result<(), CliError> {
   compile_args_without_check_parse(result, flags);
   cached_only_arg_parse(result, flags);
   permission_args_parse(result, flags);
-  inspect_arg_parse(result, flags);
+  inspect_arg_parse(result, flags)?;
   location_arg_parse(result, flags);
   v8_flags_arg_parse(result, flags);
   seed_arg_parse(result, flags);
@@ -2165,13 +2252,14 @@ fn repl_parse(result: &ParseResult, flags: &mut Flags, is_default: bool) {
   }
 
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
+  Ok(())
 }
 
 fn install_parse(
   result: &ParseResult,
   flags: &mut Flags,
 ) -> Result<(), CliError> {
-  runtime_args_parse(result, flags, true, true);
+  runtime_args_parse(result, flags, true, true)?;
 
   let global = result.get_bool("global");
 
@@ -2584,9 +2672,12 @@ fn pack_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
+fn desktop_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, true);
+  runtime_args_parse(result, flags, true, true)?;
   ext_arg_parse(result, flags);
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
 
@@ -2609,9 +2700,11 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
     None
   };
   let inspect_renderer = if result.contains("inspect-renderer") {
+    // Unlike the `--inspect*` flags, an unparseable renderer address is
+    // ignored rather than rejected (pre-existing behavior).
     result
       .get_one("inspect-renderer")
-      .and_then(parse_socket_addr)
+      .and_then(|s| parse_socket_addr(s).ok())
   } else {
     None
   };
@@ -2648,6 +2741,7 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
       .map(|value| value.parse().expect("engine is validated by the parser"))
       .unwrap_or_default(),
   });
+  Ok(())
 }
 
 fn ci_parse(result: &ParseResult, flags: &mut Flags) {
@@ -2876,9 +2970,10 @@ fn vendor_parse(flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Vendor;
 }
 
-fn deploy_parse(result: &ParseResult, flags: &mut Flags, sandbox: bool) {
-  // deploy/sandbox are passthrough - all args go into argv
-  flags.argv = result.trailing.clone();
+fn deploy_parse(flags: &mut Flags, sandbox: bool) {
+  // deploy/sandbox are passthrough - all args go into argv. Note that argv is
+  // filled in by the shared trailing-arg handling in `flags_from_vec`, so this
+  // must not copy `result.trailing` itself or every arg would be duplicated.
   flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox });
 }
 
@@ -2958,8 +3053,11 @@ pub fn parse_node_options_env_var(
 /// Currently supports:
 /// - `--require` / `-r`
 /// - `--inspect-publish-uid`
+///
+/// Public because the CLI's bare-run fast path skips the full parse and has to
+/// apply these itself; `fast_path_matches_full_parse` asserts the two agree.
 #[allow(clippy::disallowed_methods, reason = "reads NODE_OPTIONS from env")]
-fn apply_node_options(flags: &mut Flags) {
+pub fn apply_node_options(flags: &mut Flags) {
   let node_options = match std::env::var("NODE_OPTIONS") {
     Ok(val) if !val.is_empty() => val,
     _ => {
@@ -3074,7 +3172,9 @@ fn node_inspect_addr(word: &str, flag: &str) -> Option<SocketAddr> {
   } else if let Some(rest) = word.strip_prefix(flag)
     && let Some(value) = rest.strip_prefix('=')
   {
-    value.parse().ok()
+    // Unparseable values in NODE_OPTIONS are ignored rather than rejected
+    // (clap parsed NODE_OPTIONS with `ignore_errors`).
+    parse_socket_addr(value).ok()
   } else {
     None
   }
@@ -3111,11 +3211,17 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
     "browser" => BundlePlatform::Browser,
     _ => BundlePlatform::Deno,
   };
-  let sourcemap = result.get_one("sourcemap").map(|s| match s {
-    "inline" => SourceMapType::Inline,
-    "external" => SourceMapType::External,
-    _ => SourceMapType::Linked,
-  });
+  // `--sourcemap` takes an optional value that must be attached with `=`, so a
+  // bare `--sourcemap` means "linked" and never swallows the next argument.
+  let sourcemap = if result.contains("sourcemap") {
+    Some(match result.get_one("sourcemap").unwrap_or("linked") {
+      "inline" => SourceMapType::Inline,
+      "external" => SourceMapType::External,
+      _ => SourceMapType::Linked,
+    })
+  } else {
+    None
+  };
   let external = result
     .get_many("external")
     .map(|v| v.to_vec())
@@ -3178,11 +3284,11 @@ fn audit_parse(
   Ok(())
 }
 
-fn x_parse(result: &ParseResult, flags: &mut Flags) {
+fn x_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   let kind = if let Some(alias) = result.get_one("install-alias") {
     if !result.contains("install-alias") {
       // Not provided, check for script_arg
-      goto_script(result, flags)
+      goto_script(result, flags)?
     } else {
       let name = match alias {
         "dx" => DenoXShimName::Dx,
@@ -3193,21 +3299,24 @@ fn x_parse(result: &ParseResult, flags: &mut Flags) {
       XFlagsKind::InstallAlias(name)
     }
   } else {
-    goto_script(result, flags)
+    goto_script(result, flags)?
   };
 
-  fn goto_script(result: &ParseResult, flags: &mut Flags) -> XFlagsKind {
-    if let Some(args) = result.get_many("script_arg") {
+  fn goto_script(
+    result: &ParseResult,
+    flags: &mut Flags,
+  ) -> Result<XFlagsKind, CliError> {
+    Ok(if let Some(args) = result.get_many("script_arg") {
       if !args.is_empty() {
         let command = args[0].clone();
         let yes = result.get_bool("yes");
-        runtime_args_parse(result, flags, true, true);
+        runtime_args_parse(result, flags, true, true)?;
         permission_args_parse(result, flags);
         flags.argv.extend(args[1..].iter().cloned());
         XFlagsKind::Command(XCommandFlags {
           yes,
           command,
-          ignore_scripts: ignore_scripts_value(result),
+          ignore_scripts: ignore_scripts_value(result)?,
           package: result.get_one("package").map(|s| s.to_string()),
         })
       } else {
@@ -3215,13 +3324,14 @@ fn x_parse(result: &ParseResult, flags: &mut Flags) {
       }
     } else {
       XFlagsKind::Print
-    }
+    })
   }
 
   if !flags.permissions.has_permission() && flags.permission_set.is_none() {
     flags.permissions.allow_all = true;
   }
   flags.subcommand = DenoSubcommand::X(XFlags { kind });
+  Ok(())
 }
 
 fn json_reference_parse(flags: &mut Flags) {
