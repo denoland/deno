@@ -650,6 +650,81 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true, write: true, run: true } },
+  async function netUdpMulticastMembershipChecksGroupPermission() {
+    const reservation = Deno.listenDatagram({
+      hostname: "0.0.0.0",
+      port: 0,
+      transport: "udp",
+    });
+    assert(reservation.addr.transport === "udp");
+    const port = reservation.addr.port;
+    reservation.close();
+
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const listener = Deno.listenDatagram({
+        hostname: "0.0.0.0",
+        port: ${port},
+        transport: "udp",
+        reuseAddress: true,
+      });
+      try {
+        const membership = await listener.joinMulticastV4(
+          "224.0.0.114",
+          "0.0.0.0",
+        );
+        console.log("MEMBERSHIP_RESULT:JOINED");
+        membership.leave();
+      } catch (error) {
+        console.log(
+          error instanceof Deno.errors.NotCapable
+            ? "NOT_CAPABLE"
+            : "MEMBERSHIP_RESULT:" + error.name,
+        );
+      } finally {
+        listener.close();
+      }
+      `,
+    );
+
+    const run = (permissionArgs: string[]) =>
+      execCode3(Deno.execPath(), [
+        "run",
+        "--unstable-net",
+        "--no-prompt",
+        ...permissionArgs,
+        scriptPath,
+      ]).finished();
+
+    try {
+      const [deniedStatus, deniedOutput] = await run([
+        `--allow-net=0.0.0.0:${port}`,
+      ]);
+      assertEquals(deniedStatus, 0);
+      assertStringIncludes(deniedOutput, "NOT_CAPABLE");
+
+      const scopedGrant = `--allow-net=0.0.0.0:${port},224.0.0.114:${port}`;
+      const [allowedStatus, allowedOutput] = await run([scopedGrant]);
+      assertEquals(allowedStatus, 0);
+      assertStringIncludes(allowedOutput, "MEMBERSHIP_RESULT:");
+      assert(!allowedOutput.includes("NOT_CAPABLE"));
+
+      const [explicitlyDeniedStatus, explicitlyDeniedOutput] = await run([
+        scopedGrant,
+        `--deny-net=224.0.0.114:${port}`,
+      ]);
+      assertEquals(explicitlyDeniedStatus, 0);
+      assertStringIncludes(explicitlyDeniedOutput, "NOT_CAPABLE");
+    } finally {
+      Deno.removeSync(scriptPath);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { net: true }, ignore: true },
   async function netUdpSendReceiveMulticastv4() {
     const alice = Deno.listenDatagram({

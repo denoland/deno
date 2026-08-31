@@ -392,6 +392,17 @@ pub async fn op_net_join_multi_v4_udp(
   let addr = Ipv4Addr::from_str(address.as_str())?;
   let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
 
+  let port = socket.local_addr()?.port();
+  {
+    let mut state = state.borrow_mut();
+    crate::check_multicast_membership_permission(
+      state.borrow_mut::<PermissionsContainer>(),
+      std::net::IpAddr::V4(addr),
+      port,
+      "Deno.DatagramConn.joinMulticastV4()",
+    )?;
+  }
+
   socket.join_multicast_v4(addr, interface_addr)?;
 
   Ok(())
@@ -412,6 +423,17 @@ pub async fn op_net_join_multi_v6_udp(
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
+
+  let port = socket.local_addr()?.port();
+  {
+    let mut state = state.borrow_mut();
+    crate::check_multicast_membership_permission(
+      state.borrow_mut::<PermissionsContainer>(),
+      std::net::IpAddr::V6(addr),
+      port,
+      "Deno.DatagramConn.joinMulticastV6()",
+    )?;
+  }
 
   socket.join_multicast_v6(&addr, multi_interface)?;
 
