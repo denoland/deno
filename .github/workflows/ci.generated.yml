@@ -92,7 +92,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-x86_64-bench-
+          restore-keys: 124-cargo-home-linux-x86_64-bench-
       - name: Install Node
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
@@ -132,6 +132,7 @@ jobs:
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Set up incremental LTO and sysroot build
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -275,7 +276,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-bench-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-bench-${{ github.sha }}'
   build-debug-macos-x86_64:
     name: build debug macos-x86_64
     needs:
@@ -322,7 +323,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-macos-x86_64-build-main-
+          restore-keys: 124-cargo-home-macos-x86_64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -334,7 +335,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-macos-x86_64-debug-build-main-
+          restore-keys: 124-cargo-target-macos-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -414,7 +415,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-macos-x86_64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-macos-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -425,7 +426,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-macos-x86_64-debug-build-main-${{ github.sha }}'
+          key: '124-cargo-target-macos-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-macos-x86_64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}debug macos-x86_64'
     needs:
@@ -518,7 +519,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -530,7 +531,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-macos-x86_64-debug-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-macos-x86_64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -652,7 +653,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -663,7 +664,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-macos-x86_64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-macos-x86_64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
   build-release-macos-x86_64:
     name: build release macos-x86_64
     needs:
@@ -723,7 +724,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-macos-x86_64-build-main-
+          restore-keys: 124-cargo-home-macos-x86_64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -735,7 +736,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-macos-x86_64-release-build-main-
+          restore-keys: 124-cargo-target-macos-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1076,7 +1077,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -1088,7 +1089,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-macos-x86_64-release-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-macos-x86_64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -1255,7 +1256,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-macos-aarch64-build-main-
+          restore-keys: 124-cargo-home-macos-aarch64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1267,7 +1268,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-macos-aarch64-debug-build-main-
+          restore-keys: 124-cargo-target-macos-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -1351,7 +1352,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-macos-aarch64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-macos-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1362,7 +1363,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-macos-aarch64-debug-build-main-${{ github.sha }}'
+          key: '124-cargo-target-macos-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-macos-aarch64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}debug macos-aarch64'
     needs:
@@ -1455,7 +1456,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -1467,7 +1468,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-macos-aarch64-debug-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-macos-aarch64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -1603,7 +1604,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -1614,7 +1615,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-macos-aarch64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-macos-aarch64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
   test-libs-debug-macos-aarch64:
     name: test libs debug macos-aarch64
     needs:
@@ -1645,7 +1646,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-macos-aarch64-test-libs-
+          restore-keys: 124-cargo-home-macos-aarch64-test-libs-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -1657,7 +1658,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-macos-aarch64-debug-test-libs-
+          restore-keys: 124-cargo-target-macos-aarch64-debug-test-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -1745,7 +1746,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-macos-aarch64-test-libs-${{ github.sha }}'
+          key: '124-cargo-home-macos-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -1756,7 +1757,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-macos-aarch64-debug-test-libs-${{ github.sha }}'
+          key: '124-cargo-target-macos-aarch64-debug-test-libs-${{ github.sha }}'
   build-release-macos-aarch64:
     name: build release macos-aarch64
     needs:
@@ -1821,7 +1822,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-macos-aarch64-build-main-
+          restore-keys: 124-cargo-home-macos-aarch64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -1833,7 +1834,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-macos-aarch64-release-build-main-
+          restore-keys: 124-cargo-target-macos-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -1899,7 +1900,7 @@ jobs:
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Trace startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -1910,14 +1911,14 @@ jobs:
             --repeats 3 \
             --workload-profile run-first
       - name: Relink release deno with startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-aarch64-apple-darwin.order'
         run: cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
       - name: Verify startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -1928,7 +1929,7 @@ jobs:
             --output target/release/startup-order-aarch64-apple-darwin.order.verify.json
       - name: Upload startup order
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && always()'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')) && always()'
         with:
           name: startup-order-release-macos-aarch64
           path: |-
@@ -2213,7 +2214,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -2225,7 +2226,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-macos-aarch64-release-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-macos-aarch64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -2389,7 +2390,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-windows-x86_64-build-main-
+          restore-keys: 124-cargo-home-windows-x86_64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2401,7 +2402,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-windows-x86_64-debug-build-main-
+          restore-keys: 124-cargo-target-windows-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -2481,7 +2482,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-windows-x86_64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-windows-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2492,7 +2493,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-windows-x86_64-debug-build-main-${{ github.sha }}'
+          key: '124-cargo-target-windows-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-windows-x86_64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}debug windows-x86_64'
     needs:
@@ -2585,7 +2586,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -2597,7 +2598,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-windows-x86_64-debug-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-windows-x86_64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -2710,7 +2711,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -2721,7 +2722,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-windows-x86_64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-windows-x86_64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
   test-libs-debug-windows-x86_64:
     name: test libs debug windows-x86_64
     needs:
@@ -2752,7 +2753,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-windows-x86_64-test-libs-
+          restore-keys: 124-cargo-home-windows-x86_64-test-libs-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -2764,7 +2765,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-windows-x86_64-debug-test-libs-
+          restore-keys: 124-cargo-target-windows-x86_64-debug-test-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -2829,7 +2830,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-windows-x86_64-test-libs-${{ github.sha }}'
+          key: '124-cargo-home-windows-x86_64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2840,7 +2841,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-windows-x86_64-debug-test-libs-${{ github.sha }}'
+          key: '124-cargo-target-windows-x86_64-debug-test-libs-${{ github.sha }}'
   build-release-windows-x86_64:
     name: build release windows-x86_64
     needs:
@@ -2889,7 +2890,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-windows-x86_64-build-main-
+          restore-keys: 124-cargo-home-windows-x86_64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -2901,7 +2902,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-windows-x86_64-release-build-main-
+          restore-keys: 124-cargo-target-windows-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -3263,7 +3264,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -3275,7 +3276,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-windows-x86_64-release-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-windows-x86_64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -3416,7 +3417,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-windows-aarch64-build-main-
+          restore-keys: 124-cargo-home-windows-aarch64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -3428,7 +3429,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-windows-aarch64-debug-build-main-
+          restore-keys: 124-cargo-target-windows-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -3508,7 +3509,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-windows-aarch64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-windows-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -3519,7 +3520,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-windows-aarch64-debug-build-main-${{ github.sha }}'
+          key: '124-cargo-target-windows-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-windows-aarch64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}debug windows-aarch64'
     needs:
@@ -3612,7 +3613,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -3624,7 +3625,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-windows-aarch64-debug-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-windows-aarch64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -3737,7 +3738,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -3748,7 +3749,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-windows-aarch64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-windows-aarch64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
   build-release-windows-aarch64:
     name: build release windows-aarch64
     needs:
@@ -3797,7 +3798,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-windows-aarch64-build-main-
+          restore-keys: 124-cargo-home-windows-aarch64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -3809,7 +3810,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-windows-aarch64-release-build-main-
+          restore-keys: 124-cargo-target-windows-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -4171,7 +4172,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -4183,7 +4184,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-windows-aarch64-release-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-windows-aarch64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -4334,7 +4335,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-x86_64-build-main-
+          restore-keys: 124-cargo-home-linux-x86_64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -4346,7 +4347,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-x86_64-release-build-main-
+          restore-keys: 124-cargo-target-linux-x86_64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -4390,6 +4391,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -4510,6 +4512,7 @@ jobs:
           cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p denort_desktop
           df -h
       - name: Trace startup order
+        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')'
         env:
           NO_COLOR: 1
         run: |-
@@ -4520,12 +4523,14 @@ jobs:
             --repeats 3 \
             --workload-profile run-first
       - name: Relink release deno with startup order
+        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')'
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-x86_64-unknown-linux-gnu.order'
         run: 'cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace-frame-pointer'
       - name: Verify startup order
+        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')'
         env:
           NO_COLOR: 1
         run: |-
@@ -4536,7 +4541,7 @@ jobs:
             --output target/release/startup-order-x86_64-unknown-linux-gnu.order.verify.json
       - name: Upload startup order
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: always()
+        if: '(github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')) && always()'
         with:
           name: startup-order-release-linux-x86_64
           path: |-
@@ -4745,7 +4750,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -4756,7 +4761,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-x86_64-release-build-main-${{ github.sha }}'
+          key: '124-cargo-target-linux-x86_64-release-build-main-${{ github.sha }}'
   test-release-linux-x86_64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}release linux-x86_64'
     needs:
@@ -4849,7 +4854,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -4861,7 +4866,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-linux-x86_64-release-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-linux-x86_64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -4900,6 +4905,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -5078,7 +5084,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -5089,7 +5095,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-x86_64-release-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-linux-x86_64-release-test-${{ matrix.test_crate }}-${{ github.sha }}'
   wpt-release-linux-x86_64:
     name: wpt release linux-x86_64
     needs:
@@ -5129,7 +5135,7 @@ jobs:
             ./target/wpt_input_hash
             ./target/autobahn_input_hash
           key: never_saved
-          restore-keys: 123-wpt-target-linux-x86_64-release-
+          restore-keys: 124-wpt-target-linux-x86_64-release-
       - name: Install Deno
         uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5196,7 +5202,7 @@ jobs:
           path: |-
             ./target/wpt_input_hash
             ./target/autobahn_input_hash
-          key: '123-wpt-target-linux-x86_64-release-${{ github.sha }}'
+          key: '124-wpt-target-linux-x86_64-release-${{ github.sha }}'
   build-debug-linux-x86_64:
     name: build debug linux-x86_64
     needs:
@@ -5237,7 +5243,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-x86_64-build-main-
+          restore-keys: 124-cargo-home-linux-x86_64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -5249,7 +5255,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-x86_64-debug-build-main-
+          restore-keys: 124-cargo-target-linux-x86_64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -5293,6 +5299,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -5430,7 +5437,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -5441,7 +5448,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-x86_64-debug-build-main-${{ github.sha }}'
+          key: '124-cargo-target-linux-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-linux-x86_64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}debug linux-x86_64'
     needs:
@@ -5534,7 +5541,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -5546,7 +5553,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-linux-x86_64-debug-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-linux-x86_64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -5585,6 +5592,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -5764,7 +5772,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -5775,7 +5783,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-x86_64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-linux-x86_64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
   build-libs-debug-linux-x86_64:
     name: build libs debug linux-x86_64
     needs:
@@ -5833,7 +5841,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-x86_64-build-libs-
+          restore-keys: 124-cargo-home-linux-x86_64-build-libs-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -5845,7 +5853,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-x86_64-debug-build-libs-
+          restore-keys: 124-cargo-target-linux-x86_64-debug-build-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5880,7 +5888,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-build-libs-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-build-libs-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -5891,7 +5899,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-x86_64-debug-build-libs-${{ github.sha }}'
+          key: '124-cargo-target-linux-x86_64-debug-build-libs-${{ github.sha }}'
   build-debug-linux-aarch64:
     name: build debug linux-aarch64
     needs:
@@ -5932,7 +5940,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-aarch64-build-main-
+          restore-keys: 124-cargo-home-linux-aarch64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -5944,7 +5952,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-aarch64-debug-build-main-
+          restore-keys: 124-cargo-target-linux-aarch64-debug-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -6024,7 +6032,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-aarch64-build-main-${{ github.sha }}'
+          key: '124-cargo-home-linux-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -6035,7 +6043,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-aarch64-debug-build-main-${{ github.sha }}'
+          key: '124-cargo-target-linux-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-linux-aarch64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}debug linux-aarch64'
     needs:
@@ -6128,7 +6136,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -6140,7 +6148,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-linux-aarch64-debug-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-linux-aarch64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -6265,7 +6273,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -6276,7 +6284,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-aarch64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
+          key: '124-cargo-target-linux-aarch64-debug-test-${{ matrix.test_crate }}-${{ github.sha }}'
   test-libs-debug-linux-aarch64:
     name: test libs debug linux-aarch64
     needs:
@@ -6307,7 +6315,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-aarch64-test-libs-
+          restore-keys: 124-cargo-home-linux-aarch64-test-libs-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -6319,7 +6327,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-aarch64-debug-test-libs-
+          restore-keys: 124-cargo-target-linux-aarch64-debug-test-libs-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -6390,7 +6398,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-aarch64-test-libs-${{ github.sha }}'
+          key: '124-cargo-home-linux-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -6401,7 +6409,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-aarch64-debug-test-libs-${{ github.sha }}'
+          key: '124-cargo-target-linux-aarch64-debug-test-libs-${{ github.sha }}'
   build-release-linux-aarch64:
     name: build release linux-aarch64
     needs:
@@ -6450,7 +6458,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-aarch64-build-main-
+          restore-keys: 124-cargo-home-linux-aarch64-build-main-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -6462,7 +6470,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-aarch64-release-build-main-
+          restore-keys: 124-cargo-target-linux-aarch64-release-build-main-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -6511,6 +6519,7 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -6633,7 +6642,7 @@ jobs:
           cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p denort_desktop
           df -h
       - name: Trace startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -6644,14 +6653,14 @@ jobs:
             --repeats 3 \
             --workload-profile run-first
       - name: Relink release deno with startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-aarch64-unknown-linux-gnu.order'
         run: 'cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace-frame-pointer'
       - name: Verify startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -6662,7 +6671,7 @@ jobs:
             --output target/release/startup-order-aarch64-unknown-linux-gnu.order.verify.json
       - name: Upload startup order
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')) && always()'
         with:
           name: startup-order-release-linux-aarch64
           path: |-
@@ -6960,7 +6969,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
@@ -6972,7 +6981,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-linux-aarch64-release-test-${{ matrix.test_crate }}-'
+          restore-keys: '124-cargo-target-linux-aarch64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
@@ -7011,6 +7020,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -7233,7 +7243,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: '123-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-'
+          restore-keys: '124-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-'
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -7245,7 +7255,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '123-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-'
+          restore-keys: '124-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         with:
@@ -7299,7 +7309,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ github.sha }}'
+          key: '124-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -7310,7 +7320,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
+          key: '124-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
   deno-core-test:
     name: deno_core test linux-x86_64
     needs:
@@ -7354,7 +7364,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: never_saved
-          restore-keys: 123-cargo-home-linux-x86_64-deno-core-test-
+          restore-keys: 124-cargo-home-linux-x86_64-deno-core-test-
       - name: Restore cache build output
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
@@ -7366,7 +7376,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: 123-cargo-target-linux-x86_64-release-deno-core-test-
+          restore-keys: 124-cargo-target-linux-x86_64-release-deno-core-test-
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -7405,6 +7415,7 @@ jobs:
           deno-version: v2.x
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -7532,7 +7543,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '123-cargo-home-linux-x86_64-deno-core-test-${{ github.sha }}'
+          key: '124-cargo-home-linux-x86_64-deno-core-test-${{ github.sha }}'
       - name: Cache build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -7543,7 +7554,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '123-cargo-target-linux-x86_64-release-deno-core-test-${{ github.sha }}'
+          key: '124-cargo-target-linux-x86_64-release-deno-core-test-${{ github.sha }}'
   deno-core-miri:
     name: deno_core miri linux-x86_64
     needs:

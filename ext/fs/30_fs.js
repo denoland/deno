@@ -89,10 +89,10 @@ const {
   ObjectValues,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
+  Symbol,
   SymbolAsyncIterator,
   SymbolDispose,
   SymbolIterator,
-  SymbolFor,
   TypeError,
   Uint32Array,
 } = primordials;
@@ -110,6 +110,8 @@ function lazyStreams() {
     (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
 }
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+
+const fsFileConstructorKey = Symbol("Deno.internal.FsFile");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -599,7 +601,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid, fsFileConstructorKey);
 }
 
 async function open(
@@ -612,7 +614,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid, fsFileConstructorKey);
 }
 
 function createSync(path) {
@@ -646,7 +648,7 @@ class FsFile {
       value: rid,
     });
     this.#rid = rid;
-    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
+    if (!symbol || symbol !== fsFileConstructorKey) {
       throw new TypeError(
         "'Deno.FsFile' cannot be constructed, use 'Deno.open()' or 'Deno.openSync()' instead",
       );
@@ -983,6 +985,7 @@ return {
   createSync,
   cwd,
   FsFile,
+  fsFileConstructorKey,
   link,
   linkSync,
   lstat,
