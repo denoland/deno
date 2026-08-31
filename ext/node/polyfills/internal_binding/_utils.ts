@@ -15,6 +15,7 @@ const {
   Int8Array,
   MathMin,
   NumberPOSITIVE_INFINITY,
+  NumberPrototypeToString,
   SafeRegExp,
   StringPrototypeCharCodeAt,
   StringPrototypeIndexOf,
@@ -24,6 +25,7 @@ const {
   StringPrototypeTrim,
   StringPrototypeTrimStart,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
@@ -141,6 +143,17 @@ function hexToBytes(str: string) {
     : TypedArrayPrototypeSubarray(byteArray, 0, i);
 }
 
+// JS fallback for when native Uint8Array.prototype.toHex is unavailable.
+function bytesToHex(bytes: Uint8Array) {
+  const length = TypedArrayPrototypeGetLength(bytes);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    const b = bytes[i];
+    out += (b < 0x10 ? "0" : "") + NumberPrototypeToString(b, 16);
+  }
+  return out;
+}
+
 function utf16leToBytes(str: string, units?: number) {
   // If units is defined, round it to even values for 16 byte "steps"
   // and use it as an upper bound value for our string byte array's length.
@@ -172,6 +185,7 @@ return {
   base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
+  bytesToHex,
   hexToBytes,
   utf16leToBytes,
   unhexTable,

@@ -2039,6 +2039,7 @@ fn main_and_side_module() {
 
 #[test]
 fn dynamic_imports_snapshot() {
+  let _snapshot_lock = crate::runtime::tests::snapshot_test_lock();
   //TODO: Once the issue with the ModuleNamespaceEntryGetter is fixed, we can maintain a reference to the module
   // and use it when loading the snapshot
   let snapshot = {
@@ -2079,6 +2080,7 @@ fn dynamic_imports_snapshot() {
 
 #[test]
 fn import_meta_snapshot() {
+  let _snapshot_lock = crate::runtime::tests::snapshot_test_lock();
   let snapshot = {
     const MAIN_WITH_CODE_SRC: &str = r#"
       if (import.meta.url != 'file:///main_with_code.js') throw Error();
