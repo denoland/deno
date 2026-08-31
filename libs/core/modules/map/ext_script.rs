@@ -204,7 +204,7 @@ impl ModuleMap {
     data
       .known_lazy_esm
       .borrow_mut()
-      .insert(specifier.as_str().to_string());
+      .insert(std::borrow::Cow::Owned(specifier.as_str().to_string()));
     assert!(
       data
         .lazy_esm_sources
