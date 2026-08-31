@@ -139,9 +139,12 @@ function createLookupPromise(
     req.resolve = resolve;
     req.reject = reject;
 
+    const asciiHostname = domainToASCII(hostname);
     const err = cares.getaddrinfo(
       req,
-      domainToASCII(hostname),
+      // Preserve numeric IP aliases until after resolution so Deno's network
+      // permissions are checked against the resolved canonical address.
+      isIP(asciiHostname) ? hostname : asciiHostname,
       family,
       hints,
       dnsOrderToNumber(dnsOrder),

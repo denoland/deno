@@ -302,9 +302,14 @@ function lookup(
   req.oncomplete = all ? onlookupall : onlookup;
   req.port = port;
 
+  const asciiHostname = domainToASCII(hostname);
   const err = cares.getaddrinfo(
     req,
-    domainToASCII(hostname),
+    // Keep non-canonical numeric IP forms (for example `2130706433`) intact.
+    // Passing the WHATWG-normalized address here would make the initial net
+    // permission check treat it as an IP literal and skip the post-resolution
+    // check used for hostnames.
+    isIP(asciiHostname) ? hostname : asciiHostname,
     family,
     hints,
     dnsOrderToNumber(dnsOrder),
