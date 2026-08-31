@@ -5,6 +5,8 @@ use core::convert::Infallible as Never;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::pin::pin;
 use std::process;
@@ -31,7 +33,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
-use deno_core::url::Url;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -63,6 +64,122 @@ impl Default for InspectPublishUid {
       http: true,
     }
   }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidatedHost {
+  authority: String,
+  hostname: String,
+  port: Option<u16>,
+}
+
+impl ValidatedHost {
+  pub fn authority(&self) -> &str {
+    &self.authority
+  }
+
+  pub fn hostname(&self) -> &str {
+    &self.hostname
+  }
+
+  pub fn port(&self) -> Option<u16> {
+    self.port
+  }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvalidHostHeader;
+
+/// Validate an inspector request's `Host` header.
+///
+/// Inspector clients use `localhost` or an IP literal as their authority.
+/// Keep the supplied port so discovery continues to work through port
+/// forwarding, while rejecting named or ambiguous authorities.
+pub fn validated_host_header<T>(
+  req: &http::Request<T>,
+) -> Result<Option<ValidatedHost>, InvalidHostHeader> {
+  let mut values = req.headers().get_all(http::header::HOST).iter();
+  let Some(value) = values.next() else {
+    return Ok(None);
+  };
+  if values.next().is_some() {
+    return Err(InvalidHostHeader);
+  }
+  let authority = value.to_str().map_err(|_| InvalidHostHeader)?;
+  parse_host_authority(authority).map(Some)
+}
+
+fn parse_host_authority(
+  authority: &str,
+) -> Result<ValidatedHost, InvalidHostHeader> {
+  fn parse_port(port: &str) -> Result<u16, InvalidHostHeader> {
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+      return Err(InvalidHostHeader);
+    }
+    port.parse().map_err(|_| InvalidHostHeader)
+  }
+
+  if authority.is_empty() {
+    return Err(InvalidHostHeader);
+  }
+
+  if let Some(bracketed) = authority.strip_prefix('[') {
+    let Some(end) = bracketed.find(']') else {
+      return Err(InvalidHostHeader);
+    };
+    let hostname = &bracketed[..end];
+    let suffix = &bracketed[end + 1..];
+    let port = if suffix.is_empty() {
+      None
+    } else {
+      Some(parse_port(
+        suffix.strip_prefix(':').ok_or(InvalidHostHeader)?,
+      )?)
+    };
+    let ip = hostname
+      .parse::<Ipv6Addr>()
+      .map_err(|_| InvalidHostHeader)?;
+    if ip.is_unspecified() {
+      return Err(InvalidHostHeader);
+    }
+    return Ok(ValidatedHost {
+      authority: authority.to_string(),
+      hostname: ip.to_string(),
+      port,
+    });
+  }
+
+  if authority.contains(['[', ']']) {
+    return Err(InvalidHostHeader);
+  }
+
+  let (hostname, port) = match authority.rsplit_once(':') {
+    Some((hostname, port)) => {
+      if hostname.contains(':') {
+        return Err(InvalidHostHeader);
+      }
+      (hostname, Some(parse_port(port)?))
+    }
+    None => (authority, None),
+  };
+
+  let hostname = if hostname.eq_ignore_ascii_case("localhost") {
+    "localhost".to_string()
+  } else {
+    let ip = hostname
+      .parse::<Ipv4Addr>()
+      .map_err(|_| InvalidHostHeader)?;
+    if ip.octets()[0] == 0 {
+      return Err(InvalidHostHeader);
+    }
+    ip.to_string()
+  };
+
+  Ok(ValidatedHost {
+    authority: authority.to_string(),
+    hostname,
+    port,
+  })
 }
 
 /// Websocket server that is used to proxy connections from
@@ -392,12 +509,14 @@ fn handle_ws_request(
 
 fn handle_json_request(
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
-  host: Option<String>,
+  host: Option<ValidatedHost>,
 ) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
   let data = inspector_map
     .borrow()
     .values()
-    .map(move |info| info.get_json_metadata(&host))
+    .map(move |info| {
+      info.get_json_metadata(host.as_ref().map(ValidatedHost::authority))
+    })
     .collect::<Vec<_>>();
   let body: http_body_util::Full<Bytes> =
     Bytes::from(serde_json::to_string(&data).unwrap()).into();
@@ -605,19 +724,8 @@ async fn server(
 
       let service = hyper::service::service_fn(
         move |req: http::Request<hyper::body::Incoming>| {
-          future::ready({
-            // If the host header can make a valid URL, use it
-            let host = req
-              .headers()
-              .get("host")
-              .and_then(|host| host.to_str().ok())
-              .and_then(|host| Url::parse(&format!("http://{host}")).ok())
-              .and_then(|url| match (url.host(), url.port()) {
-                (Some(host), Some(port)) => Some(format!("{host}:{port}")),
-                (Some(host), None) => Some(format!("{host}")),
-                _ => None,
-              });
-            match (req.method(), req.uri().path()) {
+          future::ready(match validated_host_header(&req) {
+            Ok(host) => match (req.method(), req.uri().path()) {
               (&http::Method::GET, "/ws/events") => {
                 handle_ws_events_request(req)
               }
@@ -644,7 +752,12 @@ async fn server(
                 .body(Box::new(http_body_util::Full::new(Bytes::from(
                   "Not Found",
                 )))),
-            }
+            },
+            Err(_) => http::Response::builder()
+              .status(http::StatusCode::BAD_REQUEST)
+              .body(Box::new(http_body_util::Full::new(Bytes::from(
+                "Invalid Host header",
+              )))),
           })
         },
       );
@@ -815,9 +928,9 @@ impl InspectorInfo {
     }
   }
 
-  fn get_json_metadata(&self, host: &Option<String>) -> Value {
+  fn get_json_metadata(&self, host: Option<&str>) -> Value {
     let host_listen = format!("{}", self.host);
-    let host = host.as_ref().unwrap_or(&host_listen);
+    let host = host.unwrap_or(&host_listen);
     json!({
       "description": "deno",
       "devtoolsFrontendUrl": self.get_frontend_url(host),
@@ -884,5 +997,180 @@ impl Default for MainInspectorSessionChannel {
 impl Clone for MainInspectorSessionChannel {
   fn clone(&self) -> Self {
     Self(self.0.clone())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  use http_body_util::BodyExt;
+  use http_body_util::Empty;
+
+  use super::*;
+
+  fn request_with_host(host: Option<&str>) -> http::Request<()> {
+    let mut request = http::Request::builder().uri("/json");
+    if let Some(host) = host {
+      request = request.header(http::header::HOST, host);
+    }
+    request.body(()).unwrap()
+  }
+
+  #[test]
+  fn validates_unambiguous_inspector_authorities() {
+    for authority in [
+      "localhost",
+      "LOCALHOST:43123",
+      "127.0.0.1",
+      "192.0.2.1:43123",
+      "[::1]",
+      "[2001:db8::1]:43123",
+    ] {
+      let request = request_with_host(Some(authority));
+      let host = validated_host_header(&request).unwrap().unwrap();
+      assert_eq!(host.authority(), authority);
+    }
+    assert!(
+      validated_host_header(&request_with_host(None))
+        .unwrap()
+        .is_none()
+    );
+  }
+
+  #[test]
+  fn rejects_named_or_ambiguous_inspector_authorities() {
+    for authority in [
+      "",
+      "example.test",
+      "localhost.",
+      "localhost.example",
+      "user@localhost",
+      "127.1",
+      "0177.0.0.1",
+      "0x7f.0.0.1",
+      "2130706433",
+      "0.0.0.0",
+      "0.1.2.3:9229",
+      "::1",
+      "[::]",
+      "[::1",
+      "[::1]:",
+      "[::1]:99999",
+      "127.0.0.1:abc",
+    ] {
+      assert!(
+        validated_host_header(&request_with_host(Some(authority))).is_err(),
+        "{authority} should be rejected"
+      );
+    }
+
+    let request = http::Request::builder()
+      .uri("/json")
+      .header(http::header::HOST, "localhost:9229")
+      .header(http::header::HOST, "127.0.0.1:9229")
+      .body(())
+      .unwrap();
+    assert!(validated_host_header(&request).is_err());
+  }
+
+  async fn send_http(
+    addr: SocketAddr,
+    request: http::Request<Empty<Bytes>>,
+  ) -> (http::StatusCode, String) {
+    let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let io = TokioIo::new(stream);
+    let (mut sender, connection) =
+      hyper::client::conn::http1::handshake(io).await.unwrap();
+    tokio::spawn(async move {
+      let _ = connection.with_upgrades().await;
+    });
+    let response = sender.send_request(request).await.unwrap();
+    let status = response.status();
+    let body = response.collect().await.unwrap().to_bytes();
+    (status, String::from_utf8(body.to_vec()).unwrap())
+  }
+
+  fn get_request(
+    path: &str,
+    host: Option<&str>,
+  ) -> http::Request<Empty<Bytes>> {
+    let mut request =
+      http::Request::builder().method(http::Method::GET).uri(path);
+    if let Some(host) = host {
+      request = request.header(http::header::HOST, host);
+    } else {
+      request = request.version(http::Version::HTTP_10);
+    }
+    request.body(Empty::new()).unwrap()
+  }
+
+  #[tokio::test]
+  async fn inspector_routes_validate_host_and_preserve_forwarded_authority() {
+    let server = InspectorServer::new(
+      "127.0.0.1:0".parse().unwrap(),
+      "deno",
+      InspectPublishUid::default(),
+    )
+    .unwrap();
+
+    let (new_session_tx, _new_session_rx) = mpsc::unbounded();
+    let (_keep_registered, deregister_rx) = oneshot::channel();
+    let info = InspectorInfo::new(
+      server.host,
+      new_session_tx,
+      deregister_rx,
+      "file:///main.ts".to_string(),
+      false,
+    );
+    let uuid = info.uuid;
+    server.register_inspector_tx.unbounded_send(info).unwrap();
+
+    let mut forwarded_response = String::new();
+    for _ in 0..50 {
+      let (status, response) =
+        send_http(server.host, get_request("/json", Some("localhost:43123")))
+          .await;
+      assert_eq!(status, http::StatusCode::OK);
+      forwarded_response = response;
+      if forwarded_response.contains(&uuid.to_string()) {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(forwarded_response.contains(&format!(
+      "\"webSocketDebuggerUrl\":\"ws://localhost:43123/{uuid}\""
+    )));
+
+    let (status, ip_response) =
+      send_http(server.host, get_request("/json", Some("127.0.0.1:54321")))
+        .await;
+    assert_eq!(status, http::StatusCode::OK);
+    assert!(ip_response.contains(&format!(
+      "\"webSocketDebuggerUrl\":\"ws://127.0.0.1:54321/{uuid}\""
+    )));
+
+    let (status, _) = send_http(
+      server.host,
+      get_request("/json", Some("example.test:43123")),
+    )
+    .await;
+    assert_eq!(status, http::StatusCode::BAD_REQUEST);
+
+    let ws_request = http::Request::builder()
+      .method(http::Method::GET)
+      .uri(format!("/ws/{uuid}"))
+      .header(http::header::HOST, "example.test:43123")
+      .header(http::header::UPGRADE, "websocket")
+      .header(http::header::CONNECTION, "upgrade")
+      .header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+      .header("Sec-WebSocket-Version", "13")
+      .body(Empty::new())
+      .unwrap();
+    let (status, _) = send_http(server.host, ws_request).await;
+    assert_eq!(status, http::StatusCode::BAD_REQUEST);
+
+    let (status, _) = send_http(server.host, get_request("/json", None)).await;
+    assert_eq!(status, http::StatusCode::OK);
   }
 }

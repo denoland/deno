@@ -1012,6 +1012,7 @@
     "parallel/test-dgram-connect.js": {},
     "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
+    "parallel/test-dgram-default-lookup-ip.js": {},
     "parallel/test-dgram-error-message-address.js": {},
     "parallel/test-dgram-implicit-bind.js": {},
     "parallel/test-dgram-ipv6only.js": {},
@@ -1517,7 +1518,11 @@
     "parallel/test-fs-read-stream-file-handle.js": {},
     "parallel/test-fs-read-stream-inherit.js": {},
     "parallel/test-fs-read-stream-patch-open.js": {},
-    "parallel/test-fs-read-stream-pos.js": { "windows": false },
+    "parallel/test-fs-read-stream-pos.js": {
+      "windows": false,
+      "flaky": true,
+      "reason": "Exit is timing-probabilistic: the reader must catch the file mid-append to observe a sub-highWaterMark chunk (isLow) and then receive one more chunk before EOF. The test's own safety budget is 90s, but the node_compat runner caps each test at 10s (20s on macOS), so on a slow/loaded runner (e.g. linux-aarch64) the interleaving can fail to occur in time and the test times out (denoland/deno#36048)"
+    },
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
     "parallel/test-fs-read-stream.js": {},
@@ -5508,7 +5513,10 @@
       "windows": false,
       "reason": "not passing"
     },
-    "pummel/test-blob-slice-with-large-size.js": {},
+    "pummel/test-blob-slice-with-large-size.js": {
+      "timeoutMs": 60000,
+      "reason": "allocates a 2 GiB buffer and copies it into the blob store, peaking above 4 GiB RSS; faulting that much memory in on a loaded CI runner regularly exceeds the default 10s timeout"
+    },
     "pummel/test-buffer-large-size-buffer-alloc.js": {},
     "pummel/test-buffer-large-size-buffer-write.js": {},
     "pummel/test-buffer-large-size-slowbuffer.js": {},

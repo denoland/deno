@@ -20,7 +20,6 @@ const {
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
-  ObjectGetOwnPropertyDescriptors,
   ObjectKeys,
   ObjectSetPrototypeOf,
   ObjectValues,
@@ -66,6 +65,7 @@ const {
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_TRAILER_INVALID,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_INVALID_HTTP_TOKEN,
   ERR_METHOD_NOT_IMPLEMENTED,
@@ -175,70 +175,114 @@ export function OutgoingMessage(options?: any) {
 ObjectSetPrototypeOf(OutgoingMessage.prototype, Stream.prototype);
 ObjectSetPrototypeOf(OutgoingMessage, Stream);
 
-ObjectDefineProperties(
-  OutgoingMessage.prototype,
-  ObjectGetOwnPropertyDescriptors({
-    get writableFinished() {
+ObjectDefineProperties(OutgoingMessage.prototype, {
+  writableFinished: {
+    __proto__: null,
+    get: function writableFinished() {
       return (
         this.finished &&
         this.outputSize === 0 &&
         (!this[kSocket] || this[kSocket].writableLength === 0)
       );
     },
-
-    get writableObjectMode() {
+    enumerable: true,
+    configurable: true,
+  },
+  writableObjectMode: {
+    __proto__: null,
+    get: function writableObjectMode() {
       return false;
     },
-
-    get writableLength() {
+    enumerable: true,
+    configurable: true,
+  },
+  writableLength: {
+    __proto__: null,
+    get: function writableLength() {
       return this.outputSize + this[kChunkedLength] +
         (this[kSocket] ? this[kSocket].writableLength : 0);
     },
-
-    get writableHighWaterMark() {
+    enumerable: true,
+    configurable: true,
+  },
+  writableHighWaterMark: {
+    __proto__: null,
+    get: function writableHighWaterMark() {
       return this[kSocket]
         ? this[kSocket].writableHighWaterMark
         : this[kHighWaterMark] || HIGH_WATER_MARK;
     },
-
-    get writableCorked() {
+    enumerable: true,
+    configurable: true,
+  },
+  writableCorked: {
+    __proto__: null,
+    get: function writableCorked() {
       const corked = this[kSocket] ? this[kSocket].writableCorked : 0;
       return corked + this[kCorked];
     },
-
-    get connection() {
+    enumerable: true,
+    configurable: true,
+  },
+  connection: {
+    __proto__: null,
+    get: function connection() {
       return this[kSocket];
     },
-
-    set connection(val) {
+    set: function connection(val) {
       this.socket = val;
     },
-
-    get writableEnded() {
+    enumerable: true,
+    configurable: true,
+  },
+  writableEnded: {
+    __proto__: null,
+    get: function writableEnded() {
       return this.finished;
     },
-
-    get writableNeedDrain() {
+    enumerable: true,
+    configurable: true,
+  },
+  writableNeedDrain: {
+    __proto__: null,
+    get: function writableNeedDrain() {
       return !this.destroyed && !this.finished && this[kNeedDrain];
     },
-
-    cork() {
+    enumerable: true,
+    configurable: true,
+  },
+  cork: {
+    __proto__: null,
+    value: function cork() {
       if (this.socket) {
         this.socket.cork();
       } else {
         this[kCorked]++;
       }
     },
-
-    uncork() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  uncork: {
+    __proto__: null,
+    value: function uncork() {
       if (this.socket) {
         this.socket.uncork();
       } else if (this[kCorked]) {
         this[kCorked]--;
       }
     },
-
-    setTimeout(msecs: number, callback?: (...args: unknown[]) => void) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  setTimeout: {
+    __proto__: null,
+    value: function setTimeout(
+      msecs: number,
+      callback?: (...args: unknown[]) => void,
+    ) {
       if (callback) {
         this.on("timeout", callback);
       }
@@ -252,11 +296,16 @@ ObjectDefineProperties(
       }
       return this;
     },
-
-    // It's possible that the socket will be destroyed, and removed from
-    // any messages, before ever calling this.  In that case, just skip
-    // it, since something else is destroying this connection anyway.
-    destroy(error: unknown) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  // It's possible that the socket will be destroyed, and removed from
+  // any messages, before ever calling this.  In that case, just skip
+  // it, since something else is destroying this connection anyway.
+  destroy: {
+    __proto__: null,
+    value: function destroy(error: unknown) {
       if (this.destroyed) {
         return this;
       }
@@ -272,8 +321,13 @@ ObjectDefineProperties(
 
       return this;
     },
-
-    setHeader(name: string, value: string) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  setHeader: {
+    __proto__: null,
+    value: function setHeader(name: string, value: string) {
       if (this._header) {
         throw new ERR_HTTP_HEADERS_SENT("set");
       }
@@ -289,8 +343,13 @@ ObjectDefineProperties(
       headers[StringPrototypeToLowerCase(name)] = [name, value];
       return this;
     },
-
-    appendHeader(name, value) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  appendHeader: {
+    __proto__: null,
+    value: function appendHeader(name, value) {
       if (this._header) {
         throw new ERR_HTTP_HEADERS_SENT("append");
       }
@@ -321,9 +380,14 @@ ObjectDefineProperties(
 
       return this;
     },
-
-    // Returns a shallow copy of the current outgoing headers.
-    getHeaders() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  // Returns a shallow copy of the current outgoing headers.
+  getHeaders: {
+    __proto__: null,
+    value: function getHeaders() {
       const headers = this[kOutHeaders];
       const ret = ObjectCreate(null);
       if (headers) {
@@ -338,14 +402,24 @@ ObjectDefineProperties(
       }
       return ret;
     },
-
-    hasHeader(name: string) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  hasHeader: {
+    __proto__: null,
+    value: function hasHeader(name: string) {
       validateString(name, "name");
       return this[kOutHeaders] !== null &&
         !!this[kOutHeaders][StringPrototypeToLowerCase(name)];
     },
-
-    removeHeader(name: string) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  removeHeader: {
+    __proto__: null,
+    value: function removeHeader(name: string) {
       validateString(name, "name");
 
       if (this._header) {
@@ -373,8 +447,13 @@ ObjectDefineProperties(
         delete this[kOutHeaders][key];
       }
     },
-
-    getHeader(name: string) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  getHeader: {
+    __proto__: null,
+    value: function getHeader(name: string) {
       validateString(name, "name");
 
       const headers = this[kOutHeaders];
@@ -385,14 +464,24 @@ ObjectDefineProperties(
       const entry = headers[StringPrototypeToLowerCase(name)];
       return entry && entry[1];
     },
-
-    // Returns an array of the names of the current outgoing headers.
-    getHeaderNames() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  // Returns an array of the names of the current outgoing headers.
+  getHeaderNames: {
+    __proto__: null,
+    value: function getHeaderNames() {
       return this[kOutHeaders] !== null ? ObjectKeys(this[kOutHeaders]) : [];
     },
-
-    // Returns an array of the names of the current outgoing raw headers.
-    getRawHeaderNames() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  // Returns an array of the names of the current outgoing raw headers.
+  getRawHeaderNames: {
+    __proto__: null,
+    value: function getRawHeaderNames() {
       const headersMap = this[kOutHeaders];
       if (headersMap === null) return [];
 
@@ -406,12 +495,17 @@ ObjectDefineProperties(
 
       return headers;
     },
-
-    // Match Node: call the standalone write_() helper with `this` as the
-    // first argument instead of a method call on `this`. This keeps the
-    // chunk-type validation reachable when callers pass a fake `this` via
-    // `outgoingMessage.write.call(fake)` (see lib/_http_outgoing.js).
-    write(
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  // Match Node: call the standalone write_() helper with `this` as the
+  // first argument instead of a method call on `this`. This keeps the
+  // chunk-type validation reachable when callers pass a fake `this` via
+  // `outgoingMessage.write.call(fake)` (see lib/_http_outgoing.js).
+  write: {
+    __proto__: null,
+    value: function write(
       chunk: string | Uint8Array | Buffer,
       encoding: string | null,
       callback: () => void,
@@ -426,8 +520,13 @@ ObjectDefineProperties(
       }
       return ret;
     },
-
-    addTrailers(headers: any) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  addTrailers: {
+    __proto__: null,
+    value: function addTrailers(headers: any) {
       this._trailer = "";
       const keys = ObjectKeys(headers);
       const isArray = ArrayIsArray(headers);
@@ -450,8 +549,13 @@ ObjectDefineProperties(
         this._trailer += field + ": " + value + "\r\n";
       }
     },
-
-    end(chunk: any, encoding: any, callback: any) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  end: {
+    __proto__: null,
+    value: function end(chunk: any, encoding: any, callback: any) {
       if (typeof chunk === "function") {
         callback = chunk;
         chunk = null;
@@ -546,8 +650,13 @@ ObjectDefineProperties(
 
       return this;
     },
-
-    flushHeaders() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  flushHeaders: {
+    __proto__: null,
+    value: function flushHeaders() {
       if (!this._header) {
         this._implicitHeader();
       }
@@ -555,41 +664,61 @@ ObjectDefineProperties(
       // Force-flush the headers.
       this._send("");
     },
-
-    pipe() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  pipe: {
+    __proto__: null,
+    value: function pipe() {
       // OutgoingMessage should be write-only. Piping from it is disabled.
       this.emit("error", new ERR_STREAM_CANNOT_PIPE());
     },
-
-    _implicitHeader() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _implicitHeader: {
+    __proto__: null,
+    value: function _implicitHeader() {
       throw new ERR_METHOD_NOT_IMPLEMENTED("_implicitHeader()");
     },
-
-    _finish() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _finish: {
+    __proto__: null,
+    value: function _finish() {
       assert(this.socket);
       this.emit("prefinish");
     },
-
-    // This logic is probably a bit confusing. Let me explain a bit:
-    //
-    // In both HTTP servers and clients it is possible to queue up several
-    // outgoing messages. This is easiest to imagine in the case of a client.
-    // Take the following situation:
-    //
-    //    req1 = client.request('GET', '/');
-    //    req2 = client.request('POST', '/');
-    //
-    // When the user does
-    //
-    //   req2.write('hello world\n');
-    //
-    // it's possible that the first request has not been completely flushed to
-    // the socket yet. Thus the outgoing messages need to be prepared to queue
-    // up data internally before sending it on further to the socket's queue.
-    //
-    // This function, outgoingFlush(), is called by both the Server and Client
-    // to attempt to flush any pending messages out to the socket.
-    _flush() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  // This logic is probably a bit confusing. Let me explain a bit:
+  //
+  // In both HTTP servers and clients it is possible to queue up several
+  // outgoing messages. This is easiest to imagine in the case of a client.
+  // Take the following situation:
+  //
+  //    req1 = client.request('GET', '/');
+  //    req2 = client.request('POST', '/');
+  //
+  // When the user does
+  //
+  //   req2.write('hello world\n');
+  //
+  // it's possible that the first request has not been completely flushed to
+  // the socket yet. Thus the outgoing messages need to be prepared to queue
+  // up data internally before sending it on further to the socket's queue.
+  //
+  // This function, outgoingFlush(), is called by both the Server and Client
+  // to attempt to flush any pending messages out to the socket.
+  _flush: {
+    __proto__: null,
+    value: function _flush() {
       const socket = this.socket;
 
       if (socket && socket.writable) {
@@ -605,8 +734,13 @@ ObjectDefineProperties(
         }
       }
     },
-
-    _flushOutput(socket: Socket) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _flushOutput: {
+    __proto__: null,
+    value: function _flushOutput(socket: Socket) {
       while (this[kCorked]) {
         this[kCorked]--;
         socket.cork();
@@ -635,17 +769,31 @@ ObjectDefineProperties(
 
       return ret;
     },
-
-    /** Right after socket is ready, we need to writeHeader() to setup the request and
-     *  client. This is invoked by onSocket(). */
-    _flushHeaders() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  /** Right after socket is ready, we need to writeHeader() to setup the request and
+   *  client. This is invoked by onSocket(). */
+  _flushHeaders: {
+    __proto__: null,
+    value: function _flushHeaders() {
       if (!this._headerSent) {
         this._headerSent = true;
         this._writeHeader();
       }
     },
-
-    _send(data: any, encoding?: string | null, callback?: () => void) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _send: {
+    __proto__: null,
+    value: function _send(
+      data: any,
+      encoding?: string | null,
+      callback?: () => void,
+    ) {
       // This is a shameful hack to get the headers and first body chunk onto
       // the same packet. Future versions of Node are going to take care of
       // this at a lower level and in a more general way.
@@ -669,12 +817,22 @@ ObjectDefineProperties(
       }
       return this._writeRaw(data, encoding, callback);
     },
-
-    _writeHeader() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _writeHeader: {
+    __proto__: null,
+    value: function _writeHeader() {
       throw new ERR_METHOD_NOT_IMPLEMENTED("_writeHeader()");
     },
-
-    _flushBuffer() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _flushBuffer: {
+    __proto__: null,
+    value: function _flushBuffer() {
       const outputLength = this.outputData.length;
       if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
         return undefined;
@@ -696,8 +854,13 @@ ObjectDefineProperties(
 
       return ret;
     },
-
-    _writeRaw(
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _writeRaw: {
+    __proto__: null,
+    value: function _writeRaw(
       data: any,
       encoding?: string | null,
       callback?: () => void,
@@ -727,8 +890,13 @@ ObjectDefineProperties(
       this._onPendingData(data.length);
       return this.outputSize < HIGH_WATER_MARK;
     },
-
-    _renderHeaders() {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _renderHeaders: {
+    __proto__: null,
+    value: function _renderHeaders() {
       if (this._header) {
         throw new ERR_HTTP_HEADERS_SENT("render");
       }
@@ -748,8 +916,13 @@ ObjectDefineProperties(
       }
       return headers;
     },
-
-    _storeHeader(firstLine: string, headers: any) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _storeHeader: {
+    __proto__: null,
+    value: function _storeHeader(firstLine: string, headers: any) {
       // firstLine in the case of request is: 'GET /index.html HTTP/1.1\r\n'
       // in the case of response it is: 'HTTP/1.1 200 OK\r\n'
       const state = {
@@ -768,19 +941,28 @@ ObjectDefineProperties(
           // deno-lint-ignore guard-for-in
           for (const key in headers) {
             const entry = headers[key];
-            this._storeHeaderEntry(state, entry[0], entry[1]);
+            this._storeHeaderEntry(state, entry[0], entry[1], false);
           }
         } else if (ArrayIsArray(headers)) {
           if (headers.length && ArrayIsArray(headers[0])) {
             // Array of arrays: [[name, value], ...]
             for (let i = 0; i < headers.length; i++) {
               const entry = headers[i];
-              this._storeHeaderEntry(state, entry[0], entry[1]);
+              this._storeHeaderEntry(state, entry[0], entry[1], true);
             }
           } else {
             // Flat array: [name, value, name, value, ...]
+            if (headers.length % 2 !== 0) {
+              throw new ERR_INVALID_ARG_VALUE("headers", headers);
+            }
+
             for (let n = 0; n < headers.length; n += 2) {
-              this._storeHeaderEntry(state, headers[n], headers[n + 1]);
+              this._storeHeaderEntry(
+                state,
+                headers[n],
+                headers[n + 1],
+                true,
+              );
             }
           }
         } else {
@@ -788,7 +970,7 @@ ObjectDefineProperties(
           const keys = ObjectKeys(headers);
           for (let i = 0; i < keys.length; i++) {
             const k = keys[i];
-            this._storeHeaderEntry(state, k, headers[k]);
+            this._storeHeaderEntry(state, k, headers[k], true);
           }
         }
       }
@@ -886,25 +1068,53 @@ ObjectDefineProperties(
       // UNLESS we're sending Expect: 100-continue.
       if (state.expect) this._send("");
     },
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _storeHeaderEntry: {
+    __proto__: null,
+    value: function _storeHeaderEntry(
+      state: any,
+      field: string,
+      value: any,
+      validate: boolean,
+    ) {
+      if (validate) {
+        validateHeaderName(field);
+      }
 
-    _storeHeaderEntry(state: any, field: string, value: any) {
       if (ArrayIsArray(value)) {
         // RFC 6265: join multiple Cookie values with '; '
         if (isCookieField(field)) {
-          state.header += field + ": " + ArrayPrototypeJoin(value, "; ") +
-            "\r\n";
+          const joinedValue = ArrayPrototypeJoin(value, "; ");
+          if (validate) {
+            validateHeaderValue(field, joinedValue);
+          }
+          state.header += field + ": " + joinedValue + "\r\n";
         } else {
           for (let j = 0; j < value.length; j++) {
+            if (validate) {
+              validateHeaderValue(field, value[j]);
+            }
             state.header += field + ": " + value[j] + "\r\n";
           }
         }
       } else {
+        if (validate) {
+          validateHeaderValue(field, value);
+        }
         state.header += field + ": " + value + "\r\n";
       }
       this._matchHeader(state, field, value);
     },
-
-    _matchHeader(
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  _matchHeader: {
+    __proto__: null,
+    value: function _matchHeader(
       state: any,
       field: string,
       value: any,
@@ -948,12 +1158,22 @@ ObjectDefineProperties(
           break;
       }
     },
-
-    [EE.captureRejectionSymbol](err: any, _event: any) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  [EE.captureRejectionSymbol]: {
+    __proto__: null,
+    value: function (err: any, _event: any) {
       this.destroy(err);
     },
-
-    setHeaders(headers: any) {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  setHeaders: {
+    __proto__: null,
+    value: function setHeaders(headers: any) {
       if (this._header) {
         throw new ERR_HTTP_HEADERS_SENT("set");
       }
@@ -999,8 +1219,11 @@ ObjectDefineProperties(
 
       return this;
     },
-  }),
-);
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+});
 
 ObjectDefineProperty(OutgoingMessage.prototype, "socket", {
   __proto__: null,

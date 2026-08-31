@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/invalid-bin-target",
+  "version": "1.0.0",
+  "bin": {
+    "valid-bin": "bin/valid.js",
+    "invalid-bin": "../outside.js"
+  }
+}

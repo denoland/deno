@@ -69,8 +69,9 @@ use sys_traits::FsRead;
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::CompileFlagsExt;
+use crate::args::JavaScriptEngine;
 use crate::args::get_default_v8_flags;
+use crate::args::resolve_compile_target;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -416,7 +417,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       self.get_base_binary(options.compile_flags).await?;
 
     if options.compile_flags.no_terminal {
-      let target = options.compile_flags.resolve_target();
+      let target = resolve_compile_target(options.compile_flags);
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -427,7 +428,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .context("Setting windows binary to GUI.")?;
     }
     if options.compile_flags.icon.is_some() {
-      let target = options.compile_flags.resolve_target();
+      let target = resolve_compile_target(options.compile_flags);
       // Desktop builds handle icons during app bundle packaging.
       if !target.contains("windows") && !self.is_desktop {
         bail!(
@@ -462,14 +463,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = get_dev_binary_path() {
+      if compile_flags.engine == JavaScriptEngine::QuickJs {
+        log::warn!(
+          "--engine quickjs is ignored when using the development denort at {}",
+          path.to_string_lossy()
+        );
+      }
       log::debug!("Resolved denort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
     }
 
-    let target = compile_flags.resolve_target();
-    let binary_name = format!("denort-{target}.zip");
+    let target = resolve_compile_target(compile_flags);
+    let binary_name =
+      runtime_archive_name("denort", &compile_flags.engine, &target);
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
       ReleaseChannel::Canary => {
@@ -518,13 +526,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // For development: check DENORT_DESKTOP_BIN env var or look
     // for libdenort next to the deno executable.
     if let Some(path) = get_dev_desktop_binary_path() {
+      if compile_flags.engine == JavaScriptEngine::QuickJs {
+        log::warn!(
+          "--engine quickjs is ignored when using the development libdenort at {}",
+          path.to_string_lossy()
+        );
+      }
       log::debug!("Resolved libdenort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find libdenort at '{}'", path.to_string_lossy())
       });
     }
 
-    let target = compile_flags.resolve_target();
+    let target = resolve_compile_target(compile_flags);
     let lib_ext = if target.contains("darwin") {
       "dylib"
     } else if target.contains("windows") {
@@ -537,7 +551,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     } else {
       format!("libdenort.{lib_ext}")
     };
-    let binary_name = format!("libdenort-{target}.zip");
+    let binary_name =
+      runtime_archive_name("libdenort", &compile_flags.engine, &target);
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
       ReleaseChannel::Canary => {
@@ -1607,7 +1622,7 @@ fn write_binary_bytes(
   data_section_bytes: Vec<u8>,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let target = compile_flags.resolve_target();
+  let target = resolve_compile_target(compile_flags);
   if target.contains("linux") {
     libsui::Elf::new(&original_bin).append(
       "d3n0l4nd",
@@ -1770,6 +1785,14 @@ fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
   denort.exists().then(|| denort.into_os_string())
 }
 
+fn runtime_archive_name(
+  prefix: &str,
+  engine: &JavaScriptEngine,
+  target: &str,
+) -> String {
+  format!("{prefix}{}-{target}.zip", engine.artifact_suffix())
+}
+
 fn get_dev_binary_path() -> Option<OsString> {
   env::var_os("DENORT_BIN").or_else(|| {
     env::current_exe().ok().and_then(|exec_path| {
@@ -1878,6 +1901,25 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
 #[cfg(test)]
 mod tests {
   use super::default_app_name;
+  use super::runtime_archive_name;
+  use crate::args::JavaScriptEngine;
+
+  #[test]
+  fn runtime_archive_names_include_engine_suffix() {
+    let target = "aarch64-apple-darwin";
+    assert_eq!(
+      runtime_archive_name("denort", &JavaScriptEngine::V8, target),
+      "denort-aarch64-apple-darwin.zip"
+    );
+    assert_eq!(
+      runtime_archive_name("denort", &JavaScriptEngine::QuickJs, target),
+      "denort-quickjs-aarch64-apple-darwin.zip"
+    );
+    assert_eq!(
+      runtime_archive_name("libdenort", &JavaScriptEngine::QuickJs, target),
+      "libdenort-quickjs-aarch64-apple-darwin.zip"
+    );
+  }
 
   #[test]
   fn default_app_name_strips_only_deno_added_extensions() {

@@ -25,6 +25,9 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
+use hickory_proto::op::ResponseCode;
+use hickory_proto::rr::Name;
+use hickory_proto::rr::Record;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
 use hickory_resolver::ResolveError;
@@ -150,6 +153,7 @@ pub enum NetError {
   Canceled(#[from] deno_core::Canceled),
   #[class("NotFound")]
   #[error("{0}")]
+  #[property("ares_code" = self.ares_code())]
   DnsNotFound(ResolveError),
   #[class("NotConnected")]
   #[error("{0}")]
@@ -159,7 +163,12 @@ pub enum NetError {
   DnsTimedOut(ResolveError),
   #[class(generic)]
   #[error("{0}")]
+  #[property("ares_code" = self.ares_code())]
   Dns(#[from] ResolveError),
+  #[class(type)]
+  #[error("Invalid DNS query name: '{0}'")]
+  #[property("ares_code" = self.ares_code())]
+  DnsInvalidName(String),
   #[class("NotSupported")]
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
@@ -196,6 +205,43 @@ pub enum NetError {
   #[class(generic)]
   #[error("Tunnel is not open")]
   TunnelMissing,
+}
+
+impl NetError {
+  /// Maps the underlying hickory resolver error to a c-ares style error code
+  /// string (e.g. `EBADNAME`, `ENOTFOUND`, `ENODATA`) so that `node:dns`
+  /// resolver errors surface the same `code` as Node.js. Returns an empty
+  /// string when there is no meaningful c-ares mapping (the caller then falls
+  /// back to its default handling).
+  fn ares_code(&self) -> &'static str {
+    let resolve_err = match self {
+      // The query name failed to parse, which `op_dns_resolve` checks before
+      // it issues a query. c-ares reports every malformed name (empty label
+      // like `example..com`, illegal characters, a label or name that is too
+      // long) as `EBADNAME`.
+      NetError::DnsInvalidName(_) => return "EBADNAME",
+      NetError::Dns(e) | NetError::DnsNotFound(e) => e,
+      _ => return "",
+    };
+
+    match resolve_err.kind() {
+      // No records found: distinguish between a non-existent domain
+      // (`NXDOMAIN` -> `ENOTFOUND`) and an existing domain that simply has no
+      // records of the requested type (`NoError` -> `ENODATA`), matching
+      // c-ares/Node.js.
+      ResolveErrorKind::Proto(ProtoError { kind, .. }) => match &**kind {
+        ProtoErrorKind::NoRecordsFound { response_code, .. } => {
+          if *response_code == ResponseCode::NXDomain {
+            "ENOTFOUND"
+          } else {
+            "ENODATA"
+          }
+        }
+        _ => "",
+      },
+      _ => "",
+    }
+  }
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -346,6 +392,17 @@ pub async fn op_net_join_multi_v4_udp(
   let addr = Ipv4Addr::from_str(address.as_str())?;
   let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
 
+  let port = socket.local_addr()?.port();
+  {
+    let mut state = state.borrow_mut();
+    crate::check_multicast_membership_permission(
+      state.borrow_mut::<PermissionsContainer>(),
+      std::net::IpAddr::V4(addr),
+      port,
+      "Deno.DatagramConn.joinMulticastV4()",
+    )?;
+  }
+
   socket.join_multicast_v4(addr, interface_addr)?;
 
   Ok(())
@@ -366,6 +423,17 @@ pub async fn op_net_join_multi_v6_udp(
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
   let addr = Ipv6Addr::from_str(address.as_str())?;
+
+  let port = socket.local_addr()?.port();
+  {
+    let mut state = state.borrow_mut();
+    crate::check_multicast_membership_permission(
+      state.borrow_mut::<PermissionsContainer>(),
+      std::net::IpAddr::V6(addr),
+      port,
+      "Deno.DatagramConn.joinMulticastV6()",
+    )?;
+  }
 
   socket.join_multicast_v6(&addr, multi_interface)?;
 
@@ -1065,6 +1133,15 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
+  // Parse the query name up front. `Resolver::lookup` performs the same
+  // conversion internally, but the resulting `ProtoErrorKind::Msg` is
+  // indistinguishable from the many unrelated transport and protocol failures
+  // hickory reports the same way, so there would be no way to tell a malformed
+  // name from a broken connection after the fact. Doing it here keeps the
+  // `EBADNAME` classification in `NetError::ares_code` exact.
+  let name = Name::from_utf8(&query)
+    .map_err(|_| NetError::DnsInvalidName(query.clone()))?;
+
   let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
@@ -1111,7 +1188,7 @@ pub async fn op_dns_resolve(
       .with_options(opts)
       .build();
 
-  let lookup_fut = resolver.lookup(query, record_type);
+  let lookup_fut = resolver.lookup(name, record_type);
 
   let cancel_handle = cancel_rid.and_then(|rid| {
     state
@@ -1135,27 +1212,34 @@ pub async fn op_dns_resolve(
     lookup_fut.await
   };
 
-  lookup
-    .map_err(|e| match e.kind() {
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-      {
-        NetError::DnsNotFound(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections) =>
-      {
-        NetError::DnsNotConnected(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout) =>
-      {
-        NetError::DnsTimedOut(e)
-      }
-      _ => NetError::Dns(e),
-    })?
-    .records()
-    .iter()
+  let lookup = lookup.map_err(|e| match e.kind() {
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+    {
+      NetError::DnsNotFound(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoConnections) =>
+    {
+      NetError::DnsNotConnected(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::Timeout) =>
+    {
+      NetError::DnsTimedOut(e)
+    }
+    _ => NetError::Dns(e),
+  })?;
+
+  format_dns_records(lookup.records(), record_type)
+}
+
+fn format_dns_records<'a>(
+  records: impl IntoIterator<Item = &'a Record>,
+  record_type: RecordType,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
+  records
+    .into_iter()
     .filter_map(|rec| {
       let is_any = record_type == RecordType::ANY;
       // For ANY queries, use each record's actual type for formatting
@@ -1164,7 +1248,10 @@ pub async fn op_dns_resolve(
       } else {
         record_type
       };
-      let r = format_rdata(effective_type)(rec.data()).transpose();
+      let r = match format_rdata(effective_type)(rec.data()) {
+        Err(NetError::UnsupportedRecordType) if is_any => None,
+        result => result.transpose(),
+      };
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
@@ -1182,7 +1269,16 @@ pub async fn op_dns_resolve(
 
 #[op2]
 #[serde]
-pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+pub fn op_net_get_system_dns_servers(
+  state: &mut OpState,
+) -> Result<Vec<(String, u16)>, NetError> {
+  // Reading the host resolver configuration (the system nameservers, e.g.
+  // from /etc/resolv.conf) exposes host network configuration, so gate it
+  // behind the same `sys` permission as Deno.networkInterfaces(). Reachable
+  // from JS via node:dns.getServers().
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("networkInterfaces", "node:dns.getServers()")?;
   let (config, _opts) = system_conf::read_system_conf()
     .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
   let servers = config
@@ -1251,13 +1347,10 @@ fn format_rdata(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsRecordData::Aname),
-      CAA => r.as_caa().map(|caa| {
-        DnsRecordData::Caa {
-          critical: caa.issuer_critical(),
-          tag: caa.tag().to_string(),
-          // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
-          value: str::from_utf8(caa.raw_value()).unwrap().to_string(),
-        }
+      CAA => r.as_caa().map(|caa| DnsRecordData::Caa {
+        critical: caa.issuer_critical(),
+        tag: caa.tag().to_string(),
+        value: String::from_utf8_lossy(caa.raw_value()).into_owned(),
       }),
       CNAME => r
         .as_cname()
@@ -1270,9 +1363,9 @@ fn format_rdata(
       NAPTR => r.as_naptr().map(|naptr| DnsRecordData::Naptr {
         order: naptr.order(),
         preference: naptr.preference(),
-        flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
-        services: String::from_utf8(naptr.services().to_vec()).unwrap(),
-        regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
+        flags: String::from_utf8_lossy(naptr.flags()).into_owned(),
+        services: String::from_utf8_lossy(naptr.services()).into_owned(),
+        regexp: String::from_utf8_lossy(naptr.regexp()).into_owned(),
         replacement: naptr.replacement().to_string(),
       }),
       NS => r.as_ns().map(ToString::to_string).map(DnsRecordData::Ns),
@@ -1319,6 +1412,7 @@ mod tests {
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
   use hickory_proto::rr::Name;
+  use hickory_proto::rr::rdata::NULL;
   use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
   use hickory_proto::rr::rdata::aaaa::AAAA;
@@ -1333,6 +1427,8 @@ mod tests {
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
   use hickory_proto::rr::record_data::RData;
+  use hickory_proto::serialize::binary::BinDecoder;
+  use hickory_proto::serialize::binary::Restrict;
   use socket2::SockRef;
 
   use super::*;
@@ -1386,6 +1482,78 @@ mod tests {
   }
 
   #[test]
+  fn dns_records_caa_lossy_invalid_utf8_for_any_query() {
+    // Raw CAA RDATA received from the network: flags, tag, then an opaque
+    // value containing invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x05issue\xffa";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::CAA,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+    let records = [Record::from_rdata(Name::new(), 60, rdata)];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Caa {
+          critical: false,
+          tag: "issue".to_string(),
+          value: "\u{fffd}a".to_string(),
+        },
+        record_type: Some("CAA".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
+  fn dns_records_any_skips_unsupported_record_types() {
+    let name = Name::parse("www.iana.org.", None).unwrap();
+    let cname = Record::from_rdata(
+      name.clone(),
+      60,
+      RData::CNAME(CNAME(Name::parse("target.example.", None).unwrap())),
+    );
+    let rrsig = Record::from_rdata(
+      name,
+      60,
+      RData::Unknown {
+        code: RecordType::RRSIG,
+        rdata: NULL::with(vec![1]),
+      },
+    );
+    let records = [cname, rrsig];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Cname("target.example.".to_string()),
+        record_type: Some("CNAME".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
+  fn dns_records_explicit_unsupported_type_still_errors() {
+    let rrsig = Record::from_rdata(
+      Name::new(),
+      60,
+      RData::Unknown {
+        code: RecordType::RRSIG,
+        rdata: NULL::with(vec![1]),
+      },
+    );
+
+    assert!(matches!(
+      format_dns_records(&[rrsig], RecordType::RRSIG),
+      Err(NetError::UnsupportedRecordType)
+    ));
+  }
+
+  #[test]
   fn rdata_to_return_record_cname() {
     let func = format_rdata(RecordType::CNAME);
     let rdata = RData::CNAME(CNAME(Name::new()));
@@ -1428,6 +1596,31 @@ mod tests {
         services: "".to_string(),
         regexp: "".to_string(),
         replacement: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_naptr_lossy_invalid_utf8() {
+    // Flags are restricted to ASCII by Hickory's wire decoder. Services and
+    // regexp remain arbitrary character strings and can contain invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x01\x00\x02\x01U\x02s\xff\x02\xffr\x00";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::NAPTR,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+      format_rdata(RecordType::NAPTR)(&rdata).unwrap(),
+      Some(DnsRecordData::Naptr {
+        order: 1,
+        preference: 2,
+        flags: "U".to_string(),
+        services: "s\u{fffd}".to_string(),
+        regexp: "\u{fffd}r".to_string(),
+        replacement: ".".to_string(),
       })
     );
   }

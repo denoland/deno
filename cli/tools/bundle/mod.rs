@@ -50,6 +50,10 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::LoadedModuleSource;
 use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_resolver::npmrc::discover_npmrc_from_home;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
+use deno_runtime::deno_permissions::CheckSpecifierKind;
+use deno_runtime::deno_permissions::OpenAccessKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use esbuild_client::EsbuildFlagsBuilder;
@@ -98,15 +102,19 @@ pub async fn prepare_inputs(
   bundle_flags: &BundleFlags,
   plugin_handler: &mut DenoPluginHandler,
 ) -> Result<BundlerInput, AnyError> {
-  let resolved_entrypoints =
-    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+  let resolved_entrypoints = resolve_entrypoints(
+    resolver,
+    init_cwd,
+    &bundle_flags.entrypoints,
+    !plugin_handler.is_runtime_api,
+  )?;
 
   // Partition into HTML and non-HTML entrypoints
   let mut html_paths = Vec::new();
   let mut script_entry_urls = Vec::new();
   for url in &resolved_entrypoints {
-    if url.as_str().to_lowercase().ends_with(".html") {
-      html_paths.push(url.to_file_path().unwrap());
+    if is_html_entrypoint(url) {
+      html_paths.push(deno_path_util::url_to_file_path(url)?);
     } else {
       script_entry_urls.push(url.clone());
     }
@@ -154,7 +162,13 @@ pub async fn prepare_inputs(
     let virtual_modules = Arc::new(VirtualModules::new());
 
     for html_path in &html_paths {
-      let entry = html::load_html_entrypoint(init_cwd, html_path)?;
+      let entry = html::load_html_entrypoint(
+        init_cwd,
+        html_path,
+        plugin_handler
+          .is_runtime_api
+          .then_some(&plugin_handler.permissions),
+      )?;
 
       let virtual_module_path =
         deno_path_util::url_from_file_path(&entry.virtual_module_path)?;
@@ -209,6 +223,7 @@ pub async fn prepare_inputs(
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
+  caller_permissions: Option<PermissionsContainer>,
 ) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
@@ -220,7 +235,13 @@ pub async fn bundle_init(
 
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
-  let root_permissions = factory.root_permissions_container()?;
+  // Module loads (including remote imports) are checked against the caller's
+  // permissions when invoked via `Deno.bundle()`, and against the CLI's own
+  // permissions when invoked via `deno bundle`.
+  let (permissions, is_runtime_api) = match caller_permissions {
+    Some(permissions) => (permissions, true),
+    None => (factory.root_permissions_container()?.clone(), false),
+  };
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
@@ -240,7 +261,8 @@ pub async fn bundle_init(
     module_load_preparer,
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
-    permissions: root_permissions.clone(),
+    permissions,
+    is_runtime_api,
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
@@ -334,7 +356,7 @@ pub async fn bundle(
       )
       .await?;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler = bundle_init(flags.clone(), &bundle_flags, None).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
   let response = bundler.build().await?;
@@ -377,6 +399,7 @@ pub async fn bundle(
       bundle_flags.minify,
       bundler.input.clone(),
       bundle_flags.output_dir.as_ref().map(Path::new),
+      None,
     )?;
 
     if bundle_flags.declaration {
@@ -408,7 +431,7 @@ async fn emit_bundle_declarations(
   // Resolve entrypoints to specifiers
   let resolver = factory.resolver().await?;
   let entrypoint_specifiers =
-    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints, true)?;
 
   // Determine root names with media types
   let root_names: Vec<(ModuleSpecifier, MediaType)> = entrypoint_specifiers
@@ -877,7 +900,7 @@ pub async fn bundle_for_compile(
     flags_mut.internal.force_bundle_mode = true;
   }
 
-  let bundler = bundle_init(flags, &bundle_flags).await?;
+  let bundler = bundle_init(flags, &bundle_flags, None).await?;
   let response = bundler.build().await?;
 
   handle_esbuild_errors_and_warnings(
@@ -1001,6 +1024,7 @@ async fn bundle_watch(
             minified,
             input,
             output_dir,
+            None,
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
@@ -1197,7 +1221,14 @@ impl EsbuildBundler {
         continue;
       }
 
-      let updated = html::load_html_entrypoint(&self.cwd, &page.path)?;
+      let updated = html::load_html_entrypoint(
+        &self.cwd,
+        &page.path,
+        self
+          .plugin_handler
+          .is_runtime_api
+          .then_some(&self.plugin_handler.permissions),
+      )?;
       let virtual_module_url =
         deno_path_util::url_from_file_path(&updated.virtual_module_path)?
           .to_string();
@@ -1452,6 +1483,9 @@ pub struct DenoPluginHandler {
   resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
+  /// Whether reads and writes must respect the calling program's permissions.
+  /// The directly invoked `deno bundle` command is a trusted CLI path.
+  is_runtime_api: bool,
   module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
@@ -1784,6 +1818,9 @@ pub enum BundleLoadErrorKind {
   ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
   #[error(transparent)]
+  Permission(#[from] deno_runtime::deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
   #[error("Failed to parse Wasm module: {0}")]
@@ -2071,9 +2108,12 @@ impl DenoPluginHandler {
         graph,
         specifiers,
         PrepareModuleLoadOptions {
-          is_dynamic: false,
+          is_dynamic: self.is_runtime_api,
           lib: TsTypeLib::default(),
           permissions: self.permissions.clone(),
+          file_permission_api_name: self
+            .is_runtime_api
+            .then_some("Deno.bundle()"),
           ext_overwrite: None,
           allow_unknown_media_types: true,
           allow_sloppy_imports_hints_for_unreferenced_roots: true,
@@ -2085,6 +2125,47 @@ impl DenoPluginHandler {
       .await?;
     graph_permit.commit();
     Ok(())
+  }
+
+  /// When bundling via `Deno.bundle()`, reading a module returns its
+  /// (transpiled) source to the calling program, so it must be gated on the
+  /// caller's permissions. `deno bundle` reads its inputs unchecked like the
+  /// other CLI subcommands, in which case this is a no-op.
+  ///
+  /// Graph preparation already performs the check before reading source. This
+  /// second boundary covers later esbuild loads and direct asset fetches.
+  fn check_read_permission<'a>(
+    &self,
+    specifier: &'a Url,
+  ) -> Result<Cow<'a, Url>, BundleLoadError> {
+    if self.is_runtime_api {
+      if specifier.scheme() == "file" {
+        let path = deno_path_util::url_to_file_path(specifier).map_err(|_| {
+          deno_runtime::deno_permissions::PermissionCheckError::InvalidFilePath(
+            specifier.clone(),
+          )
+        })?;
+        let checked_path = self.permissions.check_open(
+          Cow::Owned(path),
+          OpenAccessKind::Read,
+          Some("Deno.bundle()"),
+        )?;
+        let checked_specifier = deno_path_util::url_from_file_path(
+          &checked_path,
+        )
+        .map_err(|_| {
+          deno_runtime::deno_permissions::PermissionCheckError::InvalidFilePath(
+            specifier.clone(),
+          )
+        })?;
+        return Ok(Cow::Owned(checked_specifier));
+      } else {
+        self
+          .permissions
+          .check_specifier(specifier, CheckSpecifierKind::Dynamic)?;
+      }
+    }
+    Ok(Cow::Borrowed(specifier))
   }
 
   async fn bundle_load(
@@ -2133,6 +2214,11 @@ impl DenoPluginHandler {
         (specifier, media_type)
       };
 
+    // `specifier` is now the concrete module we're about to read the source of
+    // (a `file:` path for local modules, including npm packages resolved into
+    // `node_modules`). Gate the read on the caller's permissions.
+    let checked_specifier = self.check_read_permission(&specifier)?;
+
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
       .module_loader
@@ -2144,7 +2230,7 @@ impl DenoPluginHandler {
         LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
           let file = self
             .file_fetcher
-            .fetch(&specifier, &self.permissions)
+            .fetch(&checked_specifier, &self.permissions)
             .await?;
           let media_type = MediaType::from_specifier_and_headers(
             &specifier,
@@ -2170,12 +2256,12 @@ impl DenoPluginHandler {
                 let str = String::from_utf8_lossy(&file.source);
                 let value = str.into();
                 let source = self
-                  .maybe_transpile(&file.url, media_type, &value, None)
+                  .maybe_transpile(&specifier, media_type, &value, None)
                   .await?;
                 return self
                   .create_module_response(
                     &graph,
-                    &file.url,
+                    &specifier,
                     media_type,
                     source.as_bytes(),
                     Some(requested_type),
@@ -2186,7 +2272,7 @@ impl DenoPluginHandler {
                 return self
                   .create_module_response(
                     &graph,
-                    &file.url,
+                    &specifier,
                     media_type,
                     &file.source,
                     Some(requested_type),
@@ -2205,13 +2291,16 @@ impl DenoPluginHandler {
       LoadedModuleOrAsset::ExternalAsset {
         specifier,
         statically_analyzable: _,
-      } => LoadedModuleSource::ArcBytes(
-        self
-          .file_fetcher
-          .fetch(&specifier, &self.permissions)
-          .await?
-          .source,
-      ),
+      } => {
+        let checked_specifier = self.check_read_permission(&specifier)?;
+        LoadedModuleSource::ArcBytes(
+          self
+            .file_fetcher
+            .fetch(&checked_specifier, &self.permissions)
+            .await?
+            .source,
+        )
+      }
     };
 
     Ok(Some(
@@ -2486,13 +2575,23 @@ fn media_type_to_loader(
 fn resolve_url_or_path_absolute(
   specifier: &str,
   current_dir: &Path,
+  canonicalize: bool,
 ) -> Result<Url, AnyError> {
   if deno_path_util::specifier_has_uri_scheme(specifier) {
     Ok(Url::parse(specifier)?)
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = canonicalize_path(&path)?;
+    // Runtime permission checks must see the caller's path spelling before
+    // following aliases. `check_open` then returns the canonical path used for
+    // the actual read. The trusted CLI path retains its historical eager
+    // canonicalization.
+    let canonicalized_path = canonicalize_path(&path)?;
+    let path = if canonicalize {
+      Cow::Owned(canonicalized_path)
+    } else {
+      path
+    };
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }
@@ -2501,10 +2600,13 @@ fn resolve_entrypoints(
   resolver: &CliResolver,
   init_cwd: &Path,
   entrypoints: &[String],
+  canonicalize_entrypoints: bool,
 ) -> Result<Vec<Url>, AnyError> {
   let entrypoints = entrypoints
     .iter()
-    .map(|e| resolve_url_or_path_absolute(e, init_cwd))
+    .map(|e| {
+      resolve_url_or_path_absolute(e, init_cwd, canonicalize_entrypoints)
+    })
     .collect::<Result<Vec<_>, _>>()?;
 
   let init_cwd_url = Url::from_directory_path(init_cwd).unwrap();
@@ -2522,6 +2624,10 @@ fn resolve_entrypoints(
     resolved.push(r);
   }
   Ok(resolved)
+}
+
+fn is_html_entrypoint(url: &Url) -> bool {
+  url.scheme() == "file" && url.path().to_ascii_lowercase().ends_with(".html")
 }
 
 fn resolve_roots(
@@ -2560,20 +2666,25 @@ fn resolve_roots(
 async fn ensure_esbuild_downloaded(
   factory: &CliFactory,
 ) -> Result<PathBuf, AnyError> {
-  let installer_factory = factory.npm_installer_factory()?;
   let deno_dir = factory.deno_dir()?;
-  let npmrc = factory.npmrc()?;
-  let npm_registry_info = installer_factory.registry_info_provider()?;
-  let resolver_factory = factory.resolver_factory()?;
-  let workspace_factory = resolver_factory.workspace_factory();
+  let sys = factory.sys();
+
+  // Esbuild is an implementation detail of the bundler, so resolve its
+  // platform package independently from the workspace's package settings,
+  // while preserving registry and authentication settings explicitly chosen
+  // by the user in their home npmrc or process environment.
+  let (npmrc, _) = discover_npmrc_from_home(&sys)?;
+  let npmrc = Arc::new(npmrc);
+  let npm_cache_services = factory.create_npm_cache_services(npmrc.clone())?;
+  let link_packages = WorkspaceNpmLinkPackagesRc::default();
 
   let esbuild_path = esbuild::ensure_esbuild(
     deno_dir,
-    npmrc,
-    npm_registry_info,
-    workspace_factory.workspace_npm_link_packages()?,
-    installer_factory.tarball_cache()?,
-    factory.npm_cache()?,
+    &npmrc,
+    npm_cache_services.registry_info_provider(),
+    &link_packages,
+    npm_cache_services.tarball_cache(),
+    npm_cache_services.npm_cache(),
   )
   .await?;
   Ok(esbuild_path)
@@ -2833,6 +2944,7 @@ pub fn process_result(
   minified: bool,
   input: BundlerInput,
   outdir: Option<&Path>,
+  write_permissions: Option<&PermissionsContainer>,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
   let output_files =
     collect_output_files(response.output_files.as_deref(), cwd, input, outdir)?;
@@ -2855,11 +2967,31 @@ pub fn process_result(
       continue;
     }
 
+    let checked_path = write_permissions
+      .map(|permissions| {
+        permissions.check_open(
+          Cow::Owned(path.to_path_buf()),
+          OpenAccessKind::Write,
+          Some("Deno.bundle()"),
+        )
+      })
+      .transpose()?;
+    let path = checked_path.as_deref().unwrap_or(path);
+
     if let Some(parent) = path.parent()
       && !exists_cache.contains(parent)
     {
       if !parent.exists() {
-        std::fs::create_dir_all(parent)?;
+        let checked_parent = write_permissions
+          .map(|permissions| {
+            permissions.check_open(
+              Cow::Owned(parent.to_path_buf()),
+              OpenAccessKind::WriteNoFollow,
+              Some("Deno.bundle()"),
+            )
+          })
+          .transpose()?;
+        std::fs::create_dir_all(checked_parent.as_deref().unwrap_or(parent))?;
       }
       exists_cache.insert(parent.to_path_buf());
     }
@@ -2917,6 +3049,29 @@ fn print_finished_message(
   log::info!("{}", output);
 
   Ok(())
+}
+
+#[cfg(test)]
+mod entrypoint_tests {
+  use deno_core::url::Url;
+
+  use super::is_html_entrypoint;
+
+  #[test]
+  fn html_entrypoint_detection_ignores_fragment() {
+    assert!(is_html_entrypoint(
+      &Url::parse("file:///tmp/index.html").unwrap()
+    ));
+    assert!(is_html_entrypoint(
+      &Url::parse("file:///tmp/INDEX.HTML").unwrap()
+    ));
+    assert!(!is_html_entrypoint(
+      &Url::parse("file:///tmp/secret.txt#.html").unwrap()
+    ));
+    assert!(!is_html_entrypoint(
+      &Url::parse("https://example.com/index.html").unwrap()
+    ));
+  }
 }
 
 #[cfg(test)]

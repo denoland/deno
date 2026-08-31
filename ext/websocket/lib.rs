@@ -427,6 +427,7 @@ fn create_client_from_websocket_options(
       proxy: options.proxy.clone(),
       dns_resolver: options.resolver.clone(),
       permissions: Some(permissions),
+      resolved_deny_check_kind: Default::default(),
       unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
         .then_some(vec![]),
       client_cert_chain_and_key: options
@@ -456,6 +457,39 @@ pub async fn op_ws_create(
   #[scoped] ca_certs: Option<Vec<String>>,
   unsafely_ignore_certificate_errors: bool,
   #[smi] client_rid: Option<u32>,
+) -> Result<CreateResponse, WebsocketError> {
+  op_ws_create_inner(
+    state,
+    api_name,
+    url,
+    protocols,
+    cancel_handle,
+    headers,
+    ca_certs,
+    unsafely_ignore_certificate_errors,
+    client_rid,
+  )
+  .await
+}
+
+/// The body of [`op_ws_create`], factored out so that its future can be
+/// measured by a test (the `op2` macro makes the op's own future unnameable).
+///
+/// The connect + handshake future is boxed: it is by far the largest state
+/// machine in this op (TLS setup, HTTP/1.1 and HTTP/2 handshakes), and the op
+/// driver sizes its future arena slots off the largest op future, so keeping
+/// this one small benefits every op.
+#[allow(clippy::too_many_arguments, reason = "mirrors the op signature")]
+async fn op_ws_create_inner(
+  state: Rc<RefCell<OpState>>,
+  api_name: String,
+  url: String,
+  protocols: String,
+  cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
+  ca_certs: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: bool,
+  client_rid: Option<u32>,
 ) -> Result<CreateResponse, WebsocketError> {
   let (client, allow_host) = {
     let mut s = state.borrow_mut();
@@ -499,9 +533,13 @@ pub async fn op_ws_create(
 
   let uri: Uri = url.parse()?;
 
-  let handshake =
-    handshake_websocket(client, allow_host, uri, &protocols, headers)
-      .map_err(WebsocketError::ConnectionFailed);
+  // Boxed so the connect/handshake state machine (TLS setup, HTTP/1.1 and
+  // HTTP/2 handshakes) lives on the heap rather than inline in this op's
+  // future. See `op_ws_create_future_is_small`.
+  let handshake = Box::pin(handshake_websocket(
+    client, allow_host, uri, &protocols, headers,
+  ))
+  .map_err(WebsocketError::ConnectionFailed);
   let (stream, response) = match cancel_resource {
     Some(rc) => handshake.try_or_cancel(rc).await?,
     None => handshake.await?,
@@ -1070,5 +1108,44 @@ where
 {
   fn execute(&self, fut: Fut) {
     deno_core::unsync::spawn(fut);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Returns the size of the future produced by `f` without constructing any
+  /// arguments or running it. `size_of_val` on such a future would require
+  /// building an `OpState`, so we measure the (opaque) future type instead.
+  fn future_size<F: Future>(_f: impl FnOnce() -> F) -> usize {
+    std::mem::size_of::<F>()
+  }
+
+  /// `op_ws_create` used to hold a ~16 KB connect/handshake state machine
+  /// inline, roughly 30x the p99 async op future. The op driver sizes its
+  /// future arena slots off the largest op future, so a single outlier makes
+  /// every op more expensive. Keep this one small.
+  #[test]
+  #[allow(unreachable_code, reason = "the closure is never called")]
+  fn op_ws_create_future_is_small() {
+    let size = future_size(|| {
+      op_ws_create_inner(
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+        unreachable!(),
+      )
+    });
+    assert!(
+      size <= 1024,
+      "op_ws_create future grew to {size} bytes (max 1024); box the large \
+       inner future instead of holding it across an await"
+    );
   }
 }

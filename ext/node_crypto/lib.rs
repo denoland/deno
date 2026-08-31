@@ -1807,17 +1807,11 @@ pub fn op_node_diffie_hellman(
       AsymmetricPrivateKey::X448(private),
       AsymmetricPublicKey::X448(public),
     ) => {
-      let mut scalar_bytes = [0u8; 57];
-      scalar_bytes[..56].copy_from_slice(&private[..56]);
-      let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
-        &scalar_bytes.into(),
-      );
-      let point = ed448_goldilocks::MontgomeryPoint(*public);
-      let shared = &point * &scalar;
-      if shared.0.iter().all(|b| *b == 0) {
+      let shared = deno_crypto_provider::x448::x448(private, public);
+      if shared.iter().all(|b| *b == 0) {
         return Err(DiffieHellmanError::FailedDuringDerivation);
       }
-      shared.0.to_vec().into_boxed_slice()
+      shared.to_vec().into_boxed_slice()
     }
     (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
       // Compare DH parameters by integer value, not byte encoding,
