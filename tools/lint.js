@@ -442,14 +442,40 @@ async function clippy() {
     }
   }
 
-  // Run clippy for the whole workspace except deno_core with --all-features.
-  // deno_core is excluded because --all-features enables
-  // v8_enable_pointer_compression which is not available on all platforms.
+  // Cargo's --all-features cannot represent mutually exclusive engine
+  // backends. Enable every workspace feature explicitly except QuickJS and
+  // platform-specific V8 modes, then check deno_core separately below.
   {
+    const metadataCommand = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: ["metadata", "--no-deps", "--format-version", "1"],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const metadataOutput = await metadataCommand.output();
+    if (!metadataOutput.success) {
+      throw new Error(new TextDecoder().decode(metadataOutput.stderr));
+    }
+    const metadata = JSON.parse(
+      new TextDecoder().decode(metadataOutput.stdout),
+    );
+    const workspaceMembers = new Set(metadata.workspace_members);
+    const workspaceFeatures = metadata.packages
+      .filter((pkg) => workspaceMembers.has(pkg.id) && pkg.name !== "deno_core")
+      .flatMap((pkg) =>
+        Object.keys(pkg.features).map((feature) => `${pkg.name}/${feature}`)
+      )
+      .filter((feature) =>
+        !feature.endsWith("/quickjs") &&
+        !feature.startsWith("deno_v8/v8_enable_")
+      )
+      .sort();
+
     const cmd = [
       "clippy",
       "--all-targets",
-      "--all-features",
+      "--features",
+      workspaceFeatures.join(","),
       "--locked",
       "--workspace",
       "--exclude",
@@ -470,6 +496,7 @@ async function clippy() {
       "default",
       "unsafe_runtime_options",
       "unsafe_use_unprotected_platform",
+      "v8",
     ].join(",");
 
     const cmd = [
@@ -535,9 +562,13 @@ async function ensureWorkflowYmlsUpToDate() {
  * this convention.
  */
 async function ensureNoNonPermissionCapitalLetterShortFlags() {
-  const text = await Deno.readTextFile(join(ROOT_PATH, "cli/args/flags.rs"));
+  const text = await Deno.readTextFile(
+    join(ROOT_PATH, "libs/cli_parser/src/defs.rs"),
+  );
   const shortFlags = text.matchAll(/\.short\('([A-Z])'\)/g);
-  const values = Array.from(shortFlags.map((flag) => flag[1])).sort();
+  // Deduplicated: unlike the old clap builders, the command tree declares each
+  // arg per-command, so a flag like `-I` appears once per command that takes it.
+  const values = [...new Set(shortFlags.map((flag) => flag[1]))].sort();
   // DO NOT update this list with a non-permission short flag without
   // discussion--there needs to be precedence to add to this list.
   const expected = [

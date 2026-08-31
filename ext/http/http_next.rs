@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fmt;
@@ -16,8 +17,6 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use bytes::Bytes;
-use bytes::BytesMut;
-use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
@@ -41,8 +40,6 @@ use deno_core::v8;
 use deno_http_h1 as h1;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
-use deno_net::raw::NetworkStreamReadHalf;
-use deno_net::raw::NetworkStreamWriteHalf;
 use deno_websocket::ServerWebSocket;
 use deno_websocket::ws_create_server_stream;
 use deno_websocket::ws_create_server_stream_with_guard;
@@ -62,10 +59,8 @@ use hyper::http::HeaderValue;
 use hyper::server::conn::http2;
 use hyper::service::HttpService;
 use hyper::service::service_fn;
-use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
 use smallvec::SmallVec;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -344,9 +339,6 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("invalid HTTP status line")]
   InvalidHttpStatusLine,
-  #[class("Http")]
-  #[error("raw upgrade failed")]
-  RawUpgradeFailed,
   #[class(inherit)]
   #[error(transparent)]
   TakeNetworkStream(
@@ -980,6 +972,9 @@ impl<I> RawH1ConnectionState<I>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+  /// Reads the next body chunk. An empty `BufView` means end-of-stream: a
+  /// `Chunk` always carries at least one byte, so callers rely on an empty
+  /// read to detect that the body is finished.
   fn poll_read_body(
     &mut self,
     cx: &mut Context<'_>,
@@ -1419,7 +1414,10 @@ impl RawHttpRecord {
   fn take_request_body(&self) -> Option<Rc<dyn Resource>> {
     let body = self.0.borrow_mut().request_body.take()?;
     match body {
-      RawRequestBody::Streaming(body) => Some(body as Rc<dyn Resource>),
+      RawRequestBody::Streaming(body) => {
+        body.taken.set(true);
+        Some(body as Rc<dyn Resource>)
+      }
       RawRequestBody::Prebuffered(body) => {
         self.0.borrow_mut().request_body =
           Some(RawRequestBody::Prebuffered(body));
@@ -1455,10 +1453,6 @@ impl RawHttpRecord {
 
   fn request_body_taken_full(&self) -> bool {
     self.0.borrow().request_body_taken_full
-  }
-
-  fn take_upgrade(&self) -> Option<Rc<RawUpgrade>> {
-    self.0.borrow_mut().upgrade.take()
   }
 
   fn finish_response_body(&self, complete: bool) {
@@ -1562,20 +1556,61 @@ impl Drop for RawHttpRecordCancelGuard {
 struct RawH1RequestBody<I> {
   conn: RawH1ConnectionCell<I>,
   size_hint: (u64, Option<u64>),
-  canceled: std::cell::Cell<bool>,
+  canceled: Cell<bool>,
+  // Set once JS has taken this body as a resource (i.e. accessed `req.body`),
+  // meaning it may be read on a separate task.
+  taken: Cell<bool>,
+  // Set once the JS reader is finished with the body: either it reached the end
+  // of the stream, the resource was closed/cancelled, or the read errored.
+  reader_done: Cell<bool>,
+  // Cancelled when the server tears its connections down. A body read that
+  // outlived its response is only bounded by the client, so it has to be
+  // cancellable or the server can never go away.
+  cancel_handle: Rc<CancelHandle>,
 }
 
 impl<I> RawH1RequestBody<I> {
-  fn new(conn: RawH1ConnectionCell<I>, length: Option<u64>) -> Self {
+  fn new(
+    conn: RawH1ConnectionCell<I>,
+    length: Option<u64>,
+    cancel_handle: Rc<CancelHandle>,
+  ) -> Self {
     Self {
       conn,
       size_hint: length.map_or((0, None), |length| (length, Some(length))),
-      canceled: std::cell::Cell::new(false),
+      canceled: Cell::new(false),
+      taken: Cell::new(false),
+      reader_done: Cell::new(false),
+      cancel_handle,
     }
   }
 
   fn cancel(&self) {
     self.canceled.set(true);
+    // A cancelled read makes no further progress.
+    self.mark_reader_done();
+  }
+
+  fn mark_reader_done(&self) {
+    self.reader_done.set(true);
+  }
+
+  /// Whether a JS reader still owns this body, i.e. `req.body` was taken as a
+  /// resource and has not reached end-of-stream, been closed or been cancelled.
+  ///
+  /// While that is the case the connection must not be reclaimed by the
+  /// connection loop: the reader and the response writer share it, and taking
+  /// it away would fail an in-flight read with a spurious "resource
+  /// unavailable" error and truncate the body.
+  fn reader_owns_connection(&self) -> bool {
+    self.taken.get() && !self.reader_done.get()
+  }
+
+  /// Whether JS is finished with the body and the connection can be reclaimed.
+  /// A cancelled connection or failed read is not reusable, even though it also
+  /// marks the reader done.
+  fn reader_finished_for_reuse(&self) -> bool {
+    self.taken.get() && self.reader_done.get() && !self.canceled.get()
   }
 
   fn try_take_full(&self) -> Option<Vec<u8>> {
@@ -1608,10 +1643,7 @@ where
     let this = self.get_mut();
     if this.body.canceled.get() {
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let mut conn = this.body.conn.borrow_mut();
@@ -1624,13 +1656,19 @@ where
     if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
-    conn.poll_read_body(cx, this.limit)
+    let result = conn.poll_read_body(cx, this.limit);
+    if let Poll::Ready(result) = &result {
+      match result {
+        // An empty read is end-of-stream: the reader is finished with the body.
+        Ok(buf) if buf.is_empty() => this.body.mark_reader_done(),
+        Err(_) => this.body.cancel(),
+        Ok(_) => {}
+      }
+    }
+    result
   }
 }
 
@@ -1644,10 +1682,7 @@ where
     let this = self.get_mut();
     if this.body.canceled.get() {
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let mut conn = this.body.conn.borrow_mut();
@@ -1661,14 +1696,21 @@ where
     if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
-        deno_error::JsErrorBox::new(
-          "BadResource",
-          "Cannot read request body as underlying resource unavailable",
-        ),
+        raw_h1_request_body_unavailable(),
       )));
     }
     let buf = this.buf.as_mut().unwrap();
-    let read = ready!(conn.poll_read_body_byob(cx, buf))?;
+    let read = match ready!(conn.poll_read_body_byob(cx, buf)) {
+      Ok(read) => read,
+      Err(error) => {
+        this.body.cancel();
+        return Poll::Ready(Err(error));
+      }
+    };
+    // A zero-length read is end-of-stream: the reader is finished with the body.
+    if read == 0 {
+      this.body.mark_reader_done();
+    }
     let buf = this.buf.take().unwrap();
     Poll::Ready(Ok((read, buf)))
   }
@@ -1684,12 +1726,12 @@ where
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      RawH1RequestBodyRead { body: self, limit }.await.map_err(
-        |err| match err {
-          HttpNextError::Other(error) => error,
-          _ => deno_error::JsErrorBox::new("Http", err.to_string()),
-        },
-      )
+      let cancel_handle = self.cancel_handle.clone();
+      RawH1RequestBodyRead { body: self, limit }
+        .or_cancel(cancel_handle)
+        .await
+        .map_err(|_| raw_h1_request_body_unavailable())?
+        .map_err(raw_h1_request_body_error)
     })
   }
 
@@ -1698,62 +1740,27 @@ where
     buf: BufMutView,
   ) -> AsyncResult<(usize, BufMutView)> {
     Box::pin(async move {
+      let cancel_handle = self.cancel_handle.clone();
       RawH1RequestBodyReadByob {
         body: self,
         buf: Some(buf),
       }
+      .or_cancel(cancel_handle)
       .await
-      .map_err(|err| match err {
-        HttpNextError::Other(error) => error,
-        _ => deno_error::JsErrorBox::new("Http", err.to_string()),
-      })
+      .map_err(|_| raw_h1_request_body_unavailable())?
+      .map_err(raw_h1_request_body_error)
     })
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
     self.size_hint
   }
-}
 
-#[op2(fast)]
-#[smi]
-pub fn op_http_upgrade_raw(
-  state: &mut OpState,
-  external: *const c_void,
-) -> Result<ResourceId, HttpNextError> {
-  // SAFETY: external is deleted before calling this op.
-  let http = unsafe { take_external!(external, "op_http_upgrade_raw") };
-  if let HttpRecordExternal::Raw(record) = http {
-    let Some(upgrade) = record.take_upgrade() else {
-      return Err(raw_upgrade_unavailable());
-    };
-    let read = Rc::new(AsyncRefCell::new(None));
-    let read_cell = AsyncRefCell::borrow_sync(read.clone()).unwrap();
-    let write = UpgradeStreamWriteState::RawParsing(
-      BytesMut::with_capacity(
-        b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".len(),
-      ),
-      record,
-      upgrade.conn.clone(),
-      read_cell,
-    );
-    return Ok(state.resource_table.add(UpgradeStream::new(read, write)));
+  fn close(self: Rc<Self>) {
+    // JS is done with the body (fully read, cancelled, or errored). Let the
+    // connection loop stop waiting for the background read.
+    self.mark_reader_done();
   }
-  let http = http.into_hyper("op_http_upgrade_raw")?;
-
-  let upgrade = http.upgrade()?;
-
-  let read = Rc::new(AsyncRefCell::new(None));
-  let read_cell = AsyncRefCell::borrow_sync(read.clone()).unwrap();
-
-  let write = UpgradeStreamWriteState::Parsing(
-    BytesMut::with_capacity(b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".len()),
-    http,
-    upgrade,
-    read_cell,
-  );
-
-  Ok(state.resource_table.add(UpgradeStream::new(read, write)))
 }
 
 #[op2]
@@ -3693,6 +3700,20 @@ where
     .await
 }
 
+fn raw_h1_request_body_unavailable() -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::new(
+    "BadResource",
+    "Cannot read request body as underlying resource unavailable",
+  )
+}
+
+fn raw_h1_request_body_error(error: HttpNextError) -> deno_error::JsErrorBox {
+  match error {
+    HttpNextError::Other(error) => error,
+    _ => deno_error::JsErrorBox::new("Http", error.to_string()),
+  }
+}
+
 fn raw_h1_connection_closed() -> HttpNextError {
   HttpNextError::Other(deno_error::JsErrorBox::generic(
     "HTTP connection closed",
@@ -3731,6 +3752,108 @@ async fn wait_raw_response_ready(
     Poll::Pending
   })
   .await
+}
+
+/// Decide whether the connection has to be left behind with the JS reader that
+/// still owns the request body, once the response has been written.
+///
+/// The request-body reader and the response writer share a single connection.
+/// A request whose body reader is still active cannot reuse its connection, so
+/// rather than reclaiming it here -- which would fail an in-flight read with a
+/// spurious "resource unavailable" error and truncate the body -- ownership is
+/// handed to the body resource. The socket is then closed when JS reaches
+/// end-of-stream or closes, cancels or drops the body stream.
+///
+/// Returns `true` when the caller must return without touching the connection.
+/// If the connection is being cancelled (the server is going away) the body is
+/// cancelled instead, so a parked read is failed and the connection is torn
+/// down right away.
+fn hand_off_connection_to_reader(
+  request_body: &Rc<RawH1RequestBody<RawH1Io>>,
+  cancel: &CancelHandle,
+) -> bool {
+  if !request_body.reader_owns_connection() {
+    return false;
+  }
+  if cancel.is_canceled() {
+    request_body.cancel();
+    return false;
+  }
+  true
+}
+
+/// Writes a synchronously produced response for a request whose body is still
+/// owned by a JS reader: the connection cannot be reclaimed, so the response
+/// goes out through the shared connection cell and the connection is then
+/// handed to the reader (see `hand_off_connection_to_reader`).
+#[allow(clippy::too_many_arguments, reason = "response writing plumbing")]
+async fn write_direct_response_for_reader(
+  body_conn: RawNetworkH1ConnectionCell,
+  request_body: Option<Rc<RawH1RequestBody<RawH1Io>>>,
+  record: Rc<RawHttpRecord>,
+  cancel: Rc<CancelHandle>,
+  version: h1::Version,
+  response_context: RawH1ResponseContext,
+  response_parts: RawResponseParts,
+  body: RawResponseBody,
+  head: bool,
+) -> Result<(), HttpNextError> {
+  // The reader owns the request body, so this request never reuses its
+  // connection: the response is always written with `keep_alive: false`.
+  match body {
+    RawResponseBody::Flat(body) => {
+      write_h1_flat_response_shared(
+        body_conn.clone(),
+        version,
+        response_parts,
+        body,
+        false,
+        head,
+      )
+      .await?;
+    }
+    RawResponseBody::Stream(body) => {
+      let response_context = RawH1ResponseContext {
+        version: response_context.version,
+        keep_alive: false,
+        head: response_context.head,
+      };
+      write_h1_stream_response_shared(
+        body_conn.clone(),
+        response_context,
+        response_parts,
+        body,
+        record,
+      )
+      .await?;
+    }
+  }
+  if let Some(request_body) = request_body.as_ref()
+    && hand_off_connection_to_reader(request_body, &cancel)
+  {
+    return Ok(());
+  }
+  let state = { body_conn.borrow_mut().take() };
+  if let Some(state) = state {
+    let mut conn = state.conn;
+    let mut scratch = state.scratch;
+    let _ = conn.discard_body_with_scratch(&mut scratch).await;
+  }
+  Ok(())
+}
+
+async fn drain_raw_h1_request_body<I>(
+  mut state: RawH1ConnectionState<I>,
+) -> Option<RawH1ConnectionState<I>>
+where
+  I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  state
+    .conn
+    .discard_body_with_scratch(&mut state.scratch)
+    .await
+    .ok()?;
+  Some(state)
 }
 
 async fn wait_raw_response_ready_or_closed<I>(
@@ -3999,6 +4122,20 @@ fn abort_raw_response_body(body: &mut ResponseBytesInner) {
   std::mem::take(body).abort();
 }
 
+fn limit_fixed_response_chunk<'a>(
+  chunk: &'a [u8],
+  remaining: &mut Option<u64>,
+) -> (&'a [u8], bool) {
+  let Some(remaining) = remaining else {
+    return (chunk, false);
+  };
+  let write_len = chunk
+    .len()
+    .min(usize::try_from(*remaining).unwrap_or(usize::MAX));
+  *remaining -= write_len as u64;
+  (&chunk[..write_len], *remaining == 0)
+}
+
 struct RawResponseBodyFinishGuard {
   record: Rc<RawHttpRecord>,
   active: bool,
@@ -4026,6 +4163,24 @@ impl Drop for RawResponseBodyFinishGuard {
   }
 }
 
+async fn finish_h1_stream_response_shared<I>(
+  conn: &RawH1ConnectionCell<I>,
+  trailers: &[h1::Header<'_>],
+) -> Result<(), HttpNextError>
+where
+  I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  let mut end = h1::SharedResponseEndWriter::new(trailers);
+  poll_fn(|cx| {
+    let mut conn = conn.borrow_mut();
+    let Some(conn) = conn.as_mut() else {
+      return Poll::Ready(Err(raw_h1_connection_closed()));
+    };
+    conn.poll_finish_response(cx, &mut end)
+  })
+  .await
+}
+
 async fn write_h1_stream_response<I>(
   conn: &mut h1::SharedConn<I>,
   scratch: &mut h1::SharedScratch,
@@ -4045,6 +4200,7 @@ where
     && !raw_response_has_transfer_encoding(&parts))
   .then(|| raw_response_content_length(&parts))
   .flatten();
+  let mut remaining = content_length;
   if context.head {
     conn
       .write_response_with_scratch(
@@ -4090,6 +4246,12 @@ where
       finish.finish(false);
       return Err(error.into());
     }
+  }
+  if remaining == Some(0) {
+    abort_raw_response_body(&mut body);
+    conn.finish_response_with_scratch(scratch, &[]).await?;
+    finish.finish(true);
+    return Ok(());
   }
   loop {
     let event = poll_fn(|cx| {
@@ -4140,12 +4302,12 @@ where
         return Ok(());
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NonEmptyBuf(chunk)) => {
+        let (chunk, fixed_body_complete) =
+          limit_fixed_response_chunk(&chunk, &mut remaining);
         let result = if content_length.is_some() {
-          conn.write_response_body_with_scratch(&chunk).await
+          conn.write_response_body_with_scratch(chunk).await
         } else {
-          conn
-            .write_response_chunk_with_scratch(scratch, &chunk)
-            .await
+          conn.write_response_chunk_with_scratch(scratch, chunk).await
         };
         if let Err(error) = result {
           abort_raw_response_body(&mut body);
@@ -4153,6 +4315,12 @@ where
           return Err(error.into());
         }
         finish.record.add_otel_response_size(chunk.len());
+        if fixed_body_complete {
+          abort_raw_response_body(&mut body);
+          conn.finish_response_with_scratch(scratch, &[]).await?;
+          finish.finish(true);
+          return Ok(());
+        }
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
@@ -4185,6 +4353,7 @@ where
     && !raw_response_has_transfer_encoding(&parts))
   .then(|| raw_response_content_length(&parts))
   .flatten();
+  let mut remaining = content_length;
   if context.head {
     let mut writer = h1::SharedResponseWriter::new(h1::Response {
       version: context.version,
@@ -4238,6 +4407,12 @@ where
     })
     .await
     .inspect_err(|_| abort_raw_response_body(&mut body))?;
+  }
+  if remaining == Some(0) {
+    abort_raw_response_body(&mut body);
+    finish_h1_stream_response_shared(&conn, &[]).await?;
+    finish.finish(true);
+    return Ok(());
   }
   loop {
     let event = poll_fn(|cx| {
@@ -4293,21 +4468,15 @@ where
         } else {
           trailers.as_slice()
         };
-        let mut end = h1::SharedResponseEndWriter::new(trailers);
-        poll_fn(|cx| {
-          let mut conn = conn.borrow_mut();
-          let Some(conn) = conn.as_mut() else {
-            return Poll::Ready(Err(raw_h1_connection_closed()));
-          };
-          conn.poll_finish_response(cx, &mut end)
-        })
-        .await?;
+        finish_h1_stream_response_shared(&conn, trailers).await?;
         finish.finish(true);
         return Ok(());
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NonEmptyBuf(chunk)) => {
+        let (chunk, fixed_body_complete) =
+          limit_fixed_response_chunk(&chunk, &mut remaining);
         let result = if content_length.is_some() {
-          let mut writer = h1::SharedResponseBodyWriter::new(&chunk);
+          let mut writer = h1::SharedResponseBodyWriter::new(chunk);
           poll_fn(|cx| {
             let mut conn = conn.borrow_mut();
             let Some(conn) = conn.as_mut() else {
@@ -4317,7 +4486,7 @@ where
           })
           .await
         } else {
-          let mut writer = h1::SharedResponseChunkWriter::new(&chunk);
+          let mut writer = h1::SharedResponseChunkWriter::new(chunk);
           poll_fn(|cx| {
             let mut conn = conn.borrow_mut();
             let Some(conn) = conn.as_mut() else {
@@ -4333,6 +4502,12 @@ where
           return Err(error);
         }
         finish.record.add_otel_response_size(chunk.len());
+        if fixed_body_complete {
+          abort_raw_response_body(&mut body);
+          finish_h1_stream_response_shared(&conn, &[]).await?;
+          finish.finish(true);
+          return Ok(());
+        }
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
@@ -4535,6 +4710,7 @@ async fn serve_http11_raw(
         Rc::new(RawH1RequestBody::new(
           body_conn.clone(),
           parsed.request_body_len,
+          cancel.clone(),
         ))
       });
       let request_body_for_cancel = request_body_resource.clone();
@@ -4569,7 +4745,19 @@ async fn serve_http11_raw(
         let (response_parts, body) =
           raw_response_from_direct_response(&record, response);
         let response_status = response_parts.status;
-        let state = { body_conn.borrow_mut().take() };
+        // The handler produced its response synchronously, but a JS reader may
+        // still own the request body -- and with it the shared connection. When
+        // it does, the response has to go out through the shared connection
+        // cell instead of a reclaimed connection, or the in-flight read is
+        // truncated.
+        let reader_owns_conn = request_body_for_cancel
+          .as_ref()
+          .is_some_and(|body| body.reader_owns_connection());
+        let state = if reader_owns_conn {
+          None
+        } else {
+          body_conn.borrow_mut().take()
+        };
         if let Some(state) = state {
           let mut local_conn = state.conn;
           let mut local_scratch = state.scratch;
@@ -4621,6 +4809,24 @@ async fn serve_http11_raw(
             return Ok(());
           }
           continue;
+        }
+        if reader_owns_conn {
+          // Boxed: this is the cold path, and inlining it would grow the
+          // per-connection future.
+          Box::pin(write_direct_response_for_reader(
+            body_conn,
+            request_body_for_cancel,
+            record,
+            cancel,
+            parsed.version,
+            response_context,
+            response_parts,
+            body,
+            head,
+          ))
+          .await?;
+          record_cancel_guard.disarm();
+          return Ok(());
         }
       }
       wait_raw_response_ready(
@@ -4678,15 +4884,19 @@ async fn serve_http11_raw(
           continue;
         }
       }
+      let request_body_finished = request_body_for_cancel
+        .as_ref()
+        .is_some_and(|body| body.reader_finished_for_reuse());
+      let response_keep_alive =
+        keep_alive && (!parsed.has_body || request_body_finished);
       match body {
         RawResponseBody::Flat(body) => {
-          let keep_alive = keep_alive && !parsed.has_body;
           write_h1_flat_response_shared(
             body_conn.clone(),
             parsed.version,
             response_parts,
             body,
-            keep_alive,
+            response_keep_alive,
             head,
           )
           .await?;
@@ -4694,7 +4904,7 @@ async fn serve_http11_raw(
         RawResponseBody::Stream(body) => {
           let response_context = RawH1ResponseContext {
             version: response_context.version,
-            keep_alive: response_context.keep_alive && !parsed.has_body,
+            keep_alive: response_keep_alive,
             head: response_context.head,
           };
           write_h1_stream_response_shared(
@@ -4720,20 +4930,38 @@ async fn serve_http11_raw(
         record_cancel_guard.disarm();
         return Ok(());
       }
-      let Some(state) = body_conn.borrow_mut().take() else {
-        return Err(raw_h1_connection_closed());
-      };
-      conn = state.conn;
-      scratch = state.scratch;
-      if !keep_alive || parsed.has_body || cancel.is_canceled() {
-        if parsed.has_body {
-          let _ = conn.discard_body_with_scratch(&mut scratch).await;
-        }
+      // The response is on the wire. If a JS reader still owns the request body
+      // (`req.body` is being piped/consumed in the background), hand the
+      // connection over to it instead of reclaiming it here -- see
+      // `hand_off_connection_to_reader`.
+      if parsed.has_body
+        && let Some(request_body) = request_body_for_cancel.as_ref()
+        && hand_off_connection_to_reader(request_body, &cancel)
+      {
         record_cancel_guard.disarm();
         return Ok(());
       }
+      let Some(state) = body_conn.borrow_mut().take() else {
+        return Err(raw_h1_connection_closed());
+      };
+      if response_keep_alive && !cancel.is_canceled() {
+        let Some(state) = Box::pin(drain_raw_h1_request_body(state)).await
+        else {
+          record_cancel_guard.disarm();
+          return Ok(());
+        };
+        conn = state.conn;
+        scratch = state.scratch;
+        record_cancel_guard.disarm();
+        continue;
+      }
+      conn = state.conn;
+      scratch = state.scratch;
+      if parsed.has_body {
+        let _ = conn.discard_body_with_scratch(&mut scratch).await;
+      }
       record_cancel_guard.disarm();
-      continue;
+      return Ok(());
     }
 
     let record = RawHttpRecord::new(
@@ -5547,327 +5775,6 @@ pub async fn op_http_close(
   }
 
   Ok(())
-}
-
-enum UpgradeStreamWriteState {
-  RawParsing(
-    BytesMut,
-    Rc<RawHttpRecord>,
-    RawNetworkH1ConnectionCell,
-    AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
-  ),
-  Parsing(
-    BytesMut,
-    Rc<HttpRecord>,
-    OnUpgrade,
-    AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
-  ),
-  Network(NetworkStreamWriteHalf),
-  /// The upgrade was rejected with a non-101 status code.
-  /// The response has been sent and the stream is now closed for writing.
-  Rejected,
-  Failed,
-}
-
-struct UpgradeStream {
-  read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
-  write: AsyncRefCell<UpgradeStreamWriteState>,
-  cancel_handle: CancelHandle,
-  /// Set to true when the upgrade was rejected with a non-101 status.
-  /// When rejected, reads return EOF and writes are silently ignored.
-  rejected: std::cell::Cell<bool>,
-}
-
-impl UpgradeStream {
-  pub fn new(
-    read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
-    write: UpgradeStreamWriteState,
-  ) -> Self {
-    Self {
-      read,
-      write: AsyncRefCell::new(write),
-      cancel_handle: CancelHandle::new(),
-      rejected: std::cell::Cell::new(false),
-    }
-  }
-
-  async fn read(
-    self: Rc<Self>,
-    buf: &mut [u8],
-  ) -> Result<usize, std::io::Error> {
-    // If the upgrade was rejected, return EOF
-    if self.rejected.get() {
-      return Ok(0);
-    }
-
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let read = RcRef::map(self, |this| &this.read);
-      let mut read = read.borrow_mut().await;
-      let Some(read) = &mut *read else {
-        return Err(std::io::Error::other(HttpNextError::RawUpgradeFailed));
-      };
-      if !read.1.is_empty() {
-        let n = read.1.len().min(buf.len());
-        buf[0..n].copy_from_slice(&read.1.split_to(n));
-        Ok(n)
-      } else {
-        Pin::new(&mut read.0).read(buf).await
-      }
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    let this = self.clone();
-    async {
-      let wr = RcRef::map(self, |this| &this.write);
-      let mut wr = wr.borrow_mut().await;
-      match std::mem::replace(&mut *wr, UpgradeStreamWriteState::Failed) {
-        UpgradeStreamWriteState::Failed => {
-          Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
-        }
-        UpgradeStreamWriteState::Rejected => {
-          // The upgrade was rejected and the response was already sent.
-          // Silently accept writes but don't do anything with them.
-          *wr = UpgradeStreamWriteState::Rejected;
-          Ok(buf.len())
-        }
-        UpgradeStreamWriteState::RawParsing(
-          mut bytes,
-          http,
-          conn,
-          mut read_cell,
-        ) => {
-          let prev_len = bytes.len();
-          bytes.extend_from_slice(buf);
-
-          let mut headers = [httparse::EMPTY_HEADER; 16];
-          let mut response = httparse::Response::new(&mut headers);
-          match response.parse(&bytes) {
-            Ok(httparse::Status::Partial) => {
-              *wr = UpgradeStreamWriteState::RawParsing(
-                bytes, http, conn, read_cell,
-              );
-              Ok(buf.len())
-            }
-            Ok(httparse::Status::Complete(n)) => {
-              let status_code = response.code.unwrap_or(0);
-
-              if status_code != StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                http.set_status(status_code);
-                for header in response.headers {
-                  if header.name.is_empty() {
-                    continue;
-                  }
-                  http.append_response_header(
-                    header.name.as_bytes().to_vec(),
-                    header.value.to_vec(),
-                  );
-                }
-                if bytes.len() > n {
-                  http.set_flat_response_body(FlatResponseBody::Bytes(
-                    BufView::from(bytes[n..].to_vec()),
-                  ));
-                } else {
-                  http.set_flat_response_body(FlatResponseBody::Empty);
-                }
-                *wr = UpgradeStreamWriteState::Rejected;
-                this.rejected.set(true);
-                http.complete();
-                return Ok(buf.len());
-              }
-
-              let (stream, head_bytes) = take_raw_upgrade_stream(&RawUpgrade {
-                conn,
-                websocket_tx: RefCell::new(None),
-              })
-              .map_err(std::io::Error::other)?;
-              let (read, mut write) = stream.into_split();
-
-              let mut written = 0;
-              while written < n {
-                written +=
-                  Pin::new(&mut write).write(&bytes[written..n]).await?;
-              }
-
-              let _ = read_cell.insert((read, head_bytes));
-
-              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                *wr = UpgradeStreamWriteState::Network(write);
-              } else {
-                *wr = UpgradeStreamWriteState::Rejected;
-                this.rejected.set(true);
-              }
-
-              http.complete();
-              Ok(n - prev_len)
-            }
-            Err(e) => Err(std::io::Error::other(e)),
-          }
-        }
-        UpgradeStreamWriteState::Parsing(
-          mut bytes,
-          http,
-          on_upgrade,
-          mut read_cell,
-        ) => {
-          let prev_len = bytes.len();
-          bytes.extend_from_slice(buf);
-
-          let mut headers = [httparse::EMPTY_HEADER; 16];
-          let mut response = httparse::Response::new(&mut headers);
-          match response.parse(&bytes) {
-            Ok(httparse::Status::Partial) => {
-              *wr = UpgradeStreamWriteState::Parsing(
-                bytes, http, on_upgrade, read_cell,
-              );
-              Ok(buf.len())
-            }
-            Ok(httparse::Status::Complete(n)) => {
-              let status_code = response.code.unwrap_or(0);
-
-              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                let status = StatusCode::from_u16(status_code)
-                  .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
-                http.otel_info_set_status(status.as_u16());
-                http.response_parts().status = status;
-
-                for header in response.headers {
-                  http.response_parts().headers.append(
-                    HeaderName::from_bytes(header.name.as_bytes())
-                      .map_err(std::io::Error::other)?,
-                    HeaderValue::from_bytes(header.value)
-                      .map_err(std::io::Error::other)?,
-                  );
-                }
-
-                http.complete();
-
-                let upgraded =
-                  on_upgrade.await.map_err(std::io::Error::other)?;
-                let (stream, bytes) = extract_network_stream(upgraded);
-                let (read, write) = stream.into_split();
-
-                let _ = read_cell.insert((read, bytes));
-                *wr = UpgradeStreamWriteState::Network(write);
-
-                Ok(n - prev_len)
-              } else {
-                // Upgrade rejected - send the rejection response through hyper
-                http.otel_info_set_status(status_code);
-                http.response_parts().status =
-                  StatusCode::from_u16(status_code)
-                    .unwrap_or(StatusCode::BAD_REQUEST);
-
-                for header in response.headers {
-                  http.response_parts().headers.append(
-                    HeaderName::from_bytes(header.name.as_bytes())
-                      .map_err(std::io::Error::other)?,
-                    HeaderValue::from_bytes(header.value)
-                      .map_err(std::io::Error::other)?,
-                  );
-                }
-
-                // Any data after the headers is the response body
-                let body = bytes.split_off(n);
-                if !body.is_empty() {
-                  http.set_response_body(ResponseBytesInner::Bytes(
-                    BufView::from(body.freeze()),
-                  ));
-                }
-
-                http.complete();
-
-                // Mark as rejected - no upgrade will happen
-                *wr = UpgradeStreamWriteState::Rejected;
-                this.rejected.set(true);
-                // Drop the on_upgrade future since we're not upgrading
-                drop(on_upgrade);
-
-                Ok(buf.len())
-              }
-            }
-            Err(e) => Err(std::io::Error::other(e)),
-          }
-        }
-        UpgradeStreamWriteState::Network(mut stream) => {
-          let r = Pin::new(&mut stream).write(buf).await;
-          *wr = UpgradeStreamWriteState::Network(stream);
-          r
-        }
-      }
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write_vectored(
-    self: Rc<Self>,
-    buf1: &[u8],
-    buf2: &[u8],
-  ) -> Result<usize, std::io::Error> {
-    let mut wr = RcRef::map(&self, |r| &r.write).borrow_mut().await;
-
-    match &mut *wr {
-      UpgradeStreamWriteState::Failed => {
-        Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
-      }
-      UpgradeStreamWriteState::Rejected => {
-        // The upgrade was rejected; silently accept writes
-        Ok(buf1.len() + buf2.len())
-      }
-      UpgradeStreamWriteState::RawParsing(..) => {
-        drop(wr);
-        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
-      }
-      UpgradeStreamWriteState::Parsing(..) => {
-        drop(wr);
-        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
-      }
-      UpgradeStreamWriteState::Network(stream) => {
-        let bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-        stream.write_vectored(&bufs).await
-      }
-    }
-  }
-}
-
-impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<'_, str> {
-    "httpRawUpgradeStream".into()
-  }
-
-  deno_core::impl_readable_byob!();
-  deno_core::impl_writable!();
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
-}
-
-#[op2(fast)]
-pub fn op_can_write_vectored(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> bool {
-  state.resource_table.get::<UpgradeStream>(rid).is_ok()
-}
-
-#[op2]
-#[number]
-pub async fn op_raw_write_vectored(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] buf1: JsBuffer,
-  #[buffer] buf2: JsBuffer,
-) -> Result<usize, HttpNextError> {
-  let resource: Rc<UpgradeStream> =
-    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
-  let nwritten = resource.write_vectored(&buf1, &buf2).await?;
-  Ok(nwritten)
 }
 
 #[op2(fast)]

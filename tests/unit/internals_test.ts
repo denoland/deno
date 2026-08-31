@@ -8,3 +8,8 @@ Deno.test(function internalsExists() {
   } = Deno[Deno.internal];
   assert(!!inspectArgs);
 });
+
+Deno.test(function upgradeHttpRawIsNotExposed() {
+  // @ts-expect-error TypeScript does not support indexing namespaces by symbol
+  assert(!("upgradeHttpRaw" in Deno[Deno.internal]));
+});

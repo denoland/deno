@@ -71,7 +71,9 @@ use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::FlagsExt;
-use crate::args::flags_from_vec_with_initial_cwd;
+// Re-exported for the flag-parsing benchmark in `cli/benches/flags.rs`.
+#[doc(hidden)]
+pub use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::env::WatchEnvTracker;
@@ -298,6 +300,7 @@ async fn run_subcommand(
           task: None,
           is_run: true,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -375,30 +378,31 @@ async fn run_subcommand(
             let script_err_msg = script_err.to_string();
             if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
-                let mut cmd = args::clap_root();
-                cmd.build();
-                let command_names = cmd
-                  .get_subcommands()
-                  .map(|command| command.get_name())
+                let command_names = deno_cli_parser::defs::DENO_ROOT
+                  .subcommands
+                  .iter()
+                  .map(|command| command.name)
                   .collect::<Vec<_>>();
                 let suggestions =
                   args::did_you_mean(&run_flags.script, command_names);
                 if !suggestions.is_empty() && !run_flags.script.contains('.') {
-                  let mut error =
-                    clap::error::Error::<clap::error::DefaultFormatter>::new(
-                      clap::error::ErrorKind::InvalidSubcommand,
+                  let quoted = suggestions
+                    .iter()
+                    .map(|s| format!("'{s}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                  let tip = if suggestions.len() == 1 {
+                    format!("a similar subcommand exists: {quoted}")
+                  } else {
+                    format!("some similar subcommands exist: {quoted}")
+                  };
+                  Err(unrecognized_subcommand_error(
+                    &deno_cli_parser::CliError::new(
+                      deno_cli_parser::CliErrorKind::UnknownSubcommand,
+                      format!("unrecognized subcommand '{}'", run_flags.script),
                     )
-                    .with_cmd(&cmd);
-                  error.insert(
-                    clap::error::ContextKind::InvalidSubcommand,
-                    clap::error::ContextValue::String(run_flags.script.clone()),
-                  );
-                  error.insert(
-                    clap::error::ContextKind::SuggestedSubcommand,
-                    clap::error::ContextValue::Strings(suggestions),
-                  );
-
-                  Err(error.into())
+                    .with_suggestion(tip),
+                  ))
                 } else {
                   Err(script_err)
                 }
@@ -409,6 +413,7 @@ async fn run_subcommand(
                   task: Some(run_flags.script.clone()),
                   is_run: true,
                   recursive: false,
+                  members: false,
                   filter: None,
                   eval: false,
                   no_prefix: false,
@@ -483,8 +488,8 @@ async fn run_subcommand(
             deno_print::drop_write_stdout(&buf);
             Ok::<_, AnyError>(())
           }
-          CompletionsFlags::Dynamic(f) => {
-            f()?;
+          CompletionsFlags::Dynamic { shell } => {
+            crate::args::handle_dynamic_shell_completion(&shell)?;
             Ok(())
           }
         }
@@ -742,6 +747,16 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   deno_runtime::exit(code);
 }
 
+/// Render the "unrecognized subcommand" suggestion for the terminal.
+///
+/// This one error is followed by a blank line, which is what clap's formatter
+/// produced for it. Ordinary flag errors are rendered without it (they went
+/// through `clap::Error::raw`, which appended nothing), so they keep using
+/// `CliError`'s plain `Display`.
+fn unrecognized_subcommand_error(err: &deno_cli_parser::CliError) -> AnyError {
+  AnyError::msg(format!("{err}\n"))
+}
+
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
   let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
@@ -953,7 +968,7 @@ async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
   initial_cwd: Option<std::path::PathBuf>,
 ) -> Result<Flags, AnyError> {
-  // this env var is used by clap to enable dynamic completions, it's set by the shell when
+  // This env var enables dynamic completions; it's set by the shell when
   // executing deno to get dynamic completions.
   if std::env::var("COMPLETE").is_ok() {
     let cwd = resolve_cwd(initial_cwd.as_deref())?;
@@ -961,19 +976,22 @@ async fn resolve_flags_and_init(
     deno_runtime::exit(0);
   }
 
-  boot_phase("before clap parse");
+  boot_phase("before flag parse");
+  // `--version` prints the long (multi-line) version, `-V` the short one.
+  // Determined here because the parser only signals that a version display was
+  // requested, not which form.
+  let wants_long_version = args.iter().any(|a| a == "--version");
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
       Ok(flags) => {
-        boot_phase("after clap parse");
+        boot_phase("after flag parse");
         flags
       }
-      Err(err @ clap::Error { .. })
-        if err.kind() == clap::error::ErrorKind::DisplayVersion =>
-      {
-        boot_phase("clap parse (version exit)");
-        // Ignore results to avoid BrokenPipe errors.
-        let _ = err.print();
+      Err(err) if err.kind == deno_cli_parser::CliErrorKind::DisplayVersion => {
+        boot_phase("flag parse (version exit)");
+        let version = crate::args::render_version(wants_long_version);
+        // drop_write_stdout ignores BrokenPipe etc.
+        deno_print::drop_write_stdout(version.as_bytes());
         deno_runtime::exit(0);
       }
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),

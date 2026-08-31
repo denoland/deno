@@ -121,7 +121,7 @@ cargo test spec::test_name
 
 - **Spec tests** (`tests/specs/`) — Main integration tests
 - **Unit tests** — Inline with source code in each module
-- **Integration tests** (`cli/tests/`) — Additional integration tests
+- **Integration tests** (`tests/integration/`) — Additional integration tests
 - **WPT** (`tests/wpt/`) — Web Platform Tests for web standards compliance
 
 ### Spec Tests
@@ -155,7 +155,7 @@ Output assertions support wildcards:
 
 ### PR Title Linting
 
-PR titles are validated by CI (see `.github/workflows/pr.yml`). The title must
+PR titles are validated by CI (see `.github/workflows/pr.ts`). The title must
 follow [Conventional Commits](https://www.conventionalcommits.org) and start
 with one of these prefixes:
 

@@ -531,18 +531,14 @@ impl ResolvedNpmRc {
     &self,
     tarball_url: &Url,
   ) -> Option<&Arc<RegistryConfig>> {
-    // https://example.com/chalk.tgz -> example.com/.tgz
-    let registry_url = tarball_url
-      .as_str()
-      .split_once("//")
-      .map(|(_, right)| right)?;
-    let mut best_match: Option<(&str, &Arc<RegistryConfig>)> = None;
+    let mut best_match: Option<(usize, &Arc<RegistryConfig>)> = None;
     for (config_url, config) in &self.registry_configs {
-      if registry_url.starts_with(config_url)
-        && (best_match.is_none()
-          || matches!(best_match, Some((current_config_url, _)) if config_url.len() > current_config_url.len()))
+      if let Some(match_len) =
+        registry_config_match_len(tarball_url, config_url)
+        && best_match
+          .is_none_or(|(current_match_len, _)| match_len > current_match_len)
       {
-        best_match = Some((config_url, config));
+        best_match = Some((match_len, config));
       }
     }
     best_match.map(|(_, config)| config)
@@ -586,6 +582,41 @@ impl ResolvedNpmRc {
       None
     }
   }
+}
+
+fn registry_config_match_len(
+  tarball_url: &Url,
+  config_url: &str,
+) -> Option<usize> {
+  let (config_authority, config_path) = config_url
+    .find('/')
+    .map(|index| config_url.split_at(index))
+    .unwrap_or((config_url, ""));
+  if config_authority.is_empty() || tarball_url.host().is_none() {
+    return None;
+  }
+
+  // npm auth keys are scheme-relative. Compare the complete serialized
+  // authority so a host without a port does not match that host on a
+  // non-default port (and so similarly-prefixed host names stay distinct).
+  let tarball_authority =
+    &tarball_url[url::Position::BeforeHost..url::Position::AfterPort];
+  if !config_authority.eq_ignore_ascii_case(tarball_authority) {
+    return None;
+  }
+
+  let tarball_path = tarball_url.path();
+  let path_matches = if config_path.is_empty() {
+    true
+  } else if config_path.ends_with('/') {
+    tarball_path.starts_with(config_path)
+  } else {
+    tarball_path == config_path
+      || tarball_path
+        .strip_prefix(config_path)
+        .is_some_and(|rest| rest.starts_with('/'))
+  };
+  path_matches.then_some(config_path.len())
 }
 
 fn expand_vars(input: &str, sys: &impl EnvVar) -> String {
@@ -1128,6 +1159,68 @@ registry=https://registry.npmjs.org/
         "MYTOKEN3"
       );
     }
+  }
+
+  #[test]
+  fn test_tarball_config_matches_authority_and_path_boundaries() {
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+//example.com:_authToken=HOST
+//example.com:8443/:_authToken=PORT
+//example.com/private:_authToken=PRIVATE
+//example.com/private/nested/:_authToken=NESTED
+//[::1]:8443/:_authToken=IPV6
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    let auth_token = |url: &str| {
+      resolved_npm_rc
+        .tarball_config(&Url::parse(url).unwrap())
+        .and_then(|config| config.auth_token.as_deref())
+    };
+
+    // Auth keys are scheme-relative, but the complete host and port must
+    // match.
+    assert_eq!(auth_token("https://example.com/pkg.tgz"), Some("HOST"));
+    assert_eq!(auth_token("http://example.com/pkg.tgz"), Some("HOST"));
+    assert_eq!(auth_token("https://example.com:443/pkg.tgz"), Some("HOST"));
+    assert_eq!(auth_token("https://example.com.evil/pkg.tgz"), None);
+    assert_eq!(auth_token("https://example.com:8443/pkg.tgz"), Some("PORT"));
+    assert_eq!(auth_token("https://example.com:8444/pkg.tgz"), None);
+    assert_eq!(auth_token("https://example.com:18443/pkg.tgz"), None);
+    assert_eq!(auth_token("https://[::1]:8443/pkg.tgz"), Some("IPV6"));
+    assert_eq!(auth_token("https://[::1]:8444/pkg.tgz"), None);
+
+    // Path matches stop at segment boundaries and the longest valid path wins.
+    assert_eq!(
+      auth_token("https://example.com/private/pkg.tgz"),
+      Some("PRIVATE")
+    );
+    assert_eq!(auth_token("https://example.com/private"), Some("PRIVATE"));
+    assert_eq!(
+      auth_token("https://example.com/privateevil/pkg.tgz"),
+      Some("HOST")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private:evil/pkg.tgz"),
+      Some("HOST")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private/nested/pkg.tgz"),
+      Some("NESTED")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private/nested"),
+      Some("PRIVATE")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private/nested/?download=1"),
+      Some("NESTED")
+    );
   }
 
   #[test]

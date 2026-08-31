@@ -89,6 +89,7 @@ use node_resolver::NodeResolver;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
@@ -155,6 +156,7 @@ impl SharedModuleLoaderState {
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   hook_registry: LoaderHookRegistry,
+  permissions: PermissionsContainer,
   sys: DenoRtSys,
   /// For blob/object-URL module workers, the captured root blob and its
   /// specifier. Used so the worker's root module load resolves from the
@@ -166,6 +168,36 @@ struct EmbeddedModuleLoader {
 impl std::fmt::Debug for EmbeddedModuleLoader {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("EmbeddedModuleLoader").finish()
+  }
+}
+
+struct StandaloneCjsAnalysisSourceProvider<'a> {
+  loader: &'a EmbeddedModuleLoader,
+  permissions: PermissionsContainer,
+}
+
+impl<'a> StandaloneCjsAnalysisSourceProvider<'a> {
+  fn new(loader: &'a EmbeddedModuleLoader) -> Self {
+    Self {
+      loader,
+      permissions: loader.permissions.deep_clone_without_prompt(),
+    }
+  }
+}
+
+impl CjsAnalysisSourceProvider for StandaloneCjsAnalysisSourceProvider<'_> {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    let mut permissions = self.permissions.clone();
+    let path = self
+      .loader
+      .ensure_read_permission(&mut permissions, Cow::Owned(path))
+      .ok()?;
+    self
+      .loader
+      .load_text_file_lossy(&path)
+      .ok()
+      .map(|source| Cow::Owned(source.to_string()))
   }
 }
 
@@ -415,11 +447,14 @@ impl EmbeddedModuleLoader {
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if self.shared.node_resolver.in_npm_package(original_specifier) {
+      let loader = self.clone();
       let shared = self.shared.clone();
       let original_specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.map(|r| r.specifier.clone());
       return deno_core::ModuleLoadResponse::Async(
         async move {
+          let source_provider =
+            StandaloneCjsAnalysisSourceProvider::new(&loader);
           let code_source = shared
             .npm_module_loader
             .load(
@@ -428,6 +463,7 @@ impl EmbeddedModuleLoader {
               &as_deno_resolver_requested_module_type(
                 &options.requested_module_type,
               ),
+              Some(&source_provider),
             )
             .await
             .map_err(JsErrorBox::from_err)?;
@@ -510,6 +546,7 @@ impl EmbeddedModuleLoader {
         if is_maybe_cjs {
           let original_specifier = original_specifier.clone();
           let module_specifier = module_specifier.clone();
+          let loader = self.clone();
           let shared = self.shared.clone();
           deno_core::ModuleLoadResponse::Async(
             async move {
@@ -526,17 +563,19 @@ impl EmbeddedModuleLoader {
                   }
                 }
               };
+              let source_provider =
+                StandaloneCjsAnalysisSourceProvider::new(&loader);
               let source = shared
                 .node_code_translator
-                .translate_cjs_to_esm(&module_specifier, Some(source))
+                .translate_cjs_to_esm_with_source_provider(
+                  &module_specifier,
+                  Some(source),
+                  Some(&source_provider),
+                )
                 .await
-                .map_err(JsErrorBox::from_err)?;
-              let module_source = match source {
-                Cow::Owned(source) => ModuleSourceCode::String(source.into()),
-                Cow::Borrowed(source) => {
-                  ModuleSourceCode::String(FastString::from_static(source))
-                }
-              };
+                .map_err(JsErrorBox::from_err)?
+                .into_owned();
+              let module_source = ModuleSourceCode::String(source.into());
               // CJS modules are always JavaScript, but gate on the module
               // type anyway to keep the code cache contract uniform across all
               // load paths: only JavaScript produces a V8 code cache.
@@ -954,7 +993,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn get_code_cache(
     &self,
     specifier: &ModuleSpecifier,
-    source: &deno_core::v8::String,
+    source: &str,
   ) -> Option<SourceCodeCacheInfo> {
     let code_cache = self.shared.code_cache.as_ref()?;
     if !code_cache.enabled() {
@@ -963,10 +1002,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // Residual ext-scripts (the node polyfill closure, etc.) don't go through
     // `load()`, so they can't ride their cache on a `ModuleSource`. Read the
     // shared on-disk cache directly here. The deno version is already part of
-    // the root cache key. Hash the `v8::String` the same way `CliModuleLoader`
-    // does so this read side lines up with the `code_cache_ready` write side.
+    // the root cache key.
+    //
+    // Hash the source *bytes*, not the `&str`: that's what
+    // `SharedModuleLoaderState::get_code_cache` hashes for the same specifier,
+    // and `&[u8]`/`&str` do not hash alike. Keep the two in sync or a module
+    // reached through both paths silently misses the cache on every run.
     let hash = FastInsecureHasher::new_without_deno_version()
-      .write_hashable(source)
+      .write_hashable(source.as_bytes())
       .finish();
     let data = code_cache.get_sync(
       specifier,
@@ -1142,12 +1185,14 @@ struct StandaloneModuleLoaderFactory {
 impl StandaloneModuleLoaderFactory {
   pub fn create_result(
     &self,
+    permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
     let hook_registry = LoaderHookRegistry::default();
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
       hook_registry: hook_registry.clone(),
+      permissions,
       sys: self.sys.clone(),
       maybe_main_module_blob,
     });
@@ -1173,18 +1218,18 @@ impl StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    _root_permissions: PermissionsContainer,
+    root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
-    self.create_result(None)
+    self.create_result(root_permissions, None)
   }
 
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
-    _permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
-    self.create_result(maybe_main_module_blob)
+    self.create_result(permissions, maybe_main_module_blob)
   }
 }
 
@@ -1529,7 +1574,7 @@ pub async fn run_with_options(
     CjsCodeAnalyzer::new(cjs_tracker.clone(), modules.clone(), sys.clone());
   let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
     cjs_esm_code_analyzer,
-    in_npm_pkg_checker,
+    in_npm_pkg_checker.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
@@ -1620,6 +1665,7 @@ pub async fn run_with_options(
       node_resolver: node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_tracker.clone(),
+        in_npm_pkg_checker.clone(),
         node_code_translator,
         sys.clone(),
       )),
