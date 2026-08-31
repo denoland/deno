@@ -1043,13 +1043,18 @@ struct ZstdCompressCtx {
   end_complete: bool,
 }
 
+struct ZstdWriteResult {
+  avail_out: usize,
+  avail_in: usize,
+}
+
 impl ZstdCompressCtx {
   fn compress(
     &mut self,
     flush: u8,
     input: &[u8],
     output: &mut [u8],
-  ) -> Result<(usize, usize), JsErrorBox> {
+  ) -> Result<ZstdWriteResult, JsErrorBox> {
     use zstd_safe::zstd_sys::ZSTD_EndDirective;
 
     let (end_op, error_action) = match flush {
@@ -1065,7 +1070,10 @@ impl ZstdCompressCtx {
       && input.is_empty()
     {
       self.end_complete = false;
-      return Ok((output.len(), input.len()));
+      return Ok(ZstdWriteResult {
+        avail_out: output.len(),
+        avail_in: input.len(),
+      });
     }
     self.end_complete = false;
 
@@ -1090,7 +1098,10 @@ impl ZstdCompressCtx {
       && avail_in == 0
       && avail_out == 0;
 
-    Ok((avail_out, avail_in))
+    Ok(ZstdWriteResult {
+      avail_out,
+      avail_in,
+    })
   }
 }
 
@@ -1238,12 +1249,11 @@ impl ZstdCompress {
 
       let input_slice = slice_input(input, in_off, in_len)?;
       let output_slice = slice_output(out, out_off, out_len)?;
-      let (avail_out, avail_in) =
-        ctx.compress(flush, input_slice, output_slice)?;
+      let result = ctx.compress(flush, input_slice, output_slice)?;
 
       if write_result.len() >= 2 {
-        write_result[0] = avail_out as u32;
-        write_result[1] = avail_in as u32;
+        write_result[0] = result.avail_out as u32;
+        write_result[1] = result.avail_in as u32;
       }
 
       v8::Local::new(scope, &ctx.callback)
@@ -1272,12 +1282,11 @@ impl ZstdCompress {
 
     let input_slice = slice_input(input, in_off, in_len)?;
     let output_slice = slice_output(out, out_off, out_len)?;
-    let (avail_out, avail_in) =
-      ctx.compress(flush, input_slice, output_slice)?;
+    let result = ctx.compress(flush, input_slice, output_slice)?;
 
     if write_result.len() >= 2 {
-      write_result[0] = avail_out as u32;
-      write_result[1] = avail_in as u32;
+      write_result[0] = result.avail_out as u32;
+      write_result[1] = result.avail_in as u32;
     }
 
     Ok(())

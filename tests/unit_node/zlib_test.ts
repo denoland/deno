@@ -342,7 +342,7 @@ function deterministicZstdInput(length: number): Buffer {
   return input;
 }
 
-function assertSingleZstdFrame(compressed: Buffer, input: Buffer): void {
+function assertZstdRoundTrip(compressed: Buffer, input: Buffer): void {
   const result = zstdDecompressSync(compressed, {
     info: true,
   }) as unknown as {
@@ -353,11 +353,11 @@ function assertSingleZstdFrame(compressed: Buffer, input: Buffer): void {
   assertEquals(result.engine.bytesWritten, compressed.byteLength);
 }
 
-Deno.test("zstd compression spans output chunks without trailing frames", async () => {
-  const input = deterministicZstdInput(128);
-  const chunkSize = constants.Z_MIN_CHUNK;
-  const syncCompressed = zstdCompressSync(input, { chunkSize });
-  const asyncCompressed = await new Promise<Buffer>((resolve, reject) => {
+function zstdCompressAsync(
+  input: Buffer,
+  chunkSize: number,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
     zstdCompress(input, { chunkSize }, (error, result) => {
       if (error) {
         reject(error);
@@ -366,11 +366,37 @@ Deno.test("zstd compression spans output chunks without trailing frames", async 
       resolve(result);
     });
   });
+}
+
+Deno.test("zstd multi-chunk compression does not append an empty frame", async () => {
+  const input = deterministicZstdInput(128);
+  const chunkSize = constants.Z_MIN_CHUNK;
+  const reference = zstdCompressSync(input);
+  assert(reference.byteLength > chunkSize);
+  const syncCompressed = zstdCompressSync(input, { chunkSize });
+  const asyncCompressed = await zstdCompressAsync(input, chunkSize);
 
   for (const compressed of [syncCompressed, asyncCompressed]) {
-    assert(compressed.byteLength > chunkSize);
-    assertSingleZstdFrame(compressed, input);
+    assertEquals(compressed.byteLength, reference.byteLength);
+    assertZstdRoundTrip(compressed, input);
   }
+});
+
+Deno.test("zstd streaming compression supports an explicit flush", async () => {
+  const input = deterministicZstdInput(384);
+  const compressor = createZstdCompress({
+    chunkSize: constants.Z_MIN_CHUNK,
+  });
+  const compressedPromise = buffer(compressor);
+
+  compressor.write(input.subarray(0, 128));
+  compressor.write(input.subarray(128, 256));
+  await new Promise<void>((resolve) =>
+    compressor.flush(constants.ZSTD_e_flush, resolve)
+  );
+  compressor.end(input.subarray(256));
+
+  assertZstdRoundTrip(await compressedPromise, input);
 });
 
 Deno.test("zstd exact output chunk does not append an empty frame", () => {
@@ -382,7 +408,7 @@ Deno.test("zstd exact output chunk does not append an empty frame", () => {
     chunkSize: reference.byteLength,
   });
   assertEquals(compressed.byteLength, reference.byteLength);
-  assertSingleZstdFrame(compressed, input);
+  assertZstdRoundTrip(compressed, input);
 });
 
 // Every compression/decompression backend whose native handle writes the
