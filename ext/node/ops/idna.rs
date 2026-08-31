@@ -112,8 +112,24 @@ pub fn op_node_idna_punycode_to_unicode(
   to_unicode(&domain)
 }
 
-/// Converts a domain to ASCII as per the IDNA spec
-/// (specifically UTS #46)
+/// Converts a domain to ASCII as per the IDNA spec (specifically UTS #46).
+///
+/// Backs Node's `internal/idna` `toASCII`, which is what `node:dns` and
+/// `node:tls` use. This is *not* the same as `url.domainToASCII` below: it runs
+/// ToASCII and nothing else, so hostnames are passed to the resolver the way
+/// the caller wrote them.
+///
+/// Returns an empty string if the domain is invalid, matching Node.js behavior
+#[op2]
+#[string]
+pub fn op_node_idna_to_ascii(#[string] domain: String) -> String {
+  idna::domain_to_ascii(&domain).unwrap_or_default()
+}
+
+/// Converts a domain to ASCII the way the WHATWG URL host parser does.
+///
+/// Backs Node's `url.domainToASCII`, which is a different (stricter, and
+/// normalizing) operation than `toASCII` above.
 ///
 /// Returns an empty string if the domain is invalid, matching Node.js behavior
 #[op2]

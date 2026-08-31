@@ -26,6 +26,7 @@ use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
 use hickory_proto::op::ResponseCode;
+use hickory_proto::rr::Name;
 use hickory_proto::rr::Record;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
@@ -164,6 +165,10 @@ pub enum NetError {
   #[error("{0}")]
   #[property("ares_code" = self.ares_code())]
   Dns(#[from] ResolveError),
+  #[class(type)]
+  #[error("Invalid DNS query name: '{0}'")]
+  #[property("ares_code" = self.ares_code())]
+  DnsInvalidName(String),
   #[class("NotSupported")]
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
@@ -210,26 +215,16 @@ impl NetError {
   /// back to its default handling).
   fn ares_code(&self) -> &'static str {
     let resolve_err = match self {
+      // The query name failed to parse, which `op_dns_resolve` checks before
+      // it issues a query. c-ares reports every malformed name (empty label
+      // like `example..com`, illegal characters, a label or name that is too
+      // long) as `EBADNAME`.
+      NetError::DnsInvalidName(_) => return "EBADNAME",
       NetError::Dns(e) | NetError::DnsNotFound(e) => e,
       _ => return "",
     };
 
     match resolve_err.kind() {
-      // A malformed hostname (empty label like `example..com`, illegal
-      // characters, or a label/name that is too long) fails while the query
-      // name is being parsed. c-ares reports all of these as `EBADNAME`.
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(
-          **kind,
-          ProtoErrorKind::Msg(_)
-            | ProtoErrorKind::Message(_)
-            | ProtoErrorKind::CharacterDataTooLong { .. }
-            | ProtoErrorKind::LabelBytesTooLong(_)
-            | ProtoErrorKind::DomainNameTooLong(_)
-        ) =>
-      {
-        "EBADNAME"
-      }
       // No records found: distinguish between a non-existent domain
       // (`NXDOMAIN` -> `ENOTFOUND`) and an existing domain that simply has no
       // records of the requested type (`NoError` -> `ENODATA`), matching
@@ -1116,6 +1111,15 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
+  // Parse the query name up front. `Resolver::lookup` performs the same
+  // conversion internally, but the resulting `ProtoErrorKind::Msg` is
+  // indistinguishable from the many unrelated transport and protocol failures
+  // hickory reports the same way, so there would be no way to tell a malformed
+  // name from a broken connection after the fact. Doing it here keeps the
+  // `EBADNAME` classification in `NetError::ares_code` exact.
+  let name = Name::from_utf8(&query)
+    .map_err(|_| NetError::DnsInvalidName(query.clone()))?;
+
   let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
@@ -1162,7 +1166,7 @@ pub async fn op_dns_resolve(
       .with_options(opts)
       .build();
 
-  let lookup_fut = resolver.lookup(query, record_type);
+  let lookup_fut = resolver.lookup(name, record_type);
 
   let cancel_handle = cancel_rid.and_then(|rid| {
     state

@@ -73,7 +73,7 @@ const {
   QueryReqWrap,
   kPermTokenSink,
 } = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
-const { domainToASCII } = core.loadExtScript(
+const { toASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );
 
@@ -302,14 +302,9 @@ function lookup(
   req.oncomplete = all ? onlookupall : onlookup;
   req.port = port;
 
-  const asciiHostname = domainToASCII(hostname);
   const err = cares.getaddrinfo(
     req,
-    // Keep non-canonical numeric IP forms (for example `2130706433`) intact.
-    // Passing the WHATWG-normalized address here would make the initial net
-    // permission check treat it as an IP literal and skip the post-resolution
-    // check used for hostnames.
-    isIP(asciiHostname) ? hostname : asciiHostname,
+    toASCII(hostname),
     family,
     hints,
     dnsOrderToNumber(dnsOrder),
@@ -434,14 +429,7 @@ function resolver(bindingName: string) {
     req.oncomplete = onresolve;
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
-    // `getHostByAddr` (reverse) receives an IP address, not a domain, so it
-    // must be passed through verbatim. Running it through `domainToASCII`
-    // would map a bare IPv6 literal (which contains `:`) to an empty string
-    // and make the lookup fail with EINVAL, unlike Node.
-    const err = this._handle[bindingName](
-      req,
-      bindingName === "getHostByAddr" ? name : domainToASCII(name),
-    );
+    const err = this._handle[bindingName](req, toASCII(name));
 
     if (err) {
       throw dnsException(err, bindingName, name);

@@ -62,7 +62,7 @@ const {
   GetNameInfoReqWrap,
   QueryReqWrap,
 } = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
-const { domainToASCII } = core.loadExtScript(
+const { toASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );
 
@@ -139,12 +139,9 @@ function createLookupPromise(
     req.resolve = resolve;
     req.reject = reject;
 
-    const asciiHostname = domainToASCII(hostname);
     const err = cares.getaddrinfo(
       req,
-      // Preserve numeric IP aliases until after resolution so Deno's network
-      // permissions are checked against the resolved canonical address.
-      isIP(asciiHostname) ? hostname : asciiHostname,
+      toASCII(hostname),
       family,
       hints,
       dnsOrderToNumber(dnsOrder),
@@ -326,14 +323,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    // `getHostByAddr` (reverse) receives an IP address, not a domain, so it
-    // must be passed through verbatim. Running it through `domainToASCII`
-    // would map a bare IPv6 literal (which contains `:`) to an empty string
-    // and make the lookup fail with EINVAL, unlike Node.
-    const err = resolver._handle[bindingName](
-      req,
-      bindingName === "getHostByAddr" ? hostname : domainToASCII(hostname),
-    );
+    const err = resolver._handle[bindingName](req, toASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
