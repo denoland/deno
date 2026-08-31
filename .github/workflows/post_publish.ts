@@ -8,6 +8,17 @@ const workflow = createWorkflow({
     release: {
       types: ["published"],
     },
+    // For re-running the job when a release publish failed part way
+    // through, e.g. the upload landed but the CDN purge did not.
+    workflow_dispatch: {
+      inputs: {
+        version: {
+          description: "Release tag to publish, e.g. v2.9.6",
+          type: "string",
+          required: true,
+        },
+      },
+    },
   },
   jobs: [{
     id: "update-dl-version",
@@ -45,9 +56,17 @@ const workflow = createWorkflow({
           AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
           AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
           AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
+          INPUT_VERSION: "${{ inputs.version }}",
         },
         run: [
-          "VERSION=${GITHUB_REF#refs/*/}",
+          "# On a manual run GITHUB_REF is whatever branch the job was",
+          "# dispatched from, so the version has to come from the input.",
+          'VERSION="${INPUT_VERSION:-${GITHUB_REF#refs/*/}}"',
+          "# Never let a branch name reach the version files.",
+          'case "$VERSION" in',
+          "  v[0-9]*) ;;",
+          '  *) echo "Not a release tag: $VERSION" >&2; exit 1 ;;',
+          "esac",
           'deno run --allow-net --allow-write tools/release/update_versions_json.ts "$VERSION"',
           "aws s3 cp versions.json s3://dl-deno-land/versions.json --content-type application/json",
           'LATEST_FILE=$(deno run --allow-net --allow-write tools/release/upload_version_file.ts "$VERSION" || exit 0)',
@@ -59,7 +78,7 @@ const workflow = createWorkflow({
       step({
         name: "Purge CDN cache",
         env: {
-          CLOUDFLARE_ZONE_ID: "${{ vars.CLOUDFLARE_ZONE_ID }}",
+          CLOUDFLARE_ZONE_ID: "${{ secrets.CLOUDFLARE_ZONE_ID }}",
           CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}",
         },
         run: [

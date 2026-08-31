@@ -3301,6 +3301,64 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/36657
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerKeepsAliveAfterReadingStreamingRequestBody() {
+    const listening = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const received: string[] = [];
+
+    await using server = Deno.serve({
+      handler: async (request) => {
+        if (request.url.endsWith("/cancel")) {
+          await request.body!.cancel();
+          received.push("cancelled");
+          return new Response(stream("ok"));
+        }
+        received.push(await request.text());
+        return new Response("ok");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listening.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const body = "x".repeat(4096);
+    const request = (path: string) =>
+      `POST ${path} HTTP/1.1\r\nHost: example.domain\r\nContent-Length: ${body.length}\r\n\r\n${body}`;
+    await writeAll(
+      conn,
+      new TextEncoder().encode(
+        request("/text") + request("/cancel") + request("/text"),
+      ),
+    );
+
+    const decoder = new TextDecoder();
+    let response = "";
+    while (response.split("HTTP/1.1 200 OK").length - 1 < 3) {
+      const buf = new Uint8Array(1024);
+      const read = await conn.read(buf);
+      if (read === null) break;
+      response += decoder.decode(buf.subarray(0, read), { stream: true });
+    }
+
+    assertEquals(
+      response.split("HTTP/1.1 200 OK").length - 1,
+      3,
+    );
+    assertEquals(received, [body, "cancelled", body]);
+    assertEquals(/^connection:\s*close/im.test(response), false);
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerPostWithInvalidPrefixContentLength() {
