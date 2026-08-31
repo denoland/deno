@@ -1322,7 +1322,12 @@ function define(target, source) {
   for (let i = 0; i < keys.length; ++i) {
     const key = keys[i];
     const descriptor = ReflectGetOwnPropertyDescriptor(source, key);
-    if (descriptor && !ReflectDefineProperty(target, key, descriptor)) {
+    if (descriptor === undefined) {
+      continue;
+    }
+    if (
+      !ReflectDefineProperty(target, key, { __proto__: null, ...descriptor })
+    ) {
       throw new TypeError(`Cannot redefine property: ${String(key)}`);
     }
   }
@@ -1334,7 +1339,11 @@ const globalIteratorPrototype = ObjectGetPrototypeOf(ArrayIteratorPrototype);
 
 function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
-    [SymbolToStringTag]: { configurable: true, value: `${name} Iterator` },
+    [SymbolToStringTag]: {
+      __proto__: null,
+      configurable: true,
+      value: `${name} Iterator`,
+    },
   });
   define(iteratorPrototype, {
     next() {
@@ -1454,30 +1463,35 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
 
   const properties = {
     entries: {
+      __proto__: null,
       value: methods.entries,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     [SymbolIterator]: {
+      __proto__: null,
       value: methods.entries,
       writable: true,
       enumerable: false,
       configurable: true,
     },
     keys: {
+      __proto__: null,
       value: methods.keys,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     values: {
+      __proto__: null,
       value: methods.values,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     forEach: {
+      __proto__: null,
       value: methods.forEach,
       writable: true,
       enumerable: true,
@@ -1631,6 +1645,25 @@ function setlikeObjectWrap(objPrototype, readonly) {
 }
 
 internals.webidlBrand = brand;
+// The subset of webidl needed by post-bootstrap classic scripts that can't
+// `import` this module (e.g. the `deno desktop` init script, which defines
+// web interfaces like `navigator.clipboard`).
+//
+// `converters` is deliberately NOT exposed. It is the live registry backing
+// argument coercion for every web API in the process, and this object lands
+// in every Deno runtime rather than just desktop, so handing it out would
+// let anything with `internals` access rewrite how any API coerces its
+// arguments. Only the individual converters a consumer needs belong here.
+internals.webidl = ObjectFreeze({
+  assertBranded,
+  configureInterface,
+  createBranded,
+  illegalConstructor,
+  requiredArguments,
+  converters: ObjectFreeze({
+    DOMString: converters["DOMString"],
+  }),
+});
 
 return {
   assertBranded,

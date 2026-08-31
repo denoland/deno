@@ -5,7 +5,8 @@
 )]
 // Ported from cli/args/flags.rs `mod tests` (the clap parity contract) to run
 // against the zero-cost parser via `convert::flags_from_vec`. A few tests that
-// depend on clap internals are skipped inline and stay in cli/args/flags.rs.
+// need CLI-side state (cwd resolution, env vars, the bare-run fast path) are
+// skipped inline and stay in cli/args/flags.rs.
 
 use std::net::SocketAddr;
 use std::num::NonZeroU8;
@@ -3718,7 +3719,7 @@ fn deny_net_denylist_with_ipv6_address() {
   );
 }
 
-// PORT-SKIP: test_no_colon_in_value_name tests clap-internal builders/parsers; kept in cli/args/flags.rs
+// PORT-SKIP: no_colon_in_value_name walks the whole CommandDef tree; kept in cli/args/flags.rs
 
 #[test]
 fn test_with_flags() {
@@ -5352,7 +5353,7 @@ fn location_with_bad_scheme() {
   );
 }
 
-// PORT-SKIP: test_config_path_args depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
+// PORT-SKIP: test_config_path_args needs CLI-side cwd resolution; kept in cli/args/flags.rs
 
 #[test]
 fn test_no_clear_watch_flag_without_watch_flag() {
@@ -7227,6 +7228,25 @@ fn x_ignore_scripts() {
       ..Flags::default()
     }
   );
+
+  for (flag, expected_error) in [
+    ("--ignore-scripts=npm:", "Invalid package requirement"),
+    (
+      "--ignore-scripts=jsr:@foo/bar",
+      "Only npm package constraints are supported",
+    ),
+    (
+      "--ignore-scripts=foo@latest",
+      "Tags are not supported in --ignore-scripts",
+    ),
+    ("--ignore-scripts=foo,", "Empty values are not allowed"),
+  ] {
+    let err = flags_from_vec(svec!["deno", "x", flag, "npm:foo"]).unwrap_err();
+    assert!(
+      err.to_string().contains(expected_error),
+      "expected to contain '{expected_error}' got '{err}'"
+    );
+  }
 }
 
 #[test]
@@ -7303,9 +7323,9 @@ fn bare_with_flag_no_file() {
   );
 }
 
-// PORT-SKIP: subcommands_recognized_by_node_shim depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
+// PORT-SKIP: subcommands_recognized_by_node_shim depends on the node_shim crate; kept in cli/args/flags.rs
 
-// PORT-SKIP: equal_help_output depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
+// PORT-SKIP: equal_help_output walks the whole CommandDef tree; kept in cli/args/flags.rs
 
 #[test]
 fn ci_subcommand_defaults() {
@@ -7348,7 +7368,7 @@ fn install_permissions_non_global() {
   );
 }
 
-// PORT-SKIP: install_os_arch_flags tests clap-internal builders/parsers; kept in cli/args/flags.rs
+// PORT-SKIP: install_os_arch_flags asserts DenoSubcommand::npm_system_info (cli-only); kept in cli/args/flags.rs
 
 // PORT-SKIP: install_os_only_flag asserts DenoSubcommand::npm_system_info (cli-only); kept in cli/args/flags.rs
 
@@ -8393,7 +8413,76 @@ fn inspect_flag_parsing() {
   }
 }
 
-// PORT-SKIP: inspect_value_parser_resolves_hostnames tests clap-internal builders/parsers; kept in cli/args/flags.rs
+/// Node accepts `--inspect=localhost:0` (and similar hostname forms); the
+/// parser resolves them via DNS rather than rejecting or silently dropping
+/// them. Ported from the clap-era `inspect_value_parser_resolves_hostnames`.
+#[test]
+fn inspect_resolves_hostnames() {
+  let cases = [
+    ("localhost:0", 0u16),
+    ("localhost:1234", 1234),
+    ("localhost", 9229),
+  ];
+  for (input, expected_port) in cases {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--inspect={input}"),
+      "foo.ts"
+    ])
+    .unwrap_or_else(|e| panic!("failed to parse {input:?}: {e}"));
+    let addr = flags
+      .inspect
+      .unwrap_or_else(|| panic!("--inspect={input} did not set an address"));
+    assert_eq!(addr.port(), expected_port, "port for {input:?}");
+    assert!(
+      addr.ip().is_loopback(),
+      "expected loopback for {input:?}, got {}",
+      addr.ip()
+    );
+  }
+}
+
+/// Non-hostname forms: bare port, bare `:port`, bare IP, and full `host:port`.
+#[test]
+fn inspect_address_forms() {
+  let cases = [
+    ("9222", "127.0.0.1:9222"),
+    (":9222", "127.0.0.1:9222"),
+    ("192.168.0.1", "192.168.0.1:9229"),
+    ("192.168.0.1:8080", "192.168.0.1:8080"),
+    ("[::1]:8080", "[::1]:8080"),
+  ];
+  for (input, expected) in cases {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--inspect={input}"),
+      "foo.ts"
+    ])
+    .unwrap_or_else(|e| panic!("failed to parse {input:?}: {e}"));
+    assert_eq!(
+      flags.inspect.map(|a| a.to_string()).as_deref(),
+      Some(expected),
+      "{input:?}"
+    );
+  }
+}
+
+/// An unresolvable host or out-of-range port is rejected outright rather than
+/// silently dropping the flag.
+#[test]
+fn inspect_invalid_address_is_rejected() {
+  for input in ["localhost:99999", ""] {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--inspect={input}"),
+      "foo.ts"
+    ]);
+    assert!(r.is_err(), "expected --inspect={input:?} to be rejected");
+  }
+}
 
 #[test]
 fn inspect_publish_uid_flag_parsing() {
@@ -9538,4 +9627,282 @@ fn tier3_requires() {
     ])
     .is_ok()
   );
+}
+
+// ---------------------------------------------------------------------------
+// PR5 cutover: link / unlink subcommands (newly wired into the parser).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn link_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "../b", "--lockfile-only"])
+      .unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      paths: svec!["../a", "../b"],
+      lockfile_only: true,
+    })
+  );
+
+  // lock args flow through to the top-level flags.
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "--frozen"]).unwrap();
+  assert_eq!(flags.frozen_lockfile, Some(true));
+  assert!(matches!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      lockfile_only: false,
+      ..
+    })
+  ));
+
+  // at least one path is required.
+  assert!(flags_from_vec(svec!["deno", "link"]).is_err());
+}
+
+#[test]
+fn unlink_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "unlink", "@scope/name", "../c"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Unlink(UnlinkFlags {
+      names_or_paths: svec!["@scope/name", "../c"],
+      lockfile_only: false,
+    })
+  );
+
+  assert!(flags_from_vec(svec!["deno", "unlink"]).is_err());
+}
+
+#[test]
+fn eval_double_dash_stripped() {
+  // Unlike run/task, `deno eval` strips the `--` separator from argv
+  // (clap plain trailing-var-arg, not `.last(true)`).
+  let flags =
+    flags_from_vec(svec!["deno", "eval", "console.log(1)", "--", "a&b"])
+      .unwrap();
+  assert_eq!(flags.argv, svec!["a&b"]);
+
+  // run keeps it, for contrast.
+  let flags =
+    flags_from_vec(svec!["deno", "run", "x.ts", "--", "a&b"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "a&b"]);
+}
+
+#[test]
+fn sync_types_subcommand() {
+  let flags = flags_from_vec(svec!["deno", "sync-types"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags::default())
+  );
+
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "a.ts", "tools/"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags {
+      roots: svec!["a.ts", "tools/"],
+    })
+  );
+
+  // --allow-import flows into permissions.
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "--allow-import=example.com"])
+      .unwrap();
+  assert_eq!(flags.permissions.allow_import, Some(svec!["example.com"]));
+}
+
+#[test]
+fn serve_compile_keep_double_dash() {
+  // serve/compile use clap's trailing_var_arg (like run), so they keep `--`.
+  let flags =
+    flags_from_vec(svec!["deno", "serve", "x.ts", "--", "-a"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "-a"]);
+
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "x.ts", "--", "-a"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Compile(c) if c.args == svec!["--", "-a"])
+  );
+}
+
+#[test]
+fn upgrade_no_delta() {
+  let r = flags_from_vec(svec!["deno", "upgrade", "--no-delta"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+        force: false,
+        dry_run: false,
+        canary: false,
+        no_delta: true,
+        release_candidate: false,
+        version: None,
+        output: None,
+        version_or_hash_or_channel: None,
+        checksum: None,
+        pr: None,
+        branch: None,
+      }),
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn hrtime_flags_are_accepted_as_no_ops() {
+  // Removed in Deno 2, but still parsed so we can warn instead of erroring.
+  for flag in ["--allow-hrtime", "--deny-hrtime"] {
+    let r = flags_from_vec(svec!["deno", "run", flag, "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Run(RunFlags::new_default("script.ts".to_string()))
+    );
+  }
+}
+
+#[test]
+fn use_env_proxy_flags() {
+  let r = flags_from_vec(svec!["deno", "run", "--use-env-proxy", "script.ts"]);
+  assert!(r.is_ok());
+
+  let r =
+    flags_from_vec(svec!["deno", "run", "--no-use-env-proxy", "script.ts"]);
+  assert!(r.is_ok());
+
+  let r = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--use-env-proxy",
+    "--no-use-env-proxy",
+    "script.ts"
+  ]);
+  assert!(r.is_err());
+}
+
+#[test]
+fn deploy_subcommand() {
+  let r = flags_from_vec(svec!["deno", "deploy"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      ..Flags::default()
+    }
+  );
+
+  // `deploy` is a passthrough subcommand: every arg after it is forwarded
+  // verbatim, exactly once. Regression test for a duplication bug where the
+  // args were written to `argv` both by `deploy_parse` and by the generic
+  // trailing-arg handling, turning `--prod` into `--prod --prod`.
+  let r = flags_from_vec(svec!["deno", "deploy", "--prod"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod"],
+      ..Flags::default()
+    }
+  );
+
+  let r =
+    flags_from_vec(svec!["deno", "deploy", "--project=myapp", "--prod", "-y"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--project=myapp", "--prod", "-y"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_subcommand_passthrough_is_verbatim() {
+  // Everything after the subcommand is handed to deployctl untouched, so
+  // `--`, deno-looking flags and repeated flags must all survive as-is
+  // rather than being interpreted (or duplicated) by the deno parser.
+  let r = flags_from_vec(svec![
+    "deno",
+    "deploy",
+    "--prod",
+    "--",
+    "--allow-net",
+    "-A"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod", "--", "--allow-net", "-A"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_sandbox_subcommand() {
+  let r = flags_from_vec(svec!["deno", "sandbox", "--prod", "arg"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: true }),
+      argv: svec!["--prod", "arg"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn bundle_sourcemap_bare_does_not_consume_entrypoint() {
+  // `--sourcemap` takes an optional value that must be attached with `=`.
+  // Regression test for a bug where it was defined as taking exactly one
+  // value, so `--sourcemap main.ts` swallowed the entrypoint and left the
+  // bundle with no modules at all.
+  let flags =
+    flags_from_vec(svec!["deno", "bundle", "--sourcemap", "main.ts"]).unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.entrypoints, svec!["main.ts"]);
+  assert_eq!(b.sourcemap, Some(SourceMapType::Linked));
+}
+
+#[test]
+fn bundle_sourcemap_values() {
+  let cases = [
+    ("--sourcemap=linked", SourceMapType::Linked),
+    ("--sourcemap=inline", SourceMapType::Inline),
+    ("--sourcemap=external", SourceMapType::External),
+  ];
+  for (flag, expected) in cases {
+    let flags = flags_from_vec(svec!["deno", "bundle", flag, "main.ts"])
+      .unwrap_or_else(|e| panic!("{flag} should parse: {e:?}"));
+    let DenoSubcommand::Bundle(b) = flags.subcommand else {
+      unreachable!()
+    };
+    assert_eq!(b.entrypoints, svec!["main.ts"], "{flag}");
+    assert_eq!(b.sourcemap, Some(expected), "{flag}");
+  }
+
+  // Absent means no source map at all.
+  let flags = flags_from_vec(svec!["deno", "bundle", "main.ts"]).unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.sourcemap, None);
+}
+
+#[test]
+fn bundle_sourcemap_rejects_invalid_value() {
+  // Invalid values must error rather than being silently coerced to 'linked'.
+  let r =
+    flags_from_vec(svec!["deno", "bundle", "--sourcemap=bogus", "main.ts"]);
+  assert!(r.is_err(), "expected --sourcemap=bogus to be rejected");
 }

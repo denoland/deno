@@ -217,6 +217,108 @@ Deno.test("[node/module findPackageJSON] absolute specifiers use closest package
   }
 });
 
+Deno.test("[node/module require.resolve] checks runtime-selected node_modules paths", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    const nodeModulesDir = path.join(tempDir, "project", "node_modules");
+    await Deno.mkdir(nodeModulesDir, { recursive: true });
+    await Deno.writeTextFile(
+      path.join(nodeModulesDir, "package.json"),
+      '{"main":"runtime-selected-entry.js"}',
+    );
+
+    const childPath = path.join(tempDir, "resolve.mjs");
+    await Deno.writeTextFile(
+      childPath,
+      `
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+try {
+  require.resolve(${JSON.stringify(nodeModulesDir + path.sep)});
+  console.error("unexpected success");
+  Deno.exit(1);
+} catch (error) {
+  if (!(error instanceof Error) || error.name !== "NotCapable") {
+    console.error(error);
+    Deno.exit(2);
+  }
+  if (String(error).includes("runtime-selected-entry.js")) {
+    console.error(error);
+    Deno.exit(3);
+  }
+}
+`,
+    );
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", childPath],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code, stdout, stderr } = await command.output();
+    assertEquals(
+      code,
+      0,
+      new TextDecoder().decode(stdout) + new TextDecoder().decode(stderr),
+    );
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/module findPackageJSON] checks package metadata reads", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(
+      path.join(tempDir, "package.json"),
+      '{"name":"runtime-selected-package"}',
+    );
+    await Deno.writeTextFile(
+      path.join(tempDir, "static-entry.mjs"),
+      "export const value = 1;",
+    );
+
+    const childPath = path.join(tempDir, "find-package.mjs");
+    await Deno.writeTextFile(
+      childPath,
+      `
+import { findPackageJSON } from "node:module";
+import { value } from "./static-entry.mjs";
+
+if (value !== 1) Deno.exit(1);
+try {
+  findPackageJSON(import.meta.resolve("./static-entry.mjs"));
+  console.error("unexpected success");
+  Deno.exit(2);
+} catch (error) {
+  if (
+    !(error instanceof Error) || error.name !== "NotCapable" ||
+    !String(error).includes("package.json")
+  ) {
+    console.error(error);
+    Deno.exit(3);
+  }
+}
+`,
+    );
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", childPath],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code, stdout, stderr } = await command.output();
+    assertEquals(
+      code,
+      0,
+      new TextDecoder().decode(stdout) + new TextDecoder().decode(stderr),
+    );
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 // https://github.com/denoland/deno/issues/24902
 Deno.test("[node/module register] is a function", () => {
   assertEquals(register("foo"), undefined);
