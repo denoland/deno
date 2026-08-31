@@ -2671,7 +2671,7 @@ impl TLSWrap {
     let len = chunks.length();
     let mut data = Vec::new();
     let boundary_count = if all_buffers { len } else { len / 2 };
-    let mut boundaries = Vec::with_capacity(boundary_count as _);
+    let mut boundaries = Vec::with_capacity(boundary_count as usize);
     if all_buffers {
       for i in 0..len {
         let Some(chunk) = chunks.get_index(scope, i) else {
