@@ -3189,6 +3189,42 @@ fn code_cache_test() {
 }
 
 #[test]
+fn code_cache_cjs_source_change_same_length() {
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.mjs",
+    r#"import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+console.log(require("./big.cjs").marker);
+"#,
+  );
+
+  let cjs_source = |marker| {
+    format!(
+      "module.exports = {{ marker: \"{marker}\" }};\n{}",
+      "// pad\n".repeat(3000)
+    )
+  };
+  temp_dir.write("big.cjs", cjs_source("AAAA"));
+
+  test_context
+    .new_command()
+    .args("run -A main.mjs")
+    .run()
+    .assert_matches_text("AAAA\n");
+
+  // V8's identity hash only considers the length for strings over 16,383
+  // characters. Changing equal-length CJS source must invalidate Deno's cache.
+  temp_dir.write("big.cjs", cjs_source("BBBB"));
+  test_context
+    .new_command()
+    .args("run -A main.mjs")
+    .run()
+    .assert_matches_text("BBBB\n");
+}
+
+#[test]
 fn code_cache_npm_test() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let deno_dir = test_context.deno_dir();
