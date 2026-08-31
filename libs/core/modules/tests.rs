@@ -377,6 +377,12 @@ fn test_recursive_load() {
   let d_id = modules
     .get_id("file:///d.js", RequestedModuleType::None)
     .unwrap();
+  // The whole graph was instantiated as part of the load, so the live import
+  // edges are gone and only the `#[cfg(test)]` stash below still has them.
+  for id in [a_id, b_id, c_id, d_id] {
+    assert!(modules.get_requested_modules(id).unwrap().is_empty());
+  }
+
   assert_eq!(
     modules.get_requested_modules_cloned(a_id),
     Some(vec![
@@ -521,6 +527,18 @@ fn test_mods() {
 
   runtime.instantiate_module(mod_a).unwrap();
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
+
+  // Instantiating `mod_a` frees the import edges of the whole graph it roots
+  // (see `ModuleMap::drop_instantiated_requests`). Only the `#[cfg(test)]`
+  // stash still knows what was parsed out of the source.
+  assert!(module_map.get_requested_modules(mod_a).unwrap().is_empty());
+  assert_eq!(
+    module_map
+      .get_requested_modules_cloned(mod_a)
+      .unwrap()
+      .len(),
+    1
+  );
 
   #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(mod_a);

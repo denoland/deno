@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -58,9 +59,8 @@ use crate::runtime::JsRealm;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
 use crate::runtime::exception_state::ExceptionState;
+use crate::source_map::DATA_PREFIX;
 use crate::source_map::SourceMapper;
-
-const DATA_PREFIX: &str = "data:";
 
 mod dynamic;
 mod evaluation;
@@ -1207,7 +1207,7 @@ impl ModuleMap {
       return Err(v8::Global::new(tc_scope, exception));
     }
 
-    self.drop_instantiated_requests(id);
+    self.drop_instantiated_requests(tc_scope, id);
 
     Ok(())
   }
@@ -1230,15 +1230,42 @@ impl ModuleMap {
   /// makes for dropping the edges of snapshot-instantiated modules; here we
   /// apply it at runtime, where the edges (a `Url` plus a specifier string per
   /// import) were previously retained for the life of the process.
-  fn drop_instantiated_requests(&self, root: ModuleId) {
+  ///
+  /// "Already linked" is checked against V8 rather than assumed: this runs
+  /// re-entrantly. `instantiate_module` bails out when a module is already
+  /// being instantiated (see the FIXME above), and `lazy_load_esm_module`
+  /// instantiates a module from *inside* a sibling's resolve callback, so an
+  /// inner graph can overlap an outer graph that V8 is still linking. Taking
+  /// the edges of a module still in `Instantiating` would pull them out from
+  /// under the in-flight `module_resolve_callback`/`module_source_callback`.
+  /// Skipping a node also stops the walk there, which only costs retention.
+  fn drop_instantiated_requests<'s, 'i>(
+    &self,
+    scope: &mut v8::PinScope<'s, 'i>,
+    root: ModuleId,
+  ) {
     let mut data = self.data.borrow_mut();
     if data.info.get(root).is_none_or(|i| i.requests.is_empty()) {
       return;
     }
     let mut stack = vec![root];
-    let mut seen = std::collections::HashSet::with_capacity(16);
+    let mut seen = HashSet::with_capacity(16);
     while let Some(id) = stack.pop() {
       if !seen.insert(id) {
+        continue;
+      }
+      // Anything below `Instantiated` may still have its edges read by V8.
+      // `Errored` is reachable only from a failed *evaluation* — a failed
+      // instantiation resets the graph to `Uninstantiated` — so those modules
+      // are linked and will never be resolved again.
+      let status = match data.handles.get(id) {
+        Some(handle) => v8::Local::new(scope, handle).get_status(),
+        None => continue,
+      };
+      if matches!(
+        status,
+        v8::ModuleStatus::Uninstantiated | v8::ModuleStatus::Instantiating
+      ) {
         continue;
       }
       let Some(info) = data.info.get_mut(id) else {
@@ -1355,35 +1382,42 @@ impl ModuleMap {
     );
     let requested_module_type =
       get_requested_module_type_from_attributes(&attributes);
+    // A missing edge should be impossible — V8 only asks about modules it is
+    // linking, and `drop_instantiated_requests` leaves those alone. Report it
+    // as a JS error rather than aborting the process if that ever stops
+    // holding.
     let module_reference = {
       let module_map_data = module_map.data.borrow();
       let referrer_info = module_map_data
         .get_info_by_module(&referrer_global)
         .expect("ModuleInfo not found");
-      let module_request = referrer_info
+      referrer_info
         .requests
         .iter()
         .find(|r| {
           r.specifier_key
             .as_ref()
-            .is_some_and(|s| s == &specifier_str) && r.reference.requested_module_type == requested_module_type
+            .is_some_and(|s| s == &specifier_str)
+            && r.reference.requested_module_type == requested_module_type
         })
-        .expect("ModuleInfo::requests did not contain a matching specifier_key when getting source");
-      module_request.reference.clone()
+        .map(|module_request| module_request.reference.clone())
     };
-    let key = ModuleSourceKey::from_reference(&module_reference);
-    if let Some(entry) = module_map.data.borrow().sources.get(&key) {
-      Some(v8::Local::new(scope, entry))
-    } else {
-      let message = v8::String::new(
-        scope,
-        &format!(r#"Module source can not be imported for "{specifier_str}""#),
-      )
-      .unwrap();
-      let exception = v8::Exception::reference_error(scope, message);
-      scope.throw_exception(exception);
-      None
+    let source = module_reference.and_then(|module_reference| {
+      let key = ModuleSourceKey::from_reference(&module_reference);
+      module_map.data.borrow().sources.get(&key).cloned()
+    });
+    if let Some(source) = source {
+      return Some(v8::Local::new(scope, source));
     }
+
+    let message = v8::String::new(
+      scope,
+      &format!(r#"Module source can not be imported for "{specifier_str}""#),
+    )
+    .unwrap();
+    let exception = v8::Exception::reference_error(scope, message);
+    scope.throw_exception(exception);
+    None
   }
 
   /// Resolve provided module. This function calls out to `loader.resolve`,

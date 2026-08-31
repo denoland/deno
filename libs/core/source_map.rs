@@ -33,12 +33,22 @@ pub enum SourceMapApplication {
 
 pub type SourceMapData = Cow<'static, [u8]>;
 
+/// Prefix of a `sourceMappingURL` that carries the map inline rather than
+/// pointing at a separate file.
+pub(crate) const DATA_PREFIX: &str = "data:";
+
 /// A tiny bounded cache with least-recently-used eviction.
 ///
-/// The source-map caches used to be unbounded `HashMap`s that also memoized
-/// *negative* lookups, so a long-lived process throwing errors from many
-/// distinct files grew them forever. Eviction is a linear scan for the oldest
-/// entry, which is fine at these capacities and only runs when full.
+/// The source-map caches used to be unbounded `HashMap`s, so a long-lived
+/// process throwing errors from many distinct files grew them forever.
+/// Negative lookups are still memoized (as `None` values) — a file without a
+/// source map is the common case on a stack trace, and re-asking the loader
+/// for every frame of every trace means repeated I/O in
+/// `load_external_source_map` and repeated source reads in
+/// `get_source_mapped_source_line`. Bounding the cache is what fixes the
+/// growth; dropping the memo would just trade memory for work. Eviction is a
+/// linear scan for the oldest entry, which is fine at these capacities and
+/// only runs when full.
 struct LruCache<K, V> {
   entries: HashMap<K, (V, u64)>,
   capacity: usize,
@@ -90,11 +100,11 @@ const MAX_CACHED_SOURCE_MAPS: usize = 64;
 const MAX_CACHED_SOURCE_LINES: usize = 256;
 
 pub struct SourceMapper {
-  /// Decoded source maps, bounded and positive-only: a file with no source
-  /// map is not memoized, so a pathological error loop re-asks the loader
-  /// instead of pinning an entry per file forever.
-  maps: LruCache<String, Arc<SourceMap>>,
-  source_lines: LruCache<(String, i64), String>,
+  /// Decoded source maps, bounded. `None` records "this file has no source
+  /// map" so a trace full of unmapped frames doesn't re-ask the loader once
+  /// per frame; the LRU keeps that memo from growing without bound.
+  maps: LruCache<String, Option<Arc<SourceMap>>>,
+  source_lines: LruCache<(String, i64), Option<String>>,
 
   loader: Rc<dyn ModuleLoader>,
 
@@ -144,18 +154,32 @@ impl SourceMapper {
     self.source_map_urls.insert(module_name, source_map_url);
   }
 
-  /// Returns the decoded source map for `file_name`, decoding (and caching)
-  /// it on first use. Misses are deliberately *not* cached.
+  /// Returns the decoded source map for `file_name`, decoding it on first
+  /// use. Both hits and misses are cached (bounded by the LRU).
   fn source_map_for(&mut self, file_name: &str) -> Option<Arc<SourceMap>> {
     if let Some(source_map) = self.maps.get(file_name) {
-      return Some(source_map.clone());
+      return source_map.clone();
     }
-    let source_map = Arc::new(self.decode_source_map(file_name)?);
+    let source_map = self.decode_source_map(file_name).map(Arc::new);
     self.maps.insert(file_name.to_owned(), source_map.clone());
-    Some(source_map)
+    source_map
   }
 
+  /// The precedence here matches what the eager path used to produce: a `data:`
+  /// `sourceMappingURL` was decoded at compile time straight into `maps`, so it
+  /// won over everything `apply_source_map` would otherwise have consulted.
   fn decode_source_map(&self, file_name: &str) -> Option<SourceMap> {
+    let source_map_url = self.source_map_urls.get(file_name);
+
+    // A `sourceMappingURL` carrying the map inline.
+    if let Some(source_map_url) = source_map_url
+      && source_map_url.starts_with(DATA_PREFIX)
+      && let Ok(sourcemap::DecodedMap::Regular(source_map)) =
+        sourcemap::decode_data_url(source_map_url)
+    {
+      return Some(source_map);
+    }
+
     // Inline `ext:` source maps.
     if let Some(data) = self.ext_source_maps.get(file_name)
       && let Ok(source_map) = SourceMap::from_slice(data)
@@ -163,20 +187,13 @@ impl SourceMapper {
       return Some(source_map);
     }
 
-    // The URL V8 reported at compile time: either inline data or external.
-    if let Some(source_map_url) = self.source_map_urls.get(file_name) {
-      if source_map_url.starts_with("data:") {
-        if let Ok(sourcemap::DecodedMap::Regular(source_map)) =
-          sourcemap::decode_data_url(source_map_url)
-        {
-          return Some(source_map);
-        }
-      } else if let Some(data) =
-        self.loader.load_external_source_map(source_map_url)
-        && let Ok(source_map) = SourceMap::from_slice(&data)
-      {
-        return Some(source_map);
-      }
+    // An external `sourceMappingURL`, already resolved against the module URL.
+    if let Some(source_map_url) = source_map_url
+      && !source_map_url.starts_with(DATA_PREFIX)
+      && let Some(data) = self.loader.load_external_source_map(source_map_url)
+      && let Ok(source_map) = SourceMap::from_slice(&data)
+    {
+      return Some(source_map);
     }
 
     // The loader's own inline source maps.
@@ -269,16 +286,16 @@ impl SourceMapper {
   ) -> Option<String> {
     let key = (file_name.to_string(), line_number);
     if let Some(source_line) = self.source_lines.get(&key) {
-      return Some(source_line.clone());
+      return source_line.clone();
     }
 
     let source_line = self
       .loader
       .get_source_mapped_source_line(file_name, (line_number - 1) as usize)
-      .filter(|s| s.len() <= Self::MAX_SOURCE_LINE_LENGTH)?;
+      .filter(|s| s.len() <= Self::MAX_SOURCE_LINE_LENGTH);
 
     self.source_lines.insert(key, source_line.clone());
-    Some(source_line)
+    source_line
   }
 }
 
@@ -449,6 +466,109 @@ mod tests {
         line_number: 1,
         column_number: 1
       }
+    );
+  }
+
+  #[test]
+  fn test_lru_cache_evicts_least_recently_used() {
+    let mut cache = LruCache::new(2);
+    cache.insert("a", 1);
+    cache.insert("b", 2);
+    // Touch "a", making "b" the eviction candidate.
+    assert_eq!(cache.get("a"), Some(&1));
+    cache.insert("c", 3);
+    assert_eq!(cache.get("b"), None);
+    assert_eq!(cache.get("a"), Some(&1));
+    assert_eq!(cache.get("c"), Some(&3));
+    assert_eq!(cache.entries.len(), 2);
+
+    // Overwriting an existing key must not evict anything.
+    cache.insert("a", 10);
+    assert_eq!(cache.entries.len(), 2);
+    assert_eq!(cache.get("a"), Some(&10));
+    assert_eq!(cache.get("c"), Some(&3));
+  }
+
+  /// Counts how many times the mapper falls through to the loader.
+  #[derive(Default)]
+  struct CountingLoader {
+    source_map_calls: std::cell::Cell<usize>,
+    source_line_calls: std::cell::Cell<usize>,
+  }
+
+  impl ModuleLoader for CountingLoader {
+    fn resolve(
+      &self,
+      _specifier: &str,
+      _referrer: &str,
+      _kind: ResolutionKind,
+    ) -> crate::ModuleResolveResponse {
+      unreachable!()
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!()
+    }
+
+    fn get_source_map(&self, _file_name: &str) -> Option<Cow<'_, [u8]>> {
+      self.source_map_calls.set(self.source_map_calls.get() + 1);
+      None
+    }
+
+    fn get_source_mapped_source_line(
+      &self,
+      _file_name: &str,
+      _line_number: usize,
+    ) -> Option<String> {
+      self.source_line_calls.set(self.source_line_calls.get() + 1);
+      None
+    }
+  }
+
+  /// A file with no source map is the common case on a stack trace. Asking
+  /// the loader once per frame would mean repeated I/O, so misses are
+  /// memoized just like hits.
+  #[test]
+  fn test_source_mapper_memoizes_misses() {
+    let loader = Rc::new(CountingLoader::default());
+    let mut source_mapper =
+      SourceMapper::new(loader.clone() as Rc<dyn ModuleLoader>);
+
+    for _ in 0..5 {
+      assert_eq!(
+        source_mapper.apply_source_map("file:///a.js", 1, 1),
+        SourceMapApplication::Unchanged
+      );
+      assert_eq!(source_mapper.get_source_line("file:///a.js", 1), None);
+    }
+
+    assert_eq!(loader.source_map_calls.get(), 1);
+    assert_eq!(loader.source_line_calls.get(), 1);
+  }
+
+  /// ...but the memo stays bounded, which is the whole point of the LRU.
+  #[test]
+  fn test_source_mapper_caches_are_bounded() {
+    let loader = Rc::new(CountingLoader::default());
+    let mut source_mapper =
+      SourceMapper::new(loader.clone() as Rc<dyn ModuleLoader>);
+
+    for i in 0..(MAX_CACHED_SOURCE_MAPS * 4) {
+      source_mapper.apply_source_map(&format!("file:///{i}.js"), 1, 1);
+    }
+    for i in 0..(MAX_CACHED_SOURCE_LINES * 4) {
+      source_mapper.get_source_line("file:///a.js", i as i64);
+    }
+
+    assert_eq!(source_mapper.maps.entries.len(), MAX_CACHED_SOURCE_MAPS);
+    assert_eq!(
+      source_mapper.source_lines.entries.len(),
+      MAX_CACHED_SOURCE_LINES
     );
   }
 }

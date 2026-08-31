@@ -363,9 +363,6 @@ pub(crate) fn parse_import_attributes<'s, 'i>(
 pub(crate) fn get_requested_module_type_from_attributes(
   attributes: &HashMap<String, String>,
 ) -> RequestedModuleType {
-  if attributes.is_empty() {
-    return RequestedModuleType::None;
-  }
   let Some(ty) = attributes.get("type") else {
     return RequestedModuleType::None;
   };
