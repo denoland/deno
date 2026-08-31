@@ -284,6 +284,22 @@ impl<'s> EvalContextError<'s> {
   }
 }
 
+/// Copy `source` out as UTF-16 code units to key the persistent code cache
+/// with.
+///
+/// The key has to change whenever the source does, so the callback is handed
+/// the exact code units rather than a lossy UTF-8 conversion — the latter maps
+/// sources that differ only in unpaired surrogates onto the same key, which is
+/// exactly the stale-cache class of bug this keying exists to prevent.
+fn code_cache_source_units<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  source: v8::Local<'s, v8::String>,
+) -> Vec<u16> {
+  let mut units = vec![0; source.length()];
+  source.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
+  units
+}
+
 #[op2(reentrant)]
 pub fn op_eval_context<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
@@ -321,9 +337,10 @@ pub fn op_eval_context<'s, 'i>(
     .borrow()
     .as_ref()
     .map(|cb| {
-      let mut source_code = vec![0; source.length()];
-      source.write_v2(tc_scope, 0, &mut source_code, v8::WriteFlags::empty());
-      let Ok(code_cache) = cb(&specifier, &source_code) else {
+      let source_units = code_cache_source_units(tc_scope, source);
+      // A cache backend that can't answer must not fail the eval: degrade to
+      // an uncached compile and don't arm the write side either.
+      let Ok(code_cache) = cb(&specifier, &source_units) else {
         return (None, None);
       };
       if let Some(code_cache_data) = &code_cache.data {
@@ -457,9 +474,10 @@ pub fn op_compile_function<'s, 'i>(
     .borrow()
     .as_ref()
     .map(|cb| {
-      let mut source_code = vec![0; source.length()];
-      source.write_v2(tc_scope, 0, &mut source_code, v8::WriteFlags::empty());
-      let Ok(code_cache) = cb(&specifier, &source_code) else {
+      let source_units = code_cache_source_units(tc_scope, source);
+      // A cache backend that can't answer must not fail the compile: degrade
+      // to an uncached compile and don't arm the write side either.
+      let Ok(code_cache) = cb(&specifier, &source_units) else {
         return (None, None);
       };
       if let Some(code_cache_data) = &code_cache.data {

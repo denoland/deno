@@ -643,6 +643,11 @@ impl ModuleMap {
     // closure at runtime on every cold start. The first run compiles and
     // stores; warm runs consume and skip parse+compile. Producing and consuming
     // binary are identical, so the cache is always accepted.
+    //
+    // The key is the pre-wrap `source`, while what gets compiled is
+    // `v8_source`. That's sound because the wrap above is a pure function of
+    // `source`: the same key can only ever have produced the same compiled
+    // string.
     let cache_specifier = crate::ModuleSpecifier::parse(&specifier_str).ok();
     let code_cache_info = cache_specifier.as_ref().and_then(|spec| {
       self

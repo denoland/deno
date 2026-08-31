@@ -1003,6 +1003,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // `load()`, so they can't ride their cache on a `ModuleSource`. Read the
     // shared on-disk cache directly here. The deno version is already part of
     // the root cache key.
+    //
+    // Hash the source *bytes*, not the `&str`: that's what
+    // `SharedModuleLoaderState::get_code_cache` hashes for the same specifier,
+    // and `&[u8]`/`&str` do not hash alike. Keep the two in sync or a module
+    // reached through both paths silently misses the cache on every run.
     let hash = FastInsecureHasher::new_without_deno_version()
       .write_hashable(source.as_bytes())
       .finish();

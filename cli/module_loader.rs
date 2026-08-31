@@ -1835,6 +1835,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     source: &str,
   ) -> Option<SourceCodeCacheInfo> {
     let cache = self.0.shared.code_cache.as_ref()?;
+    // Key on the full source contents. V8 only checks the source length when
+    // validating cached data, so an equal-length edit would otherwise be
+    // served stale bytecode.
+    //
+    // This hashes a `&str` while `code_source_to_module_source` hashes a
+    // `ModuleSourceCode`, so the two never share an entry. That's fine: this
+    // path only ever sees residual `ext:`/`node:` specifiers, which never go
+    // through `load()`.
     let source_hash = FastInsecureHasher::new_deno_versioned()
       .write_hashable(source)
       .finish();

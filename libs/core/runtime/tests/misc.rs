@@ -1698,18 +1698,79 @@ fn eval_context_code_cache_error_is_cache_miss() {
   let get_code_cache_cb = Box::new(|_: &Url, _: &[u16]| {
     Err(JsErrorBox::generic("cache unavailable"))
   });
+  let set_called = Arc::new(AtomicBool::new(false));
+  let set_called_clone = set_called.clone();
+  let set_code_cache_cb = Box::new(move |_: Url, _: u64, _: &[u8]| {
+    set_called_clone.store(true, Ordering::SeqCst);
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    eval_context_code_cache_cbs: Some((get_code_cache_cb, set_code_cache_cb)),
+    ..Default::default()
+  });
+
+  // The eval still runs and produces the right value...
+  runtime
+    .execute_script(
+      "",
+      ascii_str!(
+        r#"const [result, err] = Deno.core.evalContext('1 + 1', 'file:///foo.js');
+        if (err !== null) throw new Error(`unexpected error: ${err}`);
+        if (result !== 2) throw new Error(`unexpected result: ${result}`);"#
+      ),
+    )
+    .unwrap();
+
+  // ...and nothing is written back, since we have no hash to key it on.
+  assert!(!set_called.load(Ordering::SeqCst));
+}
+
+#[test]
+fn eval_context_code_cache_key_sees_full_source() {
+  // V8's identity hash for a string longer than 16,383 chars is derived from
+  // the length alone, so keying the cache on it handed stale bytecode to
+  // equal-length rewrites. The callback must observe the actual code units.
+  let pad = "//x\n".repeat(5000);
+  let sources = [
+    format!("globalThis.marker = 'AAAA';\n{pad}"),
+    format!("globalThis.marker = 'BBBB';\n{pad}"),
+  ];
+  assert_eq!(sources[0].len(), sources[1].len());
+
+  let seen = Arc::new(Mutex::new(Vec::<Vec<u16>>::new()));
+  let seen_clone = seen.clone();
+  let get_code_cache_cb = Box::new(move |_: &Url, source: &[u16]| {
+    seen_clone.lock().push(source.to_vec());
+    Ok(SourceCodeCacheInfo {
+      data: None,
+      hash: hash_source(source),
+    })
+  });
   let set_code_cache_cb = Box::new(|_: Url, _: u64, _: &[u8]| {});
   let mut runtime = JsRuntime::new(RuntimeOptions {
     eval_context_code_cache_cbs: Some((get_code_cache_cb, set_code_cache_cb)),
     ..Default::default()
   });
 
-  runtime
-    .execute_script(
-      "",
-      ascii_str!("Deno.core.evalContext('1 + 1', 'file:///foo.js');"),
-    )
-    .unwrap();
+  for source in &sources {
+    runtime
+      .execute_script(
+        "",
+        format!(
+          "Deno.core.evalContext({}, 'file:///foo.js');",
+          serde_json::to_string(source).unwrap()
+        ),
+      )
+      .unwrap();
+  }
+
+  // The callback sees each source verbatim, so equal-length rewrites key
+  // differently.
+  let seen = seen.lock();
+  assert_eq!(seen.len(), 2);
+  for (source, units) in sources.iter().zip(seen.iter()) {
+    assert_eq!(units, &source.encode_utf16().collect::<Vec<_>>());
+  }
+  assert_ne!(hash_source(&seen[0]), hash_source(&seen[1]));
 }
 
 fn hash_source(source: &[u16]) -> u64 {
