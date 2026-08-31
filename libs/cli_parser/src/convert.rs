@@ -211,8 +211,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("types") => types_parse(&mut flags),
     Some("lsp") => lsp_parse(&mut flags),
     Some("vendor") => vendor_parse(&mut flags),
-    Some("deploy") => deploy_parse(&result, &mut flags, false),
-    Some("sandbox") => deploy_parse(&result, &mut flags, true),
+    Some("deploy") => deploy_parse(&mut flags, false),
+    Some("sandbox") => deploy_parse(&mut flags, true),
     Some("bundle") => bundle_parse(&result, &mut flags),
     Some("audit") => audit_parse(&result, &mut flags)?,
     Some("why") => why_parse(&result, &mut flags),
@@ -1019,34 +1019,44 @@ fn allow_scripts_arg_parse(
   Ok(())
 }
 
-fn ignore_scripts_value(result: &ParseResult) -> PackagesAllowedScripts {
+fn ignore_scripts_value(
+  result: &ParseResult,
+) -> Result<PackagesAllowedScripts, CliError> {
   let Some(values) = result.get_many("ignore-scripts") else {
-    return PackagesAllowedScripts::None;
+    return Ok(PackagesAllowedScripts::None);
   };
   if values.is_empty() {
-    PackagesAllowedScripts::All
-  } else {
-    PackagesAllowedScripts::Some(
-      values
-        .iter()
-        .flat_map(|s| {
-          escape_and_split_commas(s.to_string()).unwrap_or_default()
-        })
-        .filter_map(|s| {
-          let value = if s.starts_with("npm:") || s.starts_with("jsr:") {
-            s.to_string()
-          } else {
-            format!("npm:{}", s)
-          };
-          let dep = JsrDepPackageReq::from_str_loose(&value).ok()?;
-          if dep.kind != PackageKind::Npm {
-            return None;
-          }
-          Some(dep.req)
-        })
-        .collect(),
-    )
+    return Ok(PackagesAllowedScripts::All);
   }
+
+  let mut packages = Vec::new();
+  for value in values {
+    for value in escape_and_split_commas(value.to_string())? {
+      let value = if value.starts_with("npm:") || value.starts_with("jsr:") {
+        value
+      } else {
+        format!("npm:{value}")
+      };
+      let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+        CliError::new(CliErrorKind::InvalidValue, e.to_string())
+      })?;
+      if dep.kind != PackageKind::Npm {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("Only npm package constraints are supported: {value}"),
+        ));
+      }
+      if dep.req.version_req.tag().is_some() {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("Tags are not supported in --ignore-scripts: {value}"),
+        ));
+      }
+      packages.push(dep.req);
+    }
+  }
+
+  Ok(PackagesAllowedScripts::Some(packages))
 }
 
 fn no_check_arg_parse(result: &ParseResult, flags: &mut Flags) {
@@ -2960,9 +2970,10 @@ fn vendor_parse(flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Vendor;
 }
 
-fn deploy_parse(result: &ParseResult, flags: &mut Flags, sandbox: bool) {
-  // deploy/sandbox are passthrough - all args go into argv
-  flags.argv = result.trailing.clone();
+fn deploy_parse(flags: &mut Flags, sandbox: bool) {
+  // deploy/sandbox are passthrough - all args go into argv. Note that argv is
+  // filled in by the shared trailing-arg handling in `flags_from_vec`, so this
+  // must not copy `result.trailing` itself or every arg would be duplicated.
   flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox });
 }
 
@@ -3200,11 +3211,17 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
     "browser" => BundlePlatform::Browser,
     _ => BundlePlatform::Deno,
   };
-  let sourcemap = result.get_one("sourcemap").map(|s| match s {
-    "inline" => SourceMapType::Inline,
-    "external" => SourceMapType::External,
-    _ => SourceMapType::Linked,
-  });
+  // `--sourcemap` takes an optional value that must be attached with `=`, so a
+  // bare `--sourcemap` means "linked" and never swallows the next argument.
+  let sourcemap = if result.contains("sourcemap") {
+    Some(match result.get_one("sourcemap").unwrap_or("linked") {
+      "inline" => SourceMapType::Inline,
+      "external" => SourceMapType::External,
+      _ => SourceMapType::Linked,
+    })
+  } else {
+    None
+  };
   let external = result
     .get_many("external")
     .map(|v| v.to_vec())
@@ -3299,7 +3316,7 @@ fn x_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
         XFlagsKind::Command(XCommandFlags {
           yes,
           command,
-          ignore_scripts: ignore_scripts_value(result),
+          ignore_scripts: ignore_scripts_value(result)?,
           package: result.get_one("package").map(|s| s.to_string()),
         })
       } else {

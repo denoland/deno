@@ -220,6 +220,11 @@ impl WefDesktopApi {
             window_id: ev.window_id,
           },
         );
+        // Since laufey 0.7.0 a registered close-requested handler *defers*
+        // the close: the window stays open until `Window::close()` is called.
+        // The JS "close" event is a plain notification (not cancelable), so
+        // complete the close here to keep the native close button working.
+        laufey::Window::from_id(ev.window_id).close();
       })
   }
 
@@ -1049,9 +1054,9 @@ fn promote_dylib_symbols_to_global() {
       flags: std::ffi::c_int,
     ) -> *mut std::ffi::c_void;
   }
-  const RTLD_LAZY: std::ffi::c_int = 0x1;
-  const RTLD_NOLOAD: std::ffi::c_int = 0x10;
-  const RTLD_GLOBAL: std::ffi::c_int = 0x8;
+  use libc::RTLD_GLOBAL;
+  use libc::RTLD_LAZY;
+  use libc::RTLD_NOLOAD;
 
   // SAFETY:
   // - `dladdr` reads the metadata of the function passed in; a known
@@ -1071,9 +1076,10 @@ fn promote_dylib_symbols_to_global() {
       let handle =
         dlopen(info.dli_fname, RTLD_LAZY | RTLD_NOLOAD | RTLD_GLOBAL);
       if handle.is_null() {
-        log::debug!(
+        log::warn!(
           "[desktop] dlopen(self, RTLD_NOLOAD|RTLD_GLOBAL) returned NULL; \
-           NAPI symbols will not be globally visible"
+           NAPI symbols will not be globally visible and native Node-API \
+           addons will fail to load"
         );
       }
     }

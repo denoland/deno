@@ -6633,6 +6633,42 @@ fn lsp_jsr_lockfile() {
 }
 
 #[test(timeout = 300)]
+fn lsp_jsr_prerelease_only_package() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "tags": []
+        }
+      }
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import { doThing } from "jsr:@denotest/unstable";
+        console.log(doThing());
+      "#,
+    },
+  }));
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
+  // a wildcard requirement resolves to the newest pre-release when the
+  // package has no stable release, so this resolves and typechecks
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion() {
   let context = TestContextBuilder::new()
     .use_http_server()
