@@ -128,8 +128,11 @@ impl RawBrotliEncoder {
     }
   }
 
+  // Feed the input to the encoder without flushing, so that the output does
+  // not depend on how the input was chunked. A flush per chunk would emit a
+  // meta-block boundary for every `write()` and prevent matches across chunks.
   fn write(&mut self, input: &[u8]) -> Result<Vec<u8>, CompressionError> {
-    self.compress(input, BrotliEncoderOperation::BROTLI_OPERATION_FLUSH)
+    self.compress(input, BrotliEncoderOperation::BROTLI_OPERATION_PROCESS)
   }
 
   fn finish(mut self) -> Result<Vec<u8>, CompressionError> {
@@ -315,15 +318,31 @@ mod tests {
     output
   }
 
-  #[test]
-  fn raw_brotli_encoder_flushes_multiple_chunks() {
+  fn compress_brotli(chunks: &[&[u8]]) -> Vec<u8> {
     let mut encoder = RawBrotliEncoder::new();
     let mut compressed = vec![];
-    compressed.extend(encoder.write(b"hello ").unwrap());
-    compressed.extend(encoder.write(b"world").unwrap());
+    for chunk in chunks {
+      compressed.extend(encoder.write(chunk).unwrap());
+    }
     compressed.extend(encoder.finish().unwrap());
+    compressed
+  }
+
+  #[test]
+  fn raw_brotli_encoder_writes_multiple_chunks() {
+    let compressed = compress_brotli(&[b"hello ", b"world"]);
 
     assert_eq!(decompress_brotli(&compressed), b"hello world");
+  }
+
+  #[test]
+  fn raw_brotli_encoder_output_is_independent_of_chunking() {
+    let input = b"hello world hello world";
+    let single = compress_brotli(&[input]);
+    let split = compress_brotli(&[b"hello world ", b"hello world"]);
+
+    assert_eq!(decompress_brotli(&single), input);
+    assert_eq!(split, single);
   }
 
   #[test]
