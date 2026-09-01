@@ -78,7 +78,7 @@ const {
   builtinTracer,
   ContextManager,
   enterSpan,
-  restoreSnapshot,
+  exitSpan,
 } = internals.__telemetry;
 const __telemetry = internals.__telemetry;
 const {
@@ -975,7 +975,7 @@ function fetch(input, init = undefined) {
     }
     return result;
   } finally {
-    if (snapshot) restoreSnapshot(snapshot);
+    if (span) exitSpan(snapshot);
   }
 }
 

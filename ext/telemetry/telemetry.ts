@@ -199,22 +199,30 @@ function countAttributes(attributes?: Attributes): number {
   return attributes ? ObjectKeys(attributes).length : 0;
 }
 
+const currentSnapshot = getAsyncContext;
+const restoreSnapshot = setAsyncContext;
+
 interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
 
+const DID_NOT_ENTER = SymbolFor("Deno.telemetry.didNotEnterSpan");
+
 function enterSpan(
   span: Span,
   context?: Context,
-): AsyncContextSnapshot | undefined {
-  if (!span.isRecording()) return undefined;
+): AsyncContextSnapshot | typeof DID_NOT_ENTER {
+  if (!span.isRecording()) return DID_NOT_ENTER;
+  const snapshot = currentSnapshot();
   context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
     .setValue(SPAN_KEY, span);
-  return CURRENT.enter(context);
+  CURRENT.enter(context);
+  return snapshot;
 }
 
-const currentSnapshot = getAsyncContext;
-const restoreSnapshot = setAsyncContext;
+function exitSpan(snapshot: AsyncContextSnapshot | typeof DID_NOT_ENTER) {
+  if (snapshot !== DID_NOT_ENTER) restoreSnapshot(snapshot);
+}
 
 function isDate(value: unknown): value is Date {
   return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
@@ -1928,9 +1936,11 @@ internals.__telemetry = {
   builtinTracer,
   ContextManager,
   enterSpan,
+  exitSpan,
   get PROPAGATORS() {
     return PROPAGATORS;
   },
+  currentSnapshot,
   restoreSnapshot,
   get TRACING_ENABLED() {
     return TRACING_ENABLED;
@@ -1969,6 +1979,7 @@ function wrappedBootstrap(config: Parameters<typeof bootstrap>[0]) {
 return {
   otelState,
   enterSpan,
+  exitSpan,
   currentSnapshot,
   restoreSnapshot,
   SPAN_KEY,
