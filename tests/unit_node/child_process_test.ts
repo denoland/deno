@@ -871,7 +871,9 @@ Deno.test({
     await pStdout.promise;
     await pStderr.promise;
     assert(cp.killed);
-    assertEquals(cp.signalCode, "SIGIOT");
+    // SIGIOT is an alias for SIGABRT on POSIX systems, so Node reports the
+    // canonical signal name from the OS exit status.
+    assertEquals(cp.signalCode, "SIGABRT");
   },
 });
 
@@ -1396,13 +1398,132 @@ Deno.test(async function killMultipleTimesNoError() {
   child.on("close", () => {
     timeout.resolve();
   });
-  child.kill();
+  assertEquals(child.kill(), true);
   child.kill();
 
-  // explicitly calling disconnect after kill should throw
-  assertThrows(() => child.disconnect());
+  // Sending a signal does not implicitly disconnect the IPC channel.
+  assertEquals(child.connected, true);
+  child.disconnect();
 
   await timeout.promise;
+});
+
+Deno.test({
+  name: "[node/child_process] SIGSTOP and SIGCONT preserve child state",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const child = CP.spawn(
+      Deno.execPath(),
+      [
+        "eval",
+        `
+          await Deno.stdout.write(new TextEncoder().encode("ready\\n"));
+          for await (const chunk of Deno.stdin.readable) {
+            await Deno.stdout.write(chunk);
+          }
+        `,
+      ],
+      { stdio: ["pipe", "pipe", "inherit"] },
+    );
+    const output: string[] = [];
+    const ready = withTimeout<void>();
+    const closed = withTimeout<void>();
+    child.stdout.on("data", (chunk) => {
+      output.push(chunk.toString());
+      if (output.join("").includes("ready\n")) {
+        ready.resolve();
+      }
+    });
+    child.on("close", () => closed.resolve());
+
+    try {
+      await ready.promise;
+      assertEquals(child.kill("SIGSTOP"), true);
+      assertEquals(child.killed, true);
+      assertEquals(child.signalCode, null);
+      assertEquals(child.exitCode, null);
+      assertEquals(child.stdout.destroyed, false);
+
+      assertEquals(child.kill("SIGCONT"), true);
+      assertEquals(child.signalCode, null);
+      assertEquals(child.exitCode, null);
+      assertEquals(child.stdout.destroyed, false);
+
+      const resumed = withTimeout<void>();
+      child.stdout.on("data", (_chunk) => {
+        if (output.join("").includes("resumed\n")) {
+          resumed.resolve();
+        }
+      });
+      child.stdin.write("resumed\n");
+      await resumed.promise;
+      assertEquals(child.signalCode, null);
+      assertEquals(child.exitCode, null);
+
+      assertEquals(child.kill("SIGSTOP"), true);
+      // `killed` is already true, but disposal must still send SIGTERM.
+      child[Symbol.dispose]();
+      child.kill("SIGCONT");
+      await closed.promise;
+      assertEquals(child.signalCode, "SIGTERM");
+      assertEquals(child.exitCode, null);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+      child.stdout.destroy();
+      child.stdin.destroy();
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/child_process] SIGSTOP and SIGCONT preserve IPC channel",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const file = await Deno.makeTempFile();
+    await Deno.writeTextFile(
+      file,
+      `
+        process.on("message", (message) => process.send(message));
+        setInterval(() => {}, 10000);
+      `,
+    );
+    const child = CP.fork(file, [], {
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    const response = withTimeout<string>();
+    const closed = withTimeout<void>();
+    child.on("message", (message) => {
+      if (typeof message === "string") {
+        response.resolve(message);
+      } else {
+        response.reject(new TypeError("expected a string IPC response"));
+      }
+    });
+    child.on("close", () => closed.resolve());
+
+    try {
+      assertEquals(child.kill("SIGSTOP"), true);
+      assertEquals(child.connected, true);
+      assertEquals(child.send("resumed"), true);
+      assertEquals(child.kill("SIGCONT"), true);
+      assertEquals(await response.promise, "resumed");
+      assertEquals(child.signalCode, null);
+      assertEquals(child.exitCode, null);
+      assertEquals(child.kill("SIGTERM"), true);
+      await closed.promise;
+      assertEquals(child.signalCode, "SIGTERM");
+      assertEquals(child.exitCode, null);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+      if (child.connected) {
+        child.disconnect();
+      }
+    }
+  },
 });
 
 // Make sure that you receive messages sent before a "message" event listener is set up
