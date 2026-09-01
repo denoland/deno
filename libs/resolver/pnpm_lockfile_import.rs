@@ -600,10 +600,19 @@ fn starts_with_digit(value: &str) -> bool {
 /// came from, e.g. `fake-data-pkg@file:packages/…/fake-data-pkg-1.0.0.tgz`,
 /// and has no npm id to record.
 fn is_package_id(base: &str) -> bool {
-  match base.rfind('@') {
-    // A leading `@` is a scope, not a separator.
-    Some(idx) if idx > 0 => starts_with_digit(&base[idx + 1..]),
-    _ => false,
+  // A leading `@` is a scope, not a separator.
+  let Some(idx) = base.rfind('@').filter(|idx| *idx > 0) else {
+    return false;
+  };
+  if !starts_with_digit(&base[idx + 1..]) {
+    return false;
+  }
+  // An npm name carries a `/` only as the scope separator, so anything else
+  // is a registry host or a path that `strip_registry_prefix` didn't peel
+  // off. Those parse as an id but name a package the lock has no entry for.
+  match base[..idx].strip_prefix('@') {
+    Some(scoped) => scoped.matches('/').count() == 1,
+    None => !base[..idx].contains('/'),
   }
 }
 
@@ -651,6 +660,7 @@ fn is_package_manager_document(doc: &MapNode) -> bool {
 /// `/`, e.g. `/lodash@4.17.21` or `/@babel/core@7.0.0`. Strip it.
 fn normalize_package_key(key: &str) -> String {
   let stripped = key.strip_prefix('/').unwrap_or(key);
+  let stripped = strip_registry_prefix(stripped);
   // pnpm v6 sometimes used `/name/version` instead of `/name@version`. We
   // detect the `/version` form by checking whether the last `/` is followed
   // by what looks like a semver number.
@@ -661,11 +671,40 @@ fn normalize_package_key(key: &str) -> String {
       let (name, ver) = stripped.split_at(idx);
       let ver = &ver[1..];
       if starts_with_digit(ver) {
-        return format!("{}@{}", name, ver);
+        // An unscoped mirror id — `registry.npmmirror.com/lodash/4.17.21` —
+        // only becomes strippable once the version boundary is an `@`, so
+        // the host gets another chance here.
+        let rewritten = format!("{}@{}", name, ver);
+        return strip_registry_prefix(&rewritten).to_string();
       }
     }
   }
   stripped.to_string()
+}
+
+/// Drop the registry host from the front of a pnpm id.
+///
+/// A lockfile written against a mirror keys its packages by where they came
+/// from, e.g. `registry.npmmirror.com/@nodelib/fs.stat@2.0.5`. An npm name
+/// carries a `/` only as the scope separator, so a segment sitting in front
+/// of an `@scope` — or in front of the `name@version` of an unscoped package
+/// — is the host rather than part of the name.
+///
+/// Expects the leading `/` and any peer suffix to be gone already.
+fn strip_registry_prefix(id: &str) -> &str {
+  // Already a scope, so there is nothing in front of the name.
+  if id.starts_with('@') {
+    return id;
+  }
+  if let Some(idx) = id.find("/@") {
+    return &id[idx + 1..];
+  }
+  match id.rsplit_once('/') {
+    // Only strip when the last segment is itself a `name@version`. Otherwise
+    // this is the v6 `name/version` form, whose `/` the caller rewrites.
+    Some((_, last)) if is_package_id(last) => last,
+    _ => id,
+  }
 }
 
 /// Strip pnpm's peer-dependency suffix from a package id. E.g.
@@ -1182,6 +1221,121 @@ packages:
         );
       }
     }
+  }
+
+  #[test]
+  fn mirror_registry_package_keys() {
+    // A lockfile written against a mirror keys its packages by where they
+    // came from. The host is not part of the name, so it comes off rather
+    // than reaching the lock as `registry.npmmirror.com/@nodelib/fs.stat`.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  '@nodelib/fs.stat': ^2.0.5
+  lodash: ^4.17.21
+
+dependencies:
+  '@nodelib/fs.stat': 2.0.5
+  lodash: 4.17.21
+
+packages:
+  /registry.npmmirror.com/@nodelib/fs.stat@2.0.5:
+    resolution: {integrity: sha512-STAT}
+    dependencies:
+      run-parallel: /registry.npmmirror.com/run-parallel@1.2.0
+  /registry.npmmirror.com/lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  /registry.npmmirror.com/run-parallel@1.2.0:
+    resolution: {integrity: sha512-PARALLEL}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+      v["npm"]["@nodelib/fs.stat@2.0.5"]["integrity"],
+      "sha512-STAT"
+    );
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    // The host comes off dependency values too, so the reference resolves.
+    assert_eq!(
+      v["npm"]["@nodelib/fs.stat@2.0.5"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["run-parallel@1.2.0"]
+    );
+    assert_eq!(v["specifiers"]["npm:@nodelib/fs.stat@^2.0.5"], "2.0.5");
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn mirror_registry_slash_version_keys() {
+    // The same mirror ids in the older `name/version` spelling, where the
+    // host can only be told apart from the name once the version boundary
+    // has been rewritten to an `@`.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  lodash: ^4.17.21
+
+dependencies:
+  lodash: 4.17.21
+
+packages:
+  /registry.npmmirror.com/lodash/4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  /registry.npmmirror.com/@nodelib/fs.stat/2.0.5:
+    resolution: {integrity: sha512-STAT}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    assert_eq!(
+      v["npm"]["@nodelib/fs.stat@2.0.5"]["integrity"],
+      "sha512-STAT"
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for key in content.packages.npm.keys() {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+    }
+  }
+
+  #[test]
+  fn scoped_package_keys_are_not_mistaken_for_a_host() {
+    // `@scope/name` has a `/` of its own; it must survive untouched.
+    assert_eq!(
+      normalize_package_key("/@babel/core@7.0.0"),
+      "@babel/core@7.0.0"
+    );
+    assert_eq!(
+      normalize_package_key("/@babel/core/7.0.0"),
+      "@babel/core@7.0.0"
+    );
+    assert_eq!(normalize_package_key("/lodash@4.17.21"), "lodash@4.17.21");
+    assert_eq!(normalize_package_key("/lodash/4.17.21"), "lodash@4.17.21");
+    // A name that still carries a host is not an id we can record.
+    assert!(!is_package_id("registry.npmmirror.com/lodash@4.17.21"));
+    assert!(is_package_id("@babel/core@7.0.0"));
+    assert!(is_package_id("lodash@4.17.21"));
+    assert!(!is_package_id("fake-pkg@file:vendor/fake-pkg-1.0.0.tgz"));
   }
 
   #[test]
