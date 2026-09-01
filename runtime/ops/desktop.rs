@@ -572,7 +572,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     y: i32,
     menu: Vec<MenuItem>,
   );
-  /// Raw/winit: allow or deny IME (allowed by default). WebView / CEF: no-op.
+  /// Raw/winit: allow or deny IME (off by default). WebView / CEF: no-op.
   fn set_ime_allowed(&self, window_id: u32, allowed: bool);
   /// Raw/winit: logical top-left client rect for the IME candidate window.
   /// WebView / CEF: no-op.

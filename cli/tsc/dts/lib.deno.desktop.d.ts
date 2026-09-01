@@ -676,7 +676,8 @@ declare namespace Deno {
      */
     showContextMenu(x: number, y: number, menu: MenuItem[]): void;
 
-    /** Allow or deny IME on this window. Allowed by default.
+    /** Allow or deny IME on this window. Off by default (raw key delivery);
+     * pass `true` when a text field is focused so CJK composition can start.
      *
      * Raw/winit only. No-op on WebView and CEF, where the engine owns
      * composition. */
