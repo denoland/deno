@@ -72,6 +72,9 @@ impl WefDesktopApi {
     show_on_first_load: bool,
   ) -> laufey::Window {
     let kb_tx = self.event_tx.clone();
+    let ime_tx = self.event_tx.clone();
+    let composing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let composing_for_kb = composing.clone();
     let mouse_click_tx = self.event_tx.clone();
     let mouse_move_tx = self.event_tx.clone();
     let wheel_tx = self.event_tx.clone();
@@ -101,6 +104,27 @@ impl WefDesktopApi {
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
+            is_composing: composing_for_kb.load(Ordering::Acquire),
+          },
+        );
+      })
+      .on_ime_event(move |ev| {
+        let r#type = match ev.state {
+          laufey::ImeState::Start => {
+            composing.store(true, Ordering::Release);
+            "compositionstart"
+          }
+          laufey::ImeState::Update => "compositionupdate",
+          laufey::ImeState::End => {
+            composing.store(false, Ordering::Release);
+            "compositionend"
+          }
+        };
+        let _ = ime_tx.try_send(
+          deno_runtime::ops::desktop::DesktopEvent::CompositionEvent {
+            window_id: ev.window_id,
+            r#type: r#type.to_string(),
+            data: ev.data,
           },
         );
       })

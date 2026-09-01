@@ -6377,7 +6377,7 @@ dependencies = [
 [[package]]
 name = "laufey"
 version = "0.7.0"
-source = "git+https://github.com/petamoriken/laufey?branch=feat%2Fraw-ime#5bdc9060a2b509ff1fef92e9580c6ed7f8f6bc05"
+source = "git+https://github.com/petamoriken/laufey?branch=feat%2Fraw-ime#39e78f20442ace2a92c2541030e35e2c7b963e64"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",

@@ -567,6 +567,9 @@ declare namespace Deno {
   interface BrowserWindowEventMap {
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
+    compositionstart: CompositionEvent;
+    compositionupdate: CompositionEvent;
+    compositionend: CompositionEvent;
     mousedown: MouseEvent;
     mouseup: MouseEvent;
     click: MouseEvent;
