@@ -44,7 +44,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  laufey::LAUFEY_API_VERSION == 34,
+  laufey::LAUFEY_API_VERSION == 35,
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
@@ -338,6 +338,21 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
 
   fn set_window_opacity(&self, window_id: u32, opacity: f64) {
     laufey::Window::from_id(window_id).set_opacity(opacity);
+  }
+
+  fn set_ime_allowed(&self, window_id: u32, allowed: bool) {
+    laufey::Window::from_id(window_id).set_ime_allowed(allowed);
+  }
+
+  fn set_ime_cursor_area(
+    &self,
+    window_id: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  ) {
+    laufey::Window::from_id(window_id).set_ime_cursor_area(x, y, width, height);
   }
 
   fn is_visible(&self, window_id: u32) -> bool {

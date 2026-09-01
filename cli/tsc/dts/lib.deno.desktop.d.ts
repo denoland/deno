@@ -676,6 +676,21 @@ declare namespace Deno {
      */
     showContextMenu(x: number, y: number, menu: MenuItem[]): void;
 
+    /** Allow or deny IME on this window. Allowed by default.
+     *
+     * Raw/winit only. No-op on WebView and CEF, where the engine owns
+     * composition. */
+    setImeAllowed(allowed: boolean): void;
+    /** Logical client rectangle (top-left origin, same space as
+     * {@linkcode showContextMenu}) the IME candidate window should sit next
+     * to. Raw/winit only. No-op on WebView and CEF. */
+    setImeCursorArea(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ): void;
+
     getNativeWindow(): Deno.UnsafeWindowSurface;
 
     addEventListener<K extends keyof BrowserWindowEventMap>(

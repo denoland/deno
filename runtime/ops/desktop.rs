@@ -572,6 +572,18 @@ pub trait DesktopApi: Send + Sync + 'static {
     y: i32,
     menu: Vec<MenuItem>,
   );
+  /// Raw/winit: allow or deny IME (allowed by default). WebView / CEF: no-op.
+  fn set_ime_allowed(&self, window_id: u32, allowed: bool);
+  /// Raw/winit: logical top-left client rect for the IME candidate window.
+  /// WebView / CEF: no-op.
+  fn set_ime_cursor_area(
+    &self,
+    window_id: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  );
 
   /// Best-effort fetch of the OS-level window/display handles for the
   /// given window. Returning `Err` instead of panicking matters because
@@ -1017,6 +1029,18 @@ impl BrowserWindow {
     #[serde] menu: Vec<MenuItem>,
   ) {
     self.api.show_context_menu(self.window_id, x, y, menu);
+  }
+
+  #[fast]
+  fn set_ime_allowed(&self, allowed: bool) {
+    self.api.set_ime_allowed(self.window_id, allowed);
+  }
+
+  #[fast]
+  fn set_ime_cursor_area(&self, x: f64, y: f64, width: f64, height: f64) {
+    self
+      .api
+      .set_ime_cursor_area(self.window_id, x, y, width, height);
   }
 
   fn get_native_window(
