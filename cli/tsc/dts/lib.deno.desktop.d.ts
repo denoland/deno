@@ -57,8 +57,11 @@ declare class KeyboardEvent extends UIEvent {
 
 declare interface MouseEventInit extends UIEventInit {
   button?: number;
+  buttons?: number;
   clientX?: number;
   clientY?: number;
+  screenX?: number;
+  screenY?: number;
   ctrlKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
@@ -68,6 +71,7 @@ declare interface MouseEventInit extends UIEventInit {
 declare class MouseEvent extends UIEvent {
   constructor(type: string, init?: MouseEventInit);
   readonly button: number;
+  readonly buttons: number;
   readonly clientX: number;
   readonly clientY: number;
   readonly screenX: number;
