@@ -5,6 +5,10 @@
       "args": "check --quiet default.ts",
       "output": ""
     },
+    "default_uint8array_stream": {
+      "args": "check --quiet uint8array_stream.ts",
+      "output": ""
+    },
     "dom_lib": {
       // deferred: stock lib.dom.d.ts lacks Deno's `brotli` CompressionFormat
       // (needs the deno.* lib migration) -> #35985
