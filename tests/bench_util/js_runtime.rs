@@ -51,6 +51,11 @@ pub fn bench_js_sync_with(
   setup: impl FnOnce() -> Vec<Extension>,
   opts: BenchOptions,
 ) {
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .unwrap();
+  let _tokio_enter = tokio_runtime.enter();
   let mut runtime = create_js_runtime(setup);
   deno_core::scope!(scope, runtime);
 
@@ -89,11 +94,12 @@ pub fn bench_js_async_with(
   setup: impl FnOnce() -> Vec<Extension>,
   opts: BenchOptions,
 ) {
-  let mut runtime = create_js_runtime(setup);
   let tokio_runtime = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
     .unwrap();
+  let _tokio_enter = tokio_runtime.enter();
+  let mut runtime = create_js_runtime(setup);
 
   // Looped code
   let inner_iters = if is_profiling() {
