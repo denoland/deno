@@ -315,20 +315,134 @@ pub fn op_node_x509_check_email(
   false
 }
 
-#[op2(fast)]
+const X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT: u32 = 0x1;
+const X509_CHECK_FLAG_NEVER_CHECK_SUBJECT: u32 = 0x2;
+const X509_CHECK_FLAG_NO_WILDCARDS: u32 = 0x4;
+const X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS: u32 = 0x8;
+const X509_CHECK_FLAG_MULTI_LABEL_WILDCARDS: u32 = 0x10;
+
+fn eq_ascii_case_insensitive(left: &[u8], right: &[u8]) -> bool {
+  left.len() == right.len()
+    && left
+      .iter()
+      .zip(right)
+      .all(|(left, right)| left.eq_ignore_ascii_case(right))
+}
+
+fn valid_dns_wildcard(pattern: &[u8], flags: u32) -> Option<usize> {
+  let mut wildcard = None;
+  let mut label_start = true;
+  let mut label_hyphen = false;
+  let mut label_idna = false;
+  let mut dots = 0;
+
+  for (index, byte) in pattern.iter().copied().enumerate() {
+    match byte {
+      b'*' => {
+        let at_label_end =
+          index + 1 == pattern.len() || pattern[index + 1] == b'.';
+        if wildcard.is_some()
+          || label_idna
+          || dots != 0
+          || (flags & X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS != 0
+            && (!label_start || !at_label_end))
+          || (!label_start && !at_label_end)
+        {
+          return None;
+        }
+        wildcard = Some(index);
+        label_start = false;
+      }
+      b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => {
+        if label_start
+          && pattern[index..]
+            .get(..4)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"xn--"))
+        {
+          label_idna = true;
+        }
+        label_start = false;
+        label_hyphen = false;
+      }
+      b'.' => {
+        if label_start || label_hyphen {
+          return None;
+        }
+        label_start = true;
+        label_hyphen = false;
+        label_idna = false;
+        dots += 1;
+      }
+      b'-' => {
+        if label_start {
+          return None;
+        }
+        label_hyphen = true;
+      }
+      _ => return None,
+    }
+  }
+
+  if label_start || label_hyphen || dots < 2 {
+    None
+  } else {
+    wildcard
+  }
+}
+
+fn dns_name_matches(pattern: &str, host: &str, flags: u32) -> bool {
+  let pattern = pattern.as_bytes();
+  let host = host.as_bytes();
+
+  if flags & X509_CHECK_FLAG_NO_WILDCARDS != 0 {
+    return eq_ascii_case_insensitive(pattern, host);
+  }
+
+  let Some(wildcard) = valid_dns_wildcard(pattern, flags) else {
+    return eq_ascii_case_insensitive(pattern, host);
+  };
+  let prefix = &pattern[..wildcard];
+  let suffix = &pattern[wildcard + 1..];
+  if host.len() < prefix.len() + suffix.len()
+    || !eq_ascii_case_insensitive(prefix, &host[..prefix.len()])
+    || !eq_ascii_case_insensitive(suffix, &host[host.len() - suffix.len()..])
+  {
+    return false;
+  }
+
+  let wildcard_match = &host[prefix.len()..host.len() - suffix.len()];
+  let full_label_wildcard = prefix.is_empty() && suffix.starts_with(b".");
+  if full_label_wildcard && wildcard_match.is_empty() {
+    return false;
+  }
+  if !full_label_wildcard
+    && host
+      .get(..4)
+      .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"xn--"))
+  {
+    return false;
+  }
+  if wildcard_match == b"*" {
+    return true;
+  }
+
+  let allow_multiple_labels =
+    full_label_wildcard && flags & X509_CHECK_FLAG_MULTI_LABEL_WILDCARDS != 0;
+  wildcard_match.iter().all(|byte| {
+    byte.is_ascii_alphanumeric()
+      || *byte == b'-'
+      || (allow_multiple_labels && *byte == b'.')
+  })
+}
+
+#[op2]
+#[string]
 pub fn op_node_x509_check_host(
   #[cppgc] cert: &Certificate,
   #[string] host: &str,
-) -> bool {
+  #[smi] flags: u32,
+) -> Option<String> {
   let cert = cert.inner.get().deref();
-
-  let subject = cert.subject();
-  if subject
-    .iter_common_name()
-    .any(|e| e.as_str().unwrap_or("") == host)
-  {
-    return true;
-  }
 
   let subject_alt = cert
     .extensions()
@@ -339,17 +453,31 @@ pub fn op_node_x509_check_host(
       _ => None,
     });
 
+  let mut has_dns_subject_alt_name = false;
   if let Some(subject_alt) = subject_alt {
     for name in &subject_alt.general_names {
-      if let extensions::GeneralName::DNSName(n) = name
-        && *n == host
-      {
-        return true;
+      if let extensions::GeneralName::DNSName(name) = name {
+        has_dns_subject_alt_name = true;
+        if dns_name_matches(name, host, flags) {
+          return Some((*name).to_string());
+        }
       }
     }
   }
 
-  false
+  if (has_dns_subject_alt_name
+    && flags & X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT == 0)
+    || flags & X509_CHECK_FLAG_NEVER_CHECK_SUBJECT != 0
+  {
+    return None;
+  }
+
+  cert
+    .subject()
+    .iter_common_name()
+    .filter_map(|name| name.as_str().ok())
+    .find(|name| dns_name_matches(name, host, flags))
+    .map(str::to_string)
 }
 
 #[op2]
