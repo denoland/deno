@@ -1450,8 +1450,13 @@ Deno.test({
       assertEquals(child.stdout.destroyed, false);
 
       const resumed = withTimeout<void>();
-      child.stdout.on("data", (_chunk) => {
-        if (output.join("").includes("resumed\n")) {
+      // Accumulate locally instead of reading `output`: that array is filled
+      // by the listener registered above, so relying on it here would make
+      // this assertion depend on listener invocation order.
+      let echoed = "";
+      child.stdout.on("data", (chunk) => {
+        echoed += chunk.toString();
+        if (echoed.includes("resumed\n")) {
           resumed.resolve();
         }
       });
@@ -1523,6 +1528,29 @@ Deno.test({
         child.disconnect();
       }
     }
+  },
+});
+
+Deno.test({
+  name: "[node/child_process] windows reports the delivered signal",
+  ignore: Deno.build.os !== "windows",
+  async fn() {
+    // Windows has no POSIX termination status, so `signalCode` comes from the
+    // signal `kill()` recorded locally. The POSIX stop/resume tests above are
+    // skipped here, making this the only coverage of that fallback.
+    const child = CP.spawn(
+      Deno.execPath(),
+      ["eval", "setInterval(() => {}, 10000)"],
+      { stdio: ["ignore", "ignore", "inherit"] },
+    );
+    const closed = withTimeout<void>();
+    child.on("close", () => closed.resolve());
+
+    assertEquals(child.kill("SIGTERM"), true);
+    assertEquals(child.killed, true);
+    await closed.promise;
+    assertEquals(child.signalCode, "SIGTERM");
+    assertEquals(child.exitCode, null);
   },
 });
 
