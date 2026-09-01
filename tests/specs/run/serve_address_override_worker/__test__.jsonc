@@ -1,0 +1,11 @@
+{
+  "tests": {
+    "serve_address_override_worker": {
+      "args": "run --allow-net --allow-read main.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "tcp:127.0.0.1:9003"
+      },
+      "output": "main.out"
+    }
+  }
+}
