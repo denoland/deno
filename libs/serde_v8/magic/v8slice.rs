@@ -218,6 +218,31 @@ where
     self.len() == 0
   }
 
+  /// Returns whether the backing store can be resized (shrunk or grown) by user
+  /// JavaScript, i.e. it is backed by a resizable `ArrayBuffer` or growable
+  /// `SharedArrayBuffer`.
+  ///
+  /// [`as_slice`](Self::as_slice) deliberately re-clamps this slice's range
+  /// against the store length on every call because such stores may shrink
+  /// after the slice was created. Callers that instead snapshot the
+  /// pointer/length once (e.g. [`bytes::Bytes::from_owner`]) would read past
+  /// the now-valid length, so they must copy when this returns `true`.
+  pub fn is_backing_store_resizable(&self) -> bool {
+    self.store.is_resizable_by_user_javascript()
+  }
+
+  /// Returns whether the backing store is shared (a `SharedArrayBuffer`), and
+  /// so may be mutated concurrently by another thread.
+  ///
+  /// [`FromV8`] rejects shared stores, but the op2 `#[buffer]` path builds
+  /// slices via the unchecked [`from_parts`](Self::from_parts), so a shared
+  /// store can still reach here. Callers that freeze a pointer into the store
+  /// (e.g. [`bytes::Bytes::from_owner`]) should copy when this returns `true`
+  /// to avoid aliasing memory a concurrent writer can tear.
+  pub fn is_backing_store_shared(&self) -> bool {
+    self.store.is_shared()
+  }
+
   /// Create a [`Vec<T>`] copy of this slice data.
   pub fn to_vec(&self) -> Vec<T> {
     self.as_slice().to_vec()
