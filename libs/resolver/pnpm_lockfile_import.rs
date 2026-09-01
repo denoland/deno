@@ -71,6 +71,9 @@ pub fn pnpm_lock_to_deno_lock_v5(
     for (key, value) in packages.entries() {
       let key = normalize_package_key(&key);
       let base = strip_peer_suffix(&key).to_string();
+      if !is_package_id(&base) {
+        continue;
+      }
       if let Some(integ) = value
         .into_map()
         .and_then(|m| m.get("resolution"))
@@ -98,7 +101,7 @@ pub fn pnpm_lock_to_deno_lock_v5(
       let base = strip_peer_suffix(&normalized).to_string();
       // Snapshot keys may include peer-suffix parens; for our purposes,
       // collapse to the base `name@version`. First entry wins.
-      if npm.contains_key(&base) {
+      if !is_package_id(&base) || npm.contains_key(&base) {
         continue;
       }
       let Some(integ) = integrity.get(&base) else {
@@ -564,6 +567,18 @@ fn dep_entry(name: &str, value: &str) -> Option<String> {
 
 fn starts_with_digit(value: &str) -> bool {
   value.starts_with(|c: char| c.is_ascii_digit())
+}
+
+/// Whether a `packages`/`snapshots` key is a `name@version` deno.lock can
+/// hold. A package installed from a path or a tarball is keyed by where it
+/// came from, e.g. `fake-data-pkg@file:packages/…/fake-data-pkg-1.0.0.tgz`,
+/// and has no npm id to record.
+fn is_package_id(base: &str) -> bool {
+  match base.rfind('@') {
+    // A leading `@` is a scope, not a separator.
+    Some(idx) if idx > 0 => starts_with_digit(&base[idx + 1..]),
+    _ => false,
+  }
 }
 
 /// Pick the document that describes the project.
@@ -1032,6 +1047,44 @@ packages:
           "{key} depends on {dep}, which isn't in the lock"
         );
       }
+    }
+  }
+
+  #[test]
+  fn package_installed_from_a_path_is_left_out() {
+    // A package keyed by where it came from has no npm id to record, so it
+    // must not reach the npm section as `fake-pkg@file:…`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  fake-pkg@file:vendor/fake-pkg-1.0.0.tgz:
+    resolution: {integrity: sha512-FAKE, tarball: file:vendor/fake-pkg-1.0.0.tgz}
+
+snapshots:
+  lodash@4.17.21: {}
+  fake-pkg@file:vendor/fake-pkg-1.0.0.tgz: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    assert_eq!(v["npm"].as_object().unwrap().len(), 1);
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for key in content.packages.npm.keys() {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
     }
   }
 
