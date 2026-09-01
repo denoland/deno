@@ -69,8 +69,7 @@ pub fn pnpm_lock_to_deno_lock_v5(
   let mut integrity: HashMap<String, String> = HashMap::new();
   if let Some(packages) = root_map.get("packages").and_then(Node::into_map) {
     for (key, value) in packages.entries() {
-      let key = normalize_package_key(&key);
-      let base = strip_peer_suffix(&key).to_string();
+      let base = normalize_package_key(strip_peer_suffix(&key));
       if !is_package_id(&base) {
         continue;
       }
@@ -97,10 +96,12 @@ pub fn pnpm_lock_to_deno_lock_v5(
       continue;
     };
     for (raw_key, value) in snaps.entries() {
-      let normalized = normalize_package_key(&raw_key);
-      let base = strip_peer_suffix(&normalized).to_string();
       // Snapshot keys may include peer-suffix parens; for our purposes,
-      // collapse to the base `name@version`. First entry wins.
+      // collapse to the base `name@version`. First entry wins. The suffix
+      // comes off before normalizing because the `@` inside it would
+      // otherwise hide the v6 `name/version` form from
+      // `normalize_package_key`.
+      let base = normalize_package_key(strip_peer_suffix(&raw_key));
       if !is_package_id(&base) || npm.contains_key(&base) {
         continue;
       }
@@ -521,8 +522,16 @@ fn build_workspace(
   }
 }
 
-/// Build a sorted list of `dep@version` strings from a pnpm dependency
-/// mapping (e.g. `{ ansi-styles: 4.3.0, color-convert: 2.0.1 }`).
+/// Build a sorted list of dependency entries from a pnpm dependency mapping
+/// (e.g. `{ ansi-styles: 4.3.0, color-convert: 2.0.1 }`).
+///
+/// Entries are usually `dep@version`, but an aliased dependency becomes
+/// `dep@npm:name@version`. A dependency that deno.lock has no spelling for —
+/// a workspace link, a path, a tarball url — is **silently dropped**, so the
+/// package ends up described with fewer dependencies than it really has. That
+/// is the deliberate trade against emitting an id that cannot be parsed back
+/// in, and it matches what `is_supported_spec` already does for root
+/// specifiers.
 fn collect_deps(node: Option<MapNode>) -> Vec<String> {
   let Some(map) = node else {
     return Vec::new();
@@ -532,9 +541,6 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
     .into_iter()
     .filter_map(|(name, value)| {
       let value = value.into_string()?;
-      // pnpm v6 prefixes ids with `/` in dependency values too, not just in
-      // the `packages` keys.
-      let value = normalize_package_key(&value);
       dep_entry(&name, strip_peer_suffix(&value))
     })
     .collect();
@@ -549,18 +555,38 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
 /// dependency names the package it resolves to instead
 /// (`string-width-cjs: string-width@4.2.3`) and a workspace dependency points
 /// at a directory (`vite: link:packages/vite`).
+///
+/// `value` must already have its peer suffix stripped.
 fn dep_entry(name: &str, value: &str) -> Option<String> {
-  if starts_with_digit(value) {
+  // `link:`/`file:` paths, urls and the other non-registry schemes have no
+  // deno.lock spelling, so leave them out and let resolution handle them.
+  // This has to happen before `normalize_package_key`, whose `name/version`
+  // -> `name@version` fallback would otherwise rewrite such a value into
+  // something that reads as a valid alias: `file:vendor/1.0.0.tgz` would
+  // become `file:vendor@1.0.0.tgz` and then `name@npm:file:vendor@1.0.0.tgz`.
+  if !is_supported_spec(value) {
+    return None;
+  }
+  // pnpm v6 prefixes ids with `/` in dependency values too, not just in the
+  // `packages` keys.
+  let value = normalize_package_key(value);
+  if starts_with_digit(&value) {
     return Some(format!("{}@{}", name, value));
   }
   match value.rfind('@') {
     // A leading `@` is a scope, not a separator. deno.lock spells an alias
-    // `key@npm:name@version`.
+    // `key@npm:name@version`. Telling an alias apart from a path rests on npm
+    // versions always starting with a digit, which semver guarantees.
     Some(idx) if idx > 0 && starts_with_digit(&value[idx + 1..]) => {
-      Some(format!("{}@npm:{}", name, value))
+      // Naming the package it already is isn't an alias — that's just the v6
+      // `/name/version` id spelled out. Recording it as one would point at
+      // `name@npm:name@version`, which the lock has no entry for.
+      if &value[..idx] == name {
+        Some(format!("{}@{}", name, &value[idx + 1..]))
+      } else {
+        Some(format!("{}@npm:{}", name, value))
+      }
     }
-    // `link:`/`file:` paths and urls have no deno.lock spelling, so leave
-    // them out and let resolution handle them.
     _ => None,
   }
 }
@@ -634,7 +660,7 @@ fn normalize_package_key(key: &str) -> String {
     if let Some(idx) = stripped.rfind('/') {
       let (name, ver) = stripped.split_at(idx);
       let ver = &ver[1..];
-      if ver.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+      if starts_with_digit(ver) {
         return format!("{}@{}", name, ver);
       }
     }
@@ -998,6 +1024,167 @@ snapshots:
   }
 
   #[test]
+  fn path_and_url_snapshot_dependencies() {
+    // `normalize_package_key`'s `name/version` -> `name@version` fallback
+    // fires on anything whose last `/` segment starts with a digit, which a
+    // path or a tarball url can. Those have to be rejected before they reach
+    // it, or they come back out dressed as aliases
+    // (`tarball-dep@npm:file:vendor@1.0.0.tgz`) — ids that `LockfileContent`
+    // accepts but `NpmPackageId` cannot parse.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      some-plugin:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  some-plugin@1.0.0:
+    resolution: {integrity: sha512-PLUGIN}
+  cac@7.0.0:
+    resolution: {integrity: sha512-CAC}
+
+snapshots:
+  some-plugin@1.0.0:
+    dependencies:
+      cac: 7.0.0
+      tarball-dep: file:vendor/1.0.0.tgz
+      url-dep: https://host/pkg/1.2.3.tgz
+      link-dep: link:packages/2fa-utils
+      git-dep: github:owner/repo#1.0.0
+  cac@7.0.0: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // Only the one dependency that has a deno.lock spelling survives.
+    assert_eq!(
+      v["npm"]["some-plugin@1.0.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["cac@7.0.0"]
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for pkg in content.packages.npm.values() {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
+  }
+
+  #[test]
+  fn aliased_snapshot_dependency_with_peer_suffix() {
+    // An alias can carry a peer suffix. It comes off before the value is
+    // normalized, so the entry still resolves to the aliased package.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      wrap-ansi:
+        specifier: ^8.1.0
+        version: 8.1.0
+
+packages:
+  wrap-ansi@8.1.0:
+    resolution: {integrity: sha512-WRAP}
+  string-width@4.2.3:
+    resolution: {integrity: sha512-WIDTH}
+  emoji-regex@8.0.0:
+    resolution: {integrity: sha512-EMOJI}
+
+snapshots:
+  wrap-ansi@8.1.0:
+    dependencies:
+      string-width-cjs: string-width@4.2.3(emoji-regex@8.0.0)
+  string-width@4.2.3: {}
+  emoji-regex@8.0.0: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+      v["npm"]["wrap-ansi@8.1.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["string-width-cjs@npm:string-width@4.2.3"]
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn v6_slash_form_key_with_peer_suffix() {
+    // pnpm v6 also wrote ids as `/name/version`. The peer suffix has to come
+    // off before `normalize_package_key`, otherwise the `@` inside the parens
+    // hides that form and the package is dropped, leaving `specifiers`
+    // pointing at an id the `npm` section doesn't have.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  foo: ^1.0.0
+
+dependencies:
+  foo: 1.0.0(bar@2.0.0)
+
+packages:
+  /foo/1.0.0(bar@2.0.0):
+    resolution: {integrity: sha512-FOO}
+    dependencies:
+      bar: /bar/2.0.0
+  /bar/2.0.0:
+    resolution: {integrity: sha512-BAR}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["foo@1.0.0"]["integrity"], "sha512-FOO");
+    assert_eq!(
+      v["npm"]["foo@1.0.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["bar@2.0.0"]
+    );
+    assert_eq!(v["specifiers"]["npm:foo@^1.0.0"], "1.0.0");
+
+    // Nothing dangles: every specifier and dependency names a package the
+    // lock actually holds.
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
   fn v6_aliased_snapshot_dependency() {
     // pnpm v6 prefixes ids with `/` in dependency values too, so
     // `string-width-cjs: /string-width@4.2.3` has to end up pointing at the
@@ -1140,7 +1327,7 @@ snapshots:
     // pnpm's own packages are not the project's dependencies.
     assert!(v["npm"].get("pnpm@11.10.0").is_none());
     // A pinned runtime is not an npm package either.
-    assert!(v["specifiers"].as_object().unwrap().len() == 1);
+    assert_eq!(v["specifiers"].as_object().unwrap().len(), 1);
   }
 
   #[test]
