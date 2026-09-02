@@ -3755,6 +3755,7 @@ dependencies = [
  "indexmap",
  "jsonc-parser",
  "junction",
+ "libc",
  "libsui",
  "log",
  "memmap2",
