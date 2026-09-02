@@ -1,0 +1,5 @@
+read outside cwd: ok
+write cwd: ok
+write temp: ok
+write outside: NotCapable --allow-write
+env: hello

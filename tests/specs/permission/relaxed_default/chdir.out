@@ -1,0 +1,2 @@
+write after chdir: NotCapable
+write original cwd: ok
