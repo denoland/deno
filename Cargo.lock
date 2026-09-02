@@ -4080,7 +4080,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
- "libloading 0.8.5",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -6193,7 +6193,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6377,7 +6377,7 @@ dependencies = [
 [[package]]
 name = "laufey"
 version = "0.7.0"
-source = "git+https://github.com/petamoriken/laufey?branch=feat%2Fraw-ime#39e78f20442ace2a92c2541030e35e2c7b963e64"
+source = "git+https://github.com/petamoriken/laufey?branch=feat%2Fraw-ime#63476119b5ae7443a7f7dfebd26c17b7cfd47b60"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
@@ -8870,7 +8870,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9534,7 +9534,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
