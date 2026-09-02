@@ -589,7 +589,8 @@ interface PromiseRejectionEvent extends Event {
  * and `rejectionhandled` when a promise is rejected without a handler.
  *
  * @category Events */
-declare var PromiseRejectionEvent: {
+declare var PromiseRejectionEvent: typeof globalThis extends
+  { document: any; PromiseRejectionEvent: infer T } ? T : {
   readonly prototype: PromiseRejectionEvent;
   new (
     type: string,
@@ -756,52 +757,54 @@ interface Worker extends EventTarget {
  *
  * @category Workers
  */
-declare var Worker: {
-  readonly prototype: Worker;
+declare var Worker: typeof globalThis extends { document: any; Worker: infer T }
+  ? T
+  : {
+    readonly prototype: Worker;
 
-  /**
-   * Creates a new Worker object.
-   *
-   * @param specifier - URL or file path for the worker's script.
-   *                    When using a relative path, use `new URL("./worker.ts", import.meta.url)`
-   *                    to ensure the path is correctly resolved relative to the current module.
-   * @param options - Worker options including type and name
-   *
-   * @example Module worker with URL resolution
-   * ```ts
-   * // Create a worker that can use ES modules
-   * const worker = new Worker(
-   *   new URL("./workers/heavy_computation.ts", import.meta.url).href,
-   *   { type: "module", name: "computation-worker" }
-   * );
-   * ```
-   *
-   * @example Worker communication pattern
-   * ```ts
-   * // Main thread
-   * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, { type: "module" });
-   *
-   * // Set up communication
-   * worker.postMessage({ action: "start", data: [1, 2, 3, 4, 5] });
-   *
-   * worker.onmessage = (e) => {
-   *   console.log("Worker result:", e.data);
-   *   if (e.data.status === "complete") {
-   *     worker.terminate();
-   *   }
-   * };
-   *
-   * // Worker file (worker.ts)
-   * // self.onmessage = (e) => {
-   * //   if (e.data.action === "start") {
-   * //     const result = e.data.data.reduce((a, b) => a + b, 0);
-   * //     self.postMessage({ status: "complete", result });
-   * //   }
-   * // };
-   * ```
-   */
-  new (specifier: string | URL, options?: WorkerOptions): Worker;
-};
+    /**
+     * Creates a new Worker object.
+     *
+     * @param specifier - URL or file path for the worker's script.
+     *                    When using a relative path, use `new URL("./worker.ts", import.meta.url)`
+     *                    to ensure the path is correctly resolved relative to the current module.
+     * @param options - Worker options including type and name
+     *
+     * @example Module worker with URL resolution
+     * ```ts
+     * // Create a worker that can use ES modules
+     * const worker = new Worker(
+     *   new URL("./workers/heavy_computation.ts", import.meta.url).href,
+     *   { type: "module", name: "computation-worker" }
+     * );
+     * ```
+     *
+     * @example Worker communication pattern
+     * ```ts
+     * // Main thread
+     * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, { type: "module" });
+     *
+     * // Set up communication
+     * worker.postMessage({ action: "start", data: [1, 2, 3, 4, 5] });
+     *
+     * worker.onmessage = (e) => {
+     *   console.log("Worker result:", e.data);
+     *   if (e.data.status === "complete") {
+     *     worker.terminate();
+     *   }
+     * };
+     *
+     * // Worker file (worker.ts)
+     * // self.onmessage = (e) => {
+     * //   if (e.data.action === "start") {
+     * //     const result = e.data.data.reduce((a, b) => a + b, 0);
+     * //     self.postMessage({ status: "complete", result });
+     * //   }
+     * // };
+     * ```
+     */
+    new (specifier: string | URL, options?: WorkerOptions): Worker;
+  };
 
 /** @category Performance */
 type PerformanceEntryList = PerformanceEntry[];

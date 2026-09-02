@@ -5055,7 +5055,7 @@ interface Uint8ArrayConstructor {
  * @experimental
  */
 interface CSSRule {
-  readonly cssText: string;
+  cssText: string;
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.
@@ -5063,7 +5063,8 @@ interface CSSRule {
  * @category Platform
  * @experimental
  */
-declare var CSSRule: {
+declare var CSSRule: typeof globalThis extends
+  { document: any; CSSRule: infer T } ? T : {
   readonly prototype: CSSRule;
   new (): never;
 };
@@ -5094,7 +5095,8 @@ interface CSSStyleSheet {
  * @category Platform
  * @experimental
  */
-declare var CSSStyleSheet: {
+declare var CSSStyleSheet: typeof globalThis extends
+  { document: any; CSSStyleSheet: infer T } ? T : {
   readonly prototype: CSSStyleSheet;
   new (): CSSStyleSheet;
 };
