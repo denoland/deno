@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "set_only": {
+      "args": "run -P=foo main.ts",
+      "output": "set_only.out"
+    },
+    "stacking": {
+      "args": "run -P=foo -R=./data/bar.txt --allow-net=www.google.com main.ts",
+      "output": "stacking.out"
+    },
+    "stacking_reverse_order": {
+      "args": "run -R=./data/bar.txt --allow-net=www.google.com -P=foo main.ts",
+      "output": "stacking.out"
+    }
+  }
+}
