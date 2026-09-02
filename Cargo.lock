@@ -6193,7 +6193,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6377,7 +6377,7 @@ dependencies = [
 [[package]]
 name = "laufey"
 version = "0.7.0"
-source = "git+https://github.com/petamoriken/laufey?branch=fix%2Fwinit-mouse-enter-dblclick#1958b45669ac9ef6ca43cae831f05efa8f46fe7e"
+source = "git+https://github.com/petamoriken/laufey?branch=fix%2Fwinit-mouse-enter-dblclick#22ed8c266266b3beee8814b0dff12877255229c1"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
@@ -8870,7 +8870,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9534,7 +9534,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
