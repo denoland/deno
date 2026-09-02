@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --allow-read --allow-write --filter match .",
+      "exitCode": 0,
+      "output": "filtered_run.out"
+    },
+    {
+      "args": "run --allow-read check.ts",
+      "exitCode": 0,
+      "output": "checks passed\n"
+    }
+  ]
+}
