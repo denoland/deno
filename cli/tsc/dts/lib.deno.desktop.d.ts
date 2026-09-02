@@ -627,6 +627,11 @@ declare namespace Deno {
     getSize(): [number, number];
     setSize(width: number, height: number): void;
 
+    /** Physical pixels per CSS pixel for this window, like
+     * [`window.devicePixelRatio`](https://developer.mozilla.org/docs/Web/API/Window/devicePixelRatio).
+     * Updates when the window moves to a display with a different scale. */
+    readonly devicePixelRatio: number;
+
     getPosition(): [number, number];
     setPosition(x: number, y: number): void;
 

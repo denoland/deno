@@ -304,6 +304,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     laufey::Window::from_id(window_id).get_size()
   }
 
+  fn get_window_scale_factor(&self, window_id: u32) -> f64 {
+    laufey::Window::from_id(window_id).get_scale_factor()
+  }
+
   fn set_window_size(&self, window_id: u32, width: i32, height: i32) {
     laufey::Window::from_id(window_id).set_size(width, height);
   }

@@ -539,6 +539,9 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn get_window_size(&self, window_id: u32) -> (i32, i32);
   fn set_window_size(&self, window_id: u32, width: i32, height: i32);
 
+  /// Physical pixels per DIP for this window (`window.devicePixelRatio`).
+  fn get_window_scale_factor(&self, window_id: u32) -> f64;
+
   fn get_window_position(&self, window_id: u32) -> (i32, i32);
   fn set_window_position(&self, window_id: u32, x: i32, y: i32);
 
@@ -873,6 +876,12 @@ impl BrowserWindow {
 
   fn get_size(&self) -> (i32, i32) {
     self.api.get_window_size(self.window_id)
+  }
+
+  #[fast]
+  #[getter]
+  fn device_pixel_ratio(&self) -> f64 {
+    self.api.get_window_scale_factor(self.window_id)
   }
 
   #[fast]
