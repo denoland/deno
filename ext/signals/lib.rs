@@ -1,6 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+#[cfg(unix)]
+use std::io::ErrorKind;
+#[cfg(unix)]
+use std::io::Read;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
@@ -53,19 +61,58 @@ fn handle_signal(signal: i32) -> bool {
 
 #[cfg(unix)]
 fn init() -> Handle {
-  use signal_hook::iterator::Signals;
+  use signal_hook::iterator::backend::SignalDelivery;
+  use signal_hook::iterator::exfiltrator::SignalOnly;
 
-  let mut signals = Signals::new([SIGHUP, SIGTERM, SIGINT]).unwrap();
+  fn has_signals(read: &mut UnixStream) -> Result<bool, std::io::Error> {
+    loop {
+      match read.read(&mut [0_u8]) {
+        Ok(num_read) => break Ok(num_read > 0),
+        Err(error) => {
+          if error.kind() != ErrorKind::Interrupted {
+            break Err(error);
+          }
+        }
+      }
+    }
+  }
+
+  // Construct the self-pipe ourselves (rather than letting `Signals::new`
+  // create it internally) so the raw fds can be registered as Deno-owned.
+  // This prevents user fd APIs such as `net.Socket({ fd })` from adopting
+  // them and flipping them to non-blocking mode, which would make
+  // signal-hook's reads fail with EAGAIN and panic. See #34054.
+  let (read, write) = UnixStream::pair().unwrap();
+  deno_io::register_internal_fd(read.as_raw_fd());
+  deno_io::register_internal_fd(write.as_raw_fd());
+
+  let mut signals = SignalDelivery::with_pipe(
+    read,
+    write,
+    SignalOnly,
+    [SIGHUP, SIGTERM, SIGINT],
+  )
+  .unwrap();
   let handle = signals.handle();
 
   std::thread::spawn(move || {
-    for signal in signals.forever() {
-      let handled = handle_signal(signal);
-      if !handled {
-        if signal == SIGHUP || signal == SIGTERM || signal == SIGINT {
-          run_exit();
+    loop {
+      match signals.poll_pending(&mut has_signals) {
+        Ok(Some(pending)) => {
+          for signal in pending {
+            let handled = handle_signal(signal);
+            if !handled {
+              if signal == SIGHUP || signal == SIGTERM || signal == SIGINT {
+                run_exit();
+              }
+              signal_hook::low_level::emulate_default_handler(signal).unwrap();
+            }
+          }
         }
-        signal_hook::low_level::emulate_default_handler(signal).unwrap();
+        Ok(None) => break,
+        Err(error) => {
+          panic!("Unexpected error: {error}");
+        }
       }
     }
   });

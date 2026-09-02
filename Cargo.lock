@@ -3399,6 +3399,7 @@ dependencies = [
 name = "deno_signals"
 version = "0.49.0"
 dependencies = [
+ "deno_io",
  "libc",
  "signal-hook",
  "thiserror 2.0.12",
