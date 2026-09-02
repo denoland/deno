@@ -1406,7 +1406,7 @@ unsafe extern "C" fn active_poll_for_teardown_callback(
 #[cfg(unix)]
 unsafe extern "C" fn active_poll_for_teardown_cleanup(data: *mut c_void) {
   unsafe {
-    // NapiState::drop invalidates this Env's poll owner before calling cleanup
+    // NapiState::drop invalidates this Env's poll scope before calling cleanup
     // hooks, so queued poll readiness cannot reach this bridge after the
     // addon-owned poll storage is released below.
     let state = Box::from_raw(data.cast::<ActivePollForTeardown>());

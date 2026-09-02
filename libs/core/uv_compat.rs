@@ -272,20 +272,17 @@ pub struct uv_check_t {
 #[cfg(unix)]
 pub type uv_poll_cb = unsafe extern "C" fn(*mut uv_poll_t, c_int, c_int);
 
-/// An owner can suppress readiness for all poll handles created for one
-/// embedding scope.
+/// A poll scope groups handles created by one embedding context, such as an
+/// N-API Env, and can invalidate them together.
 ///
-/// Invalidation removes matching worker watches and rejects queued readiness
-/// and new starts. Loop-side handle state and fd ownership remain until each
-/// handle is stopped or closed. The worker sees only this numeric owner id; it
-/// never retains an addon or ABI-handle pointer.
-///
-/// Unlike `UvLoopLiveness`, invalidation is limited to this owner's poll
-/// handles and does not guard access to loop-associated state.
+/// Invalidating it removes matching worker watches and causes the loop to
+/// discard queued readiness and reject new starts. Loop-side handle state and
+/// fd ownership remain until each handle is stopped or closed. The worker sees
+/// only this numeric scope ID; it never retains an addon or ABI-handle pointer.
 #[cfg(unix)]
 #[derive(Clone)]
-pub struct UvPollOwner {
-  id: u64,
+pub struct UvPollScope {
+  scope_id: u64,
   live: Arc<AtomicBool>,
   control: Weak<poll::PollControl>,
 }
@@ -331,11 +328,11 @@ pub fn uv_loop_operation_guard(
 }
 
 #[cfg(unix)]
-impl UvPollOwner {
+impl UvPollScope {
   pub fn invalidate(&self) {
     self.live.store(false, Ordering::Release);
     if let Some(control) = self.control.upgrade() {
-      control.stop_owner(self.id);
+      control.stop_scope(self.scope_id);
     }
   }
 }
@@ -359,7 +356,7 @@ pub struct uv_poll_t {
   internal_requested_events: c_int,
   internal_cb: Option<uv_poll_cb>,
   internal_stop_cb: Option<unsafe extern "C" fn(*mut uv_poll_t)>,
-  internal_owner: Option<UvPollOwner>,
+  internal_scope: Option<UvPollScope>,
 }
 
 pub type uv_timer_cb = unsafe extern "C" fn(*mut uv_timer_t);
@@ -403,7 +400,7 @@ pub(crate) struct UvLoopInner {
   #[cfg(unix)]
   next_poll_token: Cell<u64>,
   #[cfg(unix)]
-  next_poll_owner: Cell<u64>,
+  next_poll_scope_id: Cell<u64>,
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
   time_origin: Instant,
@@ -443,7 +440,7 @@ impl UvLoopInner {
       #[cfg(unix)]
       next_poll_token: Cell::new(1),
       #[cfg(unix)]
-      next_poll_owner: Cell::new(1),
+      next_poll_scope_id: Cell::new(1),
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
       time_origin: origin,
@@ -582,13 +579,13 @@ impl UvLoopInner {
       let handle = unsafe { &**handle_ptr };
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && handle.flags & UV_HANDLE_REF != 0
-        // Owner invalidation is an Env-scoped close signal. The handle can
+        // Scope invalidation is an Env-scoped close signal. The handle can
         // remain allocated until its bridge processes close, but it must not
-        // keep this runtime alive after that owner is gone.
+        // keep this runtime alive after that scope is gone.
         && handle
-          .internal_owner
+          .internal_scope
           .as_ref()
-          .is_some_and(|owner| owner.live.load(Ordering::Acquire))
+          .is_some_and(|scope| scope.live.load(Ordering::Acquire))
       {
         return true;
       }
@@ -1104,9 +1101,9 @@ impl UvLoopInner {
             || handle.internal_generation != ready.generation
             || handle.flags & UV_HANDLE_ACTIVE == 0
             || !handle
-              .internal_owner
+              .internal_scope
               .as_ref()
-              .is_some_and(|owner| owner.live.load(Ordering::Acquire))
+              .is_some_and(|scope| scope.live.load(Ordering::Acquire))
           {
             None
           } else {
@@ -1147,9 +1144,9 @@ impl UvLoopInner {
             && handle.internal_generation == ready.generation
             && handle.flags & UV_HANDLE_ACTIVE != 0
             && handle
-              .internal_owner
+              .internal_scope
               .as_ref()
-              .is_some_and(|owner| owner.live.load(Ordering::Acquire))
+              .is_some_and(|scope| scope.live.load(Ordering::Acquire))
         })
       };
       if should_rearm
@@ -1300,18 +1297,19 @@ pub unsafe fn uv_loop_get_inner_ptr(
   unsafe { (*loop_).internal as *const std::ffi::c_void }
 }
 
-/// Create an invalidation owner for poll handles registered with `loop_`.
+/// Create a poll scope that can invalidate poll handles registered with
+/// `loop_`.
 ///
 /// ### Safety
 /// `loop_` must be a valid loop initialized by `uv_loop_init`.
 #[cfg(unix)]
-pub unsafe fn new_poll_owner(loop_: *mut uv_loop_t) -> UvPollOwner {
+pub unsafe fn new_poll_scope(loop_: *mut uv_loop_t) -> UvPollScope {
   // SAFETY: Caller guarantees loop_ is initialized.
   let inner = unsafe { get_inner(loop_) };
-  let id = inner.next_poll_owner.get();
-  inner.next_poll_owner.set(id.wrapping_add(1));
-  UvPollOwner {
-    id,
+  let scope_id = inner.next_poll_scope_id.get();
+  inner.next_poll_scope_id.set(scope_id.wrapping_add(1));
+  UvPollScope {
+    scope_id,
     live: Arc::new(AtomicBool::new(true)),
     control: inner.poll_driver.borrow().control(),
   }
@@ -1333,7 +1331,7 @@ pub unsafe fn uv_poll_init(
   loop_: *mut uv_loop_t,
   handle: *mut uv_poll_t,
   fd: c_int,
-  owner: UvPollOwner,
+  scope: UvPollScope,
 ) -> c_int {
   // SAFETY: Caller guarantees loop_ and handle are valid.
   let inner = unsafe { get_inner(loop_) };
@@ -1362,7 +1360,7 @@ pub unsafe fn uv_poll_init(
         internal_requested_events: 0,
         internal_cb: None,
         internal_stop_cb: None,
-        internal_owner: Some(owner),
+        internal_scope: Some(scope),
       },
     );
   }
@@ -1401,10 +1399,10 @@ pub unsafe fn uv_poll_start(
   }
   // SAFETY: An initialized poll handle always records its initialized loop.
   let inner = unsafe { get_inner(handle_ref.loop_) };
-  let Some(owner) = handle_ref.internal_owner.as_ref() else {
+  let Some(scope) = handle_ref.internal_scope.as_ref() else {
     return UV_EINVAL;
   };
-  if !owner.live.load(Ordering::Acquire) {
+  if !scope.live.load(Ordering::Acquire) {
     return UV_ECANCELED;
   }
 
@@ -1430,7 +1428,7 @@ pub unsafe fn uv_poll_start(
   let watch = poll::PollWatch {
     token: handle_ref.internal_token,
     generation,
-    owner: owner.id,
+    scope_id: scope.scope_id,
     fd: handle_ref.internal_fd,
     poll_events: poll::uv_events_to_poll_events(events),
   };
@@ -1439,7 +1437,7 @@ pub unsafe fn uv_poll_start(
   // This leaves fd ownership unpublished during upsert, which is safe because
   // uv_poll_start and upsert run synchronously and non-reentrantly on the loop
   // thread. Reserve the fd before upsert if either assumption changes.
-  if let Err(errno) = inner.poll_driver.borrow_mut().upsert(watch, &owner.live)
+  if let Err(errno) = inner.poll_driver.borrow_mut().upsert(watch, &scope.live)
   {
     return -errno;
   }
@@ -1494,7 +1492,7 @@ pub unsafe fn uv_poll_close(handle: *mut uv_poll_t) {
   unsafe {
     (*handle).flags |= UV_HANDLE_CLOSING;
     (*handle).flags &= !(UV_HANDLE_ACTIVE | UV_HANDLE_REF);
-    (*handle).internal_owner = None;
+    (*handle).internal_scope = None;
   }
 }
 

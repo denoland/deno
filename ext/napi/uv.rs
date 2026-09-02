@@ -945,7 +945,7 @@ unsafe extern "C" fn uv_poll_init_socket(
         env.uv_loop,
         addr_of_mut!((*bridge).inner),
         fd,
-        env.poll_owner.clone(),
+        env.poll_scope.clone(),
       );
       if result != 0 {
         return result;
@@ -1920,9 +1920,9 @@ mod tests {
 
       let bridge = (*cleanup.poll).bridge;
       assert!(!bridge.is_null(), "cleanup owns an armed N-API poll bridge");
-      // NapiState invalidates every Env owner before it runs addon hooks.
+      // NapiState invalidates each Env's poll scope before running addon hooks.
       // The rejected restart verifies this hook observes that invalidation.
-      // Loop dispatch uses the same owner state to discard any readiness.
+      // Loop dispatch consults the same poll-scope state to discard readiness.
       assert_eq!(
         uv_compat::uv_poll_start(
           addr_of_mut!((*bridge).inner),
@@ -1930,7 +1930,7 @@ mod tests {
           Some(napi_poll_trampoline),
         ),
         uv_compat::UV_ECANCELED,
-        "cleanup must observe its Env poll owner invalidated"
+        "cleanup must observe that its Env poll scope was invalidated"
       );
       assert_eq!(
         cleanup.callback_count.load(Ordering::SeqCst),
@@ -1972,10 +1972,10 @@ mod tests {
     };
 
     let isolate_ptr = unsafe { runtime.v8_isolate().as_raw_isolate_ptr() };
-    let (uv_loop_liveness, poll_owner) = unsafe {
+    let (uv_loop_liveness, poll_scope) = unsafe {
       (
         uv_compat::uv_loop_liveness(uv_loop),
-        uv_compat::new_poll_owner(uv_loop),
+        uv_compat::new_poll_scope(uv_loop),
       )
     };
     let env_ptr = {
@@ -2004,7 +2004,7 @@ mod tests {
         external_ops_tracker,
         uv_loop,
         uv_loop_liveness,
-        poll_owner,
+        poll_scope,
       );
       env.shared = Box::into_raw(Box::new(EnvShared::new(
         napi_wrap,
@@ -2103,7 +2103,8 @@ mod tests {
             .recv()
             .expect("host dropped the teardown request sender");
           // Move and drop the extension's actual NapiState. Its production Drop
-          // implementation invalidates Env owners and invokes this hook.
+          // implementation invalidates each Env's poll scope before invoking
+          // this hook.
           let napi_state = runtime.op_state().borrow_mut().take::<NapiState>();
           drop(napi_state);
           assert_eq!(cleanup_count.load(Ordering::SeqCst), 1);

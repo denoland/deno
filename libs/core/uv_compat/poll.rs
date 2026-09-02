@@ -1,21 +1,22 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// Unix uv_poll driver.
-//
-// Each UvLoopInner lazily creates one worker and joins it during loop drop.
-// The worker aggregates all armed descriptors in poll(..., -1), so a control
-// pipe is needed to interrupt that otherwise indefinite wait for updates and
-// shutdown. Its commands and ready records contain numeric state only; addon
-// pointers stay on the loop thread.
-//
-// An owner groups watches created by one embedding scope, such as an N-API
-// Env. During teardown, invalidation makes the loop reject queued readiness
-// and new starts, and StopOwner removes its worker watches.
-//
-// A ready watch remains disarmed while readiness is outstanding. That
-// back-pressure prevents a level-ready fd from flooding loop work while other
-// handles remain pollable. The loop validates owner and generation before
-// dispatch and again before rearming, discarding stale records.
+//! Unix uv_poll driver.
+//!
+//! Each UvLoopInner lazily creates one worker and joins it during loop drop.
+//! The worker aggregates all armed descriptors in poll(..., -1), so a control
+//! pipe is needed to interrupt that otherwise indefinite wait for updates and
+//! shutdown. Its commands and ready records contain numeric state only; addon
+//! pointers stay on the loop thread.
+//!
+//! A poll scope groups watches created by one embedding context, such as an
+//! N-API Env. During teardown, invalidation makes the loop discard queued
+//! readiness and queues StopScope to remove the scope's worker watches.
+//!
+//! A ready watch remains disarmed while readiness is outstanding. That
+//! back-pressure prevents a level-ready fd from flooding loop work while other
+//! handles remain pollable. The loop validates scope liveness, token,
+//! generation, and active state before dispatch and again before rearming,
+//! discarding stale records.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -40,14 +41,14 @@ pub(crate) struct PollWatch {
   pub token: u64,
   // Version of this handle's watch. Stop and restart make older work stale.
   pub generation: u64,
-  // Embedding scope whose teardown stops all of its watches together.
-  pub owner: u64,
+  // ID of the embedding scope whose teardown stops all of its watches together.
+  pub scope_id: u64,
   pub fd: c_int,
   pub poll_events: c_short,
 }
 
 // Worker-to-loop handoff: the worker has disarmed this token/generation, and
-// the loop validates its current handle and owner before the ABI callback.
+// the loop validates the handle's scope liveness before the ABI callback.
 // `status` is zero for readiness or a negative worker errno; successful
 // records carry raw poll(2) `revents` for loop-side libuv translation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,7 +63,7 @@ enum PollCommand {
   Upsert(PollWatch),
   Stop { token: u64, generation: u64 },
   Rearm { token: u64, generation: u64 },
-  StopOwner { owner: u64 },
+  StopScope { scope_id: u64 },
   Shutdown,
 }
 
@@ -174,14 +175,14 @@ impl PollDriver {
   pub(crate) fn upsert(
     &mut self,
     watch: PollWatch,
-    owner_live: &AtomicBool,
+    scope_live: &AtomicBool,
   ) -> Result<(), c_int> {
     self.start_worker()?;
     #[cfg(test)]
     if let Some(hook) = &self.upsert_hook {
       hook.wait();
     }
-    self.upsert_command(watch, owner_live)
+    self.upsert_command(watch, scope_live)
   }
 
   pub(crate) fn stop(&self, token: u64, generation: u64) {
@@ -288,7 +289,7 @@ impl PollDriver {
   fn upsert_command(
     &self,
     watch: PollWatch,
-    owner_live: &AtomicBool,
+    scope_live: &AtomicBool,
   ) -> Result<(), c_int> {
     let mut state = lock_state(&self.control);
     if let Some(errno) = state.permanent_failure {
@@ -298,8 +299,8 @@ impl PollDriver {
       return Err(libc::ECANCELED);
     }
     // The command mutex makes either ordering safe: invalidation follows an
-    // already queued upsert with StopOwner, while a later upsert sees false.
-    if !owner_live.load(Ordering::Acquire) {
+    // already queued upsert with StopScope, while a later upsert sees false.
+    if !scope_live.load(Ordering::Acquire) {
       return Err(libc::ECANCELED);
     }
     state.commands.push_back(PollCommand::Upsert(watch));
@@ -309,13 +310,15 @@ impl PollDriver {
 }
 
 impl PollControl {
-  pub(crate) fn stop_owner(&self, owner: u64) {
+  pub(crate) fn stop_scope(&self, scope_id: u64) {
     let mut state = lock_state(self);
     if !state.shutdown && state.permanent_failure.is_none() {
-      state.commands.push_back(PollCommand::StopOwner { owner });
+      state
+        .commands
+        .push_back(PollCommand::StopScope { scope_id });
       signal_control(&state);
     }
-    // Owner invalidation can race with a terminal worker error. Wake the loop
+    // Scope invalidation can race with a terminal worker error. Wake the loop
     // even when no command can be queued so it observes the invalidation.
     self.shared.loop_waker.wake();
   }
@@ -575,8 +578,8 @@ fn process_command_queue(
           watch.armed = true;
         }
       }
-      PollCommand::StopOwner { owner } => {
-        watches.retain(|_, watch| watch.watch.owner != owner)
+      PollCommand::StopScope { scope_id } => {
+        watches.retain(|_, watch| watch.watch.scope_id != scope_id)
       }
       PollCommand::Shutdown => return true,
     }
@@ -753,7 +756,7 @@ mod tests {
   use crate::uv_compat::*;
 
   const DEADLINE: Duration = Duration::from_secs(5);
-  static OWNER_LIVE: AtomicBool = AtomicBool::new(true);
+  static SCOPE_LIVE: AtomicBool = AtomicBool::new(true);
 
   #[test]
   fn uv_events_translate_to_poll_events() {
@@ -844,7 +847,7 @@ mod tests {
     PollWatch {
       token,
       generation,
-      owner: 999,
+      scope_id: 1,
       fd,
       poll_events: libc::POLLIN,
     }
@@ -993,14 +996,14 @@ mod tests {
     });
     let mut first_handle = std::mem::MaybeUninit::<uv_poll_t>::uninit();
     let mut second_handle = std::mem::MaybeUninit::<uv_poll_t>::uninit();
-    let owner = unsafe { new_poll_owner(loop_) };
+    let scope = unsafe { new_poll_scope(loop_) };
     unsafe {
       assert_eq!(
         uv_poll_init(
           loop_,
           first_handle.as_mut_ptr(),
           first_read.as_raw_fd(),
-          owner.clone(),
+          scope.clone(),
         ),
         0
       );
@@ -1009,7 +1012,7 @@ mod tests {
           loop_,
           second_handle.as_mut_ptr(),
           second_read.as_raw_fd(),
-          owner,
+          scope,
         ),
         0
       );
@@ -1067,7 +1070,7 @@ mod tests {
           loop_,
           handle.as_mut_ptr(),
           read_fd.as_raw_fd(),
-          new_poll_owner(loop_)
+          new_poll_scope(loop_)
         ),
         0
       );
@@ -1107,7 +1110,7 @@ mod tests {
           loop_,
           handle.as_mut_ptr(),
           read_fd.as_raw_fd(),
-          new_poll_owner(loop_)
+          new_poll_scope(loop_)
         ),
         0
       );
@@ -1131,11 +1134,11 @@ mod tests {
 
   #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
-  async fn poll_owner_invalidation_suppresses_queued_callback() {
+  async fn poll_scope_invalidation_suppresses_queued_callback() {
     let (read_fd, write_fd) = pipe();
     let mut runtime = JsRuntime::new(Default::default());
     let loop_ = runtime_loop(&runtime);
-    let owner = unsafe { new_poll_owner(loop_) };
+    let scope = unsafe { new_poll_scope(loop_) };
     let state = Box::new(PollCallbackState {
       calls: Cell::new(0),
     });
@@ -1146,7 +1149,7 @@ mod tests {
           loop_,
           handle.as_mut_ptr(),
           read_fd.as_raw_fd(),
-          owner.clone()
+          scope.clone()
         ),
         0
       );
@@ -1160,7 +1163,7 @@ mod tests {
     write_byte(&write_fd);
     wait_for_queued_ready(loop_).await;
 
-    owner.invalidate();
+    scope.invalidate();
     tick(&mut runtime).await;
     assert_eq!(state.calls.get(), 0);
 
@@ -1169,11 +1172,11 @@ mod tests {
 
   #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
-  async fn poll_owner_invalidation_wakes_a_pending_loop() {
+  async fn poll_scope_invalidation_wakes_a_pending_loop() {
     let (read_fd, _write_fd) = pipe();
     let mut runtime = JsRuntime::new(Default::default());
     let loop_ = runtime_loop(&runtime);
-    let owner = unsafe { new_poll_owner(loop_) };
+    let scope = unsafe { new_poll_scope(loop_) };
     let mut handle = std::mem::MaybeUninit::<uv_poll_t>::uninit();
     unsafe {
       assert_eq!(
@@ -1181,7 +1184,7 @@ mod tests {
           loop_,
           handle.as_mut_ptr(),
           read_fd.as_raw_fd(),
-          owner.clone()
+          scope.clone()
         ),
         0
       );
@@ -1198,30 +1201,30 @@ mod tests {
       runtime
         .poll_event_loop(&mut cx, PollEventLoopOptions::default())
         .is_pending(),
-      "event loop should be pending before owner invalidation"
+      "event loop should be pending before scope invalidation"
     );
     wake_count.store(0, Ordering::SeqCst);
 
-    std::thread::spawn(move || owner.invalidate())
+    std::thread::spawn(move || scope.invalidate())
       .join()
-      .expect("owner invalidation thread panicked");
+      .expect("scope invalidation thread panicked");
 
     assert!(
       wake_count.load(Ordering::SeqCst) > 0,
-      "owner invalidation must wake the pending event loop"
+      "scope invalidation must wake the pending event loop"
     );
     assert!(
       runtime
         .poll_event_loop(&mut cx, PollEventLoopOptions::default())
         .is_ready(),
-      "invalidated owner must not keep a refed poll handle alive"
+      "invalidated scope must not keep a refed poll handle alive"
     );
     unsafe { uv_poll_close(handle.as_mut_ptr()) };
   }
 
   #[cfg(not(miri))] // needs I/O
   #[tokio::test(flavor = "current_thread")]
-  async fn poll_start_rejects_owner_invalidated_at_upsert_boundary() {
+  async fn poll_start_rejects_scope_invalidated_at_upsert_boundary() {
     let (read_fd, _write_fd) = pipe();
     let runtime = JsRuntime::new(Default::default());
     let loop_ = runtime_loop(&runtime);
@@ -1238,13 +1241,13 @@ mod tests {
         },
       );
 
-    let owner = unsafe { new_poll_owner(loop_) };
-    let owner_for_invalidator = owner.clone();
+    let scope = unsafe { new_poll_scope(loop_) };
+    let scope_for_invalidator = scope.clone();
     let invalidator = std::thread::spawn(move || {
       entered_receiver
         .recv_timeout(DEADLINE)
         .expect("start did not reach the upsert boundary");
-      owner_for_invalidator.invalidate();
+      scope_for_invalidator.invalidate();
       release_sender
         .send(())
         .expect("start did not wait for the invalidation");
@@ -1252,7 +1255,7 @@ mod tests {
     let mut handle = std::mem::MaybeUninit::<uv_poll_t>::uninit();
     unsafe {
       assert_eq!(
-        uv_poll_init(loop_, handle.as_mut_ptr(), read_fd.as_raw_fd(), owner),
+        uv_poll_init(loop_, handle.as_mut_ptr(), read_fd.as_raw_fd(), scope),
         0
       );
       assert_eq!(
@@ -1318,7 +1321,7 @@ mod tests {
           loop_,
           handle.as_mut_ptr(),
           read_fd.as_raw_fd(),
-          new_poll_owner(loop_)
+          new_poll_scope(loop_)
         ),
         0
       );
@@ -1364,7 +1367,7 @@ mod tests {
     let loop_ = runtime_loop(&runtime);
     let mut pipes = Vec::with_capacity(HANDLE_COUNT);
     let mut handles = Vec::with_capacity(HANDLE_COUNT);
-    let owner = unsafe { new_poll_owner(loop_) };
+    let scope = unsafe { new_poll_scope(loop_) };
     for _ in 0..HANDLE_COUNT {
       pipes.push(pipe());
       handles.push(std::mem::MaybeUninit::<uv_poll_t>::uninit());
@@ -1377,7 +1380,7 @@ mod tests {
             loop_,
             handle.as_mut_ptr(),
             read_fd.as_raw_fd(),
-            owner.clone(),
+            scope.clone(),
           ),
           0
         );
@@ -1425,13 +1428,13 @@ mod tests {
     );
 
     driver
-      .upsert(watch(1, read_a.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(1, read_a.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
     second_poll_entered
       .recv_timeout(DEADLINE)
       .expect("worker did not begin its indefinite poll before timeout");
     driver
-      .upsert(watch(2, read_b.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(2, read_b.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
     write_byte(&write_b);
 
@@ -1446,7 +1449,7 @@ mod tests {
     let shared = LoopShared::new();
     let mut driver = PollDriver::new(shared);
     driver
-      .upsert(watch(1, read_fd.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(1, read_fd.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
 
     write_byte(&write_fd);
@@ -1481,7 +1484,7 @@ mod tests {
     );
 
     driver
-      .upsert(watch(1, old_read.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(1, old_read.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
     second_poll_entered
       .recv_timeout(DEADLINE)
@@ -1491,7 +1494,7 @@ mod tests {
     driver
       .upsert(
         watch_with_generation(1, 2, new_read.as_raw_fd()),
-        &OWNER_LIVE,
+        &SCOPE_LIVE,
       )
       .unwrap();
     write_byte(&new_write);
@@ -1528,10 +1531,10 @@ mod tests {
     );
 
     driver
-      .upsert(watch(1, read_a.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(1, read_a.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
     driver
-      .upsert(watch(2, read_b.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(2, read_b.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
     barrier.wait();
 
@@ -1555,7 +1558,7 @@ mod tests {
       ]
     );
     assert_eq!(
-      driver.upsert(watch(3, read_a.as_raw_fd()), &OWNER_LIVE),
+      driver.upsert(watch(3, read_a.as_raw_fd()), &SCOPE_LIVE),
       Err(libc::EIO)
     );
     assert!(driver.drain_ready().is_empty());
@@ -1584,7 +1587,7 @@ mod tests {
     );
     let control = driver.control.clone();
     let upsert = std::thread::spawn(move || {
-      driver.upsert(watch(1, read_fd.as_raw_fd()), &OWNER_LIVE)
+      driver.upsert(watch(1, read_fd.as_raw_fd()), &SCOPE_LIVE)
     });
 
     entered_receiver
@@ -1616,7 +1619,7 @@ mod tests {
     let shared = LoopShared::new();
     let mut driver = PollDriver::new(shared);
     driver
-      .upsert(watch(1, read_fd.as_raw_fd()), &OWNER_LIVE)
+      .upsert(watch(1, read_fd.as_raw_fd()), &SCOPE_LIVE)
       .unwrap();
 
     let (shutdown_complete, shutdown_done) = mpsc::sync_channel(1);

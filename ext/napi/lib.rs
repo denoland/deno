@@ -497,12 +497,12 @@ impl Drop for NapiState {
       crate::js_native_api::detach_external_string_env(*env_ptr);
     }
 
-    // Invalidate each Env's poll owner before addon cleanup hooks run, so
+    // Invalidate each Env's poll scope before addon cleanup hooks run, so
     // queued readiness cannot invoke addon callbacks during cleanup. The
-    // worker identifies the owner only by token.
+    // worker identifies handles and scopes only by numeric token and scope ID.
     #[cfg(unix)]
     for env_ptr in &self.env_ptrs {
-      unsafe { (*(*env_ptr)).poll_owner.invalidate() };
+      unsafe { (*(*env_ptr)).poll_scope.invalidate() };
     }
 
     let hooks = {
@@ -635,7 +635,7 @@ pub struct Env {
   #[cfg(unix)]
   pub(crate) uv_loop_liveness: Arc<deno_core::uv_compat::UvLoopLiveness>,
   #[cfg(unix)]
-  pub(crate) poll_owner: deno_core::uv_compat::UvPollOwner,
+  pub(crate) poll_scope: deno_core::uv_compat::UvPollScope,
 }
 
 unsafe impl Send for Env {}
@@ -660,7 +660,7 @@ impl Env {
     external_ops_tracker: ExternalOpsTracker,
     #[cfg(unix)] uv_loop: *mut deno_core::uv_compat::uv_loop_t,
     #[cfg(unix)] uv_loop_liveness: Arc<deno_core::uv_compat::UvLoopLiveness>,
-    #[cfg(unix)] poll_owner: deno_core::uv_compat::UvPollOwner,
+    #[cfg(unix)] poll_scope: deno_core::uv_compat::UvPollScope,
   ) -> Self {
     Self {
       isolate_ptr,
@@ -678,7 +678,7 @@ impl Env {
       #[cfg(unix)]
       uv_loop_liveness,
       #[cfg(unix)]
-      poll_owner,
+      poll_scope,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       open_callback_scopes: 0,
@@ -996,12 +996,14 @@ fn op_napi_open<'scope>(
   }
 
   // Unix uv_poll forwards to the backing libuv-compatible loop.
-  // `poll_owner` and `uv_loop_liveness` cover independent teardown orders:
-  // the owner suppresses queued callbacks after this Env begins cleanup while
-  // the loop remains live; liveness prevents Env cleanup from accessing a loop
-  // already in teardown.
+  // `poll_scope` and `uv_loop_liveness` cover either teardown order:
+  // the poll scope suppresses queued callbacks during N-API teardown while
+  // the loop is still live; the liveness guard serializes loop-state access
+  // with loop teardown, waiting for in-flight operations and making later
+  // `uv_loop_operation_guard` calls return `None` once teardown invalidates
+  // liveness.
   #[cfg(unix)]
-  let (uv_loop, uv_loop_liveness, poll_owner) = {
+  let (uv_loop, uv_loop_liveness, poll_scope) = {
     let op_state = op_state.borrow();
     let uv_loop = &**op_state.borrow::<Box<deno_core::uv_compat::UvLoop>>()
       as *const deno_core::uv_compat::UvLoop
@@ -1009,7 +1011,7 @@ fn op_napi_open<'scope>(
     (
       uv_loop,
       unsafe { deno_core::uv_compat::uv_loop_liveness(uv_loop) },
-      unsafe { deno_core::uv_compat::new_poll_owner(uv_loop) },
+      unsafe { deno_core::uv_compat::new_poll_scope(uv_loop) },
     )
   };
 
@@ -1071,7 +1073,7 @@ fn op_napi_open<'scope>(
     #[cfg(unix)]
     uv_loop_liveness,
     #[cfg(unix)]
-    poll_owner,
+    poll_scope,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
   // Track the EnvShared pointer so we can call instance data finalize
