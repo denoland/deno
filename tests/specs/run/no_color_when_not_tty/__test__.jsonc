@@ -1,0 +1,18 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/26689
+  //
+  // Deno's own colored status/error messages must not contain ANSI escape
+  // codes when the output stream is not a TTY (here the spec harness captures
+  // stderr through a pipe). This must hold even when `NO_COLOR` is unset, so we
+  // override the harness default of `NO_COLOR=1` with an empty value to take the
+  // default color code path. The `error:` prefix is emitted with the global
+  // color state, so a plain (escape-free) match proves color was stripped.
+  "tests": {
+    "error_has_no_ansi_when_piped": {
+      "envs": { "NO_COLOR": "" },
+      "args": "run nonexistent.ts",
+      "exitCode": 1,
+      "output": "error.out"
+    }
+  }
+}
