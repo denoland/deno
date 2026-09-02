@@ -58,6 +58,7 @@ use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
 mod ast_buffer;
+mod graph;
 mod linter;
 mod plugins;
 mod reporters;
@@ -110,6 +111,7 @@ pub async fn lint(
       factory.caches()?.clone(),
       lint_rule_provider,
       factory.module_graph_creator().await?.clone(),
+      factory.parsed_source_cache()?.clone(),
       compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
@@ -174,6 +176,7 @@ async fn lint_with_watch_inner(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
     factory.module_graph_creator().await?.clone(),
+    factory.parsed_source_cache()?.clone(),
     factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
@@ -257,6 +260,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
+  parsed_source_cache: Arc<deno_resolver::cache::ParsedSourceCache>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
@@ -266,10 +270,12 @@ struct WorkspaceLinter {
 }
 
 impl WorkspaceLinter {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
+    parsed_source_cache: Arc<deno_resolver::cache::ParsedSourceCache>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
@@ -280,6 +286,7 @@ impl WorkspaceLinter {
       caches,
       lint_rule_provider,
       module_graph_creator,
+      parsed_source_cache,
       compiler_options_resolver,
       workspace_dir,
       reporter_lock,
@@ -355,11 +362,16 @@ impl WorkspaceLinter {
         &self.compiler_options_resolver,
         member_dir.dir_url(),
       )?,
-      maybe_plugin_runner: plugin_runner,
+      maybe_plugin_runner: plugin_runner.clone(),
     }));
 
     let has_error = self.has_error.clone();
     let reporter_lock = self.reporter_lock.clone();
+
+    // Clones retained for the graph phase, which runs after `paths` and
+    // `cli_options` are moved into the per-file future below.
+    let graph_paths = paths.clone();
+    let graph_cli_options = cli_options.clone();
 
     let mut futures = Vec::with_capacity(2);
     if linter.has_package_rules()
@@ -428,6 +440,57 @@ impl WorkspaceLinter {
 
     if let Some(incremental_cache) = &maybe_incremental_cache {
       incremental_cache.wait_completion().await;
+    }
+
+    // Graph-aware (cross-file) lint phase. Opt-in: only runs when an enabled
+    // plugin rule declares a `createGraphRule` hook, in which case we build the
+    // module graph once (over the lint roots) and hand a read-only view to the
+    // graph rules. This is deferred until after the per-file phase.
+    if let Some(runner) = &plugin_runner
+      && runner.has_graph_rules()
+    {
+      self
+        .run_graph_rules(runner, graph_cli_options, &graph_paths)
+        .await?;
+    }
+
+    Ok(())
+  }
+
+  async fn run_graph_rules(
+    &self,
+    runner: &Arc<PluginHostProxy>,
+    cli_options: Arc<CliOptions>,
+    paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let roots = paths
+      .iter()
+      .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+      .collect::<Vec<_>>();
+    if roots.is_empty() {
+      return Ok(());
+    }
+
+    let graph = self
+      .module_graph_creator
+      .create_graph(
+        deno_graph::GraphKind::CodeOnly,
+        roots,
+        cli_options.default_npm_caching_strategy(),
+      )
+      .await?;
+
+    let serialized = graph::serialize_graph(&graph, &self.parsed_source_cache);
+    let diagnostics = runner
+      .run_graph_rules(serialized.json, serialized.files)
+      .await?;
+
+    if !diagnostics.is_empty() {
+      self.has_error.raise();
+      let mut reporter = self.reporter_lock.lock();
+      for diagnostic in &diagnostics {
+        reporter.visit_diagnostic(diagnostic);
+      }
     }
 
     Ok(())
