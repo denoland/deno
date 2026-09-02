@@ -1,5 +1,5 @@
 {
-  "$id": "https://deno.land/x/deno/cli/schemas/registry-completions.v2.json",
+  "$id": "https://raw.githubusercontent.com/denoland/deno/main/cli/schemas/registry-completions.v2.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "registry": {
