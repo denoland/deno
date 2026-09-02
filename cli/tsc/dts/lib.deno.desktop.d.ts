@@ -634,6 +634,10 @@ declare namespace Deno {
 
     getPosition(): [number, number];
     setPosition(x: number, y: number): void;
+    /** Top-left of the content view in screen CSS pixels. Differs from
+     * {@linkcode BrowserWindow.getPosition} by the title-bar height, so
+     * `getInnerPosition()[1] + clientY` is `MouseEvent.screenY`. */
+    getInnerPosition(): [number, number];
 
     isResizable(): boolean;
     setResizable(resizable: boolean): void;

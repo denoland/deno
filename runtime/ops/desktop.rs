@@ -544,6 +544,8 @@ pub trait DesktopApi: Send + Sync + 'static {
 
   fn get_window_position(&self, window_id: u32) -> (i32, i32);
   fn set_window_position(&self, window_id: u32, x: i32, y: i32);
+  /// Content-view origin in the same space as `get_window_position`.
+  fn get_window_inner_position(&self, window_id: u32) -> (i32, i32);
 
   fn is_resizable(&self, window_id: u32) -> bool;
   fn set_resizable(&self, window_id: u32, resizable: bool);
@@ -891,6 +893,10 @@ impl BrowserWindow {
 
   fn get_position(&self) -> (i32, i32) {
     self.api.get_window_position(self.window_id)
+  }
+
+  fn get_inner_position(&self) -> (i32, i32) {
+    self.api.get_window_inner_position(self.window_id)
   }
 
   #[fast]

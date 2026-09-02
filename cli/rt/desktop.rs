@@ -231,7 +231,9 @@ pub const DESKTOP_JS: &str = r#"
 
   function screenXY(target, clientX, clientY) {
     try {
-      const pos = target.getPosition();
+      const pos = typeof target.getInnerPosition === "function"
+        ? target.getInnerPosition()
+        : target.getPosition();
       if (Array.isArray(pos) && pos.length >= 2) {
         return [pos[0] + clientX, pos[1] + clientY];
       }
