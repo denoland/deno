@@ -177,6 +177,52 @@ fn install_basic_global() {
   assert!(!file_path.exists());
 }
 
+#[test]
+fn install_global_npm_lifecycle_scripts_prompt() {
+  if !util::pty::Pty::is_supported() {
+    return;
+  }
+
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  context
+    .new_command()
+    .args(
+      "install --global --root ./bins --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+    )
+    .with_pty(|mut console| {
+      console.expect(
+        "Run lifecycle scripts for npm:@denotest/lifecycle-scripts-simple@1.0.0?",
+      );
+      console.write_raw("yl");
+      console.expect("Successfully installed lifecycle-scripts-simple");
+    });
+
+  let output = context
+    .new_command()
+    .name(if cfg!(windows) {
+      "./bins/bin/lifecycle-scripts-simple.cmd"
+    } else {
+      "./bins/bin/lifecycle-scripts-simple"
+    })
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_text("postinstall works\n");
+
+  let config_text = temp_dir
+    .path()
+    .join("bins")
+    .join("bin")
+    .join(".lifecycle-scripts-simple")
+    .join("deno.json")
+    .read_to_string();
+  assert_contains!(
+    config_text,
+    r#""allowScripts": ["npm:@denotest/lifecycle-scripts-simple@1.0.0"]"#
+  );
+}
+
 // Regression test for #32798: a relative `--import-map` passed to a global
 // install (typically via `deno task`) must resolve against the user's cwd,
 // not the generated `~/.deno/bin/.<name>/` install dir.
