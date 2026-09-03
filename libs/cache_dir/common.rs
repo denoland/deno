@@ -14,6 +14,15 @@ pub type HeadersMap = HashMap<String, String>;
 // representation: an old entry may be ambiguous, so it must be regenerated.
 const PORT_SEPARATOR: &str = "_port_";
 const UNDERSCORE_ESCAPE: &str = "%5f";
+// Marks an authority that was too long to store verbatim. `#` cannot appear
+// in an authority, so a hashed component can never be mistaken for a
+// literal one.
+const HASHED_AUTHORITY_PREFIX: &str = "#";
+// Most file systems limit a single path component to 255 bytes. Escaping
+// underscores triples their byte length, so an otherwise valid host can
+// expand past that limit; leave room for the `http_` prefix the local cache
+// adds to the authority component.
+const MAX_AUTHORITY_LEN: usize = 250;
 
 pub fn base_url_to_filename_parts(url: &Url) -> Option<Vec<Cow<'_, str>>> {
   let mut out = Vec::with_capacity(2);
@@ -27,16 +36,22 @@ pub fn base_url_to_filename_parts(url: &Url) -> Option<Vec<Cow<'_, str>>> {
       let host = url.host_str().unwrap();
       // URL hosts may contain underscores, so reserve underscores in the
       // filename representation for the port separator.
-      let host = if host.contains('_') {
+      let escaped_host = if host.contains('_') {
         Cow::Owned(host.replace('_', UNDERSCORE_ESCAPE))
       } else {
         Cow::Borrowed(host)
       };
       let host_port = match url.port() {
-        Some(port) => Cow::Owned(format!("{host}{PORT_SEPARATOR}{port}")),
-        None => host,
+        Some(port) => {
+          Cow::Owned(format!("{escaped_host}{PORT_SEPARATOR}{port}"))
+        }
+        None => escaped_host,
       };
-      out.push(host_port);
+      out.push(if host_port.len() > MAX_AUTHORITY_LEN {
+        Cow::Owned(hashed_authority(host, url.port()))
+      } else {
+        host_port
+      });
     }
     "data" | "blob" => {
       out.push(Cow::Borrowed(scheme));
@@ -50,7 +65,25 @@ pub fn base_url_to_filename_parts(url: &Url) -> Option<Vec<Cow<'_, str>>> {
   Some(out)
 }
 
+fn hashed_authority(host: &str, port: Option<u16>) -> String {
+  // hash the unescaped authority: ":" cannot appear in a host, so this
+  // stays unambiguous without any escaping
+  let authority = match port {
+    Some(port) => Cow::Owned(format!("{host}:{port}")),
+    None => Cow::Borrowed(host),
+  };
+  format!(
+    "{HASHED_AUTHORITY_PREFIX}{}",
+    checksum(authority.as_bytes())
+  )
+}
+
 pub fn filename_part_to_url_authority(part: &str) -> Option<String> {
+  // hashed authorities are not reversible
+  if part.starts_with(HASHED_AUTHORITY_PREFIX) {
+    return None;
+  }
+
   let (host, port) =
     if let Some((host, port)) = part.rsplit_once(PORT_SEPARATOR) {
       (host, Some(port.parse::<u16>().ok()?))
@@ -114,5 +147,34 @@ mod tests {
       Some("api:8080")
     );
     assert_eq!(filename_part_to_url_authority("api_8080"), None);
+  }
+
+  #[test]
+  fn test_long_authority_filename_parts() {
+    // three 60 character underscore labels expand to 544 bytes when escaped
+    let label = "_".repeat(60);
+    let host = format!("{label}.{label}.{label}");
+    let url = Url::parse(&format!("http://{host}/mod.ts")).unwrap();
+    let parts = base_url_to_filename_parts(&url).unwrap();
+    assert_eq!(parts[1], format!("#{}", checksum(host.as_bytes())));
+    assert!(parts[1].len() <= MAX_AUTHORITY_LEN);
+    // a hashed authority can't be turned back into a url
+    assert_eq!(filename_part_to_url_authority(&parts[1]), None);
+
+    // the port is part of the hashed authority
+    let with_port = Url::parse(&format!("http://{host}:8080/mod.ts")).unwrap();
+    let port_parts = base_url_to_filename_parts(&with_port).unwrap();
+    assert_eq!(
+      port_parts[1],
+      format!("#{}", checksum(format!("{host}:8080").as_bytes()))
+    );
+    assert_ne!(parts[1], port_parts[1]);
+
+    // an authority that still fits is left verbatim
+    let short = Url::parse("http://a_b.example.com/mod.ts").unwrap();
+    assert_eq!(
+      base_url_to_filename_parts(&short).unwrap()[1],
+      "a%5fb.example.com"
+    );
   }
 }

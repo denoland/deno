@@ -928,7 +928,6 @@ mod manifest {
 
   use super::LocalCacheSubPath;
   use super::NOT_FOUND_CACHE_HEADER;
-  use super::base_url_to_local_filename_part;
   use super::url_to_local_sub_path;
 
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -981,14 +980,18 @@ mod manifest {
         .unwrap_or_default();
       // Folder paths are persisted in the manifest, unlike module paths.
       // Rebuild their authority component so manifests written with an older
-      // cache-path encoding cannot retain an ambiguous reverse mapping.
+      // cache-path encoding cannot retain an ambiguous reverse mapping. The
+      // authority may itself be hashed (it is just another path part), so
+      // take it from `url_to_local_sub_path` rather than from the raw
+      // authority in order to stay in sync with the paths actually written.
       for (url, local_path) in &mut serialized.folders {
-        let Some(base_part) = base_url_to_local_filename_part(url) else {
+        let Ok(sub_path) = url_to_local_sub_path(url, None) else {
           continue;
         };
+        let base_part = sub_path.parts[0].as_ref();
         let base_len = local_path.find('/').unwrap_or(local_path.len());
-        if &local_path[..base_len] != base_part.as_ref() {
-          local_path.replace_range(..base_len, base_part.as_ref());
+        if &local_path[..base_len] != base_part {
+          local_path.replace_range(..base_len, base_part);
         }
       }
       let reverse_mapping = if use_reverse_mapping {
@@ -1353,6 +1356,40 @@ mod test {
     assert_eq!(
       serialized["folders"]["http://api:8080/UPPER/"],
       "http_api_port_8080/#upper_12345"
+    );
+  }
+
+  #[test]
+  fn test_local_manifest_migrates_hashed_authority_paths() {
+    // long enough that the authority component is itself hashed
+    let url =
+      Url::parse("http://a_very_long_host_name_with_underscores/UPPER/")
+        .unwrap();
+    let json = r##"{
+      "folders": {
+        "http://a_very_long_host_name_with_underscores/UPPER/": "#http_a_very_long_ho_abcde/#upper_12345"
+      }
+    }"##;
+    let data = manifest::LocalCacheManifestData::new(Some(json), true);
+
+    let expected_base = url_to_local_sub_path(&url, None).unwrap().parts[0]
+      .as_ref()
+      .to_string();
+    // the migrated path stays hashed instead of being replaced by the
+    // (too long) raw authority
+    assert!(expected_base.starts_with('#'));
+
+    let serialized: serde_json::Value =
+      serde_json::from_str(&data.as_json()).unwrap();
+    let migrated = serialized["folders"]
+      ["http://a_very_long_host_name_with_underscores/UPPER/"]
+      .as_str()
+      .unwrap()
+      .to_string();
+    assert_eq!(migrated, format!("{expected_base}/#upper_12345"));
+    assert_eq!(
+      data.get_reverse_mapping(&PathBuf::from(&migrated)),
+      Some(url)
     );
   }
 
