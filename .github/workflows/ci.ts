@@ -1229,9 +1229,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const shouldPublishCondition = isRelease.and(isDenoland)
           .and(isTag);
         const publishStep = step.if(shouldPublishCondition)(
-          step({
-            name: "Upload release to dl.deno.land (unix)",
-            if: isWindows.not(),
+          {
+            name: "Upload release to dl.deno.land",
             env: S3Envs,
             run: [
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
@@ -1239,20 +1238,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.bsdiff"',
             ],
-          }, {
-            name: "Upload release to dl.deno.land (windows)",
-            if: isWindows,
-            env: {
-              ...S3Envs,
-              CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
-            },
-            run: [
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.bsdiff"',
-            ],
-          }),
+          },
           {
             name: "Create release notes",
             run: [
