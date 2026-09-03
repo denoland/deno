@@ -1734,10 +1734,12 @@ extern "C" fn test_uv_poll_invalid_fd_reports_ebadf(
 ) -> napi_value {
   unsafe {
     let state = new_poll_test(env, poll_callback_arg(env, info));
-    // Closing an fd after uv_poll_init is invalid libuv usage. Real libuv may
-    // abort on Linux rather than deliver a callback, but poll(2) can return
-    // POLLNVAL here. This compatibility layer defensively reports it once as
-    // UV_EBADF and stops.
+    // Closing an fd after uv_poll_init is invalid libuv usage, and libuv does
+    // not guarantee an error callback. This test pins a defensive property of
+    // our current poll(2) driver: when it observes POLLNVAL, the compatibility
+    // layer reports UV_EBADF once and stops the handle. A future epoll, kqueue,
+    // or other backend that silently discards closed descriptors may remove or
+    // relax this test instead of synthesizing a stronger guarantee than libuv.
     //
     // Replace the reader before closing it so cleanup cannot close a later
     // descriptor that reuses the same fd.

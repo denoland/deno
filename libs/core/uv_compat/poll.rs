@@ -444,11 +444,15 @@ pub(crate) fn poll_revents_to_uv_callback_args(
     cb_events |= super::UV_DISCONNECT;
   }
 
-  // Closing an active poll fd is invalid libuv usage. When poll(2) detects it
-  // as POLLNVAL, report terminal UV_EBADF so loop dispatch stops the handle
-  // and releases its raw-fd ownership. This cleanup is best-effort, however:
-  // fd-number reuse can occur before POLLNVAL is observed, in which case the
-  // worker cannot distinguish the replacement descriptor from the original.
+  // Closing a poll fd while its handle is active is invalid libuv usage. Libuv
+  // permits, but does not guarantee, an error callback in that case: epoll and
+  // kqueue can silently discard a closed fd, and libuv's poll(2) backend
+  // filters out POLLNVAL. Our poll(2) driver can observe POLLNVAL, so report it
+  // once as terminal UV_EBADF to stop the handle and release its raw-fd
+  // ownership. This is backend-specific defensive cleanup, not a portable
+  // libuv guarantee. It is still best-effort because fd-number reuse can occur
+  // first, leaving the worker unable to distinguish the replacement descriptor
+  // from the original.
   if revents & libc::POLLNVAL != 0 {
     return (super::UV_EBADF, 0);
   }
