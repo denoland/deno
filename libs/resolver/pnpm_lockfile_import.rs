@@ -664,9 +664,20 @@ fn normalize_package_key(key: &str) -> String {
   // pnpm v6 sometimes used `/name/version` instead of `/name@version`. We
   // detect the `/version` form by checking whether the last `/` is followed
   // by what looks like a semver number.
-  if !stripped.contains('@') || stripped.starts_with('@') {
-    // For scoped packages, the only `@` may be at the start. Check the
-    // `name/version` form by splitting on the last `/`.
+  //
+  // The `@` that rules the form out is the one separating name from version,
+  // so a scoped id is judged on what follows its scope: `@babel/core@7.0.0`
+  // is already `name@version`, while `@babel/core/7.0.0` is not. Looking at
+  // the whole string instead would miss the boundary for a scoped package
+  // whose name starts with a digit — `@types/3d-view@1.0.0` would be
+  // rewritten to `@types@3d-view@1.0.0`.
+  let slash_form =
+    match stripped.strip_prefix('@').and_then(|s| s.split_once('/')) {
+      Some((_, after_scope)) => !after_scope.contains('@'),
+      None => !stripped.contains('@'),
+    };
+  if slash_form {
+    // The version is whatever follows the last `/`.
     if let Some(idx) = stripped.rfind('/') {
       let (name, ver) = stripped.split_at(idx);
       let ver = &ver[1..];
@@ -1340,6 +1351,17 @@ packages:
     );
     assert_eq!(normalize_package_key("/lodash@4.17.21"), "lodash@4.17.21");
     assert_eq!(normalize_package_key("/lodash/4.17.21"), "lodash@4.17.21");
+    // A scoped name may itself start with a digit. The `@` that decides
+    // between the two forms is the one after the scope, so this is already
+    // `name@version` and must not be rewritten to `@types@3d-view@1.0.0`.
+    assert_eq!(
+      normalize_package_key("/@types/3d-view@1.0.0"),
+      "@types/3d-view@1.0.0"
+    );
+    assert_eq!(
+      normalize_package_key("/@types/3d-view/1.0.0"),
+      "@types/3d-view@1.0.0"
+    );
     // A path is not a host-prefixed id, however much its last segment looks
     // like one.
     assert_eq!(
@@ -1349,9 +1371,63 @@ packages:
     // A name that still carries a host is not an id we can record.
     assert!(!is_package_id("registry.npmmirror.com/lodash@4.17.21"));
     assert!(is_package_id("@babel/core@7.0.0"));
+    assert!(is_package_id("@types/3d-view@1.0.0"));
     assert!(is_package_id("lodash@4.17.21"));
     assert!(!is_package_id("fake-pkg@file:vendor/fake-pkg-1.0.0.tgz"));
     assert!(!is_package_id("other-pkg@file:vendor/pkg@1.0.0.tgz"));
+  }
+
+  #[test]
+  fn scoped_dependency_whose_name_starts_with_a_digit() {
+    // An alias pointing at such a package has to keep naming it, or the
+    // entry dangles: the `npm` section holds `@types/3d-view@1.0.0` while
+    // the dependency points at `@types@3d-view@1.0.0`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      host-pkg:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  host-pkg@1.0.0:
+    resolution: {integrity: sha512-HOST}
+  '@types/3d-view@1.0.0':
+    resolution: {integrity: sha512-3D}
+
+snapshots:
+  host-pkg@1.0.0:
+    dependencies:
+      view-alias: '@types/3d-view@1.0.0'
+  '@types/3d-view@1.0.0': {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["@types/3d-view@1.0.0"]["integrity"], "sha512-3D");
+    assert_eq!(
+      v["npm"]["host-pkg@1.0.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["view-alias@npm:@types/3d-view@1.0.0"]
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
   }
 
   #[test]
