@@ -247,11 +247,14 @@ interface GPUCanvasContext {
  *
  * A `GPUCanvasContext` is obtained from
  * {@linkcode OffscreenCanvas.getContext} with the `"webgpu"` context id rather
- * than constructed directly.
+ * than constructed directly. The construct signature below exists only so that
+ * `instanceof GPUCanvasContext` type checks and narrows.
  *
  * @category Canvas */
 declare var GPUCanvasContext: {
   prototype: GPUCanvasContext;
+  /** Not a supported way to create a context; present so `instanceof` narrows. */
+  new (): GPUCanvasContext;
 };
 
 /** A rendering context that displays the contents of an {@linkcode ImageBitmap}
@@ -270,11 +273,14 @@ interface ImageBitmapRenderingContext {
  *
  * An `ImageBitmapRenderingContext` is obtained from
  * {@linkcode OffscreenCanvas.getContext} with the `"bitmaprenderer"` context id
- * rather than constructed directly.
+ * rather than constructed directly. The construct signature below exists only so
+ * that `instanceof ImageBitmapRenderingContext` type checks and narrows.
  *
  * @category Canvas */
 declare var ImageBitmapRenderingContext: {
   prototype: ImageBitmapRenderingContext;
+  /** Not a supported way to create a context; present so `instanceof` narrows. */
+  new (): ImageBitmapRenderingContext;
 };
 
 /** A canvas that can be rendered to off the main thread and without being
