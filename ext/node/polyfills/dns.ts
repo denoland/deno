@@ -625,7 +625,7 @@ function resolve4(
     addresses: string[] | RecordWithTtl[],
   ) => void,
 ): void;
-function resolve4(...args: unknown[]) {
+function resolve4(...args: unknown[]): QueryReqWrap {
   return ReflectApply(
     Resolver.prototype.resolve4,
     getDefaultResolver() as Resolver,
@@ -657,7 +657,7 @@ function resolve6(
     addresses: string[] | RecordWithTtl[],
   ) => void,
 ): void;
-function resolve6(...args: unknown[]) {
+function resolve6(...args: unknown[]): QueryReqWrap {
   return ReflectApply(
     Resolver.prototype.resolve6,
     getDefaultResolver() as Resolver,
