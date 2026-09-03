@@ -6377,7 +6377,7 @@ dependencies = [
 [[package]]
 name = "laufey"
 version = "0.7.0"
-source = "git+https://github.com/petamoriken/laufey?branch=fix%2Fwinit-mouse-enter-dblclick#bbc26882a9db6aa94029a8416820bd746b351af5"
+source = "git+https://github.com/petamoriken/laufey?branch=fix%2Fwinit-mouse-enter-dblclick#0359569d7e1a2436e037632a6fcd425a9795dee7"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
