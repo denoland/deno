@@ -5468,7 +5468,10 @@
       "windows": false,
       "reason": "not passing"
     },
-    "pummel/test-blob-slice-with-large-size.js": {},
+    "pummel/test-blob-slice-with-large-size.js": {
+      "timeoutMs": 60000,
+      "reason": "allocates a 2 GiB buffer and copies it into the blob store, peaking above 4 GiB RSS; faulting that much memory in on a loaded CI runner regularly exceeds the default 10s timeout"
+    },
     "pummel/test-buffer-large-size-buffer-alloc.js": {},
     "pummel/test-buffer-large-size-buffer-write.js": {},
     "pummel/test-buffer-large-size-slowbuffer.js": {},

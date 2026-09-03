@@ -239,10 +239,37 @@ declare interface Permissions {
   query(descriptor: PermissionDescriptor): Promise<PermissionStatus>;
 }
 
+/** Read from and write plain text to the system clipboard. A subset of the
+ * web [Clipboard API](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard);
+ * only the text methods are backed by `deno desktop`. */
+declare interface Clipboard extends EventTarget {
+  /** Resolve with the clipboard's text content, or an empty string when the
+   * clipboard is empty or holds no text.
+   *
+   * Rejects if the clipboard doesn't respond — on Linux the read is serviced
+   * by whichever application owns the selection, so an unresponsive one
+   * fails rather than resolving to an empty string it can't be told apart
+   * from. */
+  readText(): Promise<string>;
+  /** Replace the clipboard's content with `data`. An empty string clears the
+   * clipboard.
+   *
+   * Resolving means the write completed; it rejects if the clipboard doesn't
+   * respond. */
+  writeText(data: string): Promise<void>;
+}
+
+/** `Clipboard` has no constructor: the only instance is
+ * {@linkcode Navigator.clipboard}. */
+declare var Clipboard: {
+  prototype: Clipboard;
+};
+
 /** Extends the {@linkcode Navigator} provided by `deno.window` with the
- * Permissions API surface available to `deno desktop` apps. */
+ * Permissions and Clipboard API surface available to `deno desktop` apps. */
 declare interface Navigator {
   readonly permissions: Permissions;
+  readonly clipboard: Clipboard;
 }
 
 declare namespace Deno {
@@ -496,6 +523,17 @@ declare namespace Deno {
         id?: string;
         accelerator?: string;
         enabled: boolean;
+        /** Show a checkmark next to the item. Supported on all
+         * platforms. Defaults to `false`. */
+        checked?: boolean;
+        /** PNG-encoded image bytes shown next to the label, like
+         * {@linkcode Tray.setIcon}. Supported on macOS and Windows;
+         * ignored on Linux. On macOS a monochrome black+alpha PNG is
+         * rendered as a template image, tinting to white when the item
+         * is highlighted. */
+        icon?: Uint8Array;
+        /** Tooltip shown when hovering over the item. macOS only. */
+        tooltip?: string;
       };
     }
     | {

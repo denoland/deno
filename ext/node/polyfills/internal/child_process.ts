@@ -217,6 +217,7 @@ function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+const kSigkillIssued = Symbol("_sigkillIssued");
 const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
 const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
@@ -306,10 +307,12 @@ class ChildProcess extends EventEmitter {
   disconnect;
 
   #process;
+  #windowsSignalFallback: string | null = null;
   #spawned = PromiseWithResolvers();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
   [kCanDisconnect] = false;
+  [kSigkillIssued] = false;
 
   constructor() {
     super();
@@ -663,7 +666,16 @@ class ChildProcess extends EventEmitter {
 
       (async () => {
         const status = await this.#process.status;
-        this.signalCode = this.signalCode || status.signal || null;
+        // Windows has no POSIX termination status, so a successfully delivered
+        // signal is recorded locally instead. Only trust that record when the
+        // child actually exited unsuccessfully: `kill()` can race a child that
+        // was already exiting on its own, and `TerminateProcess` still reports
+        // success in that window. Reporting a signal for an exit code of 0
+        // would hide the real status.
+        const windowsSignal = status.success
+          ? null
+          : this.#windowsSignalFallback;
+        this.signalCode = status.signal || windowsSignal;
         if (this.signalCode) {
           this.exitCode = null;
         } else {
@@ -674,6 +686,15 @@ class ChildProcess extends EventEmitter {
           this.emit("exit", this.exitCode, this.signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
+          // The child is gone, so the IPC channel can never carry another
+          // message. Tear it down here rather than in `kill()`: a signal does
+          // not necessarily terminate the child, but an exit always ends the
+          // channel. Without this the read loop never observes the EOF (its
+          // pending read is unref'd, so the event loop can drain first) and
+          // 'close' would never be emitted for a killed forked child.
+          if (this[kCanDisconnect]) {
+            this.disconnect?.();
+          }
           maybeClose(this);
           nextTick(flushStdio, this);
         });
@@ -805,15 +826,12 @@ class ChildProcess extends EventEmitter {
     }
   }
 
-  /**
-   * @param signal NOTE: this parameter is not yet implemented.
-   */
   kill(signal) {
     const process = lazyProcess().default;
     // Signal 0 is a special case: it checks if the process exists
-    // without sending a signal (POSIX kill(pid, 0)). This must run
-    // before the `killed` check because kill(0) is an existence probe
-    // that should work even after a prior successful kill().
+    // without sending a signal (POSIX kill(pid, 0)). It must be handled
+    // separately because it is an existence probe that should work even
+    // after a prior successful kill().
     if (signal === 0 || signal === "0") {
       try {
         process.kill(this.pid, 0);
@@ -823,12 +841,11 @@ class ChildProcess extends EventEmitter {
       }
     }
 
-    if (this.killed) {
-      return false;
-    }
-
+    // `killed` records whether a signal has ever been sent successfully; it
+    // must not prevent later signals from reaching a still-running process.
+    // In particular, SIGSTOP followed by SIGCONT is a supported way to
+    // suspend and resume a child.
     let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
-    this.#closePipes();
     try {
       this.#process.kill(signalName);
     } catch (err) {
@@ -873,20 +890,19 @@ class ChildProcess extends EventEmitter {
       }
     }
 
-    /* Cancel any pending IPC I/O */
-    if (this[kCanDisconnect]) {
-      this.disconnect?.();
+    if (isWindows) {
+      // See the `#windowsSignalFallback` use in the status handler above.
+      this.#windowsSignalFallback = signalName;
     }
-
+    if (signalName === "SIGKILL") {
+      this[kSigkillIssued] = true;
+    }
     this.killed = true;
-    this.signalCode = signalName;
     return true;
   }
 
   [SymbolDispose]() {
-    if (!this.killed) {
-      this.kill();
-    }
+    this.kill();
   }
 
   ref() {
@@ -2503,6 +2519,21 @@ function createIpcHandle(message, rawFd) {
   return undefined;
 }
 
+// The IPC channel was torn down underneath us: either the resource is gone or
+// the peer reset the connection.
+function isChannelClosedError(err) {
+  return ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
+    ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err);
+}
+
+function isInterruptedError(err) {
+  return ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err);
+}
+
+function isBrokenPipeError(err) {
+  return ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, err);
+}
+
 function setupChannel(
   target,
   ipc,
@@ -2670,6 +2701,7 @@ function setupChannel(
   }
 
   function dispatch(message, handleInfo, callback) {
+    const sigkillIssuedAtDispatch = target[kSigkillIssued] === true;
     if (handleInfo) {
       // Start queueing subsequent sends until the ACK arrives.
       handleQueue = [];
@@ -2718,8 +2750,21 @@ function setupChannel(
           }
         }
         if (
-          ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err)
+          !sigkillIssuedAtDispatch && target[kSigkillIssued] &&
+          (isBrokenPipeError(err) || isChannelClosedError(err))
         ) {
+          // This write was accepted before a local SIGKILL and only failed
+          // because that SIGKILL tore the channel down underneath it. SIGKILL
+          // cannot be handled or ignored, so unlike a terminating signal the
+          // child had no chance to drain the pipe; Node reports the send as
+          // completed here, so match that. Sends issued after the SIGKILL
+          // (`sigkillIssuedAtDispatch`) and sends racing external termination
+          // still report the error. Errors unrelated to channel teardown are
+          // never suppressed, even inside this window.
+          if (typeof callback === "function") {
+            nextTick(callback, null);
+          }
+        } else if (isInterruptedError(err)) {
           // Channel closed on us mid-write.
         } else {
           // Match Node: errors raised from a failed IPC send carry
@@ -2743,7 +2788,7 @@ function setupChannel(
   async function readLoop() {
     try {
       while (true) {
-        if (!target.connected || target.killed) {
+        if (!target.connected) {
           return;
         }
         // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
@@ -2801,11 +2846,7 @@ function setupChannel(
       // RST, surfacing here as ECONNRESET. Node treats an IPC channel teardown
       // as a disconnect, never as a process `error`, so we follow suit and tear
       // down cleanly instead of emitting an uncaught error.
-      if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
-      ) {
+      if (isInterruptedError(err) || isChannelClosedError(err)) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive.
         cleanupPendingHandles();
