@@ -58,26 +58,7 @@ const installPython = step.dependsOn(setupDeno)({
   with: { "python-version": 3.11 },
 });
 
-const authGcloud = step.dependsOn(installPython)({
-  name: "Authenticate with Google Cloud",
-  if: isMainBranch,
-  uses: "google-github-actions/auth@v3",
-  with: {
-    project_id: "denoland",
-    credentials_json: "${{ secrets.GCP_SA_KEY }}",
-    export_environment_variables: true,
-    create_credentials_file: true,
-  },
-});
-
-const setupGcloud = step.dependsOn(authGcloud)({
-  name: "Setup gcloud",
-  if: isMainBranch,
-  uses: "google-github-actions/setup-gcloud@v3",
-  with: { project_id: "denoland" },
-});
-
-const runTests = step.dependsOn(setupGcloud)({
+const runTests = step.dependsOn(installPython)({
   name: "Run tests",
   env: {
     CARGO_ENCODED_RUSTFLAGS: "",
@@ -124,8 +105,6 @@ const testJob = job("test", {
     setupRust,
     setupDeno,
     installPython,
-    authGcloud,
-    setupGcloud,
     runTests,
     gzipReport,
     uploadReport,
@@ -157,24 +136,7 @@ const summaryInstallPython = step.dependsOn(summarySetupDeno)({
   with: { "python-version": 3.11 },
 });
 
-const summaryAuthGcloud = step.dependsOn(summaryInstallPython)({
-  name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v3",
-  with: {
-    project_id: "denoland",
-    credentials_json: "${{ secrets.GCP_SA_KEY }}",
-    export_environment_variables: true,
-    create_credentials_file: true,
-  },
-});
-
-const summarySetupGcloud = step.dependsOn(summaryAuthGcloud)({
-  name: "Setup gcloud",
-  uses: "google-github-actions/setup-gcloud@v3",
-  with: { project_id: "denoland" },
-});
-
-const addDaySummary = step.dependsOn(summarySetupGcloud)({
+const addDaySummary = step.dependsOn(summaryInstallPython)({
   name: "Add the day summary to the month summary",
   run:
     "deno -A --config tests/config/deno.json tests/node_compat/add_day_summary_to_month_summary.ts",
