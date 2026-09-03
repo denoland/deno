@@ -692,6 +692,15 @@ fn normalize_package_key(key: &str) -> String {
 ///
 /// Expects the leading `/` and any peer suffix to be gone already.
 fn strip_registry_prefix(id: &str) -> &str {
+  // A key that names where the package came from is a path or a url, not a
+  // host-prefixed id, and its last `/` segment can look like a `name@version`
+  // by accident: `fake-pkg@file:vendor/pkg@1.0.0.tgz` would be cut down to
+  // `pkg@1.0.0.tgz`, which reads as an id but names no package. A registry
+  // host never carries a scheme, and an npm id never carries a `:`, so the
+  // presence of one is enough to tell the two apart.
+  if id.contains(':') {
+    return id;
+  }
   // Already a scope, so there is nothing in front of the name.
   if id.starts_with('@') {
     return id;
@@ -1331,11 +1340,18 @@ packages:
     );
     assert_eq!(normalize_package_key("/lodash@4.17.21"), "lodash@4.17.21");
     assert_eq!(normalize_package_key("/lodash/4.17.21"), "lodash@4.17.21");
+    // A path is not a host-prefixed id, however much its last segment looks
+    // like one.
+    assert_eq!(
+      normalize_package_key("other-pkg@file:vendor/pkg@1.0.0.tgz"),
+      "other-pkg@file:vendor/pkg@1.0.0.tgz"
+    );
     // A name that still carries a host is not an id we can record.
     assert!(!is_package_id("registry.npmmirror.com/lodash@4.17.21"));
     assert!(is_package_id("@babel/core@7.0.0"));
     assert!(is_package_id("lodash@4.17.21"));
     assert!(!is_package_id("fake-pkg@file:vendor/fake-pkg-1.0.0.tgz"));
+    assert!(!is_package_id("other-pkg@file:vendor/pkg@1.0.0.tgz"));
   }
 
   #[test]
@@ -1395,6 +1411,11 @@ packages:
   fn package_installed_from_a_path_is_left_out() {
     // A package keyed by where it came from has no npm id to record, so it
     // must not reach the npm section as `fake-pkg@file:…`.
+    //
+    // The second one is the case `strip_registry_prefix` has to keep its
+    // hands off: its last `/` segment reads as a `name@version`, so without
+    // the scheme check it would be cut down to `pkg@1.0.0.tgz` — an id that
+    // looks recordable but names nothing, and that `NpmPackageId` rejects.
     let input = r#"
 lockfileVersion: '9.0'
 
@@ -1410,10 +1431,13 @@ packages:
     resolution: {integrity: sha512-LODASH}
   fake-pkg@file:vendor/fake-pkg-1.0.0.tgz:
     resolution: {integrity: sha512-FAKE, tarball: file:vendor/fake-pkg-1.0.0.tgz}
+  other-pkg@file:vendor/pkg@1.0.0.tgz:
+    resolution: {integrity: sha512-OTHER, tarball: file:vendor/pkg@1.0.0.tgz}
 
 snapshots:
   lodash@4.17.21: {}
   fake-pkg@file:vendor/fake-pkg-1.0.0.tgz: {}
+  other-pkg@file:vendor/pkg@1.0.0.tgz: {}
 "#;
     let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
