@@ -55,6 +55,15 @@ declare class KeyboardEvent extends UIEvent {
   getModifierState(key: string): boolean;
 }
 
+declare interface CompositionEventInit extends UIEventInit {
+  data?: string;
+}
+
+declare class CompositionEvent extends UIEvent {
+  constructor(type: string, init?: CompositionEventInit);
+  readonly data: string;
+}
+
 declare interface MouseEventInit extends UIEventInit {
   button?: number;
   clientX?: number;
