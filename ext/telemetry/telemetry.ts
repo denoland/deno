@@ -218,7 +218,7 @@ const DID_NOT_ENTER: unique symbol = Symbol.for(
  * The result of {@linkcode enterSpan}: either the async context snapshot taken
  * before entering, or `DID_NOT_ENTER` if no context was entered. `undefined` is
  * a valid snapshot (it means "no ambient context"), so the two cases cannot be
- * told apart by truthiness — always hand this to {@linkcode exitSpan}.
+ * told apart by truthiness, so always hand this to {@linkcode exitSpan}.
  */
 type SpanSnapshot = AsyncContextSnapshot | typeof DID_NOT_ENTER;
 
