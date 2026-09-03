@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -62,6 +62,26 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
+
+// The TC39 arraybuffer-base64 methods are installed after snapshot
+// deserialization (V8 InstallConditionalFeatures), so the snapshot-time
+// primordials copy does not include them. The runtime bootstrap captures
+// them off the pristine prototype before any user code runs (99_main.js
+// captureHexMethods) and stashes the uncurried functions on `internals`;
+// an undefined slot means the method is unavailable and the JS codec is
+// used instead. Read lazily so a snapshot-time evaluation of this module
+// cannot bake in pre-bootstrap values.
+// TODO(tomas-zijdemans): once V8 ships these methods unconditionally
+// (no --js-arraybuffer-base64 flag), move them to primordials and drop
+// the indirection.
+let hexMethodsCaptured = false;
+let Uint8ArrayPrototypeToHex;
+let Uint8ArrayPrototypeSetFromHex;
+function captureHexMethods() {
+  hexMethodsCaptured = true;
+  Uint8ArrayPrototypeToHex = internals.uint8ArrayToHex;
+  Uint8ArrayPrototypeSetFromHex = internals.uint8ArraySetFromHex;
+}
 const {
   op_base64_decode_into,
   op_base64_encode_from_buffer,
@@ -92,6 +112,7 @@ const {
   base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
+  bytesToHex,
   hexToBytes,
   utf16leToBytes,
 } = core.loadExtScript("ext:deno_node/internal_binding/_utils.ts");
@@ -737,15 +758,6 @@ function decodeUtf16le(buffer, start, end) {
   );
 }
 
-function encodeHex(buffer, start, end) {
-  return op_node_encoding_slice(
-    buffer,
-    start,
-    end,
-    4,
-  );
-}
-
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
     return decodeUtf8(
@@ -1185,16 +1197,110 @@ Buffer.prototype.base64urlWrite = function base64urlWrite(
 };
 
 Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
-  return blitBuffer(
-    hexToBytes(string),
-    this,
-    offset,
-    length,
-  );
+  const byteLength = TypedArrayPrototypeGetByteLength(this);
+  if (offset === undefined) {
+    offset = 0;
+  }
+  if (offset < 0 || offset > byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+
+  const remaining = byteLength - offset;
+  if (length === undefined || length > remaining) {
+    length = remaining;
+  } else if (length < 0) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
+  // Node drops a trailing odd char; native setFromHex would throw on it.
+  if (string.length & 1) {
+    string = StringPrototypeSlice(string, 0, -1);
+  }
+
+  if (!hexMethodsCaptured) {
+    captureHexMethods();
+  }
+  if (Uint8ArrayPrototypeSetFromHex === undefined) {
+    return blitBuffer(hexToBytes(string), this, offset, length);
+  }
+  const target = offset === 0 && length === byteLength
+    ? this
+    : TypedArrayPrototypeSubarray(this, offset, offset + length);
+  // setFromHex stops cleanly when the target fills first (Node's
+  // target-capped write); it throws on invalid input, where Node truncates
+  // at the first invalid pair, so the catch falls back to the JS truncating
+  // decoder. A partial prefix written before the throw is rewritten
+  // byte-identically by the fallback. The catch also absorbs detached-buffer
+  // TypeErrors and brand-check failures on non-Uint8Array receivers, which
+  // take the fallback with unchanged behavior. Invalid hex therefore costs
+  // one caught exception per call (visible to debuggers that pause on
+  // caught exceptions).
+  try {
+    return Uint8ArrayPrototypeSetFromHex(target, string).written;
+  } catch {
+    return blitBuffer(
+      hexToBytes(string),
+      this,
+      offset,
+      length,
+    );
+  }
 };
 
-Buffer.prototype.hexSlice = function hexSlice(offset, length) {
-  return encodeHex(this, offset, length);
+function hexIndexOutOfRange() {
+  const err = new RangeError("Index out of range");
+  err.code = "ERR_OUT_OF_RANGE";
+  return err;
+}
+
+Buffer.prototype.hexSlice = function hexSlice(start, end) {
+  let byteLength = TypedArrayPrototypeGetByteLength(this);
+  // Index semantics replicate Node's C++ StringSlice: zero-length receivers
+  // (including detached) return "" before any validation, ToInteger
+  // coercion, negative index throws "Index out of range", end < start
+  // clamps to empty, and only a forward range with end > length throws.
+  if (byteLength === 0) {
+    return "";
+  }
+  start = start === undefined ? 0 : MathTrunc(Number(start)) || 0;
+  end = end === undefined ? byteLength : MathTrunc(Number(end)) || 0;
+  if (start < 0 || end < 0) {
+    throw hexIndexOutOfRange();
+  }
+  if (end <= start) {
+    return "";
+  }
+  // Re-read: argument coercion can run user code that resizes or detaches
+  // the underlying buffer (detached views report length 0).
+  byteLength = TypedArrayPrototypeGetByteLength(this);
+  if (end > byteLength) {
+    throw hexIndexOutOfRange();
+  }
+  if (end - start > kStringMaxLength / 2) {
+    throw genericNodeError(
+      `Cannot create a string longer than 0x${
+        NumberPrototypeToString(kStringMaxLength, 16)
+      } characters`,
+      { code: "ERR_STRING_TOO_LONG" },
+    );
+  }
+  // Byte-relative view: non-Uint8Array receivers (any ArrayBufferView was
+  // accepted by the op) hex-encode their underlying bytes.
+  const view = start === 0 && end === byteLength &&
+      ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, this)
+    ? this
+    : new Uint8Array(
+      TypedArrayPrototypeGetBuffer(this),
+      TypedArrayPrototypeGetByteOffset(this) + start,
+      end - start,
+    );
+  if (!hexMethodsCaptured) {
+    captureHexMethods();
+  }
+  if (Uint8ArrayPrototypeToHex === undefined) {
+    return bytesToHex(view);
+  }
+  return Uint8ArrayPrototypeToHex(view);
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {

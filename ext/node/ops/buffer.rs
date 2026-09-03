@@ -268,29 +268,8 @@ pub fn op_node_encoding_slice<'a>(
       // ucs2Slice
       decode_utf16le_from_bytes(scope, buffer)
     }
-    4 => {
-      // hexSlice
-      if buffer.len() > (v8::String::MAX_LENGTH / 2) {
-        // String too long
-        None
-      } else {
-        let target_len = buffer.len() * 2;
-        let mut hex_bytes = vec![0u8; target_len];
-        // infallible: output is exactly 2x input
-        faster_hex::hex_encode(buffer, &mut hex_bytes).unwrap();
-        if target_len <= ZERO_COPY_THRESHOLD {
-          // Copy bytes to a string
-          v8::String::new_from_one_byte(
-            scope,
-            &hex_bytes,
-            v8::NewStringType::Normal,
-          )
-        } else {
-          // Create a V8 string with zero-copy
-          v8::String::new_external_onebyte(scope, hex_bytes.into_boxed_slice())
-        }
-      }
-    }
+    // 4 (hexSlice) is gone: hex encoding uses Uint8Array.prototype.toHex in
+    // internal/buffer.mjs.
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
   .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
