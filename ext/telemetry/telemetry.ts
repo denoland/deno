@@ -206,12 +206,26 @@ interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
 
-const DID_NOT_ENTER = SymbolFor("Deno.telemetry.didNotEnterSpan");
+// A `unique symbol` type requires a direct `Symbol.for()` call, which is what
+// makes `SpanSnapshot` below narrowable. This runs during bootstrap, before any
+// user code, so reaching for the global here is safe.
+// deno-lint-ignore deno-internal/prefer-primordials
+const DID_NOT_ENTER: unique symbol = Symbol.for(
+  "Deno.telemetry.didNotEnterSpan",
+);
+
+/**
+ * The result of {@linkcode enterSpan}: either the async context snapshot taken
+ * before entering, or `DID_NOT_ENTER` if no context was entered. `undefined` is
+ * a valid snapshot (it means "no ambient context"), so the two cases cannot be
+ * told apart by truthiness — always hand this to {@linkcode exitSpan}.
+ */
+type SpanSnapshot = AsyncContextSnapshot | typeof DID_NOT_ENTER;
 
 function enterSpan(
   span: Span,
   context?: Context,
-): AsyncContextSnapshot | typeof DID_NOT_ENTER {
+): SpanSnapshot {
   if (!span.isRecording()) return DID_NOT_ENTER;
   const snapshot = currentSnapshot();
   context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
@@ -220,7 +234,7 @@ function enterSpan(
   return snapshot;
 }
 
-function exitSpan(snapshot: AsyncContextSnapshot | typeof DID_NOT_ENTER) {
+function exitSpan(snapshot: SpanSnapshot) {
   if (snapshot !== DID_NOT_ENTER) restoreSnapshot(snapshot);
 }
 
@@ -1935,12 +1949,12 @@ function bootstrap(
 internals.__telemetry = {
   builtinTracer,
   ContextManager,
+  DID_NOT_ENTER,
   enterSpan,
   exitSpan,
   get PROPAGATORS() {
     return PROPAGATORS;
   },
-  currentSnapshot,
   restoreSnapshot,
   get TRACING_ENABLED() {
     return TRACING_ENABLED;

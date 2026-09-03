@@ -273,6 +273,27 @@
         "message": "The signal has been aborted",
         "code": 2
       }
+    },
+    {
+      "traceId": "00000000000000000000000000000005",
+      "spanId": "0000000000000005",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 257,
+      "name": "after fetch",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
     }
   ],
   "logs": [],

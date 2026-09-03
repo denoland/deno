@@ -77,6 +77,7 @@ if (!internals.__telemetryUtil) {
 const {
   builtinTracer,
   ContextManager,
+  DID_NOT_ENTER,
   enterSpan,
   exitSpan,
 } = internals.__telemetry;
@@ -829,7 +830,7 @@ function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
  */
 function fetch(input, init = undefined) {
   let span;
-  let snapshot;
+  let snapshot = DID_NOT_ENTER;
   try {
     if (__telemetry.TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
@@ -975,7 +976,7 @@ function fetch(input, init = undefined) {
     }
     return result;
   } finally {
-    if (span) exitSpan(snapshot);
+    exitSpan(snapshot);
   }
 }
 
