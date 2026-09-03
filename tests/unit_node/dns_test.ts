@@ -274,21 +274,17 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
 });
 
 Deno.test("[node/dns] resolveCname validates the callback argument", () => {
-  const resolver = new dns.Resolver();
+  const invalidCalls = [
+    ["www.github.com", () => {}, "ignored", 123, null],
+    ["www.github.com", {}, "ignored"],
+  ];
 
-  try {
+  for (const args of invalidCalls) {
     const error = assertThrows(
-      () =>
-        Reflect.apply(resolver.resolveCname, resolver, [
-          "www.github.com",
-          () => {},
-          "ignored",
-        ]),
+      () => Reflect.apply(dns.resolveCname, dns, args),
       TypeError,
       'The "callback" argument must be of type function',
     );
     assertEquals((error as ErrnoException).code, "ERR_INVALID_ARG_TYPE");
-  } finally {
-    resolver.cancel();
   }
 });
