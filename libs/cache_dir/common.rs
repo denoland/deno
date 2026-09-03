@@ -19,9 +19,9 @@ const UNDERSCORE_ESCAPE: &str = "%5f";
 // literal one.
 const HASHED_AUTHORITY_PREFIX: &str = "#";
 // Most file systems limit a single path component to 255 bytes. Escaping
-// underscores triples their byte length, so an otherwise valid host can
-// expand past that limit; leave room for the `http_` prefix the local cache
-// adds to the authority component.
+// underscores triples their byte length and an explicit port adds another
+// `_port_NNNNN`, so an authority that is valid on the wire can expand past
+// that limit. Anything longer is hashed instead.
 const MAX_AUTHORITY_LEN: usize = 250;
 
 pub fn base_url_to_filename_parts(url: &Url) -> Option<Vec<Cow<'_, str>>> {
