@@ -14,7 +14,7 @@ const {
   builtinTracer,
   ContextManager,
   enterSpan,
-  restoreSnapshot,
+  exitSpan,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 const { updateSpanFromError } = core.loadExtScript(
   "ext:deno_telemetry/util.ts",
@@ -202,7 +202,7 @@ function cron(
           try {
             result = handler();
           } finally {
-            if (snapshot) restoreSnapshot(snapshot);
+            exitSpan(snapshot);
           }
           await result;
           span.setStatus({ code: 1 });
