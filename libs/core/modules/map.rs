@@ -935,6 +935,14 @@ impl ModuleMap {
       // Inline (`data:`) maps are stored undecoded — `SourceMapper` parses
       // them on the first stack trace that needs them, if ever. Decoding here
       // used to keep a parsed source map alive for every compiled module.
+      //
+      // Note this trades retention rather than removing it: for a module with
+      // an inline map (every CLI TS module) we now retain a copy of the base64
+      // payload instead of a decoded `SourceMap`, on top of the copy V8 keeps
+      // on the script. It is still a net win — a decoded map with its token
+      // vector is larger than the base64 that produced it — but not free.
+      // TODO(bartlomieju): don't store `data:` URLs at all; re-read
+      // `get_source_mapping_url` off the module handle when a trace needs it.
       let source_map_url = if source_mapping_url.starts_with(DATA_PREFIX) {
         source_mapping_url.into_owned()
       } else if let Ok(module_url) = ModuleSpecifier::parse(name.as_str()) {
@@ -1244,6 +1252,12 @@ impl ModuleMap {
     scope: &mut v8::PinScope<'s, 'i>,
     root: ModuleId,
   ) {
+    // When building a snapshot, `serialize_for_snapshotting` drops exactly the
+    // same edges (those of the modules flagged in `instantiated`), so walking
+    // the graph here is pure overhead.
+    if self.will_snapshot {
+      return;
+    }
     let mut data = self.data.borrow_mut();
     if data.info.get(root).is_none_or(|i| i.requests.is_empty()) {
       return;
@@ -1338,6 +1352,17 @@ impl ModuleMap {
         })
         .map(|r| r.reference.specifier.clone())
     };
+    // Every real static import edge carries a `specifier_key` (set in
+    // `new_module_from_js_source`) — the only `None` is the synthetic root
+    // request in `recursive_load.rs`, which is never a referrer's edge — and
+    // V8 only asks about modules it is linking, whose edges
+    // `drop_instantiated_requests` leaves alone. A miss here isn't fatal (we
+    // fall through to full loader resolution below), but it would quietly
+    // change the resolution result, so make it loud in dev builds.
+    debug_assert!(
+      pre_resolved_specifier.is_some(),
+      r#"no registered import edge for "{specifier_str}" in "{referrer_name}""#
+    );
     let maybe_module = module_map.resolve_callback(
       scope,
       &specifier_str,
