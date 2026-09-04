@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::OpState;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
@@ -33,7 +32,7 @@ pub struct IopubMessage {
 pub enum JupyterReplRequest {
   Evaluate {
     line: String,
-    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+    resp_tx: oneshot::Sender<JupyterEvaluateOutcome>,
   },
   GetProperties {
     object_id: String,
@@ -42,16 +41,34 @@ pub enum JupyterReplRequest {
   GlobalLexicalScopeNames {
     resp_tx: oneshot::Sender<serde_json::Value>,
   },
-  CallFunctionOnArgs {
-    function_declaration: String,
-    args: Vec<cdp::RemoteObject>,
-    resp_tx: oneshot::Sender<Result<serde_json::Value, AnyError>>,
-  },
   CallFunctionOn {
-    arg0: cdp::CallArgument,
-    arg1: cdp::CallArgument,
+    arg0: Box<cdp::CallArgument>,
+    arg1: Box<cdp::CallArgument>,
     resp_tx: oneshot::Sender<Option<serde_json::Value>>,
   },
+}
+
+/// Result of evaluating a Jupyter cell, ready for the kernel JS to consume.
+///
+/// Either `value` (success — the serialized CDP evaluate response, used to
+/// publish `execute_result`) or `error` (the cell threw — already
+/// source-map-remapped and split into the `ename`/`evalue`/`traceback`
+/// fields Jupyter expects) will be set. `None` (`null` on the JS side)
+/// signals that evaluation was skipped or failed before yielding a usable
+/// response.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct JupyterEvaluateOutcome {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub value: Option<serde_json::Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error: Option<JupyterEvaluateError>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JupyterEvaluateError {
+  pub ename: String,
+  pub evalue: String,
+  pub traceback: Vec<String>,
 }
 
 // ------------------------------------------------------------------
@@ -115,7 +132,6 @@ deno_core::extension!(
     op_jupyter_repl_evaluate,
     op_jupyter_repl_get_properties,
     op_jupyter_repl_global_lexical_scope_names,
-    op_jupyter_repl_call_function_on_args,
     op_jupyter_repl_call_function_on,
     op_jupyter_repl_interrupt,
     op_jupyter_repl_cancel_interrupt,
@@ -186,7 +202,7 @@ pub fn op_jupyter_get_connection_info(state: &mut OpState) -> String {
 pub async fn op_jupyter_repl_evaluate(
   state: Rc<RefCell<OpState>>,
   #[string] line: String,
-) -> Result<Option<serde_json::Value>, JsErrorBox> {
+) -> Result<JupyterEvaluateOutcome, JsErrorBox> {
   let (resp_tx, resp_rx) = oneshot::channel();
   {
     let s = state.borrow();
@@ -240,32 +256,6 @@ pub async fn op_jupyter_repl_global_lexical_scope_names(
 
 #[op2]
 #[serde]
-pub async fn op_jupyter_repl_call_function_on_args(
-  state: Rc<RefCell<OpState>>,
-  #[string] function_declaration: String,
-  #[serde] args: Vec<cdp::RemoteObject>,
-) -> Result<serde_json::Value, JsErrorBox> {
-  let (resp_tx, resp_rx) = oneshot::channel();
-  {
-    let s = state.borrow();
-    s.borrow::<KernelReplSender>()
-      .tx
-      .send(JupyterReplRequest::CallFunctionOnArgs {
-        function_declaration,
-        args,
-        resp_tx,
-      })
-      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
-  }
-  resp_rx
-    .await
-    .map_err(|_| JsErrorBox::generic("repl response channel closed"))?
-    .map(Ok)
-    .unwrap_or(Err(JsErrorBox::generic("call_function_on_args failed")))
-}
-
-#[op2]
-#[serde]
 pub async fn op_jupyter_repl_call_function_on(
   state: Rc<RefCell<OpState>>,
   #[serde] arg0: cdp::CallArgument,
@@ -277,8 +267,8 @@ pub async fn op_jupyter_repl_call_function_on(
     s.borrow::<KernelReplSender>()
       .tx
       .send(JupyterReplRequest::CallFunctionOn {
-        arg0,
-        arg1,
+        arg0: Box::new(arg0),
+        arg1: Box::new(arg1),
         resp_tx,
       })
       .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
