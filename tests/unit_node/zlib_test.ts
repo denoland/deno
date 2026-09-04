@@ -25,7 +25,9 @@ import {
   gzip,
   gzipSync,
   unzipSync,
+  zstdCompress,
   zstdCompressSync,
+  zstdDecompressSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -328,6 +330,90 @@ Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
   });
 
   await promise;
+});
+
+function deterministicZstdInput(length: number): Buffer {
+  const input = Buffer.allocUnsafe(length);
+  let state = 0x12345678;
+  for (let index = 0; index < input.length; index++) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    input[index] = state >>> 24;
+  }
+  return input;
+}
+
+function assertZstdRoundTrip(compressed: Buffer, input: Buffer): void {
+  const result = zstdDecompressSync(compressed, {
+    info: true,
+  }) as unknown as {
+    buffer: Buffer;
+    engine: { bytesWritten: number };
+  };
+  assertEquals(result.buffer, input);
+  assertEquals(result.engine.bytesWritten, compressed.byteLength);
+}
+
+function zstdCompressAsync(
+  input: Buffer,
+  chunkSize: number,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    zstdCompress(input, { chunkSize }, (error, result) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
+
+Deno.test("zstd multi-chunk compression does not append an empty frame", async () => {
+  const input = deterministicZstdInput(128);
+  const chunkSize = constants.Z_MIN_CHUNK;
+  const reference = zstdCompressSync(input);
+  assert(reference.byteLength > chunkSize);
+  const syncCompressed = zstdCompressSync(input, { chunkSize });
+  const asyncCompressed = await zstdCompressAsync(input, chunkSize);
+
+  for (const compressed of [syncCompressed, asyncCompressed]) {
+    assertEquals(compressed.byteLength, reference.byteLength);
+    assertZstdRoundTrip(compressed, input);
+  }
+});
+
+Deno.test("zstd streaming compression supports an explicit flush", async () => {
+  const input = deterministicZstdInput(384);
+  const compressor = createZstdCompress({
+    chunkSize: constants.Z_MIN_CHUNK,
+  });
+  const compressedPromise = buffer(compressor);
+
+  compressor.write(input.subarray(0, 128));
+  compressor.write(input.subarray(128, 256));
+  await new Promise<void>((resolve) =>
+    compressor.flush(constants.ZSTD_e_flush, resolve)
+  );
+  compressor.end(input.subarray(256));
+
+  assertZstdRoundTrip(await compressedPromise, input);
+});
+
+Deno.test("zstd exact-fill compression does not append an empty frame", async () => {
+  const input = deterministicZstdInput(128);
+  const reference = zstdCompressSync(input);
+  const chunkSize = reference.byteLength;
+  assert(chunkSize > constants.Z_MIN_CHUNK);
+
+  const syncCompressed = zstdCompressSync(input, {
+    chunkSize,
+  });
+  const asyncCompressed = await zstdCompressAsync(input, chunkSize);
+
+  for (const compressed of [syncCompressed, asyncCompressed]) {
+    assertEquals(compressed.byteLength, reference.byteLength);
+    assertZstdRoundTrip(compressed, input);
+  }
 });
 
 // Every compression/decompression backend whose native handle writes the
