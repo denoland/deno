@@ -33,6 +33,7 @@ use super::HttpCacheItemKey;
 use super::common::HeadersMap;
 use super::common::base_url_to_filename_parts;
 use super::common::checksum;
+use super::common::filename_part_to_url_authority;
 use crate::CACHE_PERM;
 use crate::SerializedCachedUrlMetadata;
 use crate::cache::CacheEntry;
@@ -158,11 +159,7 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
             result.push_str("https://");
             &part
           };
-          if let Some((domain, port)) = part.rsplit_once('_') {
-            result.push_str(&format!("{}:{}", domain, port));
-          } else {
-            result.push_str(part);
-          }
+          result.push_str(&filename_part_to_url_authority(part)?);
           parts.push(result);
         } else {
           parts.push(part.to_string());
@@ -556,6 +553,20 @@ fn headers_content_type(headers: &HeadersMap) -> Option<&str> {
   headers.get("content-type").map(|s| s.as_str())
 }
 
+fn base_url_to_local_filename_part(url: &Url) -> Option<Cow<'_, str>> {
+  let mut base_parts = base_url_to_filename_parts(url)?;
+  if base_parts.len() != 2 {
+    return None;
+  }
+  let authority = base_parts.pop().unwrap();
+  let scheme = base_parts.pop().unwrap();
+  if scheme == "https" {
+    Some(authority)
+  } else {
+    Some(Cow::Owned(format!("{scheme}_{authority}")))
+  }
+}
+
 fn url_to_local_sub_path<'a>(
   url: &'a Url,
   content_type: Option<&str>,
@@ -682,26 +693,16 @@ fn url_to_local_sub_path<'a>(
   }
 
   // get the base url
-  let port_separator = "_"; // make this shorter with just an underscore
-  let Some(mut base_parts) = base_url_to_filename_parts(url, port_separator)
-  else {
+  let Some(base_part) = base_url_to_local_filename_part(url) else {
     return Err(std::io::Error::new(
       ErrorKind::InvalidInput,
       format!("Can't convert url (\"{}\") to filename.", url),
     ));
   };
 
-  if base_parts[0] == "https" {
-    base_parts.remove(0);
-  } else {
-    let scheme = base_parts.remove(0);
-    base_parts[0] = Cow::Owned(format!("{}_{}", scheme, base_parts[0]));
-  }
-
   // first, try to get the filename of the path
   let path_segments = url_path_segments(url);
-  let mut parts = base_parts
-    .into_iter()
+  let mut parts = std::iter::once(base_part)
     .chain(path_segments.map(Cow::Borrowed))
     .collect::<Vec<_>>();
 
@@ -968,7 +969,7 @@ mod manifest {
 
   impl LocalCacheManifestData {
     pub fn new(maybe_text: Option<&str>, use_reverse_mapping: bool) -> Self {
-      let serialized: SerializedLocalCacheManifestData = maybe_text
+      let mut serialized: SerializedLocalCacheManifestData = maybe_text
         .and_then(|text| match serde_json::from_str(text) {
           Ok(data) => Some(data),
           Err(err) => {
@@ -977,6 +978,22 @@ mod manifest {
           }
         })
         .unwrap_or_default();
+      // Folder paths are persisted in the manifest, unlike module paths.
+      // Rebuild their authority component so manifests written with an older
+      // cache-path encoding cannot retain an ambiguous reverse mapping. The
+      // authority may itself be hashed (it is just another path part), so
+      // take it from `url_to_local_sub_path` rather than from the raw
+      // authority in order to stay in sync with the paths actually written.
+      for (url, local_path) in &mut serialized.folders {
+        let Ok(sub_path) = url_to_local_sub_path(url, None) else {
+          continue;
+        };
+        let base_part = sub_path.parts[0].as_ref();
+        let base_len = local_path.find('/').unwrap_or(local_path.len());
+        if &local_path[..base_len] != base_part {
+          local_path.replace_range(..base_len, base_part);
+        }
+      }
       let reverse_mapping = if use_reverse_mapping {
         Some(
           serialized
@@ -1144,6 +1161,12 @@ mod test {
       // http gets added to the folder name, but not https
       "http_deno.land/x/mod.ts",
     );
+    run_test("http://api_8080/x/mod.ts", &[], "http_api%5f8080/x/mod.ts");
+    run_test(
+      "http://api:8080/x/mod.ts",
+      &[],
+      "http_api_port_8080/x/mod.ts",
+    );
     run_test(
       // capital letter in filename
       "https://deno.land/x/MOD.ts",
@@ -1256,6 +1279,118 @@ mod test {
         result.has_hash
       )
     }
+  }
+
+  #[test]
+  fn test_local_lsp_reverse_maps_encoded_authorities() {
+    let test_caches = TestCaches::new();
+    let cache = LocalLspHttpCache::new(
+      test_caches.local_temp.clone(),
+      test_caches.global_cache.clone(),
+    );
+    let test_cases = [
+      ("http_api%5f8080/x/mod.ts", "http://api_8080/x/mod.ts"),
+      ("http_api_port_8080/x/mod.ts", "http://api:8080/x/mod.ts"),
+    ];
+
+    for (path, url) in test_cases {
+      assert_eq!(
+        cache.get_remote_url(&test_caches.local_temp.join(path)),
+        Some(Url::parse(url).unwrap())
+      );
+    }
+    assert_eq!(
+      cache
+        .get_remote_url(&test_caches.local_temp.join("http_api_8080/x/mod.ts")),
+      None
+    );
+  }
+
+  #[test]
+  fn test_local_manifest_migrates_authority_paths() {
+    let json = r#"{
+      "folders": {
+        "http://api_8080/UPPER/": "http_api_8080/#upper_12345",
+        "http://api:8080/UPPER/": "http_api_8080/#upper_12345"
+      },
+      "modules": {
+        "http://api_8080/mod.ts": {
+          "headers": { "content-type": "application/javascript" }
+        },
+        "http://api:8080/mod.ts": {
+          "headers": { "content-type": "application/javascript" }
+        }
+      }
+    }"#;
+    let data = manifest::LocalCacheManifestData::new(Some(json), true);
+
+    let underscore_folder = PathBuf::from("http_api%5f8080/#upper_12345");
+    let port_folder = PathBuf::from("http_api_port_8080/#upper_12345");
+    assert_eq!(
+      data.get_reverse_mapping(&underscore_folder),
+      Some(Url::parse("http://api_8080/UPPER/").unwrap())
+    );
+    assert_eq!(
+      data.get_reverse_mapping(&port_folder),
+      Some(Url::parse("http://api:8080/UPPER/").unwrap())
+    );
+
+    for url in [
+      Url::parse("http://api_8080/mod.ts").unwrap(),
+      Url::parse("http://api:8080/mod.ts").unwrap(),
+    ] {
+      let sub_path =
+        url_to_local_sub_path(&url, Some("application/javascript")).unwrap();
+      assert_eq!(
+        data.get_reverse_mapping(&sub_path.as_relative_path()),
+        Some(url)
+      );
+    }
+
+    let serialized: serde_json::Value =
+      serde_json::from_str(&data.as_json()).unwrap();
+    assert_eq!(
+      serialized["folders"]["http://api_8080/UPPER/"],
+      "http_api%5f8080/#upper_12345"
+    );
+    assert_eq!(
+      serialized["folders"]["http://api:8080/UPPER/"],
+      "http_api_port_8080/#upper_12345"
+    );
+  }
+
+  #[test]
+  fn test_local_manifest_migrates_hashed_authority_paths() {
+    // long enough that the authority component is itself hashed
+    let url =
+      Url::parse("http://a_very_long_host_name_with_underscores/UPPER/")
+        .unwrap();
+    let json = r##"{
+      "folders": {
+        "http://a_very_long_host_name_with_underscores/UPPER/": "#http_a_very_long_ho_abcde/#upper_12345"
+      }
+    }"##;
+    let data = manifest::LocalCacheManifestData::new(Some(json), true);
+
+    let expected_base = url_to_local_sub_path(&url, None).unwrap().parts[0]
+      .as_ref()
+      .to_string();
+    // the migrated path stays hashed instead of being replaced by the
+    // (too long) raw authority
+    assert!(expected_base.starts_with('#'));
+
+    let serialized: serde_json::Value =
+      serde_json::from_str(&data.as_json()).unwrap();
+    let migrated = serialized["folders"]
+      ["http://a_very_long_host_name_with_underscores/UPPER/"]
+      .as_str()
+      .unwrap()
+      .to_string();
+    assert_eq!(migrated, format!("{expected_base}/#upper_12345"));
+    assert_eq!(
+      data.get_reverse_mapping(&PathBuf::from(&migrated)),
+      Some(url)
+    );
   }
 
   #[test]
