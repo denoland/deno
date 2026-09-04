@@ -1,0 +1,14 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/local-cli",
+    "./packages/shtool",
+    "./packages/noshebang",
+    "./apps/web"
+  ],
+  "tasks": {
+    "root-cli": "local-cli",
+    "root-sh": "shtool hi",
+    "root-noshebang": "noshebang"
+  }
+}

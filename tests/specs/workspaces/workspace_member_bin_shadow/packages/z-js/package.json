@@ -1,0 +1,8 @@
+{
+  "name": "z-js",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "foo": "./cli.js"
+  }
+}

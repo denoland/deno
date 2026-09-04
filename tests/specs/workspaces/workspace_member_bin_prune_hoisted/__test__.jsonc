@@ -1,0 +1,41 @@
+// The hoisted-linker counterpart of the `workspace_member_bin_prune` spec:
+// re-running `deno install` after a workspace member renames its `bin`, drops
+// its `bin`, or leaves the workspace entirely must prune the stale root
+// `node_modules/.bin` entry. The hoisted cleanup skipped every dot-prefixed
+// directory, so it never touched `.bin` at all.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts toolname:exists othername:exists",
+      "output": "ok\n"
+    },
+    {
+      "args": "run --allow-read --allow-write edit.ts rename-bin",
+      "output": "edited\n"
+    },
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts renamed:exists toolname:missing othername:exists",
+      "output": "ok\n"
+    },
+    {
+      "args": "run --allow-read --allow-write edit.ts remove-bin",
+      "output": "edited\n"
+    },
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts renamed:missing othername:exists",
+      "output": "ok\n"
+    },
+    { "args": "run -A edit.ts remove-member", "output": "edited\n" },
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts othername:missing",
+      "output": "ok\n"
+    }
+  ]
+}

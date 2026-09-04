@@ -30,14 +30,34 @@ use sys_traits::SysWithPathsInErrors;
 /// Returns the name of the default binary for the given package.
 /// This is the package name without the organization (`@org/`), if any.
 fn default_bin_name(package: &NpmResolutionPackage) -> &str {
-  package
-    .id
-    .nv
-    .name
-    .as_str()
+  strip_package_scope(package.id.nv.name.as_str())
+}
+
+fn strip_package_scope(package_name: &str) -> &str {
+  package_name
     .rsplit_once('/')
     .map(|(_, name)| name)
-    .unwrap_or(package.id.nv.name.as_str())
+    .unwrap_or(package_name)
+}
+
+/// The `node_modules/.bin` entry names a package would contribute, after
+/// normalization. Mirrors what [`BinEntries::add`] registers.
+pub fn bin_names<'a>(
+  package_name: &'a str,
+  bin: Option<&'a deno_npm::registry::NpmPackageVersionBinEntry>,
+) -> Vec<&'a str> {
+  match bin {
+    Some(deno_npm::registry::NpmPackageVersionBinEntry::String(_)) => {
+      vec![strip_package_scope(package_name)]
+    }
+    Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(entries)) => {
+      entries
+        .keys()
+        .map(|name| normalize_bin_name(name))
+        .collect()
+    }
+    None => Vec::new(),
+  }
 }
 
 fn normalize_bin_name(bin_name: &str) -> &str {
@@ -95,12 +115,21 @@ pub fn warn_missing_entrypoint(
   );
 }
 
+struct BinEntry<'a> {
+  package: &'a NpmResolutionPackage,
+  package_path: PathBuf,
+  extra: NpmPackageExtraInfo,
+  /// Whether `package_path` is a workspace member, i.e. a directory in the
+  /// user's own source tree rather than something we laid out.
+  is_workspace_member: bool,
+}
+
 pub struct BinEntries<'a, TSys: SetupBinEntrySys> {
   /// Packages that have colliding bin names
   collisions: HashSet<&'a NpmPackageId>,
   seen_names: HashMap<String, &'a NpmPackageId>,
   /// The bin entries
-  entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
+  entries: Vec<BinEntry<'a>>,
   sorted: bool,
   sys: SysWithPathsInErrors<'a, TSys>,
 }
@@ -116,12 +145,39 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     }
   }
 
+  /// Whether some already-added package contributes a `.bin` entry with this
+  /// (normalized) name.
+  pub fn has_bin_name(&self, name: &str) -> bool {
+    self.seen_names.contains_key(name)
+  }
+
   /// Add a new bin entry (package with a bin field)
   pub fn add<'b>(
     &mut self,
     package: &'a NpmResolutionPackage,
     extra: &'b NpmPackageExtraInfo,
     package_path: PathBuf,
+  ) {
+    self.add_maybe_workspace_member(package, extra, package_path, false)
+  }
+
+  /// Same as [`Self::add`], but for a workspace member, whose `package_path`
+  /// is in the user's own source tree.
+  pub fn add_workspace_member<'b>(
+    &mut self,
+    package: &'a NpmResolutionPackage,
+    extra: &'b NpmPackageExtraInfo,
+    package_path: PathBuf,
+  ) {
+    self.add_maybe_workspace_member(package, extra, package_path, true)
+  }
+
+  fn add_maybe_workspace_member<'b>(
+    &mut self,
+    package: &'a NpmResolutionPackage,
+    extra: &'b NpmPackageExtraInfo,
+    package_path: PathBuf,
+    is_workspace_member: bool,
   ) {
     let Some(bin) = extra.bin.as_ref() else {
       // likely lockfile incorrectly said that the package has a bin
@@ -167,7 +223,12 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
       return;
     }
 
-    self.entries.push((package, package_path, extra.clone()));
+    self.entries.push(BinEntry {
+      package,
+      package_path,
+      extra: extra.clone(),
+      is_workspace_member,
+    });
   }
 
   fn for_each_entry(
@@ -197,10 +258,25 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
 
     let mut seen = HashSet::new();
 
-    for (package, package_path, extra) in &self.entries {
+    for entry in &self.entries {
+      let BinEntry {
+        package,
+        package_path,
+        extra,
+        is_workspace_member,
+      } = entry;
       if !filter(package) {
         continue;
       }
+      // an entry that lost its name isn't linked to, so there's nothing to do
+      // for it other than make it executable, which we skip for a workspace
+      // member so we don't touch a file in the user's source tree for nothing
+      let mut already_seen = |sys, package_path: &Path, script: &str| {
+        if *is_workspace_member {
+          return Ok(());
+        }
+        already_seen(sys, package_path, script)
+      };
       if let Some(bin_entries) = &extra.bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
@@ -338,13 +414,18 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
 // that has a bin entry, then sort them by depth
 fn sort_by_depth(
   snapshot: &NpmResolutionSnapshot,
-  bin_entries: &mut [(&NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)],
+  bin_entries: &mut [BinEntry<'_>],
   collisions: &mut HashSet<&NpmPackageId>,
 ) {
   enum Entry<'a> {
     Pkg(&'a NpmPackageId),
     IncreaseDepth,
   }
+
+  // Entries that aren't in the snapshot (workspace members) can never be found
+  // by the walk below, so drop them up front to keep its early exit working.
+  // They get `u64::MAX` from the sort either way.
+  collisions.retain(|id| snapshot.package_from_id(id).is_some());
 
   let mut seen = HashSet::new();
   let mut depths: HashMap<&NpmPackageId, u64> =
@@ -384,7 +465,8 @@ fn sort_by_depth(
     }
   }
 
-  bin_entries.sort_by(|(a, _, _), (b, _, _)| {
+  bin_entries.sort_by(|a, b| {
+    let (a, b) = (a.package, b.package);
     depths
       .get(&a.id)
       .unwrap_or(&u64::MAX)
@@ -615,6 +697,36 @@ mod test {
     )
   }
 
+  /// A snapshot with `package` as the only top-level package.
+  fn snapshot_with(package: &NpmResolutionPackage) -> NpmResolutionSnapshot {
+    let req = deno_semver::package::PackageReq::from_str(&format!(
+      "{}@{}",
+      package.id.nv.name, package.id.nv.version
+    ))
+    .unwrap();
+    NpmResolutionSnapshot::new(
+      SerializedNpmResolutionSnapshot {
+        root_packages: [(req, package.id.clone())].into_iter().collect(),
+        packages: vec![
+          deno_npm::resolution::SerializedNpmResolutionSnapshotPackage {
+            id: package.id.clone(),
+            system: Default::default(),
+            dist: None,
+            dependencies: Default::default(),
+            optional_dependencies: Default::default(),
+            optional_peer_dependencies: Default::default(),
+            extra: None,
+            is_deprecated: false,
+            has_bin: true,
+            has_scripts: false,
+          },
+        ],
+      }
+      .into_valid()
+      .unwrap(),
+    )
+  }
+
   fn test_dir(name: &str) -> (PathBuf, impl Drop) {
     static COUNTER: std::sync::atomic::AtomicU64 =
       std::sync::atomic::AtomicU64::new(0);
@@ -721,6 +833,52 @@ mod test {
       vec![(
         "valid-bin".to_string(),
         PathBuf::from("/node_modules/pkg/bin/cli.js")
+      )]
+    );
+  }
+
+  /// A workspace member's bins are added after every snapshot package so that
+  /// a real dependency wins a name collision (see `add_workspace_bin_entries`
+  /// in local.rs). A collision triggers the depth sort, and because the
+  /// synthetic workspace package is not in the snapshot it gets the maximum
+  /// depth and sorts last. The names here are chosen so the depth ordering is
+  /// what decides: the name tiebreak alone would pick `z-member`.
+  #[test]
+  fn snapshot_package_wins_collision_with_workspace_member() {
+    let sys = sys_traits::impls::RealSys;
+    let dependency = test_package("a-dep");
+    let dep_extra = NpmPackageExtraInfo {
+      bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        [("shared-cli".to_string(), "dep.js".to_string())]
+          .into_iter()
+          .collect(),
+      )),
+      ..Default::default()
+    };
+    // stands in for a workspace member declaring the same bin name
+    let member = test_package("z-member");
+    let member_extra = NpmPackageExtraInfo {
+      bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        [("shared-cli".to_string(), "member.js".to_string())]
+          .into_iter()
+          .collect(),
+      )),
+      ..Default::default()
+    };
+
+    let mut entries = BinEntries::new(sys.with_paths_in_errors());
+    entries.add(
+      &dependency,
+      &dep_extra,
+      PathBuf::from("/node_modules/a-dep"),
+    );
+    entries.add(&member, &member_extra, PathBuf::from("/workspace/z-member"));
+
+    assert_eq!(
+      entries.collect_bin_files(&snapshot_with(&dependency)),
+      vec![(
+        "shared-cli".to_string(),
+        PathBuf::from("/node_modules/a-dep/dep.js")
       )]
     );
   }
