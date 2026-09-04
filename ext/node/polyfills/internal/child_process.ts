@@ -149,7 +149,16 @@ const {
 // Precompiled regular expressions (captured as SafeRegExp so the prototype
 // can't be tampered with at runtime).
 const cmdExeRe = new SafeRegExp("^(?:.*\\\\)?cmd(?:\\.exe)?$", "i");
+const powerShellRe = new SafeRegExp(
+  "^(?:.*\\\\)?(?:powershell|pwsh)(?:\\.exe)?$",
+  "i",
+);
 const winSpecialCharsRe = new SafeRegExp('[\\s"\\\\&|<>^!()]');
+// Characters that cannot be represented literally inside `cmd.exe /d /s /c
+// "..."`. cmd.exe parses the command string before the child's C runtime does
+// and has no escape for a double quote; \r and \n truncate the command.
+const cmdUnrepresentableRe = new SafeRegExp('["\\r\\n]');
+const psSpecialCharsRe = new SafeRegExp("[^a-zA-Z0-9_.:\\\\/-]");
 const winEscapeQuotesRe = new SafeRegExp('(\\\\*)"', "g");
 const winTrailingBackslashRe = new SafeRegExp("(\\\\+)$");
 const posixSpecialCharsRe = new SafeRegExp("[^a-zA-Z0-9_./-]");
@@ -1321,6 +1330,21 @@ function normalizeSpawnArguments(
   ]);
 
   if (options.shell) {
+    // Resolve the shell before escaping anything. Quoting rules belong to the
+    // shell that will actually parse the command, not to the host platform: a
+    // custom `powershell.exe` on Windows does not read cmd.exe quoting, and a
+    // custom `bash.exe` reads POSIX quoting.
+    let shellFile;
+    if (typeof options.shell === "string") {
+      shellFile = options.shell;
+    } else if (process.platform === "win32") {
+      shellFile = Deno.env.get("comspec") || "cmd.exe";
+    } else {
+      /** TODO: add Android condition */
+      shellFile = "/bin/sh";
+    }
+    const grammar = shellGrammarFor(shellFile);
+
     // When args are provided, escape them to prevent shell injection.
     // When no args are provided (just a string command), the user intends
     // for shell interpretation, so don't escape.
@@ -1335,11 +1359,20 @@ function normalizeSpawnArguments(
         );
         emittedShellDeprecation = true;
       }
+      let escapedFile = escapeShellArg(
+        stripShellArgQuotes(file, grammar),
+        grammar,
+      );
+      // PowerShell parses a quoted token in command position as a string
+      // expression, so a quoted program path needs the call operator to run.
+      if (grammar === "powershell" && escapedFile !== file) {
+        escapedFile = `& ${escapedFile}`;
+      }
       const escapedParts = [
-        escapeShellArg(stripShellArgQuotes(file)),
+        escapedFile,
         ...new SafeArrayIterator(ArrayPrototypeMap(
           args,
-          (arg) => escapeShellArg(stripShellArgQuotes(arg)),
+          (arg) => escapeShellArg(stripShellArgQuotes(arg, grammar), grammar),
         )),
       ];
       command = ArrayPrototypeJoin(escapedParts, " ");
@@ -1350,26 +1383,12 @@ function normalizeSpawnArguments(
     // Note: transformDenoShellCommand is NOT called here because buildCommand()
     // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
     // Calling it here would cause double transformation.
-    if (process.platform === "win32") {
-      if (typeof options.shell === "string") {
-        file = options.shell;
-      } else {
-        file = Deno.env.get("comspec") || "cmd.exe";
-      }
-      // '/d /s /c' is used only for cmd.exe.
-      if (RegExpPrototypeExec(cmdExeRe, file) !== null) {
-        args = ["/d", "/s", "/c", `"${command}"`];
-        windowsVerbatimArguments = true;
-      } else {
-        args = ["-c", command];
-      }
+    file = shellFile;
+    // '/d /s /c' is used only for cmd.exe.
+    if (grammar === "cmd") {
+      args = ["/d", "/s", "/c", `"${command}"`];
+      windowsVerbatimArguments = true;
     } else {
-      /** TODO: add Android condition */
-      if (typeof options.shell === "string") {
-        file = options.shell;
-      } else {
-        file = "/bin/sh";
-      }
       args = ["-c", command];
     }
   }
@@ -1470,18 +1489,39 @@ function waitForStreamToClose(stream) {
 }
 
 /**
+ * Returns the quoting grammar understood by the shell that will parse the
+ * command, given the resolved shell executable.
+ *
+ * Only cmd.exe uses cmd quoting. Every other shell reachable here is invoked
+ * with `-c`: PowerShell has its own grammar, and anything else (`bash.exe`,
+ * `sh`, `zsh`, ...) parses POSIX quoting on Windows just as it does elsewhere.
+ */
+function shellGrammarFor(shellFile) {
+  if (lazyProcess().default.platform !== "win32") {
+    return "posix";
+  }
+  if (RegExpPrototypeExec(cmdExeRe, shellFile) !== null) {
+    return "cmd";
+  }
+  if (RegExpPrototypeExec(powerShellRe, shellFile) !== null) {
+    return "powershell";
+  }
+  return "posix";
+}
+
+/**
  * Removes one layer of quotes that callers added around a complete shell
  * argument. The argument is escaped again before being passed to the shell.
  */
-function stripShellArgQuotes(arg) {
+function stripShellArgQuotes(arg, grammar) {
   if (arg.length < 2) {
     return arg;
   }
   const doubleQuoted = StringPrototypeStartsWith(arg, '"') &&
     StringPrototypeEndsWith(arg, '"');
   // cmd.exe treats single quotes as ordinary characters, while POSIX shells
-  // recognize both single and double quotes.
-  const singleQuoted = lazyProcess().default.platform !== "win32" &&
+  // and PowerShell recognize both single and double quotes.
+  const singleQuoted = grammar !== "cmd" &&
     StringPrototypeStartsWith(arg, "'") &&
     StringPrototypeEndsWith(arg, "'");
   if (doubleQuoted || singleQuoted) {
@@ -1491,14 +1531,28 @@ function stripShellArgQuotes(arg) {
 }
 
 /**
- * Escapes a string for safe use as a shell argument.
- * On Unix, wraps in single quotes and escapes embedded single quotes.
- * On Windows, wraps in double quotes and escapes embedded double quotes and backslashes.
+ * Escapes a string for safe use as an argument to the given shell grammar, so
+ * that the shell passes it through to the child as one literal value.
+ *
+ * Throws `ERR_INVALID_ARG_VALUE` for values that the grammar cannot represent
+ * literally at all, rather than emitting an approximation that the shell would
+ * reinterpret as syntax.
  */
-function escapeShellArg(arg) {
-  const process = lazyProcess().default;
-  if (process.platform === "win32") {
-    // Windows: use double quotes, escape double quotes and backslashes
+function escapeShellArg(arg, grammar) {
+  if (grammar === "cmd") {
+    // cmd.exe parses the command string handed to `/d /s /c` before the child's
+    // C runtime sees it, and it has no escape character inside a quoted region:
+    // a `"` always toggles the quoting state, so backslash escaping cannot keep
+    // an embedded quote literal. \r and \n truncate the command. Reject these
+    // instead of producing a string cmd.exe would parse as extra commands.
+    if (RegExpPrototypeTest(cmdUnrepresentableRe, arg)) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "args",
+        arg,
+        "must not contain a double quote, carriage return, or line feed when " +
+          "the shell is cmd.exe, which cannot represent them literally",
+      );
+    }
     // Empty string needs to be quoted
     if (arg === "") {
       return '""';
@@ -1510,11 +1564,25 @@ function escapeShellArg(arg) {
     if (!RegExpPrototypeTest(winSpecialCharsRe, arg)) {
       return arg;
     }
-    // Escape backslashes before quotes, then escape quotes
-    let escaped = StringPrototypeReplace(arg, winEscapeQuotesRe, '$1$1\\"');
-    // Escape trailing backslashes
-    escaped = StringPrototypeReplace(escaped, winTrailingBackslashRe, "$1$1");
+    // Double any trailing backslashes so the child's C runtime does not read
+    // them as escaping the closing quote.
+    const escaped = StringPrototypeReplace(
+      arg,
+      winTrailingBackslashRe,
+      "$1$1",
+    );
     return `"${escaped}"`;
+  } else if (grammar === "powershell") {
+    // PowerShell single-quoted strings are fully literal - no `$(...)`
+    // subexpressions, no `$var`, no backtick escapes - and an embedded single
+    // quote is written by doubling it.
+    if (arg === "") {
+      return "''";
+    }
+    if (!RegExpPrototypeTest(psSpecialCharsRe, arg)) {
+      return arg;
+    }
+    return "'" + StringPrototypeReplace(arg, singleQuoteRe, "''") + "'";
   } else {
     // Unix: use single quotes, escape embedded single quotes
     // Empty string needs to be quoted
