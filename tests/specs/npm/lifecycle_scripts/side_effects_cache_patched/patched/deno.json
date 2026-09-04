@@ -1,0 +1,4 @@
+{
+  "nodeModulesDir": "auto",
+  "links": ["./patched_pkg"]
+}

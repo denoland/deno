@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Proves the npm build side-effects cache (issue #16164) does NOT mutate the
+    // pristine global-cache extraction when setting up `node_modules/.bin`.
+    //
+    // `@denotest/lifecycle-scripts-simple` declares a `bin` pointing at
+    // `main.js`, which the fixture ships non-executable (mode 0664). Setting up
+    // `node_modules/.bin` chmods that bin entrypoint to make it executable. On
+    // Linux a package's `.deno` dir is hardlinked to the shared pristine
+    // extraction in the global cache, so before the copy-before-bin ordering fix
+    // that chmod flipped the execute bit on the SHARED inode — corrupting the
+    // global cache for every other project, even before any build script ran.
+    // After the fix the cache-miss package is re-materialized as a private copy
+    // BEFORE the `.bin` chmod, so the chmod lands on the copy and the pristine
+    // file keeps its original mode.
+    "bin_chmod_does_not_mutate_pristine_cache": {
+      "steps": [
+        {
+          // Install (and run the postinstall build script). This is the install
+          // during which `.bin` is set up and the bin entrypoint chmodded.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Inspect the pristine global-cache copy of the bin entrypoint and
+          // assert it is still non-executable (its original mode).
+          "args": "run --allow-all check_mode.js",
+          "output": "check_mode.out"
+        }
+      ]
+    }
+  }
+}

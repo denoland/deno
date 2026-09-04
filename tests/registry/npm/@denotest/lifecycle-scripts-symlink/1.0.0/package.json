@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/lifecycle-scripts-symlink",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "node -e \"require('fs').symlinkSync('real.js','linked.js')\""
+  }
+}
