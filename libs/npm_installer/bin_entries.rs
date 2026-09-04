@@ -20,6 +20,7 @@ use sys_traits::FsFileSetPermissions;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsOpen;
+use sys_traits::FsRead;
 use sys_traits::FsReadLink;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsSymlinkFile;
@@ -402,6 +403,7 @@ pub trait SetupBinEntrySys:
   + FsCreateDirAll
   + FsMetadata
   + FsReadLink
+  + FsRead
 {
 }
 
