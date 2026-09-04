@@ -1890,6 +1890,7 @@
     "parallel/test-http-response-writehead-returns-this.js": {},
     "parallel/test-http-server-clear-timer.js": {},
     "parallel/test-http-server-close-all.js": {},
+    "parallel/test-http-server-close-idle-connections-pre-request.js": {},
     "parallel/test-http-server-close-idle-wait-response.js": {},
     "parallel/test-http-server-close-idle.js": {},
     "parallel/test-http-server-connection-list-when-close.js": {},
