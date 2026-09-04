@@ -77,8 +77,6 @@ const {
   SetPrototypeClear,
   SetPrototypeDelete,
   SetPrototypeAdd,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeToWellFormed,
