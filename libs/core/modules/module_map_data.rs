@@ -239,6 +239,11 @@ pub(crate) struct ModuleMapData {
   /// JS `core.loadExtScript` wrapper. Runtime-only — not snapshotted.
   pub(crate) captured_bootstrap: RefCell<Option<v8::Global<v8::Value>>>,
   pub(crate) sources: HashMap<ModuleSourceKey, v8::Global<v8::Object>>,
+  /// Import edges dropped by `ModuleMap::drop_instantiated_requests`, kept
+  /// only in test builds so tests can still assert on what was parsed out of
+  /// the module source.
+  #[cfg(test)]
+  pub(crate) dropped_requests: HashMap<ModuleId, Vec<ModuleRequest>>,
   /// Specifiers of `lazy_loaded_esm` / `lazy_loaded_js` files whose source
   /// was actually compiled by V8 during snapshot creation. Their bytes live
   /// in the snapshot blob; the binary does not need a separate copy.
@@ -346,6 +351,21 @@ impl ModuleMapData {
   ) -> ModuleId {
     let data = self;
     let id = data.handles.len();
+    let is_internal =
+      crate::modules::map::is_internal_module_specifier(name.as_str());
+    // If this module came from a `lazy_loaded_esm` source, V8 has now compiled
+    // it and the module is reachable by name, so our heap copy of the source
+    // text is dead weight — drop it. `known_lazy_esm` still records that the
+    // specifier exists, and every remaining reader of `lazy_esm_sources`
+    // checks `get_id` first (`ModuleMap::resolve_callback`,
+    // `lazy_load_esm_module`) or falls back to the already-registered module
+    // (`RecursiveModuleLoad`).
+    {
+      let mut sources = data.lazy_esm_sources.borrow_mut();
+      if !sources.is_empty() {
+        sources.remove(name.as_str());
+      }
+    }
     let (name1, name2) = name.into_cheap_copy();
     data.handles_inverted.insert(handle.clone(), id);
     data.handles.push(handle);
@@ -363,6 +383,7 @@ impl ModuleMapData {
       name: name2,
       requests,
       module_type,
+      is_internal,
     });
 
     id
@@ -627,18 +648,31 @@ impl ModuleMapData {
     for info in modules {
       assert!(data.handles.get(info.id).is_some());
       let actual = data.info.get(info.id).unwrap();
+      assert_eq!(actual.id, info.id);
+      assert_eq!(actual.main, info.main);
+      assert_eq!(actual.name, info.name);
+      assert_eq!(actual.module_type, info.module_type);
+      assert_eq!(actual.is_internal, info.is_internal);
       if info.id < restored_from_snapshot {
-        assert_eq!(actual.id, info.id);
-        assert_eq!(actual.main, info.main);
-        assert_eq!(actual.name, info.name);
-        assert_eq!(actual.module_type, info.module_type);
         assert!(
           actual.requests.is_empty(),
           "import edges of snapshot-instantiated module {} should be dropped",
           info.name
         );
       } else {
-        assert_eq!(actual, info);
+        // Instantiation drops the live edges (see
+        // `ModuleMap::drop_instantiated_requests`), which stashes them here
+        // for tests.
+        let actual_requests = if actual.requests.is_empty() {
+          self
+            .dropped_requests
+            .get(&info.id)
+            .map(|r| r.as_slice())
+            .unwrap_or_default()
+        } else {
+          actual.requests.as_slice()
+        };
+        assert_eq!(actual_requests, info.requests.as_slice());
       }
       let requested_module_type =
         RequestedModuleType::from(info.module_type.clone());

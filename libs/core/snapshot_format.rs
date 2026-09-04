@@ -45,7 +45,7 @@ use crate::FastString;
 /// Bumped whenever the layout below changes. Snapshots are already keyed by a
 /// build hash, so this only exists to turn "silently decoded nonsense" into a
 /// clean panic.
-pub(crate) const SNAPSHOT_FORMAT_VERSION: u32 = 1;
+pub(crate) const SNAPSHOT_FORMAT_VERSION: u32 = 2;
 
 /// A string longer than this cannot be encoded (the top bit of the length
 /// header is the non-ASCII flag).
