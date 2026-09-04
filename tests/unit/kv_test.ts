@@ -5,6 +5,7 @@ import {
   AssertionError,
   assertNotEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
 import { assertType, IsExact } from "@std/testing/types";
@@ -44,6 +45,87 @@ Deno.test({
       TypeError,
       "Filename cannot start with ':' unless prefixed with './'",
     );
+  },
+});
+
+Deno.test({
+  name: "openKv does not follow a symlink outside permitted directories",
+  permissions: {
+    read: true,
+    write: true,
+    run: [Deno.execPath()],
+  },
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const dir = await Deno.makeTempDir({ prefix: "open_kv_symlink" });
+    try {
+      const allowedDir = `${dir}/allowed`;
+      const outsideDir = `${dir}/outside`;
+      const target = `${outsideDir}/target.sqlite3`;
+      const link = `${allowedDir}/link.sqlite3`;
+      const runner = `${allowedDir}/runner.ts`;
+      await Deno.mkdir(allowedDir);
+      await Deno.mkdir(outsideDir);
+      await Deno.writeTextFile(
+        runner,
+        "const db = await Deno.openKv(Deno.args[0]); db.close();",
+      );
+
+      const open = (path: string) =>
+        new Deno.Command(Deno.execPath(), {
+          clearEnv: true,
+          args: [
+            "run",
+            "--quiet",
+            "--unstable-kv",
+            `--allow-read=${allowedDir}`,
+            `--allow-write=${allowedDir}`,
+            `--deny-read=${allowedDir}/directory-link/denied`,
+            `--deny-write=${allowedDir}/directory-link/denied`,
+            runner,
+            path,
+          ],
+          stdout: "piped",
+          stderr: "piped",
+        }).output();
+      const assertRefused = async (path: string) => {
+        const result = await open(path);
+
+        assertEquals(
+          result.code,
+          1,
+          new TextDecoder().decode(result.stderr),
+        );
+        assertStringIncludes(
+          new TextDecoder().decode(result.stderr),
+          "unable to open database file",
+        );
+      };
+
+      const regularPath = `${allowedDir}/regular.sqlite3`;
+      const regularResult = await open(regularPath);
+      assertEquals(
+        regularResult.code,
+        0,
+        new TextDecoder().decode(regularResult.stderr),
+      );
+      assert((await Deno.stat(regularPath)).isFile);
+
+      await Deno.symlink(target, link);
+      await assertRefused(link);
+      await assertRejects(() => Deno.stat(target), Deno.errors.NotFound);
+
+      const directoryLink = `${allowedDir}/directory-link`;
+      const nestedTarget = `${outsideDir}/nested.sqlite3`;
+      await Deno.symlink(outsideDir, directoryLink);
+      await assertRefused(`${directoryLink}/nested.sqlite3`);
+      await assertRejects(
+        () => Deno.stat(nestedTarget),
+        Deno.errors.NotFound,
+      );
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
   },
 });
 

@@ -8,6 +8,7 @@ use std::ffi::CString;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::path::Path;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::ptr::null;
 use std::rc::Rc;
@@ -46,6 +47,50 @@ const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 const MAX_SAFE_JS_INTEGER: i64 = 9_007_199_254_740_991;
 
 const NUM_LIMITS: usize = 11;
+
+fn resolve_sqlite_system_path_alias(path: &Path) -> PathBuf {
+  // SQLITE_OPEN_NOFOLLOW rejects symlinks in every path component. macOS
+  // exposes its temporary directories through root-owned aliases, so resolve
+  // only those fixed system prefixes and leave every user-controlled path
+  // component visible to SQLite.
+  #[cfg(target_os = "macos")]
+  if let Some(path) = path.to_str() {
+    for (uri_prefix, prefix) in [
+      ("file:///var", Path::new("/var")),
+      ("file:///tmp", Path::new("/tmp")),
+    ] {
+      let Some(suffix) = path.strip_prefix(uri_prefix) else {
+        continue;
+      };
+      if !matches!(
+        suffix.as_bytes().first(),
+        None | Some(b'/') | Some(b'?') | Some(b'#')
+      ) {
+        continue;
+      }
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "node:sqlite operates on the real file system"
+      )]
+      if let Ok(prefix) = std::fs::canonicalize(prefix) {
+        return PathBuf::from(format!("file://{}{}", prefix.display(), suffix));
+      }
+    }
+  }
+  #[cfg(target_os = "macos")]
+  for prefix in [Path::new("/var"), Path::new("/tmp")] {
+    if let Ok(suffix) = path.strip_prefix(prefix) {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "node:sqlite operates on the real file system"
+      )]
+      if let Ok(prefix) = std::fs::canonicalize(prefix) {
+        return prefix.join(suffix);
+      }
+    }
+  }
+  path.to_path_buf()
+}
 
 /// Static mapping of JavaScript property names to SQLite limits.
 /// Order matches SQLite limit constant values (0-10).
@@ -750,11 +795,13 @@ fn open_db(
       Some("node:sqlite"),
     )?
     .into_path();
+  let location = resolve_sqlite_system_path_alias(&location);
 
   if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(
-      location,
-      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+      &location,
+      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+        | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
     )?;
     if disable_attach {
       assert!(set_db_config(
@@ -786,7 +833,10 @@ fn open_db(
     return Ok((conn, disable_attach));
   }
 
-  let conn = rusqlite::Connection::open(location)?;
+  let conn = rusqlite::Connection::open_with_flags(
+    &location,
+    rusqlite::OpenFlags::default() | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+  )?;
   conn.busy_timeout(std::time::Duration::from_millis(options.timeout))?;
 
   if options.allow_extension {
