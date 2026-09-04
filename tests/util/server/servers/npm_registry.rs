@@ -604,7 +604,7 @@ fn npm_security_advisories_bulk_no_vulns()
     .map_err(|e| e.into())
 }
 
-async fn npm_security_advisories_bulk(
+pub(super) async fn npm_security_advisories_bulk(
   req: Request<Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   // Respond with 400 for a request whose body can't be read or isn't valid

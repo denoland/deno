@@ -417,6 +417,9 @@ async fn main_server(
   remote_addr: SocketAddr,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   match (req.method(), req.uri().path()) {
+    (&Method::POST, "/-/npm/v1/security/advisories/bulk") => {
+      npm_registry::npm_security_advisories_bulk(req).await
+    }
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(UnsyncBoxBody::new(Full::new(
