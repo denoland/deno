@@ -446,7 +446,12 @@ const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 pub const CONTEXT_ID: &str = "bitmaprenderer";
 
+#[allow(
+  clippy::too_many_arguments,
+  reason = "matches CreateCanvasContext signature"
+)]
 pub fn create<'s>(
+  _state: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>,
   instance: Option<deno_webgpu::Instance>,
   canvas: v8::Global<v8::Object>,
   data: ContextData,
@@ -454,7 +459,7 @@ pub fn create<'s>(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> Result<v8::Global<v8::Value>, JsErrorBox> {
+) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
   let settings = ImageBitmapRenderingContextSettings::convert(
     scope,
     options,
@@ -751,7 +756,7 @@ pub fn create<'s>(
       surface_only,
     },
   );
-  Ok(v8::Global::new(scope, obj.cast()))
+  Ok(Some(v8::Global::new(scope, obj.cast())))
 }
 
 #[derive(WebIDL)]

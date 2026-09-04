@@ -16,6 +16,7 @@ const {
 } = core;
 const {
   ArrayBufferIsView,
+  ArrayPrototype,
   ArrayPrototypeForEach,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -1337,6 +1338,8 @@ const _iteratorInternal = Symbol("iterator internal");
 
 const globalIteratorPrototype = ObjectGetPrototypeOf(ArrayIteratorPrototype);
 
+// https://webidl.spec.whatwg.org/#es-iterable
+// Pair iterators define their own entries/keys/values/forEach.
 function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
     [SymbolToStringTag]: {
@@ -1461,7 +1464,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     },
   };
 
-  const properties = {
+  return ObjectDefineProperties(prototype.prototype, {
     entries: {
       __proto__: null,
       value: methods.entries,
@@ -1497,13 +1500,69 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
       enumerable: true,
       configurable: true,
     },
-  };
-  return ObjectDefineProperties(prototype.prototype, properties);
+  });
+}
+
+const {
+  entries: arrayPrototypeEntries,
+  keys: arrayPrototypeKeys,
+  values: arrayPrototypeValues,
+  forEach: arrayPrototypeForEach,
+  [SymbolIterator]: arrayPrototypeIterator,
+} = ArrayPrototype;
+
+// https://webidl.spec.whatwg.org/#es-iterable
+// Value iterators use Array.prototype methods by identity.
+function mixinValueIterable(prototype) {
+  return ObjectDefineProperties(prototype.prototype, {
+    entries: {
+      __proto__: null,
+      value: arrayPrototypeEntries,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    },
+    keys: {
+      __proto__: null,
+      value: arrayPrototypeKeys,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    },
+    values: {
+      __proto__: null,
+      value: arrayPrototypeValues,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    },
+    forEach: {
+      __proto__: null,
+      value: arrayPrototypeForEach,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    },
+    [SymbolIterator]: {
+      __proto__: null,
+      value: arrayPrototypeIterator,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    },
+  });
 }
 
 function configureInterface(interface_) {
   configureProperties(interface_);
   configureProperties(interface_.prototype);
+  // Per WebIDL, the "prototype" property of an interface object is
+  // non-writable. Native (cppgc-backed) constructors come with a writable
+  // one; for regular JS classes this is a no-op.
+  ObjectDefineProperty(interface_, "prototype", {
+    __proto__: null,
+    writable: false,
+  });
   ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
     __proto__: null,
     value: interface_.name,
@@ -1544,70 +1603,87 @@ function configureProperties(obj) {
 
 const setlikeInner = SymbolFor("setlike_set");
 
-// Ref: https://webidl.spec.whatwg.org/#es-setlike
+// https://webidl.spec.whatwg.org/#es-setlike
 function setlikeObjectWrap(objPrototype, readonly) {
+  // Names/lengths match WebIDL setlike for idlharness.
+  function getSize() {
+    return this[setlikeInner]().size;
+  }
+  // Accessors report name as "get <attribute>".
+  ObjectDefineProperty(getSize, "name", {
+    __proto__: null,
+    value: "get size",
+    configurable: true,
+  });
+  function values() {
+    return SetPrototypeValues(this[setlikeInner]());
+  }
+  function entries() {
+    return SetPrototypeEntries(this[setlikeInner]());
+  }
+  function keys() {
+    return SetPrototypeKeys(this[setlikeInner]());
+  }
+  // Only callback is required (.length === 1).
+  function forEach(callback) {
+    return SetPrototypeForEach(
+      this[setlikeInner](),
+      callback,
+      arguments[1],
+    );
+  }
+  function has(value) {
+    return SetPrototypeHas(this[setlikeInner](), value);
+  }
   ObjectDefineProperties(objPrototype, {
     size: {
       __proto__: null,
       configurable: true,
       enumerable: true,
-      get() {
-        return this[setlikeInner]().size;
-      },
+      get: getSize,
     },
+    // @@iterator is the same function object as values.
     [SymbolIterator]: {
       __proto__: null,
       configurable: true,
       enumerable: false,
       writable: true,
-      value() {
-        return this[setlikeInner]()[SymbolIterator]();
-      },
+      value: values,
     },
     entries: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
-      value() {
-        return SetPrototypeEntries(this[setlikeInner]());
-      },
+      value: entries,
     },
     keys: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
-      value() {
-        return SetPrototypeKeys(this[setlikeInner]());
-      },
+      value: keys,
     },
     values: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
-      value() {
-        return SetPrototypeValues(this[setlikeInner]());
-      },
+      value: values,
     },
     forEach: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
-      value(callbackfn, thisArg) {
-        return SetPrototypeForEach(this[setlikeInner](), callbackfn, thisArg);
-      },
+      value: forEach,
     },
     has: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       writable: true,
-      value(value) {
-        return SetPrototypeHas(this[setlikeInner](), value);
-      },
+      value: has,
     },
   });
 
@@ -1685,6 +1761,7 @@ return {
   isAsyncSequence,
   makeException,
   mixinPairIterable,
+  mixinValueIterable,
   requiredArguments,
   setlikeInner,
   setlikeObjectWrap,

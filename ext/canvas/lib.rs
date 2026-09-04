@@ -11,7 +11,7 @@ mod canvas;
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_init_canvas],
+  ops = [op_init_canvas, canvas::op_canvas_is_offscreen_canvas],
   objects = [
     bitmaprenderer::ImageBitmapRenderingContext,
     canvas::OffscreenCanvas,
@@ -28,4 +28,8 @@ pub fn op_init_canvas(
   blob: v8::Local<v8::Value>,
 ) {
   state.put(canvas::BlobHandle(v8::Global::new(scope, blob.cast())));
+  deno_web::canvas2d::set_offscreen_canvas_pixel_sync(
+    state,
+    canvas::sync_offscreen_canvas_pixels_for_pattern,
+  );
 }
