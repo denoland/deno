@@ -3,7 +3,6 @@
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.console" />
 /// <reference lib="deno.url" />
@@ -1092,7 +1091,10 @@ declare var CustomEvent: typeof globalThis extends
 /** @category Platform */
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
-  captureStackTrace(error: Object, constructor?: Function): void;
+  captureStackTrace(
+    error: object,
+    constructor?: (...args: never[]) => unknown,
+  ): void;
   stackTraceLimit: number;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
