@@ -11,6 +11,8 @@ use std::task::Poll;
 use std::task::ready;
 use std::time::Duration;
 
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
 use deno_core::parking_lot::lock_api::RawMutexTimed;
@@ -86,9 +88,9 @@ pub fn create_test_event_channel() -> (TestEventSenderFactory, TestEventReceiver
 /// Create a [`TestEventWorkerSender`] and [`TestEventReceiver`] pair.The [`TestEventReceiver`]
 /// will be kept alive until the [`TestEventSender`] is dropped.
 pub fn create_single_test_event_channel()
--> (TestEventWorkerSender, TestEventReceiver) {
+-> Result<(TestEventWorkerSender, TestEventReceiver), AnyError> {
   let (factory, receiver) = create_test_event_channel();
-  (factory.worker(), receiver)
+  Ok((factory.worker()?, receiver))
 }
 
 /// Polls for the next [`TestEvent`] from any worker. Events from multiple worker
@@ -247,14 +249,23 @@ pub struct TestEventSenderFactory {
 
 impl TestEventSenderFactory {
   /// Create a [`TestEventWorkerSender`], along with a stdout/stderr stream.
-  pub fn worker(&self) -> TestEventWorkerSender {
+  ///
+  /// Fails if the OS refuses the pipes the worker writes its output through,
+  /// which a restricted Windows environment can do.
+  pub fn worker(&self) -> Result<TestEventWorkerSender, AnyError> {
     let id = self.worker_id.fetch_add(1, Ordering::AcqRel);
-    let (stdout_reader, stdout_writer) = pipe().unwrap();
-    let (stderr_reader, stderr_writer) = pipe().unwrap();
+    let (stdout_reader, stdout_writer) =
+      pipe().context("Failed to create a pipe for test worker stdout")?;
+    let (stderr_reader, stderr_writer) =
+      pipe().context("Failed to create a pipe for test worker stderr")?;
     let (sync_sender, mut sync_receiver) =
       tokio::sync::mpsc::unbounded_channel::<(SendMutex, SendMutex)>();
-    let stdout = stdout_writer.try_clone().unwrap();
-    let stderr = stderr_writer.try_clone().unwrap();
+    let stdout = stdout_writer
+      .try_clone()
+      .context("Failed to clone the test worker stdout pipe")?;
+    let stderr = stderr_writer
+      .try_clone()
+      .context("Failed to clone the test worker stderr pipe")?;
     let sender = self.sender.clone();
 
     // Each worker spawns its own output monitoring and serialization task. This task will
@@ -333,11 +344,11 @@ impl TestEventSenderFactory {
       stderr_writer,
     };
 
-    TestEventWorkerSender {
+    Ok(TestEventWorkerSender {
       sender,
       stdout,
       stderr,
-    }
+    })
   }
 
   /// A [`TestEventWeakSender`] has a unique ID, but will not keep the [`TestEventReceiver`] alive.
@@ -450,7 +461,8 @@ mod tests {
   #[tokio::test]
   async fn spawn_worker() {
     test_util::timeout!(60);
-    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let (mut worker, mut receiver) =
+      create_single_test_event_channel().unwrap();
 
     let recv_handle = spawn(async move {
       let mut queue = vec![];
@@ -503,7 +515,8 @@ mod tests {
   #[tokio::test]
   async fn test_flush_lots() {
     test_util::timeout!(240);
-    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let (mut worker, mut receiver) =
+      create_single_test_event_channel().unwrap();
     let recv_handle = spawn(async move {
       let mut queue = vec![];
       while let Some((_, message)) = receiver.recv().await {
@@ -528,7 +541,8 @@ mod tests {
   #[tokio::test]
   async fn test_flush_large() {
     test_util::timeout!(240);
-    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let (mut worker, mut receiver) =
+      create_single_test_event_channel().unwrap();
     let recv_handle = spawn(async move {
       let mut queue = vec![];
       while let Some((_, message)) = receiver.recv().await {
@@ -563,7 +577,7 @@ mod tests {
   #[tokio::test]
   async fn test_flush_with_close() {
     test_util::timeout!(240);
-    let (worker, mut receiver) = create_single_test_event_channel();
+    let (worker, mut receiver) = create_single_test_event_channel().unwrap();
     let TestEventWorkerSender {
       mut sender,
       stderr,
@@ -608,7 +622,8 @@ mod tests {
   async fn test_interleave() {
     test_util::timeout!(60);
     const MESSAGE_COUNT: usize = 10_000;
-    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let (mut worker, mut receiver) =
+      create_single_test_event_channel().unwrap();
     let recv_handle = spawn(async move {
       let mut i = 0;
       while let Some((_, message)) = receiver.recv().await {
@@ -652,7 +667,8 @@ mod tests {
   async fn test_sender_shutdown_before_receive() {
     test_util::timeout!(60);
     for _ in 0..10 {
-      let (mut worker, mut receiver) = create_single_test_event_channel();
+      let (mut worker, mut receiver) =
+        create_single_test_event_channel().unwrap();
       worker.stderr.write_all(b"hello").unwrap();
       worker
         .sender
@@ -681,7 +697,8 @@ mod tests {
       .build()
       .unwrap();
     runtime.block_on(async {
-      let (mut worker, mut receiver) = create_single_test_event_channel();
+      let (mut worker, mut receiver) =
+        create_single_test_event_channel().unwrap();
       tokio::task::spawn(async move {
         loop {
           if receiver.recv().await.is_none() {
