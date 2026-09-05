@@ -75,6 +75,9 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry;
+use deno_runtime::deno_permissions::CheckedPathBuf;
+use deno_runtime::deno_permissions::OpenAccessKind;
+use deno_runtime::deno_permissions::PermissionState;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -95,6 +98,8 @@ use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::EnvCurrentDir;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -202,6 +207,48 @@ impl CjsAnalysisSourceProvider for StandaloneCjsAnalysisSourceProvider<'_> {
 }
 
 impl EmbeddedModuleLoader {
+  fn checked_diagnostic_file_path(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<CheckedPathBuf> {
+    if specifier.scheme() != "file" {
+      return None;
+    }
+
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    let permission_state = if self.permissions.query_read_all() {
+      PermissionState::Granted
+    } else {
+      self.permissions.query_read(Some(path.to_str()?)).ok()?
+    };
+    if !matches!(
+      permission_state,
+      PermissionState::Granted | PermissionState::GrantedPartial
+    ) {
+      return None;
+    }
+
+    self
+      .permissions
+      .check_open(Cow::Owned(path), OpenAccessKind::Read, Some("source map"))
+      .ok()
+      .map(|path| path.into_owned())
+  }
+
+  fn read_diagnostic_file(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Cow<'static, [u8]>> {
+    match self.shared.modules.read_embedded(specifier) {
+      Ok(Some(data)) => return Some(data.data),
+      Ok(None) => {}
+      Err(_) => return None,
+    }
+
+    let path = self.checked_diagnostic_file_path(specifier)?;
+    self.sys.fs_read(&path).ok()
+  }
+
   fn resolve_inner(
     &self,
     raw_specifier: &str,
@@ -1041,7 +1088,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let url = Url::parse(file_name).ok()?;
-    let data = self.shared.modules.read(&url).ok()??;
+    let data = self.shared.modules.read_embedded(&url).ok()??;
     data.source_map
   }
 
@@ -1050,18 +1097,23 @@ impl ModuleLoader for EmbeddedModuleLoader {
     source_map_url: &str,
   ) -> Option<Cow<'_, [u8]>> {
     let url = Url::parse(source_map_url).ok()?;
-    let data = self.shared.modules.read(&url).ok()??;
-    Some(Cow::Owned(data.data.to_vec()))
+    self.read_diagnostic_file(&url)
   }
 
   fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
-    use sys_traits::FsMetadata;
     let specifier = Url::parse(source_url).ok()?;
+    match self.shared.modules.read_embedded(&specifier) {
+      Ok(Some(_)) => return Some(true),
+      Ok(None) => {}
+      Err(_) => return None,
+    }
+
     // only bother checking this for npm packages that might depend on this
     if self.shared.node_resolver.in_npm_package(&specifier)
-      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+      && specifier.scheme() == "file"
     {
-      return self.sys.fs_is_file(path).ok();
+      let path = self.checked_diagnostic_file_path(&specifier)?;
+      return self.sys.fs_is_file(&path).ok();
     }
 
     Some(true)
@@ -1073,9 +1125,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
     line_number: usize,
   ) -> Option<String> {
     let specifier = Url::parse(file_name).ok()?;
-    let data = self.shared.modules.read(&specifier).ok()??;
-
-    let source = String::from_utf8_lossy(&data.data);
+    let data = self.read_diagnostic_file(&specifier)?;
+    let source = String::from_utf8_lossy(&data);
     // Do NOT use .lines(): it skips the terminating empty line.
     // (due to internally using_terminator() instead of .split())
     let lines: Vec<&str> = source.split('\n').collect();
