@@ -1205,7 +1205,7 @@ class ErrorEvent extends Event {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
+        evaluate: this[_attributes] !== undefined,
         keys: [
           ...new SafeArrayIterator(EVENT_PROPS),
           "message",
@@ -1271,7 +1271,7 @@ class CloseEvent extends Event {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
+        evaluate: this[_attributes] !== undefined,
         keys: [
           ...new SafeArrayIterator(EVENT_PROPS),
           "wasClean",
@@ -1428,7 +1428,7 @@ class MessageEvent extends Event {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
+        evaluate: this[_attributes] !== undefined,
         keys: [
           ...new SafeArrayIterator(EVENT_PROPS),
           "data",
@@ -1468,7 +1468,7 @@ class CustomEvent extends Event {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
+        evaluate: this[_attributes] !== undefined,
         keys: [
           ...new SafeArrayIterator(EVENT_PROPS),
           "detail",
@@ -1504,7 +1504,7 @@ class ProgressEvent extends Event {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
+        evaluate: this[_attributes] !== undefined,
         keys: [
           ...new SafeArrayIterator(EVENT_PROPS),
           "lengthComputable",
