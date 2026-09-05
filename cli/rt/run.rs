@@ -19,6 +19,7 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::FutureExt;
@@ -36,6 +37,7 @@ use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::npm::create_npm_process_state_provider;
+use deno_lib::standalone::binary::CODE_CACHE_GENERATION_ENV_VAR;
 use deno_lib::standalone::binary::NodeModules;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::util::text_encoding::from_utf8_lossy_cow;
@@ -1368,11 +1370,13 @@ pub async fn run_with_options(
   let override_main_module = options.override_main_module;
   let StandaloneData {
     metadata,
+    embedded_code_cache,
     modules,
     npm_snapshot,
     root_path,
     vfs,
   } = data;
+  let code_cache_generation = metadata.code_cache_generation;
 
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     sys: sys.clone(),
@@ -1642,13 +1646,29 @@ pub async fn run_with_options(
     )
   };
   let code_cache = match metadata.code_cache_key {
-    Some(code_cache_key) => Some(Arc::new(DenoCompileCodeCache::new(
-      root_path.with_file_name(format!(
-        "{}.cache",
-        root_path.file_name().unwrap().to_string_lossy()
-      )),
-      code_cache_key,
-    ))),
+    Some(code_cache_key) => {
+      let file_path = if code_cache_generation {
+        let path =
+          std::env::var_os(CODE_CACHE_GENERATION_ENV_VAR).ok_or_else(|| {
+            anyhow!("Missing internal code cache generation path")
+          })?;
+        // SAFETY: single-threaded during startup, before the runtime is created.
+        unsafe { std::env::remove_var(CODE_CACHE_GENERATION_ENV_VAR) };
+        PathBuf::from(path)
+      } else {
+        root_path.with_file_name(format!(
+          "{}.cache",
+          root_path.file_name().unwrap().to_string_lossy()
+        ))
+      };
+      Some(Arc::new(DenoCompileCodeCache::new(
+        file_path,
+        code_cache_key,
+        embedded_code_cache,
+        (code_cache_generation || embedded_code_cache.is_some())
+          .then_some(root_dir_url.as_ref()),
+      )))
+    }
     None => {
       log::debug!("Code cache disabled.");
       None
@@ -1860,6 +1880,11 @@ pub async fn run_with_options(
   if let Some(init_fn) = op_state_init {
     let op_state = worker.js_runtime().op_state();
     init_fn(&mut op_state.borrow_mut());
+  }
+
+  if code_cache_generation {
+    worker.generate_code_cache().await?;
+    return Ok(0);
   }
 
   // Initialize desktop APIs (Deno.desktop.*).

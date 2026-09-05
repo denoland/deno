@@ -2115,6 +2115,7 @@ fn compile_parse(
   let target = result.get_one("target").map(|s| s.to_string());
   let icon = result.get_one("icon").map(|s| s.to_string());
   let no_terminal = result.get_bool("no-terminal");
+  let include_code_cache = result.get_bool("include-code-cache");
   let eszip = result.get_bool("eszip-internal-do-not-use");
   let self_extracting = result.get_bool("self-extracting");
 
@@ -2140,6 +2141,7 @@ fn compile_parse(
     args,
     target,
     no_terminal,
+    include_code_cache,
     icon,
     include,
     exclude,

@@ -200,6 +200,9 @@ pub struct CompileFlags {
   pub args: Vec<String>,
   pub target: Option<String>,
   pub no_terminal: bool,
+  /// Generate V8 code cache while compiling and embed it in the executable.
+  /// This only works when the compile target matches the host target.
+  pub include_code_cache: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
