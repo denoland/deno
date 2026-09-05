@@ -34,7 +34,6 @@ use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
-use rand::thread_rng;
 
 use crate::OpenOptions;
 use crate::interface::FileSystemRc;
@@ -1151,7 +1150,7 @@ pub fn op_fs_make_temp_dir_sync(
   let (dir, fs) =
     make_temp_check_sync(state, dir_arg.as_deref(), "Deno.makeTempDirSync()")?;
 
-  let mut rng = thread_rng();
+  let mut rng = rand::rng();
 
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
@@ -1190,7 +1189,7 @@ pub async fn op_fs_make_temp_dir_async(
   let (dir, fs) =
     make_temp_check_async(state, dir_arg.as_deref(), "Deno.makeTempDir()")?;
 
-  let mut rng = thread_rng();
+  let mut rng = rand::rng();
 
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
@@ -1240,7 +1239,7 @@ pub fn op_fs_make_temp_file_sync(
     ..Default::default()
   };
 
-  let mut rng = thread_rng();
+  let mut rng = rand::rng();
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
@@ -1285,7 +1284,7 @@ pub async fn op_fs_make_temp_file_async(
     ..Default::default()
   };
 
-  let mut rng = thread_rng();
+  let mut rng = rand::rng();
 
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
@@ -1441,7 +1440,7 @@ fn tmp_name(
   // If we use a 32-bit number, we only need ~70k temp files before we have a 50%
   // chance of collision. By bumping this up to 64-bits, we require ~5 billion
   // before hitting a 50% chance.
-  let unique = rng.r#gen::<u64>();
+  let unique = rng.random::<u64>();
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 
   Ok(path)
