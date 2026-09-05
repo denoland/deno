@@ -1,0 +1,4 @@
+maxYoungGenerationSizeMb: RangeError: Worker resourceLimits.maxYoungGenerationSizeMb is too large
+maxOldGenerationSizeMb: RangeError: Worker resourceLimits.maxOldGenerationSizeMb is too large
+codeRangeSizeMb: RangeError: Worker resourceLimits.codeRangeSizeMb is too large
+stackSizeMb: RangeError: Worker resourceLimits.stackSizeMb is too large
