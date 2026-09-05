@@ -112,18 +112,22 @@ pub const DESKTOP_JS: &str = r#"
 
   class MouseEvent extends UIEvent {
     #button = 0;
+    #buttons = 0;
     #clientX = 0;
     #clientY = 0;
+    #screenX = 0;
+    #screenY = 0;
     #ctrlKey = false;
     #shiftKey = false;
     #altKey = false;
     #metaKey = false;
 
     get button() { return this.#button; }
+    get buttons() { return this.#buttons; }
     get clientX() { return this.#clientX; }
     get clientY() { return this.#clientY; }
-    get screenX() { return this.#clientX; }
-    get screenY() { return this.#clientY; }
+    get screenX() { return this.#screenX; }
+    get screenY() { return this.#screenY; }
     get ctrlKey() { return this.#ctrlKey; }
     get shiftKey() { return this.#shiftKey; }
     get altKey() { return this.#altKey; }
@@ -132,8 +136,11 @@ pub const DESKTOP_JS: &str = r#"
     constructor(type, init = {}) {
       super(type, init);
       this.#button = init.button ?? 0;
+      this.#buttons = init.buttons ?? 0;
       this.#clientX = init.clientX ?? 0;
       this.#clientY = init.clientY ?? 0;
+      this.#screenX = init.screenX ?? this.#clientX;
+      this.#screenY = init.screenY ?? this.#clientY;
       this.#ctrlKey = init.ctrlKey ?? false;
       this.#shiftKey = init.shiftKey ?? false;
       this.#altKey = init.altKey ?? false;
@@ -207,6 +214,52 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(BrowserWindowPrototype, "close");
   internals.defineEventHandler(BrowserWindowPrototype, "menuclick");
   internals.defineEventHandler(BrowserWindowPrototype, "contextmenuclick");
+
+  // Per-window pressed-button mask (DOM `MouseEvent.buttons`).
+  const windowButtons = new Map();
+
+  function buttonBit(button) {
+    switch (button) {
+      case 0: return 1;
+      case 1: return 4;
+      case 2: return 2;
+      case 3: return 8;
+      case 4: return 16;
+      default: return 0;
+    }
+  }
+
+  function screenXY(target, clientX, clientY) {
+    try {
+      const pos = typeof target.getInnerPosition === "function"
+        ? target.getInnerPosition()
+        : target.getPosition();
+      if (Array.isArray(pos) && pos.length >= 2) {
+        return [pos[0] + clientX, pos[1] + clientY];
+      }
+    } catch (_) {
+      // Native getter missing or closed.
+    }
+    return [clientX, clientY];
+  }
+
+  function mouseInit(target, ev, extra) {
+    extra = extra || {};
+    const [screenX, screenY] = screenXY(target, ev.clientX, ev.clientY);
+    return {
+      button: ev.button ?? 0,
+      buttons: extra.buttons ?? 0,
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      screenX,
+      screenY,
+      ctrlKey: ev.control,
+      shiftKey: ev.shift,
+      altKey: ev.alt,
+      metaKey: ev.meta,
+      detail: extra.detail ?? 0,
+    };
+  }
 
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
@@ -838,19 +891,22 @@ pub const DESKTOP_JS: &str = r#"
           case "mouseClick": {
             const target = windows.get(ev.windowId);
             if (!target) break;
-            const init = {
-              button: ev.button,
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
-              detail: ev.clickCount,
-            };
+            const bit = buttonBit(ev.button);
+            let buttons = windowButtons.get(ev.windowId) ?? 0;
             if (ev.state === "pressed") {
-              target.dispatchEvent(new MouseEvent("mousedown", init));
+              buttons |= bit;
+              windowButtons.set(ev.windowId, buttons);
+              target.dispatchEvent(new MouseEvent(
+                "mousedown",
+                mouseInit(target, ev, { buttons, detail: ev.clickCount }),
+              ));
             } else {
+              buttons &= ~bit;
+              windowButtons.set(ev.windowId, buttons);
+              const init = mouseInit(target, ev, {
+                buttons,
+                detail: ev.clickCount,
+              });
               target.dispatchEvent(new MouseEvent("mouseup", init));
               if (ev.button === 0) {
                 target.dispatchEvent(new MouseEvent("click", init));
@@ -864,45 +920,36 @@ pub const DESKTOP_JS: &str = r#"
           case "mouseMove": {
             const target = windows.get(ev.windowId);
             if (!target) break;
-            target.dispatchEvent(new MouseEvent("mousemove", {
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
-            }));
+            target.dispatchEvent(new MouseEvent(
+              "mousemove",
+              mouseInit(target, ev, {
+                buttons: windowButtons.get(ev.windowId) ?? 0,
+              }),
+            ));
             break;
           }
           case "wheel": {
             const target = windows.get(ev.windowId);
             if (!target) break;
             target.dispatchEvent(new WheelEvent("wheel", {
+              ...mouseInit(target, ev, {
+                buttons: windowButtons.get(ev.windowId) ?? 0,
+              }),
               deltaX: ev.deltaX,
               deltaY: ev.deltaY,
               deltaMode: ev.deltaMode,
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
             }));
             break;
           }
           case "cursorEnterLeave": {
             const target = windows.get(ev.windowId);
             if (!target) break;
-            const init = {
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
-            };
             target.dispatchEvent(new MouseEvent(
-              ev.entered ? "mouseenter" : "mouseleave", init));
+              ev.entered ? "mouseenter" : "mouseleave",
+              mouseInit(target, ev, {
+                buttons: windowButtons.get(ev.windowId) ?? 0,
+              }),
+            ));
             break;
           }
           case "focusChanged": {

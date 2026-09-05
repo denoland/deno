@@ -57,8 +57,11 @@ declare class KeyboardEvent extends UIEvent {
 
 declare interface MouseEventInit extends UIEventInit {
   button?: number;
+  buttons?: number;
   clientX?: number;
   clientY?: number;
+  screenX?: number;
+  screenY?: number;
   ctrlKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
@@ -68,6 +71,7 @@ declare interface MouseEventInit extends UIEventInit {
 declare class MouseEvent extends UIEvent {
   constructor(type: string, init?: MouseEventInit);
   readonly button: number;
+  readonly buttons: number;
   readonly clientX: number;
   readonly clientY: number;
   readonly screenX: number;
@@ -622,9 +626,26 @@ declare namespace Deno {
 
     getSize(): [number, number];
     setSize(width: number, height: number): void;
+    /** Viewport width in CSS pixels, like
+     * [`window.innerWidth`](https://developer.mozilla.org/docs/Web/API/Window/innerWidth).
+     * Same as the first element of {@linkcode BrowserWindow.getSize}. */
+    readonly innerWidth: number;
+    /** Viewport height in CSS pixels, like
+     * [`window.innerHeight`](https://developer.mozilla.org/docs/Web/API/Window/innerHeight).
+     * Same as the second element of {@linkcode BrowserWindow.getSize}. */
+    readonly innerHeight: number;
+
+    /** Physical pixels per CSS pixel for this window, like
+     * [`window.devicePixelRatio`](https://developer.mozilla.org/docs/Web/API/Window/devicePixelRatio).
+     * Updates when the window moves to a display with a different scale. */
+    readonly devicePixelRatio: number;
 
     getPosition(): [number, number];
     setPosition(x: number, y: number): void;
+    /** Top-left of the content view in screen CSS pixels. Differs from
+     * {@linkcode BrowserWindow.getPosition} by the title-bar height, so
+     * `getInnerPosition()[1] + clientY` is `MouseEvent.screenY`. */
+    getInnerPosition(): [number, number];
 
     isResizable(): boolean;
     setResizable(resizable: boolean): void;

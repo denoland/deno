@@ -539,8 +539,13 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn get_window_size(&self, window_id: u32) -> (i32, i32);
   fn set_window_size(&self, window_id: u32, width: i32, height: i32);
 
+  /// Physical pixels per DIP for this window (`window.devicePixelRatio`).
+  fn get_window_scale_factor(&self, window_id: u32) -> f64;
+
   fn get_window_position(&self, window_id: u32) -> (i32, i32);
   fn set_window_position(&self, window_id: u32, x: i32, y: i32);
+  /// Content-view origin in the same space as `get_window_position`.
+  fn get_window_inner_position(&self, window_id: u32) -> (i32, i32);
 
   fn is_resizable(&self, window_id: u32) -> bool;
   fn set_resizable(&self, window_id: u32, resizable: bool);
@@ -876,12 +881,34 @@ impl BrowserWindow {
   }
 
   #[fast]
+  #[getter]
+  fn inner_width(&self) -> i32 {
+    self.api.get_window_size(self.window_id).0
+  }
+
+  #[fast]
+  #[getter]
+  fn inner_height(&self) -> i32 {
+    self.api.get_window_size(self.window_id).1
+  }
+
+  #[fast]
+  #[getter]
+  fn device_pixel_ratio(&self) -> f64 {
+    self.api.get_window_scale_factor(self.window_id)
+  }
+
+  #[fast]
   fn set_size(&self, #[smi] width: i32, #[smi] height: i32) {
     self.api.set_window_size(self.window_id, width, height);
   }
 
   fn get_position(&self) -> (i32, i32) {
     self.api.get_window_position(self.window_id)
+  }
+
+  fn get_inner_position(&self) -> (i32, i32) {
+    self.api.get_window_inner_position(self.window_id)
   }
 
   #[fast]

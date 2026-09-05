@@ -4080,7 +4080,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
- "libloading 0.8.5",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -6377,8 +6377,7 @@ dependencies = [
 [[package]]
 name = "laufey"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a2a04490eb866f17dcbbb44c8277b45964eeb0f68bb17c444e69c2feff0db94"
+source = "git+https://github.com/petamoriken/laufey?branch=fix%2Fwinit-mouse-enter-dblclick#71566f009d15d09b51320f4fbc1d40352937bfba"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
