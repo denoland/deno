@@ -263,6 +263,7 @@ fn finish_request_head_uninit<'a>(
 #[derive(Default)]
 struct HeaderInfo {
   host_count: usize,
+  host_invalid: bool,
   connection_close: bool,
   connection_keep_alive: bool,
   connection_upgrade: bool,
@@ -280,6 +281,7 @@ impl HeaderInfo {
   fn observe(&mut self, name: &[u8], value: &[u8]) {
     if eq_ignore_ascii_case(name, b"host") {
       self.host_count += 1;
+      self.host_invalid |= !is_valid_host_header_value(value);
     } else if eq_ignore_ascii_case(name, b"connection") {
       self.observe_connection(value);
     } else if eq_ignore_ascii_case(name, b"upgrade") {
@@ -360,6 +362,12 @@ impl HeaderInfo {
     body_kind: BodyKind,
     allow_missing_host: bool,
   ) -> Result<(), ParseError> {
+    if self.host_invalid {
+      return Err(ParseError::InvalidHeaderValue);
+    }
+    if self.host_count > 1 {
+      return Err(ParseError::MultipleHost);
+    }
     if version != Version::Http11 {
       return Ok(());
     }
@@ -416,6 +424,97 @@ impl HeaderInfo {
       Some(len) => BodyKind::ContentLength(len),
     })
   }
+}
+
+/// Returns whether a `Host` field value matches the URI host and optional
+/// port grammar used by HTTP/1.
+pub fn is_valid_host_header_value(value: &[u8]) -> bool {
+  if value.is_empty() {
+    return true;
+  }
+  if !value.is_ascii() {
+    return false;
+  }
+
+  if value[0] == b'[' {
+    return is_valid_ip_literal_authority(value);
+  }
+
+  let (host, port) = match value.iter().position(|&byte| byte == b':') {
+    Some(index) => (&value[..index], Some(&value[index + 1..])),
+    None => (value, None),
+  };
+
+  !host.is_empty()
+    && is_valid_reg_name(host)
+    && port.is_none_or(|port| port.iter().all(u8::is_ascii_digit))
+}
+
+fn is_valid_ip_literal_authority(value: &[u8]) -> bool {
+  let Some(close) = value.iter().position(|&byte| byte == b']') else {
+    return false;
+  };
+  let literal = &value[1..close];
+  if literal.is_empty() {
+    return false;
+  }
+  let suffix = &value[close + 1..];
+  if !suffix.is_empty()
+    && (suffix[0] != b':' || !suffix[1..].iter().all(u8::is_ascii_digit))
+  {
+    return false;
+  }
+
+  if matches!(literal.first(), Some(b'v' | b'V')) {
+    return is_valid_ipv_future(literal);
+  }
+
+  let Ok(address) = std::str::from_utf8(literal) else {
+    return false;
+  };
+  address.parse::<std::net::Ipv6Addr>().is_ok()
+}
+
+fn is_valid_ipv_future(value: &[u8]) -> bool {
+  let Some(dot) = value.iter().position(|&byte| byte == b'.') else {
+    return false;
+  };
+  dot > 1
+    && value[1..dot].iter().all(u8::is_ascii_hexdigit)
+    && value.len() > dot + 1
+    && value[dot + 1..]
+      .iter()
+      .all(|&byte| is_unreserved(byte) || is_sub_delim(byte) || byte == b':')
+}
+
+fn is_valid_reg_name(value: &[u8]) -> bool {
+  let mut index = 0;
+  while index < value.len() {
+    let byte = value[index];
+    if is_unreserved(byte) || is_sub_delim(byte) {
+      index += 1;
+    } else if byte == b'%'
+      && value
+        .get(index + 1..index + 3)
+        .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit))
+    {
+      index += 3;
+    } else {
+      return false;
+    }
+  }
+  true
+}
+
+fn is_unreserved(byte: u8) -> bool {
+  byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
+}
+
+fn is_sub_delim(byte: u8) -> bool {
+  matches!(
+    byte,
+    b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'='
+  )
 }
 
 fn comma_tokens(value: &[u8]) -> impl Iterator<Item = &[u8]> {
@@ -712,6 +811,70 @@ mod tests {
       ),
       Err(ParseError::MultipleHost)
     );
+  }
+
+  #[test]
+  fn rejects_multiple_http10_hosts() {
+    let mut headers = [Header::EMPTY; 8];
+    assert_eq!(
+      parse_request_head(
+        b"GET / HTTP/1.0\r\nHost: example.com\r\nHost: example.org\r\n\r\n",
+        &mut headers,
+      ),
+      Err(ParseError::MultipleHost)
+    );
+  }
+
+  #[test]
+  fn validates_host_header_values() {
+    for value in [
+      b"".as_slice(),
+      b"example.com",
+      b"xn--tda.com",
+      b"127.0.0.1",
+      b"127.0.0.1:8080",
+      b"example.com:",
+      b"[::1]",
+      b"[::1]:",
+      b"[2001:db8::1]:8080",
+      b"[v1.example]",
+      b"[v1.example]:8080",
+      b"example%2Ecom",
+    ] {
+      assert!(is_valid_host_header_value(value), "{value:?}");
+    }
+
+    for value in [
+      b"\xc3\xbc.example".as_slice(),
+      b"\xff.example",
+      b"example .com",
+      b"user@example.com",
+      b"example.com:http",
+      b"example.com:80:90",
+      b":80",
+      b"[not-an-ip]",
+      b"[fe80::1%25eth0]",
+      b"[::1",
+      b"[::1]extra",
+      b"example%2",
+      b"example%xx",
+    ] {
+      assert!(!is_valid_host_header_value(value), "{value:?}");
+    }
+  }
+
+  #[test]
+  fn rejects_invalid_host_header_value() {
+    for value in [b"\xc3\xbc.example".as_slice(), b"\xff.example"] {
+      let mut request = b"GET / HTTP/1.1\r\nHost: ".to_vec();
+      request.extend_from_slice(value);
+      request.extend_from_slice(b"\r\n\r\n");
+      let mut headers = [Header::EMPTY; 8];
+      assert_eq!(
+        parse_request_head(&request, &mut headers),
+        Err(ParseError::InvalidHeaderValue)
+      );
+    }
   }
 
   #[test]
