@@ -31,13 +31,42 @@ use crate::interface::FsFileType;
 use crate::interface::FsReadDir;
 use crate::interface::FsReadDirRc;
 
+// The working directory is process-global (a worker's chdir is visible to
+// every thread), so the cache is too. The mutex spans the syscalls so a
+// concurrent `cwd()` cannot repopulate the cache with a pre-chdir value.
+static CWD_CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Clears the cwd cache used by [`RealFs::cwd`]. Call after changing the
+/// working directory by any means other than [`set_current_dir`].
+pub fn invalidate_cwd_cache() {
+  *CWD_CACHE.lock().unwrap() = None;
+}
+
+/// Sets the process working directory, keeping the cwd cache in sync.
+/// The cache is cleared, not set to `path`: getcwd returns the
+/// symlink-resolved physical path. On failure the cwd is unchanged, so
+/// the cache is kept.
+pub fn set_current_dir(path: impl AsRef<Path>) -> io::Result<()> {
+  let mut cache = CWD_CACHE.lock().unwrap();
+  std::env::set_current_dir(path)?;
+  *cache = None;
+  Ok(())
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
 
 #[async_trait::async_trait(?Send)]
 impl FileSystem for RealFs {
   fn cwd(&self) -> FsResult<PathBuf> {
-    std::env::current_dir().map_err(Into::into)
+    let mut cache = CWD_CACHE.lock().unwrap();
+    if let Some(cwd) = &*cache {
+      return Ok(cwd.clone());
+    }
+    // Errors (e.g. a deleted cwd) are not cached; every call retries.
+    let cwd = std::env::current_dir()?;
+    *cache = Some(cwd.clone());
+    Ok(cwd)
   }
 
   fn tmp_dir(&self) -> FsResult<PathBuf> {
@@ -45,7 +74,7 @@ impl FileSystem for RealFs {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    std::env::set_current_dir(path).map_err(Into::into)
+    set_current_dir(path).map_err(Into::into)
   }
 
   #[cfg(windows)]
