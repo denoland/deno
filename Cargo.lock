@@ -2476,6 +2476,7 @@ dependencies = [
  "rustls",
  "rustls-webpki",
  "serde_json",
+ "socket2 0.5.5",
  "sys_traits",
  "thiserror 2.0.12",
  "tokio",

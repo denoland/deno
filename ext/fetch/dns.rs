@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::task::Poll;
 use std::task::{self};
+use std::time::Duration;
 use std::vec;
 
 use deno_permissions::PermissionsContainer;
@@ -157,6 +158,19 @@ impl Service<Name> for Resolver {
   }
 }
 
+/// TCP keepalive settings applied to every connection `fetch()` opens.
+///
+/// A connection can die without either side noticing: the machine changes
+/// network, a NAT drops the mapping, a VPN goes down. The socket stays open as
+/// far as userspace is concerned, so hyper keeps it in its idle pool and hands
+/// it to the next request, which then hangs until the kernel gives up
+/// retransmitting — on the order of fifteen minutes. Keepalive probes make the
+/// kernel notice within roughly a minute instead, so the connection is dropped
+/// from the pool long before hyper's 90 second idle timeout would have expired.
+const TCP_KEEPALIVE_TIME: Duration = Duration::from_secs(15);
+const TCP_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
+const TCP_KEEPALIVE_RETRIES: u32 = 3;
+
 /// `Service<Uri>` adapter that runs the net-deny permission check on every
 /// resolved address *before* a socket is opened.
 ///
@@ -196,6 +210,9 @@ impl PermissionedHttpConnector {
     let mut connector = HttpConnector::new_with_resolver(resolver);
     connector.enforce_http(false);
     connector.set_local_address(self.local_address);
+    connector.set_keepalive(Some(TCP_KEEPALIVE_TIME));
+    connector.set_keepalive_interval(Some(TCP_KEEPALIVE_INTERVAL));
+    connector.set_keepalive_retries(Some(TCP_KEEPALIVE_RETRIES));
     connector
   }
 }
@@ -418,5 +435,35 @@ mod tests {
 
     let addr = addr.next().unwrap();
     assert_eq!(addr, "127.0.0.1:8080".parse().unwrap());
+  }
+
+  // Without keepalive, a connection that dies silently (network change) stays
+  // in hyper's idle pool and the next request that reuses it hangs until TCP
+  // gives up retransmitting. See https://github.com/denoland/deno/issues/36542.
+  #[tokio::test]
+  async fn connections_have_tcp_keepalive_enabled() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+      let _accepted = listener.accept().await;
+      std::future::pending::<()>().await;
+    });
+
+    let mut connector = PermissionedHttpConnector::new(
+      Resolver::custom(Arc::new(DebugResolver(addr))),
+      None,
+      None,
+      ResolvedDenyCheckKind::Net,
+    );
+    let uri =
+      Uri::from_str(&format!("http://example.com:{}", addr.port())).unwrap();
+    let io = connector.call(uri).await.unwrap();
+
+    let socket = socket2::SockRef::from(io.inner());
+    assert!(socket.keepalive().unwrap());
+    // Windows exposes no getsockopt for the keepalive idle time, so socket2
+    // only provides the getter on platforms that can read it back.
+    #[cfg(not(windows))]
+    assert_eq!(socket.keepalive_time().unwrap(), TCP_KEEPALIVE_TIME);
   }
 }
