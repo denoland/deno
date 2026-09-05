@@ -510,7 +510,7 @@ impl ModuleGraphCreator {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self
       .module_graph_builder
-      .create_graph_loader_with_root_permissions();
+      .create_graph_loader_with_root_permissions(&roots);
     self
       .create_graph_with_loader(graph_kind, roots, &mut cache, npm_caching)
       .await
@@ -597,7 +597,7 @@ impl ModuleGraphCreator {
 
     let loader = self
       .module_graph_builder
-      .create_graph_loader_with_root_permissions();
+      .create_graph_loader_with_root_permissions(&roots);
     let publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
@@ -906,11 +906,19 @@ impl ModuleGraphBuilder {
 
     let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
+    let file_roots = if options.is_dynamic {
+      Vec::new()
+    } else {
+      match &request {
+        BuildGraphRequest::Roots(roots, _) => roots.clone(),
+        BuildGraphRequest::Reload(_) => graph.roots.iter().cloned().collect(),
+      }
+    };
     let mut loader = match options.loader {
       Some(loader) => LoaderRef::Borrowed(loader),
-      None => {
-        LoaderRef::Owned(self.create_graph_loader_with_root_permissions())
-      }
+      None => LoaderRef::Owned(
+        self.create_graph_loader_with_root_permissions(&file_roots),
+      ),
     };
     let jsx_import_source_config_resolver =
       JsxImportSourceConfigResolver::from_compiler_options_resolver(
@@ -1202,10 +1210,12 @@ impl ModuleGraphBuilder {
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader_with_root_permissions(
     &self,
+    roots: &[ModuleSpecifier],
   ) -> CliDenoGraphLoader {
-    self.create_graph_loader_with_permissions(
+    self.create_graph_loader_with_permissions_and_roots(
       self.root_permissions_container.clone(),
       None,
+      roots,
     )
   }
 
@@ -1214,6 +1224,19 @@ impl ModuleGraphBuilder {
     permissions: PermissionsContainer,
     file_permission_api_name: Option<&'static str>,
   ) -> CliDenoGraphLoader {
+    self.create_graph_loader_with_permissions_and_roots(
+      permissions,
+      file_permission_api_name,
+      &[],
+    )
+  }
+
+  fn create_graph_loader_with_permissions_and_roots(
+    &self,
+    permissions: PermissionsContainer,
+    file_permission_api_name: Option<&'static str>,
+    roots: &[ModuleSpecifier],
+  ) -> CliDenoGraphLoader {
     CliDenoGraphLoader::new(
       self.file_fetcher.clone(),
       self.global_http_cache.clone(),
@@ -1221,6 +1244,11 @@ impl ModuleGraphBuilder {
       self.sys.clone(),
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
+        file_roots: roots
+          .iter()
+          .filter(|specifier| specifier.scheme() == "file")
+          .cloned()
+          .collect(),
         permissions: Some(permissions),
         file_permission_api_name,
         reporter: self.load_reporter.clone(),

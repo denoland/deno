@@ -3936,8 +3936,34 @@ impl Permissions {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CheckSpecifierKind {
+  /// A graph root explicitly selected by the host application.
+  StaticRoot,
   Static,
   Dynamic,
+}
+
+fn has_windows_network_path_prefix(path: &Path) -> bool {
+  let bytes = path.as_os_str().as_encoded_bytes();
+  let is_separator = |byte| matches!(byte, b'/' | b'\\');
+  if bytes.starts_with(br"\\?\")
+    && bytes.len() >= 7
+    && bytes[4].is_ascii_alphabetic()
+    && bytes[5] == b':'
+    && bytes[6] == b'\\'
+  {
+    return false;
+  }
+  bytes.len() >= 2 && is_separator(bytes[0]) && is_separator(bytes[1])
+}
+
+fn is_windows_network_path(path: &Path) -> bool {
+  cfg!(windows) && has_windows_network_path_prefix(path)
+}
+
+pub fn is_windows_network_file_url(specifier: &Url) -> bool {
+  specifier.scheme() == "file"
+    && url_to_file_path(specifier)
+      .is_ok_and(|path| is_windows_network_path(&path))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -4195,31 +4221,34 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     match specifier.scheme() {
       "file" => {
+        let path = url_to_file_path(specifier).map_err(|_| {
+          PermissionCheckError::InvalidFilePath(specifier.clone())
+        })?;
+        let is_windows_network_path = is_windows_network_path(&path);
+
         if inner.read.is_allow_all() {
-          if kind != CheckSpecifierKind::Static {
+          if kind == CheckSpecifierKind::Dynamic || is_windows_network_path {
             write_audit(ReadQueryDescriptor::flag_name(), specifier);
           }
 
           return Ok(());
         }
-        if kind == CheckSpecifierKind::Static {
+        if kind != CheckSpecifierKind::Dynamic
+          && (kind == CheckSpecifierKind::StaticRoot
+            || !is_windows_network_path)
+        {
           return Ok(());
         }
 
-        match url_to_file_path(specifier) {
-          Ok(path) => inner
-            .read
-            .check(
-              // a file: specifier will always go to absolute
-              &PathQueryDescriptor::new_known_absolute(Cow::Owned(path))
-                .into_read(),
-              Some("import()"),
-            )
-            .map_err(ignored_to_not_found),
-          Err(_) => {
-            Err(PermissionCheckError::InvalidFilePath(specifier.clone()))
-          }
-        }
+        inner
+          .read
+          .check(
+            // a file: specifier will always go to absolute
+            &PathQueryDescriptor::new_known_absolute(Cow::Owned(path))
+              .into_read(),
+            Some("import()"),
+          )
+          .map_err(ignored_to_not_found)
       }
       "data" => Ok(()),
       "blob" => Ok(()),
@@ -6475,6 +6504,21 @@ mod tests {
 
     if cfg!(target_os = "windows") {
       fixtures.push((
+        Url::parse("file://server/share/entry.ts").unwrap(),
+        CheckSpecifierKind::StaticRoot,
+        true,
+      ));
+      fixtures.push((
+        Url::parse("file://server/share/dependency.ts").unwrap(),
+        CheckSpecifierKind::Static,
+        false,
+      ));
+      fixtures.push((
+        Url::parse("file://server/share/dependency.ts").unwrap(),
+        CheckSpecifierKind::Dynamic,
+        false,
+      ));
+      fixtures.push((
         Url::parse("file:///C:/a/mod.ts").unwrap(),
         CheckSpecifierKind::Dynamic,
         true,
@@ -6550,6 +6594,84 @@ mod tests {
     assert!(check(container(svec!["192.0.2.1"])));
     // no IP-literal rule at all, so nothing is resolved
     assert!(check(container(svec!["example.com"])));
+  }
+
+  #[test]
+  fn windows_network_path_prefixes() {
+    for path in [
+      r"\\server\share\module.ts",
+      r"//server/share/module.ts",
+      r"/\server/share/module.ts",
+      r"\\?\UNC\server\share\module.ts",
+    ] {
+      assert!(has_windows_network_path_prefix(Path::new(path)), "{path}");
+    }
+
+    for path in [
+      r"C:\project\module.ts",
+      r"\\?\C:\project\module.ts",
+      r"\project\module.ts",
+      r"/project/module.ts",
+    ] {
+      assert!(!has_windows_network_path_prefix(Path::new(path)), "{path}");
+    }
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn windows_file_url_path_classification() {
+    for specifier in [
+      "file://server/share/module.ts",
+      r"file:\\server\share\module.ts",
+      "file:////server/share/module.ts",
+      "file:///%2Fserver/share/module.ts",
+      "file:///%5Cserver/share/module.ts",
+      "file:///%2F%2Fserver/share/module.ts",
+    ] {
+      let path = url_to_file_path(&Url::parse(specifier).unwrap()).unwrap();
+      assert!(is_windows_network_path(&path), "{specifier}: {path:?}");
+    }
+
+    for specifier in [
+      "file:///C:/project/module.ts",
+      "file://localhost/C:/project/module.ts",
+    ] {
+      let path = url_to_file_path(&Url::parse(specifier).unwrap()).unwrap();
+      assert!(!is_windows_network_path(&path), "{specifier}: {path:?}");
+    }
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn exact_unc_read_descriptor_allows_network_file_import() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec![r"\\server\share\allowed.ts"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(
+      perms
+        .check_specifier(
+          &Url::parse("file://server/share/allowed.ts").unwrap(),
+          CheckSpecifierKind::Static,
+        )
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_specifier(
+          &Url::parse("file://server/share/other.ts").unwrap(),
+          CheckSpecifierKind::Static,
+        )
+        .is_err()
+    );
   }
 
   #[test]
