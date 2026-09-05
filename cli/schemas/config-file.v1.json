@@ -160,6 +160,10 @@
               "type": "string",
               "description": "The application name."
             },
+            "identifier": {
+              "type": "string",
+              "description": "Reverse-DNS application identifier (e.g. com.example.myapp)."
+            },
             "icons": {
               "type": "object",
               "description": "Platform-specific icon paths.",
