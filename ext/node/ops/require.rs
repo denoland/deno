@@ -676,13 +676,16 @@ deno_error::js_error_wrapper!(
 pub fn op_require_is_maybe_cjs(
   state: &mut OpState,
   #[string] filename: &str,
+  #[string] source: &str,
 ) -> Result<bool, JsPackageJsonLoadError> {
   let filename = Path::new(filename);
   let Ok(url) = url_from_file_path(filename) else {
     return Ok(false);
   };
   let loader = state.borrow::<NodeRequireLoaderRc>();
-  loader.is_maybe_cjs_from_require(&url).map_err(Into::into)
+  loader
+    .is_maybe_cjs_from_require_with_source(&url, source)
+    .map_err(Into::into)
 }
 
 #[op2(stack_trace)]

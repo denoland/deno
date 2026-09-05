@@ -49,7 +49,7 @@ deno_npm.workspace = true
 deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
-deno_resolver = { workspace = true, features = ["sync"] }
+deno_resolver = { workspace = true, features = ["deno_ast", "sync"] }
 deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_snapshots.workspace = true

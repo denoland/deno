@@ -2190,6 +2190,17 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
       .is_maybe_cjs_from_require(specifier, media_type)
   }
 
+  fn is_maybe_cjs_from_require_with_source(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .cjs_tracker
+      .is_maybe_cjs_from_require_with_source(specifier, media_type, source)
+  }
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     let is_global_resolver_and_from_in_global_cache = self
       .npm_resolver
