@@ -11,6 +11,22 @@
     "no_env": {
       "args": "run -A main_no_env.ts",
       "output": "main_no_env.out"
+    },
+    // `Deno.env.set` must not be able to influence the injected values: they
+    // are resolved at worker construction, before user code runs.
+    "env_set_spoof": {
+      "args": "run -A env_set_spoof.ts",
+      "envs": {
+        "X_DENO_FETCH_TOKEN": "test-fetch-token-123",
+        "CDN_LOOP": "us-east-1.example.deno-cluster.net"
+      },
+      "output": "env_set_spoof.out"
+    },
+    // Same, with the operator supplying nothing: user code must not be able to
+    // introduce the headers by setting the env vars itself.
+    "env_set_spoof_no_env": {
+      "args": "run -A env_set_spoof.ts",
+      "output": "env_set_spoof_no_env.out"
     }
   }
 }
