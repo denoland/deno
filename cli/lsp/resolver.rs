@@ -514,17 +514,6 @@ impl LspScopedResolver {
     self.npm_installer_reqs.lock().clone()
   }
 
-  pub fn deno_types_to_code_resolution(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    let dep_info = self.dep_info.lock();
-    dep_info
-      .deno_types_to_code_resolutions
-      .get(specifier)
-      .cloned()
-  }
-
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
     fn has_node_modules_dir(specifier: &ModuleSpecifier) -> bool {
       // consider any /node_modules/ directory as being in the node_modules
