@@ -2148,6 +2148,7 @@ fn compile_parse(
     bundle: result.get_bool("bundle"),
     app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
+    keep_names: result.get_bool("keep-names"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
     engine: result
       .get_one("engine")
