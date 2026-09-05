@@ -882,6 +882,18 @@ impl BrowserWindow {
 
   #[fast]
   #[getter]
+  fn inner_width(&self) -> i32 {
+    self.api.get_window_size(self.window_id).0
+  }
+
+  #[fast]
+  #[getter]
+  fn inner_height(&self) -> i32 {
+    self.api.get_window_size(self.window_id).1
+  }
+
+  #[fast]
+  #[getter]
   fn device_pixel_ratio(&self) -> f64 {
     self.api.get_window_scale_factor(self.window_id)
   }

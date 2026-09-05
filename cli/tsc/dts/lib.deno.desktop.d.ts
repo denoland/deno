@@ -626,6 +626,14 @@ declare namespace Deno {
 
     getSize(): [number, number];
     setSize(width: number, height: number): void;
+    /** Viewport width in CSS pixels, like
+     * [`window.innerWidth`](https://developer.mozilla.org/docs/Web/API/Window/innerWidth).
+     * Same as the first element of {@linkcode BrowserWindow.getSize}. */
+    readonly innerWidth: number;
+    /** Viewport height in CSS pixels, like
+     * [`window.innerHeight`](https://developer.mozilla.org/docs/Web/API/Window/innerHeight).
+     * Same as the second element of {@linkcode BrowserWindow.getSize}. */
+    readonly innerHeight: number;
 
     /** Physical pixels per CSS pixel for this window, like
      * [`window.devicePixelRatio`](https://developer.mozilla.org/docs/Web/API/Window/devicePixelRatio).
