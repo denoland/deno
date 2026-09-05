@@ -2,6 +2,7 @@
 //! This mod provides DenoError to unify errors across Deno.
 use std::borrow::Cow;
 use std::fmt::Write as _;
+use std::path::Path;
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -56,6 +57,7 @@ enum FixSuggestionKind {
 enum FixSuggestionMessage<'a> {
   Single(&'a str),
   Multiline(&'a [&'a str]),
+  Owned(String),
 }
 
 #[derive(Debug)]
@@ -76,6 +78,13 @@ impl<'a> FixSuggestion<'a> {
     Self {
       kind: FixSuggestionKind::Info,
       message: FixSuggestionMessage::Multiline(messages),
+    }
+  }
+
+  fn info_owned(message: String) -> Self {
+    Self {
+      kind: FixSuggestionKind::Info,
+      message: FixSuggestionMessage::Owned(message),
     }
   }
 
@@ -397,7 +406,7 @@ fn format_js_error_inner(
           write!(s, "{} ", colors::green("docs:")).unwrap()
         }
       };
-      match suggestion.message {
+      match &suggestion.message {
         FixSuggestionMessage::Single(msg) => {
           if matches!(suggestion.kind, FixSuggestionKind::Docs) {
             write!(s, "{}", cformat!("<u>{}</>", msg)).unwrap();
@@ -414,6 +423,9 @@ fn format_js_error_inner(
             write!(s, "{}", message).unwrap();
           }
         }
+        FixSuggestionMessage::Owned(message) => {
+          write!(s, "{}", message).unwrap();
+        }
       }
 
       if index != (suggestions.len() - 1) {
@@ -425,8 +437,12 @@ fn format_js_error_inner(
   s
 }
 
-fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
-  let mut suggestions = get_message_suggestions(e);
+fn get_suggestions_for_terminal_errors<'a>(
+  e: &'a JsError,
+  maybe_type_module_package_json: Option<&Path>,
+) -> Vec<FixSuggestion<'a>> {
+  let mut suggestions =
+    get_message_suggestions(e, maybe_type_module_package_json);
   // A `__proto__` *write* silently no-ops and the breakage surfaces downstream
   // at an unrelated-looking line, so any later crash is reason enough to point
   // at the escape hatch. A `__proto__` *read* instead returns `undefined` and
@@ -465,14 +481,18 @@ fn error_mentions_proto(e: &JsError) -> bool {
       .is_some_and(|m| m.contains("__proto__"))
 }
 
-fn get_message_suggestions(e: &JsError) -> Vec<FixSuggestion<'_>> {
-  get_message_suggestions_inner(e, 0)
+fn get_message_suggestions<'a>(
+  e: &'a JsError,
+  maybe_type_module_package_json: Option<&Path>,
+) -> Vec<FixSuggestion<'a>> {
+  get_message_suggestions_inner(e, 0, maybe_type_module_package_json)
 }
 
-fn get_message_suggestions_inner(
-  e: &JsError,
+fn get_message_suggestions_inner<'a>(
+  e: &'a JsError,
   depth: usize,
-) -> Vec<FixSuggestion<'_>> {
+  maybe_type_module_package_json: Option<&Path>,
+) -> Vec<FixSuggestion<'a>> {
   if depth >= MAX_FORMAT_ERROR_DEPTH {
     return vec![];
   }
@@ -488,7 +508,14 @@ fn get_message_suggestions_inner(
       {
         return vec![];
       }
-      return vec![
+      let mut suggestions = Vec::with_capacity(4);
+      if let Some(package_json) = maybe_type_module_package_json {
+        suggestions.push(FixSuggestion::info_owned(format!(
+          "This file is being treated as an ES module because it has a '.js' file extension and '{}' contains \"type\": \"module\".",
+          package_json.display(),
+        )));
+      }
+      suggestions.extend([
         FixSuggestion::info_multiline(&[
           cstr!(
             "Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"
@@ -508,7 +535,8 @@ fn get_message_suggestions_inner(
           ),
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
-      ];
+      ]);
+      return suggestions;
     } else if msg.contains("__filename is not defined") {
       return vec![
         FixSuggestion::info(cstr!(
@@ -705,7 +733,11 @@ fn get_message_suggestions_inner(
   // `TypeError: fetch failed` with the underlying error (such as a TLS
   // certificate failure) in `.cause`.
   if let Some(cause) = &e.cause {
-    return get_message_suggestions_inner(cause, depth + 1);
+    return get_message_suggestions_inner(
+      cause,
+      depth + 1,
+      maybe_type_module_package_json,
+    );
   }
 
   vec![]
@@ -719,12 +751,25 @@ pub fn format_js_error(
   js_error: &JsError,
   initial_cwd: Option<&Url>,
 ) -> String {
+  format_js_error_with_type_module_package_json(js_error, initial_cwd, None)
+}
+
+/// Format a [`JsError`] for terminal output, optionally explaining an
+/// explicit `"type": "module"` package boundary for a `.js` file.
+pub fn format_js_error_with_type_module_package_json(
+  js_error: &JsError,
+  initial_cwd: Option<&Url>,
+  maybe_type_module_package_json: Option<&Path>,
+) -> String {
   let circular =
     find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
       reference,
       index: 1,
     });
-  let suggestions = get_suggestions_for_terminal_errors(js_error);
+  let suggestions = get_suggestions_for_terminal_errors(
+    js_error,
+    maybe_type_module_package_json,
+  );
   format_js_error_inner(
     js_error,
     circular,
@@ -799,5 +844,24 @@ mod tests {
     let formatted = format_js_error(&error, None);
     let formatted = strip_ansi_codes(&formatted);
     assert!(formatted.contains("[Error details truncated]"));
+  }
+
+  #[test]
+  fn test_commonjs_type_module_suggestion_is_additive() {
+    let error = js_error_with_cause("module is not defined".to_string(), None);
+    let formatted = format_js_error_with_type_module_package_json(
+      &error,
+      None,
+      Some(Path::new("/project/package.json")),
+    );
+    let formatted = strip_ansi_codes(&formatted);
+
+    assert!(
+      formatted
+        .contains("'/project/package.json' contains \"type\": \"module\"")
+    );
+    assert!(formatted.contains("\"type\": \"commonjs\""));
+    assert!(formatted.contains("--unstable-detect-cjs"));
+    assert!(formatted.contains("https://docs.deno.com/go/commonjs"));
   }
 }

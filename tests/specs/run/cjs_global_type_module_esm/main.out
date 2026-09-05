@@ -1,0 +1,9 @@
+[WILDCARD]ReferenceError: module is not defined[WILDCARD]
+    info: This file is being treated as an ES module because it has a '.js' file extension and '[WILDCARD]package.json' contains "type": "module".
+    info: Deno supports CommonJS modules in .cjs files, or when the closest
+          package.json has a "type": "commonjs" option.
+    hint: Rewrite this module to ESM,
+          or change the file extension to .cjs,
+          or add package.json next to the file with "type": "commonjs" option,
+          or pass --unstable-detect-cjs flag to detect CommonJS when loading.
+    docs: https://docs.deno.com/go/commonjs[WILDCARD]
