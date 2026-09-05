@@ -52,6 +52,12 @@
       "output": "message_port_unref.out",
       "exitCode": 0
     },
+    "stdin_parent_port_unref": {
+      // A private stdin receive must follow parentPort's ref state.
+      "args": "run --quiet stdin_parent_port_unref.mjs",
+      "output": "exit 0\n",
+      "exitCode": 0
+    },
     "refed_messageport_idle": {
       // Test for https://github.com/denoland/deno/issues/23169
       // A worker holding a refed transferable MessagePort must not be
