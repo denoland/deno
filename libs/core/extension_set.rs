@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::iter::Chain;
 use std::rc::Rc;
@@ -20,7 +21,9 @@ use crate::extensions::GlobalObjectMiddlewareFn;
 use crate::extensions::GlobalTemplateMiddlewareFn;
 use crate::extensions::OpMiddlewareFn;
 use crate::modules::ModuleName;
-use crate::ops::OpCtx;
+use crate::ops::OpCtxs;
+use crate::ops::OpDeclStorage;
+use crate::ops::OpId;
 use crate::runtime::ExtensionTranspiler;
 use crate::runtime::JsRuntimeState;
 use crate::runtime::OpDriverImpl;
@@ -47,14 +50,15 @@ pub fn setup_op_state(
 pub fn init_ops(
   deno_core_ops: &'static [OpDecl],
   extensions: &mut [Extension],
-) -> (Vec<OpDecl>, Vec<OpMethodDecl>) {
+) -> (Vec<OpDeclStorage>, Vec<OpMethodDecl>) {
   // In debug build verify there that inter-Extension dependencies
   // are setup correctly.
   #[cfg(debug_assertions)]
   check_extensions_dependencies(extensions);
 
-  let no_of_ops = extensions.iter().map(|e| e.op_count()).sum::<usize>();
-  let mut ops = Vec::with_capacity(no_of_ops + deno_core_ops.len());
+  // One entry per extension (plus deno_core's own table), each holding that
+  // extension's ops in registration order.
+  let mut ops = Vec::with_capacity(extensions.len() + 1);
 
   let no_of_methods = extensions
     .iter()
@@ -69,24 +73,42 @@ pub fn init_ops(
     .collect();
 
   // Create a single macroware out of all middleware functions.
+  let has_middleware = !middlewares.is_empty();
   let macroware = move |d| middlewares.iter().fold(d, |d, m| m(d));
+  // Rewriting decls means the realm has to own copies of them; without
+  // middleware the extension's own table is used as-is (borrowed when it is
+  // already static, moved out of the extension otherwise) and no per-op copy
+  // is made at all.
+  let rewrite = |decls: &[OpDecl]| -> Vec<OpDecl> {
+    decls
+      .iter()
+      .map(|op| OpDecl {
+        name: op.name,
+        name_fast: op.name_fast,
+        ..macroware(*op)
+      })
+      .collect()
+  };
 
   // Collect ops from all extensions and apply a macroware to each of them.
-  for core_op in deno_core_ops {
-    ops.push(OpDecl {
-      name: core_op.name,
-      name_fast: core_op.name_fast,
-      ..macroware(*core_op)
-    });
+  if has_middleware {
+    ops.push(OpDeclStorage::Owned(rewrite(deno_core_ops)));
+  } else {
+    ops.push(OpDeclStorage::Static(deno_core_ops));
   }
 
   for ext in extensions.iter_mut() {
-    let ext_ops = ext.init_ops();
-    for ext_op in ext_ops {
-      ops.push(OpDecl {
-        name: ext_op.name,
-        name_fast: ext_op.name_fast,
-        ..macroware(*ext_op)
+    // Applies the `enabled` flag to the extension's ops, if needed.
+    ext.init_ops();
+    let ext_ops = ext.take_ops();
+    if !ext_ops.is_empty() {
+      ops.push(if has_middleware {
+        OpDeclStorage::Owned(rewrite(&ext_ops))
+      } else {
+        match ext_ops {
+          Cow::Borrowed(decls) => OpDeclStorage::Static(decls),
+          Cow::Owned(decls) => OpDeclStorage::Owned(decls),
+        }
       });
     }
 
@@ -114,12 +136,12 @@ fn check_extensions_dependencies(exts: &[Extension]) {
 
 /// This function panics if there are ops with duplicate names
 #[cfg(debug_assertions)]
-fn check_no_duplicate_op_names(ops: &[OpDecl]) {
+fn check_no_duplicate_op_names(ops: &[OpDeclStorage]) {
   use std::collections::HashMap;
 
   let mut count_by_name = HashMap::new();
 
-  for op in ops.iter() {
+  for op in ops.iter().flat_map(|s| s.iter()) {
     count_by_name.entry(op.name).or_insert(vec![]).push(op.name);
   }
 
@@ -139,59 +161,73 @@ fn check_no_duplicate_op_names(ops: &[OpDecl]) {
 
 #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 pub fn create_op_ctxs(
-  op_decls: Vec<OpDecl>,
+  op_decls: Vec<OpDeclStorage>,
   op_method_decls: &mut [OpMethodDecl],
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   op_driver: Rc<OpDriverImpl>,
   op_state: Rc<RefCell<OpState>>,
   runtime_state: Rc<JsRuntimeState>,
   enable_stack_trace_in_ops: bool,
-) -> (Box<[OpCtx]>, usize) {
-  let op_count = op_decls.len() + op_method_decls.len();
-  let mut op_ctxs = Vec::with_capacity(op_count);
+) -> (OpCtxs, usize) {
+  let op_count = op_decls.iter().map(|storage| storage.len()).sum::<usize>()
+    + op_method_decls.len();
 
-  let runtime_state_ptr = runtime_state.as_ref() as *const _;
-  let create_ctx = |index, decl| {
-    let metrics_fn = op_metrics_factory_fn
-      .as_ref()
-      .and_then(|f| (f)(index as _, op_count, &decl));
-
-    OpCtx::new(
-      index as _,
-      v8::UnsafeRawIsolatePtr::null(),
-      op_driver.clone(),
-      decl,
-      op_state.clone(),
-      runtime_state_ptr,
-      metrics_fn,
-      enable_stack_trace_in_ops,
-    )
-  };
+  // Lay the declarations out in op-context order: method ops, then regular
+  // ops. Each entry is a run of declarations that the returned `OpCtxs` keeps
+  // alive for the lifetime of the realm; static method tables are borrowed,
+  // only the name-patched constructors need an owned copy.
+  //
+  // `ids` mirrors the flattened declaration sequence: every method op carries
+  // the id of the `OpMethodDecl` it belongs to, while regular ops are numbered
+  // from the end of the method block. This is also the index handed to the op
+  // metrics factory.
+  let mut decls =
+    Vec::with_capacity(op_method_decls.len() * 3 + op_decls.len());
+  let mut ids: Vec<OpId> = Vec::with_capacity(op_count);
 
   for (index, decl) in op_method_decls.iter_mut().enumerate() {
     if let Some(mut constructor) = decl.constructor {
       constructor.name = decl.name.0;
       constructor.name_fast = decl.name.1;
 
-      op_ctxs.push(create_ctx(index, constructor));
+      decls.push(OpDeclStorage::Owned(vec![constructor]));
+      ids.push(index as _);
     }
 
-    for method in decl.methods {
-      op_ctxs.push(create_ctx(index, *method));
-    }
-    for method in decl.static_methods {
-      op_ctxs.push(create_ctx(index, *method));
+    for methods in [decl.methods, decl.static_methods] {
+      if !methods.is_empty() {
+        decls.push(OpDeclStorage::Static(methods));
+        ids.extend(std::iter::repeat_n(index as OpId, methods.len()));
+      }
     }
   }
 
   /* method op ctxs are stored before regular op ctxs */
-  let methods_ctx_offset = op_ctxs.len();
+  let methods_ctx_offset = ids.len();
 
-  for (index, decl) in op_decls.into_iter().enumerate() {
-    op_ctxs.push(create_ctx(index + methods_ctx_offset, decl));
+  for storage in op_decls {
+    let start = ids.len();
+    ids.extend((start..start + storage.len()).map(|id| id as OpId));
+    decls.push(storage);
   }
 
-  (op_ctxs.into_boxed_slice(), methods_ctx_offset)
+  let runtime_state_ptr = runtime_state.as_ref() as *const _;
+  let op_ctxs = OpCtxs::new(
+    decls,
+    op_state,
+    op_driver,
+    runtime_state_ptr,
+    enable_stack_trace_in_ops,
+    |index, decl| {
+      let id = ids[index];
+      let metrics_fn = op_metrics_factory_fn
+        .as_ref()
+        .and_then(|f| (f)(id, op_count, decl));
+      (id, metrics_fn)
+    },
+  );
+
+  (op_ctxs, methods_ctx_offset)
 }
 
 pub fn get_middlewares_and_external_refs(
