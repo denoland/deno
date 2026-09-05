@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --allow-env --allow-net=127.0.0.1 --allow-run --allow-write test_runner.ts",
+  "output": "test_runner.out"
+}

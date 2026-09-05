@@ -48,6 +48,39 @@ Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
+Deno.test(
+  { permissions: { env: true } },
+  function envRejectsReservedInternalKeys() {
+    const keys = [
+      "DENO_CACHE_LSC_ENDPOINT",
+      "DENO_UNSTABLE_CRON_SOCK",
+      "DENO_WEBGPU_TRACE",
+    ];
+    if (Deno.build.os === "windows") {
+      keys.push(
+        "deno_cache_lsc_endpoint",
+        "deno_unstable_cron_sock",
+        "deno_webgpu_trace",
+      );
+    }
+    for (const key of keys) {
+      const original = Deno.env.get(key);
+      assertThrows(
+        () => Deno.env.set(key, "changed"),
+        TypeError,
+        `Key is reserved for internal use: "${key}"`,
+      );
+      assertEquals(Deno.env.get(key), original);
+      assertThrows(
+        () => Deno.env.delete(key),
+        TypeError,
+        `Key is reserved for internal use: "${key}"`,
+      );
+      assertEquals(Deno.env.get(key), original);
+    }
+  },
+);
+
 // Regression test for https://github.com/denoland/deno/issues/23443
 // Every key returned by `toObject()` must be one that `get()` accepts.
 // On Windows, cmd.exe injects hidden per-drive cwd variables such as `=C:`
