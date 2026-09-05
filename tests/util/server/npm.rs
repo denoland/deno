@@ -18,7 +18,7 @@ use crate::PathRef;
 use crate::root_path;
 use crate::tests_path;
 
-pub static ESBUILD_VERSION: &str = "0.25.5";
+pub static ESBUILD_VERSION: &str = "0.28.2";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
