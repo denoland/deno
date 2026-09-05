@@ -30,6 +30,7 @@ use deno_core::ToJsBuffer;
 use deno_core::convert::Uint8Array;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_error::JsErrorBox;
@@ -234,8 +235,10 @@ async fn op_kv_database_open(
   Ok(rid)
 }
 
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 type KvKey = Vec<AnyValue>;
 
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 fn key_part_from_v8(value: AnyValue) -> KeyPart {
   match value {
     AnyValue::Bool(false) => KeyPart::False,
@@ -248,6 +251,7 @@ fn key_part_from_v8(value: AnyValue) -> KeyPart {
   }
 }
 
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 fn key_part_to_v8(value: KeyPart) -> AnyValue {
   match value {
     KeyPart::False => AnyValue::Bool(false),
