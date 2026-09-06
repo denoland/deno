@@ -912,7 +912,7 @@ jobs:
           name: release-macos-x86_64-test-server
           path: target/release/test_server
           retention-days: 3
-      - name: Upload release to dl.deno.land (unix)
+      - name: Upload release to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
@@ -2049,7 +2049,7 @@ jobs:
           name: release-macos-aarch64-test-server
           path: target/release/test_server
           retention-days: 3
-      - name: Upload release to dl.deno.land (unix)
+      - name: Upload release to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
@@ -3098,14 +3098,13 @@ jobs:
           name: release-windows-x86_64-test-server
           path: target/release/test_server.exe
           retention-days: 3
-      - name: Upload release to dl.deno.land (windows)
+      - name: Upload release to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
           AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
-          CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
@@ -4006,14 +4005,13 @@ jobs:
           name: release-windows-aarch64-test-server
           path: target/release/test_server.exe
           retention-days: 3
-      - name: Upload release to dl.deno.land (windows)
+      - name: Upload release to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
           AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
-          CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
@@ -4666,7 +4664,7 @@ jobs:
           name: release-linux-x86_64-test-server
           path: target/release/test_server
           retention-days: 3
-      - name: Upload release to dl.deno.land (unix)
+      - name: Upload release to dl.deno.land
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
@@ -6804,7 +6802,7 @@ jobs:
           name: release-linux-aarch64-test-server
           path: target/release/test_server
           retention-days: 3
-      - name: Upload release to dl.deno.land (unix)
+      - name: Upload release to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
