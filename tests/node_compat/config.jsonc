@@ -3058,6 +3058,7 @@
     "parallel/test-readline.js": {},
     "parallel/test-ref-unref-return.js": {},
     "parallel/test-regression-object-prototype.js": {},
+    "parallel/test-resource-usage.js": {},
     "parallel/test-repl-async-iife.js": {},
     "parallel/test-repl-context.js": {},
     "parallel/test-repl-definecommand.js": {},
