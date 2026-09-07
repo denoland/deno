@@ -1677,8 +1677,7 @@ Deno.test(
   },
 );
 
-// Scoped form must match the exact path — a different unix path does not
-// grant access to this one.
+// A unix: grant for a different path does not cover this socket.
 Deno.test(
   {
     ignore: Deno.build.os === "windows",

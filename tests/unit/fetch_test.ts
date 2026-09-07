@@ -2534,8 +2534,7 @@ Deno.test(
   },
 );
 
-// The scoped form must match the exact path: an `--allow-net=unix:<path>` rule
-// for a different socket does not grant the Unix proxy access to this one.
+// A unix: grant for a different socket does not cover this Unix proxy.
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
