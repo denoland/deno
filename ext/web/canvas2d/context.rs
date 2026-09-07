@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::ops::Range;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
@@ -17,7 +18,6 @@ use deno_image::image::Rgba;
 use deno_image::image::RgbaImage;
 use parley::FontContext;
 use parley::LayoutContext;
-use parley::PositionedLayoutItem;
 use vello::kurbo;
 use vello::kurbo::Affine;
 use vello::kurbo::BezPath;
@@ -56,6 +56,8 @@ use super::text::build_text_layout;
 use super::text::compute_baseline_y;
 use super::text::compute_text_metrics;
 use super::text::font_metric_offsets;
+use super::text_cluster::TextCluster;
+use super::text_cluster::TextClusterOptions;
 use super::v8_util::to_f64;
 use crate::canvas2d::TextMetrics;
 use crate::canvas2d::error::Canvas2DError;
@@ -502,10 +504,37 @@ impl OffscreenCanvasRenderingContext2D {
       text,
       &state.font_state,
       state.text_align,
+      state.text_baseline,
       &state.lang,
       &self.font_ctx,
       &self.layout_ctx,
     )
+  }
+
+  #[required(3)]
+  #[undefined]
+  fn fill_text_cluster(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[cppgc] cluster: &TextCluster,
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+    #[webidl] options: TextClusterOptions,
+  ) {
+    self.draw_text_cluster(scope, cluster, x, y, options, false);
+  }
+
+  #[required(3)]
+  #[undefined]
+  fn stroke_text_cluster(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[cppgc] cluster: &TextCluster,
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+    #[webidl] options: TextClusterOptions,
+  ) {
+    self.draw_text_cluster(scope, cluster, x, y, options, true);
   }
 
   #[getter]
@@ -2320,12 +2349,6 @@ impl OffscreenCanvasRenderingContext2D {
       font_metric_offsets(&layout, self.state.borrow().font_state.size as f64);
     let baseline_y = compute_baseline_y(y, text_baseline, &metric_offsets);
 
-    let layout_baseline = layout
-      .lines()
-      .next()
-      .map(|line| line.metrics().baseline)
-      .unwrap_or(0.0);
-
     // Line width for text-align (trailing spaces kept; no collapse).
     // https://html.spec.whatwg.org/multipage/canvas.html#text-preparation-algorithm
     let line_width: f32 = layout
@@ -2357,8 +2380,68 @@ impl OffscreenCanvasRenderingContext2D {
         brush_transform,
         draw_x,
         baseline_y,
-        layout_baseline,
         x_scale,
+        None,
+      );
+    });
+  }
+
+  /// The glyphs come from the layout that the `measureText()` call producing
+  /// `cluster` shaped, so the font and the other `CanvasTextDrawingStyles` are
+  /// the ones from back then. Only the paint is taken from the current state.
+  ///
+  /// https://html.spec.whatwg.org/multipage/canvas.html#cluster-rendering-algorithm
+  fn draw_text_cluster(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    cluster: &TextCluster,
+    x: f64,
+    y: f64,
+    options: TextClusterOptions,
+    stroke: bool,
+  ) {
+    let measurement = &cluster.measurement;
+    let Some(layout) = measurement.layout() else {
+      return;
+    };
+
+    let align = options.align.unwrap_or(cluster.align);
+    let baseline = options.baseline.unwrap_or(cluster.baseline);
+
+    // Place the cluster where it would land if the whole measured text were
+    // drawn at (x, y) with that align and baseline.
+    let mut draw_x = x - measurement.anchor_x(align);
+    let mut baseline_y = y - measurement.baseline_offset(baseline);
+    // Overriding x/y instead pins the cluster's own anchor point to (x, y).
+    if let Some(options_x) = options.x {
+      draw_x += options_x - cluster.x;
+    }
+    if let Some(options_y) = options.y {
+      baseline_y += options_y - cluster.y;
+    }
+
+    let paint = {
+      let state = self.state.borrow();
+      let style = if stroke {
+        &state.stroke_style
+      } else {
+        &state.fill_style
+      };
+      paint_from_style(scope, &state, style, state.transform)
+    };
+
+    let range = measurement.utf8_range(cluster.start, cluster.end);
+    self.paint(paint, |d, transform, brush, brush_transform| {
+      fill_layout_glyphs(
+        d,
+        layout,
+        transform,
+        &brush,
+        brush_transform,
+        draw_x as f32,
+        baseline_y as f32,
+        1.0,
+        Some(&range),
       );
     });
   }
@@ -2743,6 +2826,11 @@ fn replay_clips(
 }
 
 #[allow(clippy::too_many_arguments, reason = "glyph placement parameters")]
+/// Fills the glyphs of `layout`, or only those whose cluster overlaps `range`.
+///
+/// Walks clusters rather than `GlyphRun::positioned_glyphs` so that a byte
+/// range of the shaped text can select glyphs; the x accumulation is the same
+/// one that method performs.
 fn fill_layout_glyphs(
   drawing: &mut DrawingBackend,
   layout: &parley::Layout<()>,
@@ -2751,35 +2839,38 @@ fn fill_layout_glyphs(
   brush_transform: Option<Affine>,
   draw_x: f32,
   baseline_y: f32,
-  layout_baseline: f32,
   x_scale: f32,
+  range: Option<&Range<usize>>,
 ) {
   for line in layout.lines() {
-    for item in line.items() {
-      let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-        continue;
-      };
-      let font = peniko::FontData::clone(glyph_run.run().font());
+    let metrics = line.metrics();
+    let mut x = metrics.inline_min_coord + metrics.offset;
+    for run in line.runs() {
+      let font = peniko::FontData::clone(run.font());
       // Keep outlines in step with condensed advances.
-      let font_size = glyph_run.run().font_size() * x_scale;
-      let glyphs: Vec<_> = glyph_run
-        .positioned_glyphs()
-        .map(|g| {
-          (
-            g.id,
-            draw_x + g.x * x_scale,
-            baseline_y + g.y - layout_baseline,
-          )
-        })
-        .collect();
-      drawing.fill_glyphs(
-        &font,
-        font_size,
-        transform,
-        brush,
-        brush_transform,
-        &glyphs,
-      );
+      let font_size = run.font_size() * x_scale;
+      let mut glyphs = Vec::new();
+      for cluster in run.visual_clusters() {
+        let text_range = cluster.text_range();
+        let included = range
+          .is_none_or(|r| text_range.start < r.end && text_range.end > r.start);
+        for g in cluster.glyphs() {
+          if included {
+            glyphs.push((g.id, draw_x + (x + g.x) * x_scale, baseline_y + g.y));
+          }
+          x += g.advance;
+        }
+      }
+      if !glyphs.is_empty() {
+        drawing.fill_glyphs(
+          &font,
+          font_size,
+          transform,
+          brush,
+          brush_transform,
+          &glyphs,
+        );
+      }
     }
   }
 }

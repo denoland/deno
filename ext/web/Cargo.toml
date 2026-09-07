@@ -37,6 +37,7 @@ thiserror.workspace = true
 tokio.workspace = true
 ttf-parser.workspace = true
 unicode-normalization.workspace = true
+unicode-segmentation.workspace = true
 urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 vello.workspace = true

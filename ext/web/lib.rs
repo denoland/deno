@@ -187,6 +187,7 @@ deno_core::extension!(deno_web,
     canvas2d::CanvasPattern,
     canvas2d::OffscreenCanvasRenderingContext2D,
     canvas2d::Path2D,
+    canvas2d::TextCluster,
     canvas2d::TextMetrics,
   ],
   lazy_loaded_esm = [

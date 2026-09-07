@@ -12,6 +12,7 @@ pub mod pattern;
 mod renderer;
 mod state;
 mod text;
+mod text_cluster;
 pub mod text_metrics;
 mod v8_util;
 
@@ -25,4 +26,5 @@ pub use gradient::CanvasGradient;
 pub use image::set_offscreen_canvas_pixel_sync;
 pub use path::Path2D;
 pub use pattern::CanvasPattern;
+pub use text_cluster::TextCluster;
 pub use text_metrics::TextMetrics;

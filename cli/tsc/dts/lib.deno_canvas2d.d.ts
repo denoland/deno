@@ -205,6 +205,30 @@ interface TextMetrics {
   readonly hangingBaseline: number;
   readonly alphabeticBaseline: number;
   readonly ideographicBaseline: number;
+  /**
+   * Bounding rectangle of the glyphs rendered for the given range, in CSS
+   * pixels relative to the anchor point of the measured text.
+   */
+  getActualBoundingBox(start: number, end: number): DOMRectReadOnly;
+  /**
+   * Index of the UTF-16 code unit closest to `offset`, measured from the start
+   * position of the text. Negative offsets are valid.
+   */
+  getIndexFromOffset(offset: number): number;
+  /**
+   * Rectangles that would be painted as the selection background for the given
+   * range, in CSS pixels relative to the anchor point of the measured text.
+   */
+  getSelectionRects(start: number, end: number): DOMRectReadOnly[];
+  /**
+   * Splits the text into the minimal units that can be rendered on their own.
+   */
+  getTextClusters(options?: TextClusterOptions): TextCluster[];
+  getTextClusters(
+    start: number,
+    end: number,
+    options?: TextClusterOptions,
+  ): TextCluster[];
 }
 
 /**
@@ -213,6 +237,55 @@ interface TextMetrics {
  */
 declare var TextMetrics: {
   prototype: TextMetrics;
+  new (): never;
+};
+
+/**
+ * Selects which point of a text cluster `TextCluster.x` and `y` name, and
+ * where `fillTextCluster()` and `strokeTextCluster()` place the cluster.
+ *
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface TextClusterOptions {
+  align?: CanvasTextAlign;
+  baseline?: CanvasTextBaseline;
+  x?: number;
+  y?: number;
+}
+
+/**
+ * One minimal rendering unit of a measured piece of text, as returned by
+ * `TextMetrics.getTextClusters()`.
+ *
+ * The object is opaque: it retains the whole measured text and the text
+ * drawing styles that were in effect when `measureText()` was called, so that
+ * `fillTextCluster()` reproduces the measurement.
+ *
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface TextCluster {
+  /** Alignment point of the cluster that `x` names. */
+  readonly align: CanvasTextAlign;
+  /** Baseline of the cluster that `y` names. */
+  readonly baseline: CanvasTextBaseline;
+  /** Index just past the last UTF-16 code unit rendered as this cluster. */
+  readonly end: number;
+  /** Index of the first UTF-16 code unit rendered as this cluster. */
+  readonly start: number;
+  /** x of the cluster relative to the anchor point of the measured text. */
+  readonly x: number;
+  /** y of the cluster relative to the anchor point of the measured text. */
+  readonly y: number;
+}
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+declare var TextCluster: {
+  prototype: TextCluster;
   new (): never;
 };
 
@@ -718,10 +791,29 @@ interface CanvasState {
 interface CanvasText {
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fillText) */
   fillText(text: string, x: number, y: number, maxWidth?: number): void;
+  /**
+   * Fills a text cluster where it would land if the measured text as a whole
+   * were rendered at `(x, y)`. The align, baseline and position recorded on the
+   * cluster are used, not the ones currently set on the context; `options`
+   * overrides them for this call only.
+   */
+  fillTextCluster(
+    cluster: TextCluster,
+    x: number,
+    y: number,
+    options?: TextClusterOptions,
+  ): void;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/measureText) */
   measureText(text: string): TextMetrics;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/strokeText) */
   strokeText(text: string, x: number, y: number, maxWidth?: number): void;
+  /** The `fillTextCluster()` of stroking. */
+  strokeTextCluster(
+    cluster: TextCluster,
+    x: number,
+    y: number,
+    options?: TextClusterOptions,
+  ): void;
 }
 
 /**

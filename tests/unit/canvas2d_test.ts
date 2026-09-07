@@ -345,6 +345,358 @@ Deno.test(function canvas2dMeasureTextEmptyString() {
   assertEquals(m.width, 0);
 });
 
+// --- Enhanced TextMetrics ---
+
+Deno.test(function canvas2dTextClusterIllegalConstructor() {
+  // @ts-ignore: TextCluster has no construct signature
+  assertThrows(() => new TextCluster(), TypeError);
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetTextClustersSplitsGraphemes() {
+    await withTestFont("ClusterSplitFont", (ctx) => {
+      ctx.font = "50px ClusterSplitFont";
+      const ranges = (text: string) =>
+        ctx.measureText(text).getTextClusters().map((c) => [c.start, c.end]);
+
+      // An emoji and its variation selector stay together, and indexes are
+      // UTF-16 code units, so the astral pairs count as two.
+      assertEquals(ranges("ABC ☺️❤️"), [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [4, 6],
+        [6, 8],
+      ]);
+      // UAX #29 GB9: no break before ZWJ.
+      assertEquals(ranges("X‍Y"), [[0, 2], [2, 3]]);
+      // UAX #29 GB11: an Extended_Pictographic ZWJ sequence is one cluster.
+      assertEquals(ranges("\u{1FFFD}‍\u{1FFFD}"), [[0, 5]]);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetTextClustersRange() {
+    await withTestFont("ClusterRangeFont", (ctx) => {
+      ctx.font = "50px ClusterRangeFont";
+      const m = ctx.measureText("01234");
+      assertEquals(m.getTextClusters(1, 4).map((c) => c.start), [1, 2, 3]);
+      // The complete overload covers the whole string.
+      assertEquals(m.getTextClusters().length, 5);
+      assertEquals(m.getTextClusters({}).length, 5);
+    });
+  },
+);
+
+Deno.test(function canvas2dTextMetricsRangeExceptions() {
+  const ctx = new OffscreenCanvas(100, 50).getContext("2d")!;
+  ctx.font = "50px sans-serif";
+  for (const text of ["UNAVAILABLE", "🏁🎶🏁", "-abcd_"]) {
+    const m = ctx.measureText(text);
+    const len = text.length;
+    for (
+      const method of [
+        "getTextClusters",
+        "getSelectionRects",
+        "getActualBoundingBox",
+      ] as const
+    ) {
+      // Negative indexes are rejected by the binding, out-of-range ones by
+      // the method.
+      assertThrows(() => m[method](-1, 0), TypeError);
+      assertThrows(() => m[method](0, -1), TypeError);
+      assertThrows(() => m[method](len, 0), DOMException, "range");
+      assertThrows(() => m[method](0, len + 1), DOMException, "range");
+    }
+  }
+});
+
+Deno.test(function canvas2dTextMetricsEmptyTextRangeThrows() {
+  const ctx = new OffscreenCanvas(100, 50).getContext("2d")!;
+  const m = ctx.measureText("");
+  // There is no index below the length of an empty string, so every range is
+  // out of range -- including the one the complete overload picks.
+  assertThrows(() => m.getTextClusters(), DOMException);
+  assertThrows(() => m.getSelectionRects(0, 0), DOMException);
+  assertThrows(() => m.getActualBoundingBox(0, 0), DOMException);
+  assertEquals(m.getIndexFromOffset(10), 0);
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dTextMetricsIndexesSkipDroppedNull() {
+    await withTestFont("NullIndexFont", (ctx) => {
+      ctx.font = "50px NullIndexFont";
+      // U+0000 is dropped by text preparation but still occupies an index.
+      const m = ctx.measureText("0\x001");
+      assertEquals(m.width, ctx.measureText("01").width);
+      assertEquals(m.getTextClusters().map((c) => [c.start, c.end]), [
+        [0, 1],
+        [1, 3],
+      ]);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dTextMetricsIndexesNonAsciiText() {
+    await withTestFont("NonAsciiIndexFont", (ctx) => {
+      ctx.font = "50px NonAsciiIndexFont";
+      // ASCII indexes straight through, everything else needs the UTF-16 map:
+      // U+00E9 is two UTF-8 bytes but one code unit, an astral character is
+      // four bytes and two code units.
+      const latin1 = ctx.measureText("0é1");
+      assertEquals(latin1.getTextClusters().map((c) => [c.start, c.end]), [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+      ]);
+      const astral = ctx.measureText("0\u{1F600}1");
+      assertEquals(astral.getTextClusters().map((c) => [c.start, c.end]), [
+        [0, 1],
+        [1, 3],
+        [3, 4],
+      ]);
+      assertEquals(astral.getSelectionRects(1, 3).length, 1);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetTextClustersPosition() {
+    await withTestFont("ClusterPositionFont", (ctx) => {
+      ctx.font = "40px ClusterPositionFont";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const m = ctx.measureText("0");
+      const advance = m.width;
+      const x = (align: CanvasTextAlign) => m.getTextClusters({ align })[0].x;
+      // The origin is the textAlign anchor; align picks a point of the
+      // cluster's advance.
+      assertAlmostEquals(x("left"), 0);
+      assertAlmostEquals(x("center"), advance / 2);
+      assertAlmostEquals(x("right"), advance);
+
+      // The y origin is the textBaseline anchor, so the relations are clearest
+      // with the anchor on the alphabetic baseline.
+      ctx.textBaseline = "alphabetic";
+      const alphabetic = ctx.measureText("0");
+      const y = (baseline: CanvasTextBaseline) =>
+        alphabetic.getTextClusters({ baseline })[0].y;
+      assertAlmostEquals(y("alphabetic"), 0);
+      assertAlmostEquals(y("top"), -alphabetic.emHeightAscent);
+      assertAlmostEquals(y("bottom"), alphabetic.emHeightDescent);
+      assertAlmostEquals(
+        y("middle"),
+        (alphabetic.emHeightDescent - alphabetic.emHeightAscent) / 2,
+      );
+
+      ctx.textBaseline = "top";
+      // Absent members fall back to the state at measureText() time.
+      assertAlmostEquals(m.getTextClusters()[0].x, 0);
+      assertAlmostEquals(m.getTextClusters()[0].y, 0);
+      assertEquals(m.getTextClusters()[0].align, "left");
+      assertEquals(m.getTextClusters()[0].baseline, "top");
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetSelectionRectsSpanFontBox() {
+    await withTestFont("SelectionRectFont", (ctx) => {
+      ctx.font = "50px SelectionRectFont";
+      for (
+        const baseline of [
+          "top",
+          "hanging",
+          "middle",
+          "alphabetic",
+          "ideographic",
+          "bottom",
+        ] as const
+      ) {
+        ctx.textBaseline = baseline;
+        const m = ctx.measureText("01234");
+        const rects = m.getSelectionRects(0, 5);
+        assertEquals(rects.length, 1);
+        // Selection follows the advance of the text, so it spans the font box,
+        // measured from whichever baseline is the origin.
+        assertAlmostEquals(rects[0].top, -m.fontBoundingBoxAscent, 1e-6);
+        assertAlmostEquals(rects[0].bottom, m.fontBoundingBoxDescent, 1e-6);
+        assertAlmostEquals(rects[0].width, m.width, 1e-6);
+      }
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetSelectionRectsCollapsedRange() {
+    await withTestFont("SelectionCaretFont", (ctx) => {
+      ctx.font = "50px SelectionCaretFont";
+      const m = ctx.measureText("01234");
+      // start > end selects nothing, and reports the caret instead.
+      const rects = m.getSelectionRects(3, 2);
+      assertEquals(rects.length, 1);
+      assertEquals(rects[0].width, 0);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetActualBoundingBoxMatchesAttributes() {
+    await withTestFont("BoundingBoxFont", (ctx) => {
+      ctx.font = "50px BoundingBoxFont";
+      const text = "012 ";
+      for (const align of ["left", "center", "right"] as const) {
+        for (
+          const baseline of [
+            "top",
+            "hanging",
+            "middle",
+            "alphabetic",
+            "ideographic",
+            "bottom",
+          ] as const
+        ) {
+          ctx.textAlign = align;
+          ctx.textBaseline = baseline;
+          const m = ctx.measureText(text);
+          const rect = m.getActualBoundingBox(0, text.length);
+          // The whole-string box is what the actualBoundingBox* attributes
+          // describe, for every anchor.
+          assertAlmostEquals(rect.x, -m.actualBoundingBoxLeft, 1e-6);
+          assertAlmostEquals(rect.y, -m.actualBoundingBoxAscent, 1e-6);
+          assertAlmostEquals(
+            rect.width,
+            m.actualBoundingBoxLeft + m.actualBoundingBoxRight,
+            1e-6,
+          );
+          assertAlmostEquals(
+            rect.height,
+            m.actualBoundingBoxAscent + m.actualBoundingBoxDescent,
+            1e-6,
+          );
+        }
+      }
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetIndexFromOffset() {
+    await withTestFont("IndexFromOffsetFont", (ctx) => {
+      ctx.font = "50px IndexFromOffsetFont";
+      ctx.direction = "ltr";
+      ctx.textAlign = "left";
+      const advance = ctx.measureText("0").width;
+      const m = ctx.measureText("012");
+      // The index snaps to the nearer edge of the cluster that is hit.
+      assertEquals(m.getIndexFromOffset(0), 0);
+      assertEquals(m.getIndexFromOffset(advance / 2), 0);
+      assertEquals(m.getIndexFromOffset(advance / 2 + 1), 1);
+      assertEquals(m.getIndexFromOffset(advance), 1);
+      assertEquals(m.getIndexFromOffset(advance * 1.5 + 1), 2);
+      assertEquals(m.getIndexFromOffset(advance * 2), 2);
+      assertEquals(m.getIndexFromOffset(advance * 3), 3);
+      // Out of range clamps to an edge; negative offsets are valid.
+      assertEquals(m.getIndexFromOffset(-advance * 3), 0);
+      assertEquals(m.getIndexFromOffset(advance * 10), 3);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dGetIndexFromOffsetAppliesTextAlign() {
+    await withTestFont("IndexAlignFont", (ctx) => {
+      ctx.font = "50px IndexAlignFont";
+      ctx.direction = "ltr";
+      // The offset is measured from the anchor textAlign puts the text at, so
+      // 0 is the end of the text for `right`.
+      ctx.textAlign = "left";
+      assertEquals(ctx.measureText("012").getIndexFromOffset(0), 0);
+      ctx.textAlign = "right";
+      assertEquals(ctx.measureText("012").getIndexFromOffset(0), 3);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true }, ignore: !hasCanvasRenderer },
+  async function canvas2dFillTextClusterUsesRetainedStyles() {
+    await withTestFont("ClusterDrawFont", (ctx) => {
+      const canvas = ctx.canvas;
+      ctx.font = "40px ClusterDrawFont";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const clusters = ctx.measureText("000").getTextClusters();
+      assertEquals(clusters.length, 3);
+
+      // The cluster is opaque: changing the font afterwards must not affect it.
+      ctx.font = "10px ClusterDrawFont";
+
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "black";
+      for (const cluster of clusters) ctx.fillTextCluster(cluster, 0, 0);
+      const drawn = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // Drawing the whole string with the original font lands in the same
+      // place.
+      ctx.font = "40px ClusterDrawFont";
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "black";
+      ctx.fillText("000", 0, 0);
+      const reference = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      assertEquals(drawn.data, reference.data);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true }, ignore: !hasCanvasRenderer },
+  async function canvas2dFillTextClusterOptionsPinPosition() {
+    await withTestFont("ClusterPinFont", (ctx) => {
+      const canvas = ctx.canvas;
+      ctx.font = "40px ClusterPinFont";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const cluster = ctx.measureText("000").getTextClusters()[2];
+      assert(cluster.x > 0);
+
+      const render = (draw: () => void) => {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "black";
+        draw();
+        return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      };
+
+      // Zeroing x and y pins the cluster's own anchor point to (x, y), so it
+      // draws where the first cluster would have without the override.
+      const pinned = render(() =>
+        ctx.fillTextCluster(cluster, 0, 0, { x: 0, y: 0 })
+      );
+      const first = render(() =>
+        ctx.fillTextCluster(ctx.measureText("000").getTextClusters()[0], 0, 0)
+      );
+      assertEquals(pinned, first);
+    });
+  },
+);
+
 // --- CanvasRenderingContext2DSettings ---
 
 Deno.test(function canvas2dSettingsDefault() {
