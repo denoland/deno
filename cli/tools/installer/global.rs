@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -21,6 +22,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm_installer::PackagesAllowedScripts;
+use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -832,6 +834,14 @@ fn resolve_native_binary_path(
       })?
       .clone()
   };
+
+  // Bin values are posix-style, whether they come from an npm specifier sub
+  // path or from package.json (`bin/ngrok`, `./bin/ngrok`). Joining one onto
+  // the package directory leaves mixed separators and `.` components on
+  // Windows -- `C:\...\node_modules\ngrok\./bin/ngrok` -- and that path is
+  // written verbatim into the generated `.cmd` shim, which cmd.exe then
+  // refuses to execute. Normalize to host separators so the shim is runnable.
+  let bin_path = normalize_path(Cow::Owned(bin_path)).into_owned();
 
   // Only treat the bin entry as a native binary if its magic bytes match
   // ELF/Mach-O/PE. `node_resolver::read_bin_value` returns `Executable` for
@@ -2699,6 +2709,62 @@ mod tests {
     assert!(
       result.unwrap().ends_with("bin/tool.exe"),
       "should return path to the binary"
+    );
+  }
+
+  #[test]
+  fn native_binary_path_is_normalized_to_host_separators() {
+    // Regression test for #36782. Bin values in package.json are posix-style
+    // and often extensionless (ngrok declares `"bin": {"ngrok": "bin/ngrok"}`).
+    // Joining one onto the package dir on Windows leaves mixed separators and
+    // a literal `.` component, and that path is written straight into the
+    // generated `.cmd` shim, which cmd.exe then can't execute.
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin").to_path_buf();
+    let config_dir = bin_dir.join(".mytool");
+    let pkg_dir = config_dir.join("node_modules").join("mytool");
+    let bin_sub = pkg_dir.join("bin");
+    std::fs::create_dir_all(&bin_sub).unwrap();
+
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name": "mytool", "bin": {"mytool": "./bin/mytool"}}"#,
+    )
+    .unwrap();
+
+    let mut macho_bytes = vec![0xcf, 0xfa, 0xed, 0xfe];
+    macho_bytes.extend_from_slice(&[0u8; 100]);
+    std::fs::write(bin_sub.join("mytool"), &macho_bytes).unwrap();
+    std::fs::write(config_dir.join("deno.json"), "{}").unwrap();
+
+    let bin_name_and_url = BinaryNameAndUrl {
+      name: "mytool".to_string(),
+      module_url: Url::parse("npm:mytool@1.0.0").unwrap(),
+      config_name: None,
+    };
+
+    let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir)
+      .expect("should detect Mach-O binary");
+
+    assert!(
+      result.ends_with(Path::new("bin").join("mytool")),
+      "should return path to the binary, got: {}",
+      result.display()
+    );
+    // The `./` component must be gone on every platform...
+    assert!(
+      !result.to_string_lossy().contains("/./")
+        && !result.to_string_lossy().contains("\\.\\"),
+      "should not contain a `.` component, got: {}",
+      result.display()
+    );
+    // ...and on Windows the separators must all be backslashes, otherwise the
+    // `.cmd` shim is unrunnable.
+    #[cfg(windows)]
+    assert!(
+      !result.to_string_lossy().contains('/'),
+      "should use host separators, got: {}",
+      result.display()
     );
   }
 
