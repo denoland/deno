@@ -3611,6 +3611,7 @@ dependencies = [
  "tokio",
  "ttf-parser",
  "unicode-normalization",
+ "unicode-segmentation",
  "urlpattern",
  "uuid",
  "vello",

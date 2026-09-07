@@ -571,6 +571,10 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
     (c) => c.OffscreenCanvasRenderingContext2D,
     loadCanvas2d,
   ),
+  TextCluster: core.propNonEnumerableLazyLoaded(
+    (c) => c.TextCluster,
+    loadCanvas2d,
+  ),
   TextMetrics: core.propNonEnumerableLazyLoaded(
     (c) => c.TextMetrics,
     loadCanvas2d,

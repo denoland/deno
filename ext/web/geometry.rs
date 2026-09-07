@@ -742,6 +742,23 @@ unsafe impl GarbageCollected for DOMRectReadOnly {
 }
 
 impl DOMRectReadOnly {
+  /// Constructs a rect from raw values, for in-crate callers that have no
+  /// `DOMRectInit` to go through.
+  #[inline]
+  pub(crate) fn from_values(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  ) -> DOMRectReadOnly {
+    DOMRectReadOnly {
+      x: Cell::new(x),
+      y: Cell::new(y),
+      width: Cell::new(width),
+      height: Cell::new(height),
+    }
+  }
+
   #[inline]
   fn from_rect_inner(init: DOMRectInit) -> DOMRectReadOnly {
     DOMRectReadOnly {

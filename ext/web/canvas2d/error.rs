@@ -64,6 +64,9 @@ pub enum Canvas2DError {
   #[class("DOMExceptionIndexSizeError")]
   #[error("The index is not in the allowed range.")]
   ColorStopIndexSize,
+  #[class("DOMExceptionIndexSizeError")]
+  #[error("The range is not within the measured text")]
+  TextMetricsIndexSize,
   #[class("DOMExceptionSyntaxError")]
   #[error("Failed to parse color")]
   ColorStopSyntax,

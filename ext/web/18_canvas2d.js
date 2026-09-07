@@ -22,6 +22,7 @@ const {
   CanvasPattern,
   OffscreenCanvasRenderingContext2D,
   Path2D,
+  TextCluster,
   TextMetrics,
 } = core.ops;
 
@@ -1522,11 +1523,32 @@ function brandEventHandlers(proto, brandProto, names) {
   }
 }
 
+webidl.configureInterface(TextCluster);
 webidl.configureInterface(TextMetrics);
 webidl.configureInterface(CanvasGradient);
 webidl.configureInterface(CanvasPattern);
 webidl.configureInterface(OffscreenCanvasRenderingContext2D);
 webidl.configureInterface(Path2D);
+
+ObjectDefineProperty(
+  TextCluster.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(TextCluster.prototype, this),
+          keys: ["x", "y", "start", "end", "align", "baseline"],
+        }),
+        inspectOptions,
+      );
+    },
+    enumerable: true,
+    configurable: true,
+  },
+);
 
 ObjectDefineProperty(
   TextMetrics.prototype,
@@ -1734,6 +1756,7 @@ return {
   fonts,
   queryLocalFonts,
   registerLocalFonts,
+  TextCluster,
   TextMetrics,
 };
 })();
