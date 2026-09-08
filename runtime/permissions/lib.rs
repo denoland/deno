@@ -4728,7 +4728,8 @@ impl PermissionsContainer {
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
+    let desc =
+      NetDescriptor(Host::Ip(normalize_ip(*resolved_ip)), Some(port.into()));
     inner.net.check_resolved_ip_deny(&desc)?;
     Ok(())
   }
@@ -6321,6 +6322,56 @@ mod tests {
       perms.net.check_resolved_ip_deny(&desc).is_ok(),
       "resolved 192.168.1.1 should not be denied"
     );
+  }
+
+  #[test]
+  fn test_check_net_resolved_ipv4_mapped_ipv6() {
+    for deny_rule in ["127.0.0.1", "127.0.0.0/8", "127.0.0.1:8080"] {
+      let parser = TestPermissionDescriptorParser;
+      let perms = Permissions::from_options(
+        &parser,
+        &PermissionsOptions {
+          allow_net: Some(svec!["example.com"]),
+          deny_net: Some(vec![deny_rule.to_string()]),
+          prompt: false,
+          ..Default::default()
+        },
+      )
+      .unwrap();
+      let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+      // The hostname is allowed before DNS resolution.
+      assert!(perms.check_net(&("example.com", Some(8080)), "api").is_ok());
+      for ip in ["127.0.0.1", "::ffff:127.0.0.1"] {
+        assert!(
+          perms
+            .check_net_resolved(&ip.parse().unwrap(), 8080, "api")
+            .is_err(),
+          "resolved {ip}:8080 should be denied by {deny_rule}"
+        );
+      }
+
+      // Unrelated addresses remain allowed by the post-resolution check.
+      for ip in ["192.168.1.1", "::ffff:192.168.1.1", "::1"] {
+        assert!(
+          perms
+            .check_net_resolved(&ip.parse().unwrap(), 8080, "api")
+            .is_ok(),
+          "resolved {ip}:8080 should not be denied by {deny_rule}"
+        );
+      }
+      if deny_rule == "127.0.0.1:8080" {
+        assert!(
+          perms
+            .check_net_resolved(
+              &"::ffff:127.0.0.1".parse().unwrap(),
+              9090,
+              "api"
+            )
+            .is_ok()
+        );
+      }
+    }
   }
 
   #[test]

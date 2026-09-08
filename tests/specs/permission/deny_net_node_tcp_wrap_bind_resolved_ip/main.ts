@@ -14,8 +14,11 @@ function tryBind(name: string, address: string, bind6 = false) {
   try {
     const err = bind6 ? handle.bind6(address, 0, 0) : handle.bind(address, 0);
     console.log(`FAIL: ${name} was not denied (err=${err})`);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotCapable)) throw error;
     console.log(`PASS: ${name} denied`);
+  } finally {
+    handle.close();
   }
 }
 
@@ -30,3 +33,5 @@ tryBind("hex 0x7f000001", "0x7f000001");
 
 // Same via bind6, which has its own copy of the check.
 tryBind("bind6 ::1", "::1", true);
+tryBind("bind6 numeric 2130706433", "2130706433", true);
+tryBind("bind6 hex 0x7f000001", "0x7f000001", true);
