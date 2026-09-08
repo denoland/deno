@@ -3,6 +3,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -447,12 +448,14 @@ impl RuntimeActivityStats {
       }
     }
 
-    let mut a = BitSet::new();
+    // Unlike promise and timer ids, a rid is not a dense counter: it packs a
+    // slot index and a generation, so it is not usable as a bit index.
+    let mut a = HashSet::with_capacity(after.resources.resources.len());
     for op in after.resources.resources.iter() {
-      a.insert(op.0 as usize);
+      a.insert(op.0);
     }
     for op in before.resources.resources.iter() {
-      if a.remove(op.0 as usize) {
+      if a.remove(&op.0) {
         // continuing op
       } else {
         // before, but not after
@@ -460,7 +463,7 @@ impl RuntimeActivityStats {
       }
     }
     for op in after.resources.resources.iter() {
-      if a.contains(op.0 as usize) {
+      if a.contains(&op.0) {
         // after but not before
         appeared.push(RuntimeActivity::Resource(op.0, None, op.1.clone()));
       }
