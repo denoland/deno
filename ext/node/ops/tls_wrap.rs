@@ -53,6 +53,9 @@ use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
 use deno_tls::rustls;
 use deno_tls::rustls_pemfile;
+use x509_parser::prelude::FromDer;
+use x509_parser::prelude::X509Certificate;
+use x509_parser::prelude::X509Version;
 
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::HandleWrap;
@@ -3573,6 +3576,10 @@ struct NodeServerCertVerifier {
   /// whether to destroy based on `rejectUnauthorized`. Name-mismatch errors
   /// are always deferred to JS `checkServerIdentity` regardless.
   strict_verify: bool,
+  /// Signature verification algorithms from the connection's crypto provider.
+  /// Used to check chains and handshake signatures ourselves for certificates
+  /// webpki cannot parse.
+  signature_algorithms: rustls::crypto::WebPkiSupportedAlgorithms,
 }
 
 /// Map a rustls CipherSuite to (OpenSSL name, IANA name).
@@ -3627,36 +3634,12 @@ fn cipher_suite_to_names(
   }
 }
 
-/// Filter out UnsupportedCertVersion errors from signature verification.
-/// OpenSSL accepts X.509v1 certificates, but webpki/rustls rejects them.
-/// Since Node uses OpenSSL, we need to allow these through.
-fn filter_unsupported_cert_version(
-  result: Result<
-    rustls::client::danger::HandshakeSignatureValid,
-    rustls::Error,
-  >,
-) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-  match result {
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::Other(ref other),
-    )) if other
-      .0
-      .downcast_ref::<webpki::Error>()
-      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) =>
-    {
-      Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::BadEncoding,
-    )) => Ok(rustls::client::danger::HandshakeSignatureValid::assertion()),
-    other => other,
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Minimal DER helpers for chain verification of X.509v1 certificates.
-// webpki rejects v1 certs at parse time, so we do structural chain
-// checking ourselves (issuer/subject matching).
+// webpki rejects v1 certs at parse time, so for those chains we walk the
+// issuer/subject links ourselves and verify each hop's signature with the
+// issuer's public key. Name matching alone is not signature verification, so
+// it is only ever used to pick a Node/OpenSSL error code, never to accept.
 // ---------------------------------------------------------------------------
 
 /// Read a DER tag-length-value element, returning (full element, remainder).
@@ -3679,7 +3662,7 @@ fn der_read_element(data: &[u8]) -> Option<(&[u8], &[u8])> {
     }
     (len, 2 + num_bytes)
   };
-  let total = header_len + content_len;
+  let total = header_len.checked_add(content_len)?;
   if data.len() < total {
     return None;
   }
@@ -3691,16 +3674,92 @@ fn der_skip_element(data: &[u8]) -> Option<&[u8]> {
   der_read_element(data).map(|(_, rest)| rest)
 }
 
-/// Extract raw (issuer, subject) DER Name fields from an X.509 certificate.
-fn extract_issuer_and_subject(cert_der: &[u8]) -> Option<(&[u8], &[u8])> {
-  // Certificate ::= SEQUENCE { tbsCertificate, ... }
-  let (cert_elem, _) = der_read_element(cert_der)?;
-  // TBSCertificate is the first element inside Certificate SEQUENCE.
-  let tbs_content = &cert_elem[cert_elem.len() - der_content_len(cert_elem)?..];
-  let (tbs_elem, _) = der_read_element(tbs_content)?;
-  let mut pos = &tbs_elem[tbs_elem.len() - der_content_len(tbs_elem)?..];
+/// Return the length of the content portion of a DER element.
+fn der_content_len(element: &[u8]) -> Option<usize> {
+  let first_len = *element.get(1)?;
+  if first_len < 0x80 {
+    Some(first_len as usize)
+  } else {
+    let num_bytes = (first_len & 0x7F) as usize;
+    if num_bytes == 0 || num_bytes > 4 {
+      return None;
+    }
+    let mut len = 0usize;
+    for i in 0..num_bytes {
+      len = (len << 8) | (*element.get(2 + i)? as usize);
+    }
+    Some(len)
+  }
+}
 
-  // Skip optional version [0] EXPLICIT
+/// Return a DER element's content, i.e. the element minus its tag and length.
+fn der_element_content(element: &[u8]) -> Option<&[u8]> {
+  element.get(element.len().checked_sub(der_content_len(element)?)?..)
+}
+
+/// The parts of an X.509 certificate needed to link and verify a chain that
+/// webpki refuses to parse.
+struct CertFields<'a> {
+  /// Whether this is an X.509v1 certificate. The compatibility fallback must
+  /// never be used for a malformed v2/v3 certificate.
+  is_v1: bool,
+  /// Raw `tbsCertificate` DER — exactly the bytes the signature covers.
+  tbs: &'a [u8],
+  /// Content of the outer `signatureAlgorithm`, in the same encoding as
+  /// [`rustls::pki_types::SignatureVerificationAlgorithm::signature_alg_id`].
+  signature_alg: &'a [u8],
+  /// `signatureValue` bits, minus the leading unused-bit count.
+  signature: &'a [u8],
+  /// Raw `issuer`/`subject` Names, compared byte-wise to link the chain.
+  issuer: &'a [u8],
+  subject: &'a [u8],
+  /// Raw `subjectPublicKeyInfo`, including its SEQUENCE header.
+  spki: &'a [u8],
+  not_before: i64,
+  not_after: i64,
+  /// Issuer constraints used when this certificate is an intermediate.
+  is_ca: bool,
+  key_cert_sign: bool,
+  path_len_constraint: Option<u32>,
+}
+
+fn parse_cert_fields(cert_der: &[u8]) -> Option<CertFields<'_>> {
+  // Use x509-parser for the semantic fields and extension parsing. The small
+  // DER walk below is only needed to retain the exact signed bytes and the
+  // AlgorithmIdentifier encoding expected by rustls' signature algorithms.
+  let (remainder, parsed) = X509Certificate::from_der(cert_der).ok()?;
+  if !remainder.is_empty()
+    || parsed.signature_algorithm != parsed.tbs_certificate.signature
+  {
+    return None;
+  }
+  let basic_constraints = parsed.basic_constraints().ok()?.map(|bc| bc.value);
+  let key_cert_sign = parsed
+    .key_usage()
+    .ok()?
+    .is_none_or(|usage| usage.value.key_cert_sign());
+
+  // Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signature }
+  let (cert_elem, cert_remainder) = der_read_element(cert_der)?;
+  if !cert_remainder.is_empty() {
+    return None;
+  }
+  let (tbs, rest) = der_read_element(der_element_content(cert_elem)?)?;
+  let (signature_alg, rest) = der_read_element(rest)?;
+  let (signature_value, signature_remainder) = der_read_element(rest)?;
+  if !signature_remainder.is_empty() {
+    return None;
+  }
+  // A BIT STRING's first content byte counts unused trailing bits; a
+  // signature is always a whole number of octets.
+  let (&unused_bits, signature) =
+    der_element_content(signature_value)?.split_first()?;
+  if unused_bits != 0 {
+    return None;
+  }
+
+  let mut pos = der_element_content(tbs)?;
+  // Skip optional version [0] EXPLICIT (absent in v1 certificates)
   if pos.first() == Some(&0xA0) {
     pos = der_skip_element(pos)?;
   }
@@ -3713,78 +3772,151 @@ fn extract_issuer_and_subject(cert_der: &[u8]) -> Option<(&[u8], &[u8])> {
   // Skip validity (SEQUENCE)
   let pos = der_skip_element(pos)?;
   // Read subject (Name = SEQUENCE)
-  let (subject, _) = der_read_element(pos)?;
-  Some((issuer, subject))
+  let (subject, pos) = der_read_element(pos)?;
+  // Read subjectPublicKeyInfo (SEQUENCE)
+  let (spki, _) = der_read_element(pos)?;
+
+  Some(CertFields {
+    is_v1: parsed.version() == X509Version::V1,
+    tbs,
+    signature_alg: der_element_content(signature_alg)?,
+    signature,
+    issuer,
+    subject,
+    spki,
+    not_before: parsed.validity().not_before.timestamp(),
+    not_after: parsed.validity().not_after.timestamp(),
+    is_ca: basic_constraints.is_some_and(|bc| bc.ca),
+    path_len_constraint: basic_constraints
+      .and_then(|bc| bc.path_len_constraint),
+    key_cert_sign,
+  })
 }
 
-/// Return the length of the content portion of a DER element.
-fn der_content_len(element: &[u8]) -> Option<usize> {
-  let first_len = *element.get(1)?;
-  if first_len < 0x80 {
-    Some(first_len as usize)
+fn is_self_signed(cert_der: &[u8]) -> bool {
+  parse_cert_fields(cert_der).is_some_and(|c| c.issuer == c.subject)
+}
+
+/// Check that `cert` was signed by the key in `issuer_spki`, using the same
+/// signature algorithms rustls accepts elsewhere in the handshake.
+fn is_signed_by(
+  cert: &CertFields<'_>,
+  issuer_spki: &[u8],
+  algorithms: &rustls::crypto::WebPkiSupportedAlgorithms,
+) -> bool {
+  let spki = rustls::pki_types::SubjectPublicKeyInfoDer::from(issuer_spki);
+  let Ok(issuer_key) = webpki::RawPublicKeyEntity::try_from(&spki) else {
+    return false;
+  };
+  algorithms
+    .all
+    .iter()
+    .filter(|alg| alg.signature_alg_id().as_ref() == cert.signature_alg)
+    .any(|alg| {
+      issuer_key
+        .verify_signature(*alg, cert.tbs, cert.signature)
+        .is_ok()
+    })
+}
+
+fn cert_validity_error(
+  cert: &CertFields<'_>,
+  now: rustls::pki_types::UnixTime,
+) -> Option<&'static str> {
+  let Ok(now) = i64::try_from(now.as_secs()) else {
+    return Some("CERT_HAS_EXPIRED");
+  };
+  if now < cert.not_before {
+    Some("CERT_NOT_YET_VALID")
+  } else if now > cert.not_after {
+    Some("CERT_HAS_EXPIRED")
   } else {
-    let num_bytes = (first_len & 0x7F) as usize;
-    let mut len = 0usize;
-    for i in 0..num_bytes {
-      len = (len << 8) | (*element.get(2 + i)? as usize);
-    }
-    Some(len)
+    None
   }
 }
 
-/// Check whether a certificate chain (end_entity + intermediates) can be
-/// traced back to a root cert in `root_cert_ders` using issuer/subject
-/// matching. Returns an error code string if the chain cannot be built.
-/// Returns `Ok(())` if the chain reaches a trusted root, or
-/// `Err(code)` with a Node/OpenSSL error code if it does not.
-fn is_self_signed(cert_der: &[u8]) -> bool {
-  extract_issuer_and_subject(cert_der)
-    .is_some_and(|(issuer, subject)| issuer == subject)
-}
-
-fn verify_chain_structure(
+/// Walk a certificate chain (end_entity + intermediates) up to a root cert in
+/// `root_cert_ders`.
+///
+/// With `verification` set, every hop must also carry a signature that verifies
+/// under the issuer's public key, the end entity and intermediates must be
+/// time-valid, and intermediates must satisfy CA constraints. With it unset
+/// only issuer/subject names are matched, which is enough to pick a
+/// Node/OpenSSL error code but never enough to accept a chain.
+///
+/// Returns `Err(code)` with a Node/OpenSSL error code when no chain is found.
+///
+fn verify_chain(
   end_entity: &[u8],
   intermediates: &[rustls::pki_types::CertificateDer<'_>],
   root_cert_ders: &[Vec<u8>],
+  verification: Option<(
+    &rustls::crypto::WebPkiSupportedAlgorithms,
+    rustls::pki_types::UnixTime,
+  )>,
 ) -> Result<(), &'static str> {
-  // Parse all certs' (issuer, subject) pairs up front.
-  let ee = extract_issuer_and_subject(end_entity)
-    .ok_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE")?;
+  // Parse all certs up front.
+  let ee =
+    parse_cert_fields(end_entity).ok_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE")?;
   let inter: Vec<_> = intermediates
     .iter()
-    .filter_map(|c| extract_issuer_and_subject(c.as_ref()))
+    .filter_map(|c| parse_cert_fields(c.as_ref()))
     .collect();
   let roots: Vec<_> = root_cert_ders
     .iter()
-    .filter_map(|c| extract_issuer_and_subject(c))
+    .filter_map(|c| parse_cert_fields(c))
     .collect();
 
+  let issued_by = |cert: &CertFields<'_>, issuer: &CertFields<'_>| {
+    issuer.subject == cert.issuer
+      && verification
+        .is_none_or(|(algs, _)| is_signed_by(cert, issuer.spki, algs))
+  };
+
+  if let Some((_, now)) = verification
+    && let Some(code) = cert_validity_error(&ee, now)
+  {
+    return Err(code);
+  }
+
   // Walk the chain from end entity upward.
-  let mut current_issuer = ee.0;
-  let end_entity_subject = ee.1;
+  let mut current = &ee;
 
   // Limit iterations to prevent cycles.
-  for _ in 0..(intermediates.len() + 2) {
-    // Check if the issuer is a root cert subject.
-    if roots.iter().any(|(_, subject)| *subject == current_issuer) {
+  for ca_depth in 0..(intermediates.len() + 2) {
+    // Check if a root cert issued this one.
+    if roots.iter().any(|root| issued_by(current, root)) {
       return Ok(()); // Chain reaches a trusted root.
     }
-    // Check if there's an intermediate whose subject matches.
-    if let Some((inter_issuer, _)) =
-      inter.iter().find(|(_, subject)| *subject == current_issuer)
-    {
-      // Self-signed intermediate that isn't a root.
-      if *inter_issuer == current_issuer {
-        return Err("SELF_SIGNED_CERT_IN_CHAIN");
-      }
-      current_issuer = inter_issuer;
-    } else {
+    // Check if there's an intermediate that issued this one.
+    let Some(issuer) = inter.iter().find(|i| issued_by(current, i)) else {
       break;
+    };
+    if let Some((_, now)) = verification {
+      if let Some(code) = cert_validity_error(issuer, now) {
+        return Err(code);
+      }
+      // A chain certificate must be a CA and, when it has a keyUsage
+      // extension, be allowed to sign certificates. Enforce pathLen too so
+      // the fallback cannot turn an ordinary trusted leaf into an issuer.
+      if !issuer.is_ca
+        || !issuer.key_cert_sign
+        || issuer
+          .path_len_constraint
+          .is_some_and(|limit| ca_depth > limit as usize)
+      {
+        return Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
+      }
     }
+    // Self-signed intermediate that isn't a root.
+    if issuer.issuer == issuer.subject {
+      return Err("SELF_SIGNED_CERT_IN_CHAIN");
+    }
+    current = issuer;
   }
 
   // Chain doesn't reach a trusted root.
-  if current_issuer == end_entity_subject {
+  if current.issuer == ee.subject {
     Err("DEPTH_ZERO_SELF_SIGNED_CERT")
   } else if intermediates.is_empty() {
     Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
@@ -3842,6 +3974,22 @@ fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   }
 }
 
+fn should_use_v1_fallback(
+  cert_error: &rustls::CertificateError,
+  cert_der: &[u8],
+) -> bool {
+  let is_unsupported_version_or_bad_encoding = match cert_error {
+    rustls::CertificateError::BadEncoding => true,
+    rustls::CertificateError::Other(other) => other
+      .0
+      .downcast_ref::<webpki::Error>()
+      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)),
+    _ => false,
+  };
+  is_unsupported_version_or_bad_encoding
+    && parse_cert_fields(cert_der).is_some_and(|cert| cert.is_v1)
+}
+
 impl NodeServerCertVerifier {
   /// In strict mode (`rejectUnauthorized: true`), return Err so rustls
   /// aborts the handshake before any session is cached. In lenient mode,
@@ -3860,6 +4008,49 @@ impl NodeServerCertVerifier {
     } else {
       Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
+  }
+
+  /// webpki can't parse an X.509v1 certificate, so it can't pull the public
+  /// key out of one to check the handshake signature either. Read the
+  /// `SubjectPublicKeyInfo` ourselves and verify against that, so the peer
+  /// still has to prove it holds the private key. Falls back to `err` — the
+  /// error the webpki verifier produced — when the certificate or its key is
+  /// something we can't handle.
+  fn verify_tls12_signature_with_raw_key(
+    &self,
+    message: &[u8],
+    cert: &rustls::pki_types::CertificateDer<'_>,
+    dss: &rustls::DigitallySignedStruct,
+    err: rustls::Error,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
+  {
+    let Some(fields) = parse_cert_fields(cert.as_ref()) else {
+      return Err(err);
+    };
+    if !fields.is_v1 {
+      return Err(err);
+    }
+    let spki = rustls::pki_types::SubjectPublicKeyInfoDer::from(fields.spki);
+    let Ok(key) = webpki::RawPublicKeyEntity::try_from(&spki) else {
+      return Err(err);
+    };
+    let Some(algs) = self
+      .signature_algorithms
+      .mapping
+      .iter()
+      .find(|(scheme, _)| *scheme == dss.scheme)
+      .map(|(_, algs)| *algs)
+      .filter(|algs| !algs.is_empty())
+    else {
+      return Err(err);
+    };
+    // A TLS 1.2 scheme can map to multiple candidate algorithms.
+    for alg in algs {
+      if key.verify_signature(*alg, message, dss.signature()).is_ok() {
+        return Ok(rustls::client::danger::HandshakeSignatureValid::assertion());
+      }
+    }
+    Err(err)
   }
 }
 
@@ -3881,10 +4072,11 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     ) {
       Ok(v) => {
         if self.empty_explicit_ca {
-          let code = verify_chain_structure(
+          let code = verify_chain(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
+            None,
           )
           .err()
           .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
@@ -3910,50 +4102,38 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // OpenSSL accepts X.509v1 certificates; webpki rejects them with
-        // `UnsupportedCertVersion` or sometimes `BadEncoding`. We can't
-        // simply accept: that would skip chain verification entirely.
-        // Instead, do structural chain checking (issuer/subject matching)
-        // so that v1 certs with a valid chain are accepted while broken
-        // chains still produce the correct Node/OpenSSL error.
-        let is_v1_error = matches!(
-          cert_error,
-          rustls::CertificateError::BadEncoding
-        ) || matches!(
-          cert_error,
-          rustls::CertificateError::Other(other) if other
-            .0
-            .downcast_ref::<webpki::Error>()
-            .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
-        );
-        if is_v1_error {
-          match verify_chain_structure(
+        // OpenSSL accepts X.509v1 certificates; webpki rejects them at parse
+        // time with `UnsupportedCertVersion` or sometimes `BadEncoding`. We
+        // can't simply accept: that would skip chain verification entirely.
+        // Instead, build the chain ourselves and verify each hop's signature
+        // with the issuer's public key, so a v1 cert is accepted only when it
+        // really was signed by a trusted issuer and a broken chain still
+        // produces the correct Node/OpenSSL error.
+        if should_use_v1_fallback(cert_error, end_entity.as_ref()) {
+          return match verify_chain(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
+            Some((&self.signature_algorithms, now)),
           ) {
             Ok(()) => {
-              // Chain is structurally valid -- accept.
-              return Ok(
-                rustls::client::danger::ServerCertVerified::assertion(),
-              );
+              Ok(rustls::client::danger::ServerCertVerified::assertion())
             }
-            Err(code) => {
-              // Chain is broken -- in strict mode fail the handshake so
-              // rustls doesn't cache a resumable session; in lenient mode
-              // store the error for JS to surface as authorizationError.
-              return self.record_or_fail(
-                rustls::Error::InvalidCertificate(cert_error.clone()),
-                code.to_string(),
-              );
-            }
-          }
+            // Chain is broken -- in strict mode fail the handshake so
+            // rustls doesn't cache a resumable session; in lenient mode
+            // store the error for JS to surface as authorizationError.
+            Err(code) => self.record_or_fail(
+              rustls::Error::InvalidCertificate(cert_error.clone()),
+              code.to_string(),
+            ),
+          };
         }
         if matches!(cert_error, rustls::CertificateError::UnknownIssuer) {
-          let code = verify_chain_structure(
+          let code = verify_chain(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
+            None,
           )
           .err()
           .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
@@ -3999,9 +4179,19 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    filter_unsupported_cert_version(
-      self.inner.verify_tls12_signature(message, cert, dss),
-    )
+    match self.inner.verify_tls12_signature(message, cert, dss) {
+      Err(rustls::Error::InvalidCertificate(ref cert_error))
+        if should_use_v1_fallback(cert_error, cert.as_ref()) =>
+      {
+        self.verify_tls12_signature_with_raw_key(
+          message,
+          cert,
+          dss,
+          rustls::Error::InvalidCertificate(cert_error.clone()),
+        )
+      }
+      other => other,
+    }
   }
 
   fn verify_tls13_signature(
@@ -4011,9 +4201,24 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    filter_unsupported_cert_version(
-      self.inner.verify_tls13_signature(message, cert, dss),
-    )
+    match self.inner.verify_tls13_signature(message, cert, dss) {
+      Err(rustls::Error::InvalidCertificate(ref cert_error))
+        if should_use_v1_fallback(cert_error, cert.as_ref()) =>
+      {
+        let Some(fields) = parse_cert_fields(cert.as_ref()) else {
+          return Err(rustls::Error::InvalidCertificate(cert_error.clone()));
+        };
+        let spki =
+          rustls::pki_types::SubjectPublicKeyInfoDer::from(fields.spki);
+        rustls::crypto::verify_tls13_signature_with_raw_key(
+          message,
+          &spki,
+          dss,
+          &self.signature_algorithms,
+        )
+      }
+      other => other,
+    }
   }
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
@@ -4317,6 +4522,8 @@ fn build_client_config(
     TlsKeys::Null => config_builder.with_no_client_auth(),
     TlsKeys::Resolver(_) => return None,
   };
+  let signature_algorithms =
+    config.crypto_provider().signature_verification_algorithms;
 
   // Enable session resumption using the shared session store from
   // NodeTlsState. Strict and `rejectUnauthorized: false` connections use
@@ -4381,6 +4588,7 @@ fn build_client_config(
               empty_explicit_ca: false,
               root_cert_ders,
               strict_verify: reject_unauthorized,
+              signature_algorithms,
             });
           *cached_verifier = Some((v.clone(), store.clone()));
           (store, Some(v))
@@ -4407,6 +4615,7 @@ fn build_client_config(
           empty_explicit_ca,
           root_cert_ders,
           strict_verify: reject_unauthorized,
+          signature_algorithms,
         }) as Arc<dyn rustls::client::danger::ServerCertVerifier>
       });
     (store, v)
@@ -4945,6 +5154,139 @@ impl rustls::server::ResolvesServerCert for NoCertResolver {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  fn certificate_der(pem: &[u8]) -> Vec<u8> {
+    let mut reader = std::io::BufReader::new(pem);
+    rustls_pemfile::certs(&mut reader)
+      .next()
+      .expect("certificate fixture")
+      .expect("valid PEM")
+      .as_ref()
+      .to_vec()
+  }
+
+  #[test]
+  fn parse_cert_fields_accepts_v1_and_rejects_truncated_der() {
+    let cert = certificate_der(include_bytes!(
+      "../../../tests/testdata/tls/localhost_v1.crt"
+    ));
+    let fields = parse_cert_fields(&cert).expect("valid v1 certificate");
+    assert!(fields.is_v1);
+    assert!(!fields.tbs.is_empty());
+    assert!(!fields.signature.is_empty());
+    assert!(!fields.spki.is_empty());
+    assert!(should_use_v1_fallback(
+      &rustls::CertificateError::BadEncoding,
+      &cert
+    ));
+
+    let v3_cert = certificate_der(include_bytes!(
+      "../../../tests/testdata/tls/localhost.crt"
+    ));
+    assert!(!parse_cert_fields(&v3_cert).unwrap().is_v1);
+    assert!(!should_use_v1_fallback(
+      &rustls::CertificateError::BadEncoding,
+      &v3_cert
+    ));
+
+    for len in 0..cert.len() {
+      assert!(
+        parse_cert_fields(&cert[..len]).is_none(),
+        "accepted certificate truncated to {len} bytes"
+      );
+    }
+
+    // Keep the DER helpers' long-form length bound aligned. This must return
+    // None rather than overflowing when shifted on debug builds.
+    assert!(
+      der_content_len(&[0x30, 0x89, 0, 0, 0, 0, 0, 0, 0, 0, 0]).is_none()
+    );
+  }
+
+  #[test]
+  fn parse_cert_fields_rejects_signature_algorithm_mismatch() {
+    let mut cert = certificate_der(include_bytes!(
+      "../../../tests/testdata/tls/localhost_v1.crt"
+    ));
+    let outer_oid_last_byte = {
+      let (cert_element, _) = der_read_element(&cert).unwrap();
+      let (_, rest) =
+        der_read_element(der_element_content(cert_element).unwrap()).unwrap();
+      let (outer_algorithm, _) = der_read_element(rest).unwrap();
+      let (oid, _) =
+        der_read_element(der_element_content(outer_algorithm).unwrap())
+          .unwrap();
+      oid.as_ptr() as usize - cert.as_ptr() as usize + oid.len() - 1
+    };
+    cert[outer_oid_last_byte] ^= 1;
+
+    assert!(parse_cert_fields(&cert).is_none());
+  }
+
+  #[test]
+  fn verify_v1_chain_checks_validity_and_intermediate_ca_constraints() {
+    let root =
+      certificate_der(include_bytes!("../../../tests/testdata/tls/RootCA.pem"));
+    let leaf = certificate_der(include_bytes!(
+      "../../../tests/testdata/tls/localhost_v1.crt"
+    ));
+    let provider = rustls::crypto::aws_lc_rs::default_provider();
+    let algorithms = &provider.signature_verification_algorithms;
+
+    assert_eq!(
+      verify_chain(
+        &leaf,
+        &[],
+        std::slice::from_ref(&root),
+        Some((algorithms, rustls::pki_types::UnixTime::now())),
+      ),
+      Ok(())
+    );
+    assert_eq!(
+      verify_chain(
+        &leaf,
+        &[],
+        std::slice::from_ref(&root),
+        Some((
+          algorithms,
+          rustls::pki_types::UnixTime::since_unix_epoch(
+            std::time::Duration::ZERO,
+          ),
+        )),
+      ),
+      Err("CERT_NOT_YET_VALID")
+    );
+    assert_eq!(
+      verify_chain(
+        &leaf,
+        &[],
+        std::slice::from_ref(&root),
+        Some((
+          algorithms,
+          rustls::pki_types::UnixTime::since_unix_epoch(
+            std::time::Duration::from_secs(u64::MAX),
+          ),
+        )),
+      ),
+      Err("CERT_HAS_EXPIRED")
+    );
+
+    let leaf = certificate_der(include_bytes!(
+      "../../../tests/testdata/tls/localhost_v1_via_non_ca.crt"
+    ));
+    let non_ca = rustls::pki_types::CertificateDer::from(certificate_der(
+      include_bytes!("../../../tests/testdata/tls/localhost.crt"),
+    ));
+    assert_eq!(
+      verify_chain(
+        &leaf,
+        &[non_ca],
+        std::slice::from_ref(&root),
+        Some((algorithms, rustls::pki_types::UnixTime::now())),
+      ),
+      Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
+    );
+  }
 
   /// Verify that clear_out_process drains buffered TLS data when eof is false,
   /// but bails early when eof is already true. This validates the emit_eof fix:
