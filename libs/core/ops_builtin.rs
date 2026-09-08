@@ -34,6 +34,7 @@ use crate::op2;
 use crate::ops_builtin_types;
 use crate::ops_builtin_v8;
 use crate::runtime::JsRealm;
+use crate::runtime::SchedFlags;
 use crate::runtime::v8_static_strings;
 
 macro_rules! builtin_ops {
@@ -340,6 +341,7 @@ fn get_resource(
 
   if op_state.unrefed_resources.contains(&rid) {
     op_state.unrefed_ops.borrow_mut().insert(promise_id);
+    op_state.sched.set(SchedFlags::UNREFED_OPS);
   }
 
   Ok(resource)

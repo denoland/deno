@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 pub(crate) mod bindings;
+pub(crate) mod event_loop_flags;
 pub(crate) mod exception_state;
 pub mod host_defined_options;
 mod jsrealm;
@@ -20,6 +21,9 @@ pub(crate) mod tests;
 pub const V8_WRAPPER_TYPE_INDEX: i32 = 0;
 pub const V8_WRAPPER_OBJECT_INDEX: i32 = 1;
 
+pub(crate) use event_loop_flags::EventLoopPendingBuilder;
+pub(crate) use event_loop_flags::EventLoopPendingState;
+pub(crate) use event_loop_flags::SchedFlags;
 pub use jsrealm::CONTEXT_STATE_SLOT_INDEX;
 pub use jsrealm::ContextState;
 pub(crate) use jsrealm::JsRealm;

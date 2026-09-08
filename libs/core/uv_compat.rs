@@ -428,8 +428,13 @@ impl UvLoopInner {
 
   /// ### Safety
   /// All timer handle pointers stored in `timer_handles` must be valid.
-  pub(crate) unsafe fn run_timers(&self) {
+  ///
+  /// Returns `true` if at least one timer callback ran. Callers use this to
+  /// decide whether a microtask checkpoint is needed (a callback may have
+  /// re-entered JS); `false` proves the phase was a no-op.
+  pub(crate) unsafe fn run_timers(&self) -> bool {
     let now = self.now_ms();
+    let mut ran = false;
     let mut expired = Vec::new();
     {
       let timers = self.timers.borrow();
@@ -470,15 +475,20 @@ impl UvLoopInner {
       }
 
       if let Some(cb) = cb {
+        ran = true;
         // SAFETY: handle_ptr is valid; cb was set by the C caller via uv_timer_start.
         unsafe { cb(handle_ptr) };
       }
     }
+    ran
   }
 
   /// ### Safety
   /// All idle handle pointers stored in `idle_handles` must be valid.
-  pub(crate) unsafe fn run_idle(&self) {
+  ///
+  /// Returns `true` if at least one callback ran (see [`Self::run_timers`]).
+  pub(crate) unsafe fn run_idle(&self) -> bool {
+    let mut ran = false;
     let mut i = 0;
     loop {
       let handle_ptr = {
@@ -494,15 +504,20 @@ impl UvLoopInner {
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && let Some(cb) = handle.cb
       {
+        ran = true;
         // SAFETY: Callback set by C caller via uv_idle_start; handle_ptr is valid.
         unsafe { cb(handle_ptr) };
       }
     }
+    ran
   }
 
   /// ### Safety
   /// All prepare handle pointers stored in `prepare_handles` must be valid.
-  pub(crate) unsafe fn run_prepare(&self) {
+  ///
+  /// Returns `true` if at least one callback ran (see [`Self::run_timers`]).
+  pub(crate) unsafe fn run_prepare(&self) -> bool {
+    let mut ran = false;
     let mut i = 0;
     loop {
       let handle_ptr = {
@@ -518,15 +533,20 @@ impl UvLoopInner {
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && let Some(cb) = handle.cb
       {
+        ran = true;
         // SAFETY: Callback set by C caller via uv_prepare_start; handle_ptr is valid.
         unsafe { cb(handle_ptr) };
       }
     }
+    ran
   }
 
   /// ### Safety
   /// All check handle pointers stored in `check_handles` must be valid.
-  pub(crate) unsafe fn run_check(&self) {
+  ///
+  /// Returns `true` if at least one callback ran (see [`Self::run_timers`]).
+  pub(crate) unsafe fn run_check(&self) -> bool {
+    let mut ran = false;
     let mut i = 0;
     loop {
       let handle_ptr = {
@@ -542,24 +562,34 @@ impl UvLoopInner {
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && let Some(cb) = handle.cb
       {
+        ran = true;
         // SAFETY: Callback set by C caller via uv_check_start; handle_ptr is valid.
         unsafe { cb(handle_ptr) };
       }
     }
+    ran
   }
 
   /// ### Safety
   /// All handle pointers in `closing_handles` must be valid.
-  pub(crate) unsafe fn run_close(&self) {
+  ///
+  /// Returns `true` if at least one callback ran (see [`Self::run_timers`]).
+  pub(crate) unsafe fn run_close(&self) -> bool {
     let mut closing = self.closing_handles.borrow_mut();
+    if closing.is_empty() {
+      return false;
+    }
     let snapshot: Vec<_> = closing.drain(..).collect();
     drop(closing);
+    let mut ran = false;
     for (handle_ptr, cb) in snapshot {
       if let Some(cb) = cb {
+        ran = true;
         // SAFETY: handle_ptr is valid; cb was registered by C caller via uv_close.
         unsafe { cb(handle_ptr) };
       }
     }
+    ran
   }
 
   /// Poll all TCP handles for I/O readiness and fire callbacks.

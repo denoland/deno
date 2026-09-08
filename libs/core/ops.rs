@@ -21,6 +21,7 @@ use crate::io::ResourceTable;
 use crate::ops_metrics::OpMetricsFn;
 use crate::runtime::JsRuntimeState;
 use crate::runtime::OpDriverImpl;
+use crate::runtime::SchedFlags;
 use crate::runtime::UnrefedOps;
 
 pub type PromiseId = i32;
@@ -396,6 +397,9 @@ pub struct OpState {
   pub op_stack_trace_callback: Option<OpStackTraceCallback>,
   /// Reference to the unrefered ops state in `ContextState`.
   pub(crate) unrefed_ops: UnrefedOps,
+  /// Shared event-loop scheduling word (see [`SchedFlags`]). Created here
+  /// because `OpState` is built before `ContextState`, which clones it.
+  pub(crate) sched: SchedFlags,
   /// Resources that are not referenced by the event loop. All async
   /// resource ops on these resources will not keep the event loop alive.
   ///
@@ -414,6 +418,7 @@ impl OpState {
       },
       op_stack_trace_callback,
       unrefed_ops: Default::default(),
+      sched: Default::default(),
       unrefed_resources: Default::default(),
     }
   }

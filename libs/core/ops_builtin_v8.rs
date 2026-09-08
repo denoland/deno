@@ -23,6 +23,7 @@ use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url;
 use crate::runtime::JsRealm;
 use crate::runtime::JsRuntimeState;
+use crate::runtime::SchedFlags;
 use crate::runtime::v8_static_strings;
 use crate::source_map::SourceMapApplication;
 use crate::stats::RuntimeActivityType;
@@ -54,13 +55,18 @@ pub fn op_set_handled_promise_rejection_handler(
 #[op2(fast)]
 pub fn op_ref_op(scope: &mut v8::PinScope, promise_id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
-  context_state.unrefed_ops.borrow_mut().remove(&promise_id);
+  let mut unrefed = context_state.unrefed_ops.borrow_mut();
+  unrefed.remove(&promise_id);
+  context_state
+    .sched
+    .clear_if(SchedFlags::UNREFED_OPS, unrefed.is_empty());
 }
 
 #[op2(fast)]
 pub fn op_unref_op(scope: &mut v8::PinScope, promise_id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
   context_state.unrefed_ops.borrow_mut().insert(promise_id);
+  context_state.sched.set(SchedFlags::UNREFED_OPS);
 }
 
 #[op2(fast)]
@@ -158,16 +164,19 @@ pub fn op_timer_track(
     .active_timers
     .borrow_mut()
     .insert(id as usize, (is_repeat, is_system));
+  context_state.sched.set(SchedFlags::ACTIVE_TIMERS);
 }
 
 /// Unregister a JS-managed timer from the Rust stats system.
 #[op2(fast)]
 pub fn op_timer_untrack(scope: &mut v8::PinScope, #[smi] id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
+  let mut active_timers = context_state.active_timers.borrow_mut();
+  active_timers.remove(&(id as usize));
   context_state
-    .active_timers
-    .borrow_mut()
-    .remove(&(id as usize));
+    .sched
+    .clear_if(SchedFlags::ACTIVE_TIMERS, active_timers.is_empty());
+  drop(active_timers);
   context_state
     .activity_traces
     .complete(RuntimeActivityType::Timer, id as usize);
@@ -243,11 +252,15 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
 pub fn op_drain_pending_rejections<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Value> {
-  let exception_state = JsRealm::exception_state_from_scope(scope);
+  let context_state = JsRealm::state_from_scope(scope);
+  let exception_state = &context_state.exception_state;
   let mut pending = exception_state.pending_promise_rejections.borrow_mut();
   if pending.is_empty() {
+    context_state.sched.clear(SchedFlags::PROMISE_REJECTIONS);
     return v8::undefined(scope).into();
   }
+  // The loop below pops every entry, so the queue is empty on return.
+  context_state.sched.clear(SchedFlags::PROMISE_REJECTIONS);
   let len = pending.len();
   let arr = v8::Array::new(scope, (len * 3) as i32);
   let mut idx = 0u32;
