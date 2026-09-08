@@ -1,7 +1,7 @@
 Check mod.ts
 TS2769 [ERROR]: No overload matches this call.
   The last overload gave the following error.
-    Argument of type '123' is not assignable to parameter of type 'BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined'.
+    Type '123' has no properties in common with type 'ReadFileSyncOptions'.
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
     at file:///[WILDCARD]/mod.ts:2:52

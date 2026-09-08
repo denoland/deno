@@ -7228,6 +7228,25 @@ fn x_ignore_scripts() {
       ..Flags::default()
     }
   );
+
+  for (flag, expected_error) in [
+    ("--ignore-scripts=npm:", "Invalid package requirement"),
+    (
+      "--ignore-scripts=jsr:@foo/bar",
+      "Only npm package constraints are supported",
+    ),
+    (
+      "--ignore-scripts=foo@latest",
+      "Tags are not supported in --ignore-scripts",
+    ),
+    ("--ignore-scripts=foo,", "Empty values are not allowed"),
+  ] {
+    let err = flags_from_vec(svec!["deno", "x", flag, "npm:foo"]).unwrap_err();
+    assert!(
+      err.to_string().contains(expected_error),
+      "expected to contain '{expected_error}' got '{err}'"
+    );
+  }
 }
 
 #[test]
@@ -9765,4 +9784,125 @@ fn use_env_proxy_flags() {
     "script.ts"
   ]);
   assert!(r.is_err());
+}
+
+#[test]
+fn deploy_subcommand() {
+  let r = flags_from_vec(svec!["deno", "deploy"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      ..Flags::default()
+    }
+  );
+
+  // `deploy` is a passthrough subcommand: every arg after it is forwarded
+  // verbatim, exactly once. Regression test for a duplication bug where the
+  // args were written to `argv` both by `deploy_parse` and by the generic
+  // trailing-arg handling, turning `--prod` into `--prod --prod`.
+  let r = flags_from_vec(svec!["deno", "deploy", "--prod"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod"],
+      ..Flags::default()
+    }
+  );
+
+  let r =
+    flags_from_vec(svec!["deno", "deploy", "--project=myapp", "--prod", "-y"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--project=myapp", "--prod", "-y"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_subcommand_passthrough_is_verbatim() {
+  // Everything after the subcommand is handed to deployctl untouched, so
+  // `--`, deno-looking flags and repeated flags must all survive as-is
+  // rather than being interpreted (or duplicated) by the deno parser.
+  let r = flags_from_vec(svec![
+    "deno",
+    "deploy",
+    "--prod",
+    "--",
+    "--allow-net",
+    "-A"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: false }),
+      argv: svec!["--prod", "--", "--allow-net", "-A"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn deploy_sandbox_subcommand() {
+  let r = flags_from_vec(svec!["deno", "sandbox", "--prod", "arg"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Deploy(DeployFlags { sandbox: true }),
+      argv: svec!["--prod", "arg"],
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn bundle_sourcemap_bare_does_not_consume_entrypoint() {
+  // `--sourcemap` takes an optional value that must be attached with `=`.
+  // Regression test for a bug where it was defined as taking exactly one
+  // value, so `--sourcemap main.ts` swallowed the entrypoint and left the
+  // bundle with no modules at all.
+  let flags =
+    flags_from_vec(svec!["deno", "bundle", "--sourcemap", "main.ts"]).unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.entrypoints, svec!["main.ts"]);
+  assert_eq!(b.sourcemap, Some(SourceMapType::Linked));
+}
+
+#[test]
+fn bundle_sourcemap_values() {
+  let cases = [
+    ("--sourcemap=linked", SourceMapType::Linked),
+    ("--sourcemap=inline", SourceMapType::Inline),
+    ("--sourcemap=external", SourceMapType::External),
+  ];
+  for (flag, expected) in cases {
+    let flags = flags_from_vec(svec!["deno", "bundle", flag, "main.ts"])
+      .unwrap_or_else(|e| panic!("{flag} should parse: {e:?}"));
+    let DenoSubcommand::Bundle(b) = flags.subcommand else {
+      unreachable!()
+    };
+    assert_eq!(b.entrypoints, svec!["main.ts"], "{flag}");
+    assert_eq!(b.sourcemap, Some(expected), "{flag}");
+  }
+
+  // Absent means no source map at all.
+  let flags = flags_from_vec(svec!["deno", "bundle", "main.ts"]).unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.sourcemap, None);
+}
+
+#[test]
+fn bundle_sourcemap_rejects_invalid_value() {
+  // Invalid values must error rather than being silently coerced to 'linked'.
+  let r =
+    flags_from_vec(svec!["deno", "bundle", "--sourcemap=bogus", "main.ts"]);
+  assert!(r.is_err(), "expected --sourcemap=bogus to be rejected");
 }

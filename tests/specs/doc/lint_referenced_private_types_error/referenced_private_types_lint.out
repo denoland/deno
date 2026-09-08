@@ -1,8 +1,8 @@
 error[missing-jsdoc]: exported symbol is missing JSDoc documentation
- --> [WILDCARD]:5:1
+ --> [WILDCARD]:5:14
   | 
 5 | export class MyClass {
-  | ^
+  |              ^
 
 
 error[private-type-ref]: public type 'MyClass.prototype.prop' references private type 'MyInterface'

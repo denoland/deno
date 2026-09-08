@@ -28,6 +28,7 @@ const {
   ObjectFreeze,
   SafeFinalizationRegistry,
   SafeArrayIterator,
+  Symbol,
 } = primordials;
 
 const {
@@ -41,6 +42,15 @@ const {
 const asyncResourceRegistry = new SafeFinalizationRegistry(
   (asyncId: number) => emitDestroyHook(asyncId),
 );
+
+// Two distinct sentinels, because `getStore()` has to tell three states apart
+// without allocating a wrapper for ordinary stores: "no store because we are
+// inside `exit()`", "a store whose value happens to be `undefined`", and "no
+// store at all", which is the only one that falls back to `defaultValue`.
+// Collapsing the first two loses the `disable()` case, where the context still
+// holds the sentinel written by `enterWith(undefined)`.
+const kExitedStore = Symbol("kExitedStore");
+const kUndefinedStore = Symbol("kUndefinedStore");
 
 class AsyncResource {
   type: string;
@@ -153,7 +163,9 @@ class AsyncLocalStorage {
   // deno-lint-ignore no-explicit-any
   run(store: any, callback: any, ...args: any[]): any {
     this.enabled = true;
-    const previous = this.#variable.enter(store);
+    const previous = this.#variable.enter(
+      store === undefined ? kUndefinedStore : store,
+    );
     try {
       return ReflectApply(callback, null, args);
     } finally {
@@ -163,29 +175,35 @@ class AsyncLocalStorage {
 
   // deno-lint-ignore no-explicit-any
   exit(callback: (...args: unknown[]) => any, ...args: any[]): any {
-    if (!this.enabled) {
-      return ReflectApply(callback, null, args);
-    }
-    this.enabled = false;
+    const previous = this.#variable.enter(kExitedStore);
     try {
       return ReflectApply(callback, null, args);
     } finally {
-      this.enabled = true;
+      setAsyncContext(previous);
     }
   }
 
   // deno-lint-ignore no-explicit-any
   getStore(): any {
+    const store = this.#variable.get();
+    // `exit()` means "no store", regardless of `enabled` or `defaultValue`.
+    if (store === kExitedStore) {
+      return undefined;
+    }
     if (!this.enabled) {
       return this.#defaultValue;
     }
-    const value = this.#variable.get();
-    return value === undefined ? this.#defaultValue : value;
+    // A store explicitly set to `undefined` is not the same as no store, so it
+    // must not fall back to `defaultValue`.
+    if (store === kUndefinedStore) {
+      return undefined;
+    }
+    return store === undefined ? this.#defaultValue : store;
   }
 
   enterWith(store: unknown) {
     this.enabled = true;
-    this.#variable.enter(store);
+    this.#variable.enter(store === undefined ? kUndefinedStore : store);
   }
 
   disable() {

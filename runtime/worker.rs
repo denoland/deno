@@ -563,12 +563,12 @@ impl MainWorker {
       .set_eval_context_code_cache_cbs(services.v8_code_cache.map(|cache| {
       let cache_clone = cache.clone();
       (
-        Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
+        Box::new(move |specifier: &ModuleSpecifier, source: &[u16]| {
           let source_hash = {
             use std::hash::Hash;
             use std::hash::Hasher;
             let mut hasher = twox_hash::XxHash64::default();
-            code.hash(&mut hasher);
+            source.hash(&mut hasher);
             hasher.finish()
           };
           let data = cache
