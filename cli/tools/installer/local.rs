@@ -442,6 +442,46 @@ pub async fn sync_types_command(
       .map(|opts| opts.0.clone())
   });
 
+  // The effective root `compilerOptions.types` for the stock-tsc compat
+  // pipeline. The entries must come from Deno's resolved compiler options —
+  // specifically the root tsconfig's resolver entry (base sources first, so
+  // the last source defining `types` wins) — not from the raw deno.json.
+  // The synthetic `__deno_root__.ts` specifier above can't identify that
+  // entry: a root tsconfig with `files` won't match it. Find the resolver
+  // entry whose last source is the root `tsconfig.json` directly. `None`
+  // (no such entry, or no source defines `types`) falls back to the raw
+  // deno.json read downstream.
+  let effective_compiler_options_types = cli_options
+    .workspace()
+    .root_dir_url()
+    .join("tsconfig.json")
+    .ok()
+    .and_then(|root_tsconfig_url| {
+      factory
+        .compiler_options_resolver()
+        .ok()
+        .and_then(|resolver| {
+          resolver.entries().find_map(|(key, data, _)| {
+            if !matches!(
+              key,
+              deno_resolver::deno_json::CompilerOptionsKey::TsConfig(_)
+            ) {
+              return None;
+            }
+            let last = data.sources.last()?;
+            if *last.specifier != root_tsconfig_url {
+              return None;
+            }
+            let (source, entries) =
+              data.compiler_options_types().last()?.clone();
+            Some(crate::tsc::tsconfig_gen::EffectiveCompilerOptionsTypes {
+              source,
+              entries,
+            })
+          })
+        })
+    });
+
   // Whether to manage the root `tsconfig.json`. `deno check` (CheckMode) never
   // rewrites a committed tsconfig (that would dirty the working tree). When it
   // honors a user tsconfig it instead builds a throwaway overlay in a temp file
@@ -467,6 +507,7 @@ pub async fn sync_types_command(
     &local_wasm_modules,
     &npm_resolver,
     resolved_compiler_options.as_ref(),
+    effective_compiler_options_types.as_ref(),
     manage_root_tsconfig,
     type_check_remote,
   )
