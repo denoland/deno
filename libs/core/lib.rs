@@ -66,11 +66,18 @@ pub use parking_lot;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
+// Buffer infrastructure (V8Slice, JsBuffer, ToJsBuffer, DetachedBuffer,
+// ByteString) is owned conceptually by deno_core; these re-exports are the
+// canonical import paths. The types are hosted in the serde_v8 crate only
+// because of the crate dependency direction (core depends on serde_v8) —
+// they do not require serde and will move here if that direction ever flips.
 pub use serde_v8::ByteString;
 pub use serde_v8::DetachedBuffer;
 pub use serde_v8::JsBuffer;
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 pub use serde_v8::StringOrBuffer;
 pub use serde_v8::ToJsBuffer;
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 pub use serde_v8::U16String;
 pub use sourcemap;
 pub use thiserror;

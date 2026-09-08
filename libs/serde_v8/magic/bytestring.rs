@@ -88,6 +88,12 @@ impl FromV8 for ByteString {
 // smallvec does not impl From/Into traits
 // like Vec<u8> does. So here we are.
 
+impl From<SmallVec<[u8; USIZE2X]>> for ByteString {
+  fn from(v: SmallVec<[u8; USIZE2X]>) -> Self {
+    ByteString(v)
+  }
+}
+
 impl From<Vec<u8>> for ByteString {
   fn from(vec: Vec<u8>) -> Self {
     ByteString(SmallVec::from_vec(vec))
