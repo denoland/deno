@@ -36,21 +36,6 @@ const testJob = job("test", {
       with: { "python-version": 3.11 },
     }),
     step({
-      name: "Authenticate with Google Cloud",
-      uses: "google-github-actions/auth@v3",
-      with: {
-        project_id: "denoland",
-        credentials_json: "${{ secrets.GCP_SA_KEY }}",
-        export_environment_variables: true,
-        create_credentials_file: true,
-      },
-    }),
-    step({
-      name: "Setup gcloud",
-      uses: "google-github-actions/setup-gcloud@v3",
-      with: { project_id: "denoland" },
-    }),
-    step({
       name: "Run tests",
       run: "deno -A tools/ecosystem_compat_tests.ts",
     }),
@@ -95,21 +80,6 @@ const workflow = createWorkflow({
           name: "Install Python",
           uses: "actions/setup-python@v6",
           with: { "python-version": 3.11 },
-        }),
-        step({
-          name: "Authenticate with Google Cloud",
-          uses: "google-github-actions/auth@v3",
-          with: {
-            project_id: "denoland",
-            credentials_json: "${{ secrets.GCP_SA_KEY }}",
-            export_environment_variables: true,
-            create_credentials_file: true,
-          },
-        }),
-        step({
-          name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v3",
-          with: { project_id: "denoland" },
         }),
         step({
           name: "Post message to slack channel",

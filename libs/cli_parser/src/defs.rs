@@ -2809,7 +2809,9 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("sourcemap")
       .long("sourcemap")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1))
+      .num_args(NumArgs::Optional)
+      .require_equals()
+      .value_parser(ValueParser::Choices(&["linked", "inline", "external"]))
 .help("Generate source map. Accepted values are 'linked', 'inline', or 'external'"),
     ArgDef::new("external")
       .long("external")
