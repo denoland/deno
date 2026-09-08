@@ -2200,6 +2200,7 @@ dependencies = [
  "deno_core",
  "deno_lib",
  "deno_npm_installer",
+ "deno_permissions",
  "deno_runtime",
  "deno_semver",
  "log",
