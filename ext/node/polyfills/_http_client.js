@@ -1003,8 +1003,8 @@ function ondrain() {
 }
 
 function canRetryRequest(req) {
-  return req.reusedSocket && !req.res && req.agent && !req._retrying &&
-    req[kRetryData] !== null;
+  return !req.destroyed && req.reusedSocket && !req.res && req.agent &&
+    !req._retrying && req[kRetryData] !== null;
 }
 
 function getRetryDataSize(data, encoding) {

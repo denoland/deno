@@ -1,0 +1,52 @@
+{
+  "tests": {
+    "http_destroy_error": {
+      "args": "run -A main.mjs http destroy-error",
+      "output": "ok\n"
+    },
+    "http_destroy": {
+      "args": "run -A main.mjs http destroy",
+      "output": "ok\n"
+    },
+    "http_abort": {
+      "args": "run -A main.mjs http abort",
+      "output": "ok\n"
+    },
+    "http_signal": {
+      "args": "run -A main.mjs http signal",
+      "output": "ok\n"
+    },
+    "http_timeout": {
+      "args": "run -A main.mjs http timeout",
+      "output": "ok\n"
+    },
+    "http_fresh_socket_control": {
+      "args": "run -A main.mjs http destroy-error fresh",
+      "output": "ok\n"
+    },
+    "https_destroy_error": {
+      "args": "run -A main.mjs https destroy-error",
+      "output": "ok\n"
+    },
+    "https_destroy": {
+      "args": "run -A main.mjs https destroy",
+      "output": "ok\n"
+    },
+    "https_abort": {
+      "args": "run -A main.mjs https abort",
+      "output": "ok\n"
+    },
+    "https_signal": {
+      "args": "run -A main.mjs https signal",
+      "output": "ok\n"
+    },
+    "https_timeout": {
+      "args": "run -A main.mjs https timeout",
+      "output": "ok\n"
+    },
+    "https_fresh_socket_control": {
+      "args": "run -A main.mjs https destroy-error fresh",
+      "output": "ok\n"
+    }
+  }
+}
