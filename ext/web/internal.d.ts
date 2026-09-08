@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 declare module "ext:deno_web/00_infra.js" {
