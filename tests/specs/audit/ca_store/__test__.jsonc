@@ -6,10 +6,11 @@
       "output": "install.out"
     },
     {
-      "args": "audit --ignore-registry-errors",
+      "args": "audit",
       "output": "audit.out",
       "envs": {
-        "NPM_CONFIG_REGISTRY": "http://localhost:4260/non/existent/for/sure"
+        "DENO_CERT": "$PWD/RootCA.pem",
+        "NPM_CONFIG_REGISTRY": "https://localhost:5545/"
       }
     }
   ]

@@ -209,6 +209,14 @@ impl deno_npm::resolution::DefaultTarballUrlProvider
       .replace_tarball_url(Url::parse(&default_url).unwrap(), &nv.name)
       .to_string()
   }
+
+  fn is_tarball_url_allowed(
+    &self,
+    _nv: &deno_semver::package::PackageNv,
+    url: &Url,
+  ) -> bool {
+    self.0.tarball_config(url).is_some()
+  }
 }
 
 fn snapshot_from_lockfile<TSys: LockfileSys>(
@@ -288,5 +296,21 @@ mod tests {
         .default_tarball_url(&PackageNv::from_str("@scope/pkg@1.0.0").unwrap()),
       "https://scope.example.com/npm/@scope/pkg/-/pkg-1.0.0.tgz",
     );
+  }
+
+  #[test]
+  fn allows_tarball_url_with_explicit_config() {
+    let npmrc = npmrc(
+      "registry=https://registry.example.com/\n//tarballs.example.com/:_authToken=token",
+    );
+    let provider = NpmRcDefaultTarballUrlProvider(&npmrc);
+    assert!(provider.is_tarball_url_allowed(
+      &PackageNv::from_str("pkg@1.0.0").unwrap(),
+      &Url::parse("https://tarballs.example.com/pkg-1.0.0.tgz").unwrap(),
+    ));
+    assert!(!provider.is_tarball_url_allowed(
+      &PackageNv::from_str("pkg@1.0.0").unwrap(),
+      &Url::parse("https://evil.example.com/pkg-1.0.0.tgz").unwrap(),
+    ));
   }
 }
