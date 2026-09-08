@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/lifecycle-scripts-with-dep",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "echo 'module.exports = \"postinstall works\";' > generated.js"
+  },
+  "dependencies": {
+    "@denotest/add": "1.0.0"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for the npm build side-effects cache (issue #16164) on the
+    // default isolated (`.deno`) linker: a package whose lifecycle script
+    // *generates* the file its `package.json` `bin` points to must still have a
+    // working `node_modules/.bin/<cmd>` entry after a CACHED install, even
+    // though the generating script doesn't run on a cache hit.
+    "restores_generated_bin": {
+      "steps": [
+        {
+          // First install: the `install` script runs (see the "running 'install'
+          // script" line) and GENERATES `testbin.js` (the file `bin.testbin`
+          // points to). The bin entry is linked and the built output — including
+          // the generated `testbin.js` — is snapshotted into the global cache.
+          "args": "install --allow-scripts=npm:@denotest/bin-created-by-lifecycle",
+          "output": "first_install.out"
+        },
+        // Sanity check: the generated bin works right after a fresh install.
+        { "args": "task run-testbin", "output": "run_testbin.out" },
+        {
+          // Wipe the local node_modules so the next install must re-link from
+          // scratch, simulating a second project sharing the same global cache.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // Second install: the built output is restored from the global cache
+          // (note "Reusing cached build output"), so the `install` script does
+          // NOT run again. The restore happens before the `.bin` setup so the
+          // generated entrypoint is linked normally.
+          "args": "install --allow-scripts=npm:@denotest/bin-created-by-lifecycle",
+          "output": "cached_install.out"
+        },
+        // The regression: after a CACHED install, node_modules/.bin/testbin must
+        // still exist and be runnable. Before the fix it was left missing because
+        // the restore ran after the bin pass and the executor skipped the
+        // restored package.
+        { "args": "task run-testbin", "output": "run_testbin.out" }
+      ]
+    }
+  }
+}

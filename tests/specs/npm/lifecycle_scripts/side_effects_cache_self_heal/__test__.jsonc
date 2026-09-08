@@ -1,0 +1,62 @@
+{
+  // Proves the npm build side-effects cache (issue #16164) publishes variants
+  // SAFELY into the SHARED global cache and SELF-HEALS a corrupt/stale entry:
+  //
+  //  - A `.ready` marker is only trusted when its variant directory is actually
+  //    present. A stale marker (dir gone) is treated as a cache miss, so the
+  //    build re-runs instead of restoring a missing/partial directory.
+  //  - That rebuild then republishes the variant, so a later install hits the
+  //    cache again — i.e. the publish path repaired the corrupt entry.
+  "tempDir": true,
+  "tests": {
+    "stale_marker_rebuilds_then_recaches": {
+      "steps": [
+        {
+          // First install: the `postinstall` script runs and its output is
+          // snapshotted into the global side-effects cache.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Corrupt the global cache: delete the built variant DIRECTORY but
+          // leave its `.ready` marker FILE behind — the "stale marker" state.
+          "args": "run -A break_variant.js",
+          "output": "break_variant.out"
+        },
+        {
+          // Wipe the local node_modules so the next install must re-link from
+          // the (now-corrupt) global cache.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // The stale marker must NOT be trusted: the variant directory is
+          // missing, so this is a cache MISS and the `postinstall` script runs
+          // again (note the "running 'postinstall' script" line) rather than
+          // restoring a vanished directory. The rebuild republishes the variant.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Wipe node_modules once more.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // The republish from the previous step healed the cache, so this
+          // install is a cache HIT: the build output is restored ("Reusing
+          // cached build output"), the `postinstall` script does NOT run, and
+          // the output is present.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "cached_run.out"
+        }
+      ]
+    }
+  }
+}

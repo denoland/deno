@@ -34,6 +34,7 @@ use deno_npm_cache::create_dir_all_no_symlink;
 use deno_npm_cache::ensure_not_symlink;
 use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_path_util::get_atomic_path;
 use deno_resolver::npm::get_package_folder_id_folder_name;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::StackString;
@@ -47,7 +48,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
 use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
 use sys_traits::SysWithPathsInErrors;
@@ -66,6 +69,7 @@ use crate::flag::LaxSingleProcessFsFlag;
 use crate::flag::LaxSingleProcessFsFlagSys;
 use crate::fs::CloneDirRecursiveSys;
 use crate::fs::clone_dir_recursive;
+use crate::fs::copy_dir_recursive;
 use crate::fs::symlink_dir;
 use crate::lifecycle_scripts::LifecycleScripts;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
@@ -73,6 +77,7 @@ use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
+use crate::lifecycle_scripts::side_effects_cache_input_hash;
 use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
@@ -95,6 +100,9 @@ pub struct LocalNpmPackageInstallerOptions {
   pub clean_on_install: bool,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub node_modules_folder: PathBuf,
+  /// The Node.js version Deno emulates, used to key native-addon build output
+  /// in the side-effects cache (native addons are ABI-specific).
+  pub node_version: String,
   pub reporter: Option<Arc<dyn crate::InstallReporter>>,
   pub system_info: NpmSystemInfo,
   /// Whether `jsr:` dependencies are being installed into `node_modules` via
@@ -123,6 +131,7 @@ pub struct LocalNpmPackageInstaller<
   lifecycle_scripts_config: Arc<LifecycleScriptsConfig>,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
+  node_version: String,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   jsr_deps_in_node_modules: bool,
 }
@@ -192,6 +201,7 @@ impl<
       root_node_modules_path: options.node_modules_folder,
       install_reporter: options.reporter,
       system_info: options.system_info,
+      node_version: options.node_version,
       jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
     }
   }
@@ -914,6 +924,187 @@ impl<
       }
     }
 
+    // Side-effects build cache (issue #16164) — restore pass.
+    //
+    // Restore previously-built output for cache HITS *before* the `.bin` setup
+    // (step 9) below runs. A package whose lifecycle script GENERATES the file
+    // its `package.json` `bin` points to has no entrypoint on disk until either
+    // the script runs or its built output is restored. The `.bin` setup ignores
+    // such a missing entrypoint (expecting the script to create it), and the
+    // lifecycle scripts executor only relinks bin entries for packages whose
+    // scripts it actually runs — but restored packages are dropped from that run
+    // list. So if we restored *after* the bin pass, a restored package's
+    // generated bin would be left unlinked (`node_modules/.bin/<cmd>` missing or
+    // dangling). Restoring here means the generated entrypoint already exists on
+    // disk when step 9 links it, exactly as for a freshly-built package and with
+    // the same full collision context. Cache MISSES are handled after step 9
+    // (see the build pass below), so their `pre_build_signature` is taken after
+    // any `chmod` the bin pass performs.
+    //
+    // Patched packages are EXCLUDED from the side-effects cache (both passes).
+    // The patch was applied into `.deno` earlier (step 3), but the cache input
+    // key does NOT include the patch contents. The "pristine exists" gate below
+    // can't be relied on to skip them: a patched package's pristine global-cache
+    // directory may still exist (e.g. another project sharing the same global
+    // cache installed that name@version unpatched). Were a patched package ever
+    // processed, restoring a built variant over it would drop the patch, and
+    // rebuilding from the pristine copy would discard the patch and snapshot
+    // unpatched output under a key that doesn't distinguish it. So a patched
+    // package keeps its current behavior: apply the patch and re-run its
+    // lifecycle scripts every install, never restored from / written to the
+    // cache.
+    let patched_nvs: HashSet<&PackageNv> = self
+      .npm_install_deps_provider
+      .patch_pkgs()
+      .iter()
+      .map(|p| &p.nv)
+      .collect();
+    let mut restored: HashSet<NpmPackageId> = HashSet::new();
+    {
+      let lifecycle_scripts = lifecycle_scripts.borrow();
+      for pkg in lifecycle_scripts.packages_with_scripts() {
+        let package = pkg.package;
+        // Patch contents aren't in the input key, so a patched package must
+        // never be served from the side-effects cache (see `patched_nvs`).
+        if patched_nvs.contains(&package.id.nv) {
+          continue;
+        }
+        // Honor the npm cache setting exactly as the materialization path does
+        // (see the `should_use_for_npm_package` check above). `--reload` /
+        // `--reload=npm:<pkg>` disables cache use for the package, which forces
+        // a fresh pristine re-extraction earlier in this method. The
+        // side-effects key only covers name/version/scripts/deps/platform/ABI,
+        // so a stale older `.build_<hash>` variant would still "match" and, if
+        // restored, would overwrite that freshly-reloaded extraction — defeating
+        // the reload. Skip restore here so the package falls through to the
+        // build pass below: its lifecycle scripts re-run against the reloaded
+        // extraction and republish a fresh variant.
+        if !self
+          .npm_cache
+          .cache_setting()
+          .should_use_for_npm_package(&package.id.nv.name)
+        {
+          continue;
+        }
+        // Only registry packages extracted into the global cache can be
+        // restored. Skips workspace members, whose sources don't live in the
+        // content-addressed global cache.
+        let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
+        if !self.sys.fs_exists_no_err(&pristine) {
+          continue;
+        }
+        let input_hash = side_effects_cache_input_hash(
+          package,
+          &pkg.scripts,
+          snapshot,
+          &self.node_version,
+        );
+        let built_variant = self.npm_cache.built_package_folder_for_id(
+          &package.get_package_cache_folder_id(),
+          &input_hash,
+        );
+        let ready_marker = built_cache_ready_marker(&built_variant);
+        // A variant is only usable when BOTH the completion marker AND the
+        // directory itself are present. Publishing writes the marker last and
+        // never replaces an in-place marked variant (see `snapshot_built_output`),
+        // so a present marker always implies a complete directory — except for a
+        // stale marker left after the dir went missing, which we treat as a miss
+        // here and let the build pass republish (and self-heal) below.
+        if !self.sys.fs_exists_no_err(&ready_marker)
+          || !self.sys.fs_exists_no_err(&built_variant)
+        {
+          continue; // cache miss — handled by the build pass after step 9
+        }
+        // Cache hit. The allowlist was already enforced (membership in
+        // `packages_with_scripts`), so restoring never runs a build the user
+        // didn't permit.
+        match self.restore_built_output(&built_variant, &pkg.package_folder) {
+          Ok(()) => {
+            let _ = create_initialized_file(
+              &self.sys,
+              &ran_scripts_file(&deno_local_registry_dir, package),
+            );
+            log::info!("Reusing cached build output for npm:{}", package.id.nv);
+            restored.insert(package.id.clone());
+          }
+          Err(err) => {
+            log::debug!(
+              "Failed to restore cached build output for npm:{}: {err}",
+              package.id.nv
+            );
+          }
+        }
+      }
+    }
+
+    // Side-effects build cache (issue #16164) — break hardlinks for cache
+    // MISSES *before* the `.bin` setup (step 9).
+    //
+    // For a cache-miss package whose lifecycle scripts will run, step 9's
+    // `.bin` pass calls `make_executable_if_exists`, which chmods the package's
+    // bin entrypoint *inside* its `.deno` directory. At this point that
+    // directory is still hardlinked into the shared pristine global-cache
+    // extraction (from the earlier `clone_dir_recursive`), so the chmod would
+    // mutate the shared inode and corrupt the pristine cache for every other
+    // project — even before any build script runs. Break those hardlinks now by
+    // re-materializing the package as a true copy, so step 9's chmod (and the
+    // build) operate on a private inode. The pre-build signature and snapshot
+    // plan are captured AFTER step 9 (build pass below) so that chmod isn't
+    // mistaken for a script-made change (which would make an unchanged package
+    // look cacheable).
+    //
+    // This pass selects exactly the same packages the build pass below does:
+    //   - Cache HITS were already restored above (their pkg_dir now hardlinks
+    //     the built variant, whose bin mode already satisfies the chmod check,
+    //     so step 9's `make_executable_if_exists` is a no-op for them) — skipped
+    //     via `restored` so they're never double-handled.
+    //   - Patched packages are excluded (their patch isn't in the input key; see
+    //     `patched_nvs`).
+    //   - Packages with no pristine global-cache dir are skipped (workspace
+    //     members, whose sources don't live in the content-addressed cache).
+    // It does NOT consult `should_use_for_npm_package`: a reload package was
+    // skipped by the restore pass (so it's absent from `restored`) precisely so
+    // it falls through to the build pass and re-runs its scripts — its hardlinks
+    // must be broken here too.
+    //
+    // Fail-closed: if preparing the true copy fails, the package's `.deno` files
+    // are still hardlinks into the shared pristine cache. Running its build
+    // scripts (or even letting step 9 chmod them) would corrupt that shared
+    // cache, so surface the failure and abort the install *before* step 9 and
+    // the lifecycle-scripts executor, rather than silently mutating hardlinked
+    // pristine files.
+    let mut rebuilt_as_copy: HashSet<NpmPackageId> = HashSet::new();
+    {
+      let lifecycle_scripts = lifecycle_scripts.borrow();
+      for pkg in lifecycle_scripts.packages_with_scripts() {
+        let package = pkg.package;
+        if patched_nvs.contains(&package.id.nv) {
+          continue;
+        }
+        // Cache hits were already restored above; their scripts won't run and
+        // their pkg_dir hardlinks the built variant rather than the pristine
+        // cache, so they must not be re-copied here.
+        if restored.contains(&package.id) {
+          continue;
+        }
+        let pristine = self.npm_cache.package_folder_for_nv(&package.id.nv);
+        if !self.sys.fs_exists_no_err(&pristine) {
+          continue;
+        }
+        if let Err(err) =
+          self.rebuild_package_as_copy(&pristine, &pkg.package_folder)
+        {
+          return Err(SyncResolutionWithFsError::Other(JsErrorBox::generic(
+            format!(
+              "Failed to prepare an isolated build copy for npm:{}: {err}",
+              package.id.nv
+            ),
+          )));
+        }
+        rebuilt_as_copy.insert(package.id.clone());
+      }
+    }
+
     // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
       let bin_entries = match Rc::try_unwrap(bin_entries) {
@@ -1123,7 +1314,7 @@ impl<
       }
     }
 
-    let lifecycle_scripts_to_run = std::mem::replace(
+    let mut lifecycle_scripts_to_run = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
         sys.as_ref(),
@@ -1137,6 +1328,65 @@ impl<
     );
     drop(lifecycle_scripts);
     lifecycle_scripts_to_run.warn_not_run_scripts()?;
+
+    // Side-effects build cache (issue #16164) — build pass.
+    //
+    // Cache HITS were already restored before the `.bin` pass above, so drop
+    // them from the run list now (their scripts must not run again). The
+    // remaining packages whose build scripts are about to run (these are already
+    // allowlist-gated — only packages the user permitted via
+    // `--allow-scripts`/the deno.json allow list reach `packages_with_scripts`)
+    // are cache MISSES. Their hardlinks into the pristine global cache were
+    // already broken (`rebuild_package_as_copy`) by the pre-bin copy pass above,
+    // so step 9's `.bin` chmod mutated a private copy, not the shared cache. Now
+    // capture each one's pre-build signature (taken AFTER that chmod, so the
+    // chmod isn't mistaken for a script-made change) and a snapshot plan so the
+    // build can be cached once its scripts run.
+    if !restored.is_empty() {
+      lifecycle_scripts_to_run
+        .retain_packages_with_scripts(|p| !restored.contains(&p.package.id));
+    }
+    let mut build_cache_plans: HashMap<NpmPackageId, BuildSnapshotPlan> =
+      HashMap::new();
+    for pkg in lifecycle_scripts_to_run.packages_with_scripts() {
+      let package = pkg.package;
+      // Only packages whose hardlinks were broken before step 9 (the pre-bin
+      // copy pass above) may be built and snapshotted. That pass already
+      // excluded patched packages and packages with no pristine global-cache
+      // dir, applied the same fail-closed handling, and selects exactly the
+      // same set this loop iterates — so a package present here in
+      // `rebuilt_as_copy` is guaranteed to be a real, isolated copy. A package
+      // absent from it (e.g. a patched package, a workspace member, or one
+      // added to the run list after the pre-bin pass) must NOT be snapshotted:
+      // its files may still be hardlinks, so skip it (its scripts still run,
+      // it's just never cached).
+      if !rebuilt_as_copy.contains(&package.id) {
+        continue;
+      }
+      let input_hash = side_effects_cache_input_hash(
+        package,
+        &pkg.scripts,
+        snapshot,
+        &self.node_version,
+      );
+      let built_variant = self.npm_cache.built_package_folder_for_id(
+        &package.get_package_cache_folder_id(),
+        &input_hash,
+      );
+      let ready_marker = built_cache_ready_marker(&built_variant);
+      let pkg_dir = pkg.package_folder.clone();
+      let pre_build_signature = dir_content_signature(&self.sys, &pkg_dir);
+      build_cache_plans.insert(
+        package.id.clone(),
+        BuildSnapshotPlan {
+          nv: package.id.nv.clone(),
+          built_variant,
+          ready_marker,
+          pkg_dir,
+          pre_build_signature,
+        },
+      );
+    }
 
     let packages_with_scripts =
       lifecycle_scripts_to_run.packages_with_scripts();
@@ -1173,7 +1423,16 @@ impl<
           extra_info_provider: &extra_info_provider,
         })
         .await
-        .map_err(SyncResolutionWithFsError::LifecycleScripts)?
+        .map_err(SyncResolutionWithFsError::LifecycleScripts)?;
+
+      // All build scripts ran successfully (a failure short-circuits above via
+      // `?`). Snapshot each freshly-built package into the global side-effects
+      // cache so future installs can reuse it. Done here — not in
+      // `on_ran_pkg_scripts` — so a package whose script *failed* is never
+      // cached. Best-effort: never fails the install.
+      for plan in build_cache_plans.values() {
+        self.persist_built_output(plan);
+      }
     }
 
     setup_cache.save();
@@ -1181,6 +1440,204 @@ impl<
     drop(pb_clear_guard);
 
     Ok(())
+  }
+
+  /// Restores a built variant from the global side-effects cache into a
+  /// package's `.deno` directory (replacing the pristine extraction).
+  fn restore_built_output(
+    &self,
+    built_variant: &Path,
+    pkg_dir: &Path,
+  ) -> Result<(), std::io::Error> {
+    let _ = self.sys.fs_remove_dir_all(pkg_dir);
+    clone_dir_recursive(&self.sys, built_variant, pkg_dir)
+  }
+
+  /// Re-materializes a package's `.deno` directory as a *real copy* of the
+  /// pristine global-cache extraction, breaking any hardlinks into it.
+  ///
+  /// On Linux `clone_dir_recursive` hardlinks the `.deno` package files to the
+  /// shared pristine extraction in the global cache. Any in-place mutation of
+  /// those files — a build script editing one, or the `.bin` setup chmodding a
+  /// bin entrypoint to make it executable — would then change that shared inode
+  /// and corrupt the global cache for every other project. Building on a true
+  /// copy prevents that, and gives us an isolated directory to snapshot
+  /// afterwards. Call this BEFORE the `.bin` chmod pass (step 9) so the chmod
+  /// also lands on the private copy.
+  fn rebuild_package_as_copy(
+    &self,
+    pristine: &Path,
+    pkg_dir: &Path,
+  ) -> Result<(), std::io::Error> {
+    let _ = self.sys.fs_remove_dir_all(pkg_dir);
+    copy_dir_recursive(&self.sys, pristine, pkg_dir)
+  }
+
+  /// Persists a freshly-built package directory into the global side-effects
+  /// cache, unless the build didn't actually change the package's own
+  /// directory (in which case it likely writes outside it and isn't safely
+  /// cacheable). Best-effort: logs and returns on any failure.
+  fn persist_built_output(&self, plan: &BuildSnapshotPlan) {
+    let post_build_signature = dir_content_signature(&self.sys, &plan.pkg_dir);
+    if post_build_signature == plan.pre_build_signature {
+      // The build script left the package's own directory unchanged. It either
+      // did nothing cacheable, or it writes OUTSIDE its package directory
+      // (e.g. Cypress/Puppeteer/Playwright downloading a browser into a home
+      // cache, or a script writing to `INIT_CWD`). A per-directory snapshot
+      // can't capture that work, so we deliberately do NOT cache it — the
+      // script re-runs on every install, which is the pre-existing behavior.
+      // Because we always re-run rather than serve a partial snapshot, this is
+      // staleness-safe by construction; logged at debug since it would
+      // otherwise be very noisy (it fires for every such package on every
+      // install) and is not user-actionable.
+      log::debug!(
+        "npm:{} build did not modify its package directory; not caching its build output (it may write outside its own directory, so its scripts will re-run on future installs).",
+        plan.nv
+      );
+      return;
+    }
+    // The snapshot and restore both go through `clone_dir_recursive` /
+    // `copy_dir_recursive`, which copy or hard-link regular files and
+    // directories but SILENTLY SKIP symlinks (see `crate::fs`). If the build
+    // script created a symlink inside the package directory, snapshotting it
+    // would drop the link, and a later cache hit would restore a directory that
+    // is missing it (the package would fail to resolve through that link). We
+    // can't faithfully capture such a package, so — exactly like the
+    // writes-outside-its-directory case above — we decline to cache it and let
+    // its scripts re-run on every install. Staleness-safe by construction.
+    if dir_contains_symlink(&self.sys, &plan.pkg_dir) {
+      log::debug!(
+        "npm:{} build produced a symlink inside its package directory, which the side-effects cache can't represent; not caching its build output (its scripts will re-run on future installs).",
+        plan.nv
+      );
+      return;
+    }
+    if let Err(err) = self.snapshot_built_output(plan) {
+      log::debug!("Failed to cache build output for npm:{}: {err}", plan.nv);
+    } else {
+      log::debug!("Cached build output for npm:{}", plan.nv);
+    }
+  }
+
+  /// Publishes a freshly-built package directory into the SHARED global
+  /// side-effects cache so other projects can reuse it.
+  ///
+  /// Concurrency contract: different projects share one global npm cache but
+  /// hold only their own local `node_modules` lock, so two first installs for
+  /// the same package + input hash can run this at the same time. Publication
+  /// is made atomic with respect to a concurrent reader (the restore pass) by:
+  ///
+  /// 1. Snapshotting into a UNIQUE sibling temp dir (same parent ⇒ same
+  ///    filesystem ⇒ the move is a real `rename`), reusing the established npm
+  ///    cache convention (`deno_path_util::get_atomic_path` +
+  ///    rename-with-retries, exactly as `tarball_extract.rs` extracts tarballs).
+  /// 2. Atomically `rename`-ing the temp dir into `built_variant`, so the
+  ///    directory appears at its final path complete and all-at-once — a reader
+  ///    never sees a half-written directory.
+  /// 3. Writing the `.ready` marker LAST — only after the directory is fully in
+  ///    place. So a reader either sees no marker (and treats it as a miss), or
+  ///    sees a marker with a complete directory behind it.
+  ///
+  /// Idempotent & self-healing:
+  /// - First writer wins: if a complete variant (dir + marker) already exists we
+  ///   leave it untouched and just clean up our temp dir.
+  /// - A stale marker (marker present but dir missing) is repaired: the marker
+  ///   is removed first (so no reader trusts it), then we republish.
+  /// - An orphan directory (dir present but no marker, e.g. a publish that
+  ///   crashed before step 3) is replaced. Replacing is safe because, with no
+  ///   marker, no reader will ever read that directory; and every variant for a
+  ///   given (package, input hash) has identical content by construction, so any
+  ///   complete variant is interchangeable.
+  ///
+  /// We never remove or replace a directory while its `.ready` marker exists —
+  /// that is the one operation that could expose a reader to a vanishing or
+  /// half-replaced variant.
+  fn snapshot_built_output(
+    &self,
+    plan: &BuildSnapshotPlan,
+  ) -> Result<(), std::io::Error> {
+    let marker_exists = self.sys.fs_exists_no_err(&plan.ready_marker);
+    let variant_exists = self.sys.fs_exists_no_err(&plan.built_variant);
+    if marker_exists && variant_exists {
+      // First writer wins: a complete variant is already published. Leave it be.
+      return Ok(());
+    }
+    if marker_exists && !variant_exists {
+      // Stale marker: the directory it vouches for is gone. Drop the marker
+      // first so no concurrent reader trusts it, then republish below.
+      let _ = self.sys.fs_remove_file(&plan.ready_marker);
+    }
+
+    // Snapshot into a unique sibling temp dir on the same filesystem so the
+    // publish is a same-filesystem rename (atomic move into place).
+    let temp_dir = get_atomic_path(&self.sys, &plan.built_variant);
+    if let Err(err) = clone_dir_recursive(&self.sys, &plan.pkg_dir, &temp_dir) {
+      let _ = self.sys.fs_remove_dir_all(&temp_dir);
+      return Err(err);
+    }
+
+    // Move the directory into place (before the marker). Cleans up the temp dir
+    // on any outcome that doesn't consume it.
+    if let Err(err) = self.publish_built_variant(
+      &temp_dir,
+      &plan.built_variant,
+      &plan.ready_marker,
+    ) {
+      let _ = self.sys.fs_remove_dir_all(&temp_dir);
+      return Err(err);
+    }
+
+    // Directory is fully in place; mark it complete LAST. `create_initialized_file`
+    // is idempotent, so re-creating a marker we dropped above (stale-marker
+    // repair) is fine.
+    create_initialized_file(&self.sys, &plan.ready_marker)?;
+    Ok(())
+  }
+
+  /// Atomically moves a snapshot temp dir into the variant destination,
+  /// mirroring the npm cache's tarball-extract rename-with-retries convention.
+  ///
+  /// `rename` onto a non-empty directory fails on some platforms, so an orphan
+  /// destination (present but with no `.ready` marker) is removed before
+  /// retrying. A destination that becomes complete underneath us (another writer
+  /// published it, marker now present) is left untouched — first writer wins and
+  /// we just drop our temp copy.
+  fn publish_built_variant(
+    &self,
+    temp_dir: &Path,
+    built_variant: &Path,
+    ready_marker: &Path,
+  ) -> Result<(), std::io::Error> {
+    let mut count = 0;
+    loop {
+      match self.sys.fs_rename(temp_dir, built_variant) {
+        Ok(()) => return Ok(()),
+        Err(err) => {
+          let dest_exists = err.kind() == std::io::ErrorKind::AlreadyExists
+            || self.sys.fs_exists_no_err(built_variant);
+          if dest_exists {
+            if self.sys.fs_exists_no_err(ready_marker) {
+              // Another writer published a complete variant first. Identical
+              // content by construction, so keep theirs and drop ours.
+              let _ = self.sys.fs_remove_dir_all(temp_dir);
+              return Ok(());
+            }
+            // Orphan directory with no marker: not reader-visible, so it's safe
+            // to clear out of the way and retry the rename.
+            let _ = self.sys.fs_remove_dir_all(built_variant);
+          }
+          count += 1;
+          if count > 5 {
+            return Err(err);
+          }
+          // Brief backoff; contention here is rare (only racing first installs).
+          let sleep_ms = std::cmp::min(100, 20 * count);
+          self
+            .sys
+            .thread_sleep(std::time::Duration::from_millis(sleep_ms));
+        }
+      }
+    }
   }
 
   fn resolve_workspace_lifecycle_packages(
@@ -1406,6 +1863,123 @@ fn ran_scripts_file(
 ) -> PathBuf {
   local_node_modules_package_folder(local_registry_dir, package)
     .join(".scripts-run")
+}
+
+/// Bookkeeping for a single package whose build scripts are being run on a
+/// cache miss, so the result can be snapshotted into the global side-effects
+/// cache once the scripts complete.
+struct BuildSnapshotPlan {
+  /// The package being built (for logging).
+  nv: PackageNv,
+  /// Global-cache destination for the built variant.
+  built_variant: PathBuf,
+  /// Sibling marker file written last to mark `built_variant` complete.
+  ready_marker: PathBuf,
+  /// The package's `.deno` directory (the build happens here).
+  pkg_dir: PathBuf,
+  /// Signature of `pkg_dir` taken before the scripts ran, to detect whether
+  /// the build actually modified the package's own directory.
+  pre_build_signature: u64,
+}
+
+/// The sibling marker file that marks a built variant directory as complete.
+/// Kept *outside* the variant directory so it is never copied into a project's
+/// `node_modules` on a cache hit.
+fn built_cache_ready_marker(built_variant: &Path) -> PathBuf {
+  let mut marker = built_variant.as_os_str().to_os_string();
+  marker.push(".ready");
+  PathBuf::from(marker)
+}
+
+/// Returns true if `dir` contains (recursively) any symlink or junction.
+///
+/// The side-effects build cache snapshots and restores a package directory with
+/// `clone_dir_recursive` / `copy_dir_recursive`, neither of which can represent
+/// symlinks — they copy or hard-link regular files and directories and silently
+/// skip symlink entries (see `crate::fs`). A package whose build script creates
+/// a symlink inside its own directory therefore can't be faithfully cached, so
+/// `persist_built_output` uses this to leave it uncacheable instead of
+/// publishing a variant that would lose the link on restore.
+///
+/// `fs_read_link` (rather than `file_type().is_symlink()`) is used to detect the
+/// link because Windows junctions report `is_symlink() == false`, matching the
+/// detection in `remove_unused_node_modules_symlinks`.
+fn dir_contains_symlink<TSys: FsReadDir + sys_traits::FsReadLink>(
+  sys: &TSys,
+  dir: &Path,
+) -> bool {
+  let Ok(read_dir) = sys.fs_read_dir(dir) else {
+    return false;
+  };
+  for entry in read_dir.flatten() {
+    let path = dir.join(entry.file_name());
+    if sys.fs_read_link(&path).is_ok() {
+      return true;
+    }
+    // Only descend into real directories — a symlinked directory was already
+    // caught by the `fs_read_link` check above and never reached here.
+    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+      && dir_contains_symlink(sys, &path)
+    {
+      return true;
+    }
+  }
+  false
+}
+
+/// Computes a cheap content signature (relative path + size + mtime of every
+/// file) of a directory tree. Used to detect whether a package's build script
+/// actually modified its own package directory. Stable within a single process
+/// (only ever compared before/after a build in the same run).
+fn dir_content_signature<TSys: FsMetadata + FsReadDir>(
+  sys: &TSys,
+  dir: &Path,
+) -> u64 {
+  use std::hash::Hash;
+  use std::hash::Hasher;
+
+  fn walk<TSys: FsMetadata + FsReadDir, H: Hasher>(
+    sys: &TSys,
+    dir: &Path,
+    prefix: &str,
+    hasher: &mut H,
+  ) {
+    let Ok(read_dir) = sys.fs_read_dir(dir) else {
+      return;
+    };
+    let mut entries: Vec<_> = read_dir.flatten().collect();
+    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    for entry in entries {
+      let name = entry.file_name();
+      let name = name.to_string_lossy();
+      let rel = if prefix.is_empty() {
+        name.to_string()
+      } else {
+        format!("{prefix}/{name}")
+      };
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      let path = dir.join(entry.file_name());
+      rel.hash(hasher);
+      if file_type.is_dir() {
+        walk(sys, &path, &rel, hasher);
+      } else if file_type.is_file()
+        && let Ok(metadata) = sys.fs_metadata(&path)
+      {
+        metadata.len().hash(hasher);
+        if let Ok(modified) = metadata.modified()
+          && let Ok(elapsed) = modified.duration_since(std::time::UNIX_EPOCH)
+        {
+          elapsed.as_nanos().hash(hasher);
+        }
+      }
+    }
+  }
+
+  let mut hasher = twox_hash::XxHash64::default();
+  walk(sys, dir, "", &mut hasher);
+  hasher.finish()
 }
 
 struct LocalLifecycleScripts<'a, TSys: FsOpen + FsMetadata> {
