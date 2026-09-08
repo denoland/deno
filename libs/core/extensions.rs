@@ -810,6 +810,14 @@ impl Extension {
     self.ops.as_ref()
   }
 
+  /// Takes the extension's op table, leaving it empty. Called at `JsRuntime`
+  /// startup (after [`Extension::init_ops`]) so the realm can keep the
+  /// declarations without copying them: a `Cow::Borrowed` table is kept as a
+  /// `&'static` slice, an owned one is moved into the realm.
+  pub fn take_ops(&mut self) -> Cow<'static, [OpDecl]> {
+    std::mem::replace(&mut self.ops, Cow::Borrowed(&[]))
+  }
+
   /// Called at JsRuntime startup to initialize method ops in the isolate.
   pub fn init_method_ops(&self) -> &[OpMethodDecl] {
     self.objects.as_ref()

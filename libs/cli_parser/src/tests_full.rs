@@ -2604,15 +2604,25 @@ fn allow_sys_allowlist_validator() {
     "script.ts"
   ]);
   assert!(r.is_ok());
+  let r = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--allow-sys=inspector,setuid,umask,username",
+    "script.ts"
+  ]);
+  assert_eq!(
+    r.unwrap().permissions.allow_sys,
+    Some(svec!["inspector", "setuid", "umask", "username"])
+  );
   let r = flags_from_vec(svec!["deno", "run", "--allow-sys=foo", "script.ts"]);
-  assert!(r.is_err());
+  assert_eq!(r.unwrap_err().message, "unknown sys descriptor: 'foo'");
   let r = flags_from_vec(svec![
     "deno",
     "run",
     "--allow-sys=hostname,foo",
     "script.ts"
   ]);
-  assert!(r.is_err());
+  assert_eq!(r.unwrap_err().message, "unknown sys descriptor: 'foo'");
 }
 
 #[test]
@@ -2627,15 +2637,25 @@ fn deny_sys_denylist_validator() {
     "script.ts"
   ]);
   assert!(r.is_ok());
+  let r = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--deny-sys=inspector,setuid,umask,username",
+    "script.ts"
+  ]);
+  assert_eq!(
+    r.unwrap().permissions.deny_sys,
+    Some(svec!["inspector", "setuid", "umask", "username"])
+  );
   let r = flags_from_vec(svec!["deno", "run", "--deny-sys=foo", "script.ts"]);
-  assert!(r.is_err());
+  assert_eq!(r.unwrap_err().message, "unknown sys descriptor: 'foo'");
   let r = flags_from_vec(svec![
     "deno",
     "run",
     "--deny-sys=hostname,foo",
     "script.ts"
   ]);
-  assert!(r.is_err());
+  assert_eq!(r.unwrap_err().message, "unknown sys descriptor: 'foo'");
 }
 
 #[test]

@@ -31,7 +31,7 @@ use crate::modules::ModuleName;
 use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::script_origin;
 use crate::ops::ExternalOpsTracker;
-use crate::ops::OpCtx;
+use crate::ops::OpCtxs;
 use crate::reactor::DefaultReactor;
 use crate::stats::RuntimeActivityTraces;
 use crate::tasks::V8TaskSpawnerFactory;
@@ -101,7 +101,7 @@ pub struct ContextState {
   pub(crate) pending_ops: Rc<OpDriverImpl>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
-  pub(crate) op_ctxs: Box<[OpCtx]>,
+  pub(crate) op_ctxs: OpCtxs,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
   /// Snapshots built against V8 14.9+ bake the *slow* version of each op
@@ -194,7 +194,7 @@ impl ContextState {
   pub(crate) fn new(
     op_driver: Rc<OpDriverImpl>,
     isolate_ptr: v8::UnsafeRawIsolatePtr,
-    op_ctxs: Box<[OpCtx]>,
+    op_ctxs: OpCtxs,
     op_method_decls: Vec<OpMethodDecl>,
     methods_ctx_offset: usize,
     external_ops_tracker: ExternalOpsTracker,
