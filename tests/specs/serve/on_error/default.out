@@ -1,0 +1,5 @@
+Check [WILDCARD]
+Error: boom
+[WILDCARD]
+status: 500
+body: Internal Server Error
