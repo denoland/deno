@@ -1896,6 +1896,41 @@ fn npm_types_pkg_dir(
   dir.exists().then_some(dir)
 }
 
+/// Split a `compilerOptions.types` entry into (package name, subpath).
+/// Returns `None` for bare packages (`react`, `@types/react`) and paths.
+/// A scoped package name covers the first two segments (`@scope/pkg/sub` ->
+/// (`@scope/pkg`, `sub`)).
+fn split_pkg_subpath(s: &str) -> Option<(&str, &str)> {
+  let slash = if let Some(rest) = s.strip_prefix('@') {
+    let first = rest.find('/')?;
+    let second = rest[first + 1..].find('/').map(|i| first + 1 + i)?;
+    // `second` is indexed into `rest`; shift by one for the leading `@`.
+    second + 1
+  } else {
+    s.find('/')?
+  };
+  let subpath = &s[slash + 1..];
+  if subpath.is_empty() {
+    return None;
+  }
+  Some((&s[..slash], subpath))
+}
+
+/// Resolve the declaration file for a `compilerOptions.types` subpath entry
+/// (`vite/client`): prefer the subpath's declared types via the package
+/// `exports`, falling back to a sibling `.d.ts` laid out next to the subpath
+/// for packages without `exports`.
+fn resolve_npm_subpath_types(pkg_dir: &Path, subpath: &str) -> Option<PathBuf> {
+  let export_key = format!("./{subpath}");
+  if let Some(p) = resolve_package_types_entry_path(pkg_dir, &export_key)
+    && p.exists()
+  {
+    return Some(p);
+  }
+  let direct = pkg_dir.join(format!("{subpath}.d.ts"));
+  direct.exists().then_some(direct)
+}
+
 /// Partition a user's `compilerOptions.types` into entries stock tsc can resolve
 /// via typeRoots (kept in the `types` array) and entries it cannot - a bare npm
 /// package the user imports, or a relative path - which are materialized as
@@ -1951,6 +1986,23 @@ fn partition_user_types(
          local path and {} does not exist",
         abs.display()
       );
+      continue;
+    }
+    // A subpath of an npm package the user imports (`vite/client`, where
+    // `vite` is import-mapped to npm): stock tsc can't resolve subpaths via
+    // `types` (TS2688), and the `include` glob excludes node_modules, so
+    // resolve the subpath's declaration file and pull it into the program.
+    // Without this the entry's ambient declarations are silently lost.
+    if let Some((pkg_name, subpath)) = split_pkg_subpath(s)
+      && let Some(pkg_dir) = npm_types_pkg_dir(
+        project_root,
+        pkg_name,
+        deno_imports,
+        npm_package_paths,
+      )
+      && let Some(dts) = resolve_npm_subpath_types(&pkg_dir, subpath)
+    {
+      type_files.push(dts.to_string_lossy().replace('\\', "/"));
       continue;
     }
     // A bare npm package the user imports: pull in its declaration file.
@@ -2087,8 +2139,9 @@ interface AlsoKeep {
       json!("react"),
       // scoped bare package -> kept
       json!("@types/react"),
-      // subpath entry -> `types` can't resolve it (would TS2688); dropped and
-      // instead covered by the `include` glob pulling in the mirrored file
+      // subpath entry -> `types` can't resolve it (would TS2688); dropped
+      // here (npm subpaths are materialized into `files` by
+      // `partition_user_types` instead)
       json!("lume/types.ts"),
       // scoped subpath entry -> also dropped
       json!("@scope/pkg/sub"),
@@ -2107,6 +2160,90 @@ interface AlsoKeep {
         json!("@types/react"),
       ]
     );
+  }
+
+  #[test]
+  fn test_split_pkg_subpath() {
+    assert_eq!(split_pkg_subpath("vite/client"), Some(("vite", "client")));
+    assert_eq!(
+      split_pkg_subpath("@scope/pkg/sub"),
+      Some(("@scope/pkg", "sub"))
+    );
+    assert_eq!(
+      split_pkg_subpath("@scope/pkg/deep/sub"),
+      Some(("@scope/pkg", "deep/sub"))
+    );
+    // bare packages have no subpath
+    assert_eq!(split_pkg_subpath("react"), None);
+    assert_eq!(split_pkg_subpath("@types/react"), None);
+    // empty subpath
+    assert_eq!(split_pkg_subpath("vite/"), None);
+  }
+
+  #[test]
+  fn test_partition_user_types_npm_subpath() {
+    // fake project with an installed npm package exposing a subpath export
+    let dir = tempfile::TempDir::new().unwrap();
+    let project_root = dir.path();
+    let pkg_dir = project_root.join("node_modules/vite");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name":"vite","version":"7.3.1","exports":{".":{"types":"./index.d.ts"},"./client":{"types":"./client.d.ts"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+      pkg_dir.join("client.d.ts"),
+      "declare module '*.css' { const c: any; export default c; }",
+    )
+    .unwrap();
+    let imports = json!({ "vite": "npm:vite@7.3.1" });
+    let npm_package_paths = BTreeMap::new();
+
+    // `vite/client` resolves to the subpath declaration file
+    let (keep, files) = partition_user_types(
+      project_root,
+      &[json!("vite/client")],
+      Some(&imports),
+      &npm_package_paths,
+    );
+    assert!(keep.is_empty());
+    assert_eq!(files.len(), 1);
+    assert!(files[0].ends_with("node_modules/vite/client.d.ts"));
+
+    // package without `exports`: falls back to a sibling `.d.ts`
+    let bare_dir = project_root.join("node_modules/bare-pkg");
+    std::fs::create_dir_all(&bare_dir).unwrap();
+    std::fs::write(
+      bare_dir.join("package.json"),
+      r#"{"name":"bare-pkg","version":"1.0.0"}"#,
+    )
+    .unwrap();
+    std::fs::write(bare_dir.join("sub.d.ts"), "export {};").unwrap();
+    let imports = json!({ "bare-pkg": "npm:bare-pkg@1" });
+    let (keep, files) = partition_user_types(
+      project_root,
+      &[json!("bare-pkg/sub")],
+      Some(&imports),
+      &npm_package_paths,
+    );
+    assert!(keep.is_empty());
+    assert_eq!(files.len(), 1);
+    assert!(files[0].ends_with("node_modules/bare-pkg/sub.d.ts"));
+
+    // unresolvable subpath is left for `merge_user_types`, which drops it
+    // (stock tsc would fail the whole build with TS2688)
+    let (keep, files) = partition_user_types(
+      project_root,
+      &[json!("vite/missing")],
+      Some(&json!({ "vite": "npm:vite@7.3.1" })),
+      &npm_package_paths,
+    );
+    assert_eq!(keep, vec![json!("vite/missing")]);
+    assert!(files.is_empty());
+    let mut base = vec![json!("deno")];
+    merge_user_types(&mut base, &keep);
+    assert_eq!(base, vec![json!("deno")]);
   }
 
   #[test]
