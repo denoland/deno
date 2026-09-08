@@ -216,7 +216,7 @@ pub(crate) fn with_isolate(
 ) -> TokenStream {
   generator_state.needs_opctx = true;
   gs_quote!(generator_state(opctx, scope) =>
-    (let mut #scope = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#opctx.isolate) };
+    (let mut #scope = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#opctx.isolate()) };
     let mut scope = &mut #scope;)
   )
 }
@@ -251,7 +251,7 @@ pub(crate) fn with_stack_trace(
   generator_state.needs_scope = true;
 
   gs_quote!(generator_state(opctx, scope, opstate) =>
-    (if #opctx.enable_stack_trace {
+    (if #opctx.enable_stack_trace() {
       let stack_trace_msg = deno_core::v8::String::empty(&mut #scope);
       let stack_trace_error = deno_core::v8::Exception::error(&mut #scope, stack_trace_msg.into());
       let js_error = deno_core::error::JsError::from_v8_exception(&mut #scope, stack_trace_error);
@@ -342,7 +342,7 @@ pub(crate) fn with_opstate(
 ) -> TokenStream {
   generator_state.needs_opctx = true;
   gs_quote!(generator_state(opctx, opstate) =>
-    (let #opstate = &#opctx.state;)
+    (let #opstate = #opctx.state();)
   )
 }
 
@@ -620,14 +620,14 @@ pub fn from_arg(
     Arg::Ref(RefType::Ref, Special::Isolate) => {
       *needs_opctx = true;
       quote!(
-        let #arg_ident = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#opctx.isolate) };
+        let #arg_ident = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#opctx.isolate()) };
         let #arg_ident = &#arg_ident;
       )
     }
     Arg::Ref(RefType::Mut, Special::Isolate) => {
       *needs_opctx = true;
       quote!(
-        let mut #arg_ident = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#opctx.isolate) };
+        let mut #arg_ident = unsafe { deno_core::v8::Isolate::from_raw_isolate_ptr(#opctx.isolate()) };
         let #arg_ident = &mut #arg_ident;
       )
     }

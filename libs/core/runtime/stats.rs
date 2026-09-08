@@ -369,7 +369,7 @@ impl RuntimeActivityStats {
         v.push(RuntimeActivity::AsyncOp(
           op.0,
           self.trace_for(RuntimeActivityType::AsyncOp, op.0 as _),
-          ops[op.1 as usize].decl.name,
+          ops[op.1 as usize].decl().name,
         ));
       }
     } else {
@@ -377,7 +377,7 @@ impl RuntimeActivityStats {
         v.push(RuntimeActivity::AsyncOp(
           op.0,
           None,
-          ops[op.1 as usize].decl.name,
+          ops[op.1 as usize].decl().name,
         ));
       }
     }
@@ -432,7 +432,7 @@ impl RuntimeActivityStats {
         disappeared.push(RuntimeActivity::AsyncOp(
           op.0,
           before.trace_for(RuntimeActivityType::AsyncOp, op.0 as _),
-          ops[op.1 as usize].decl.name,
+          ops[op.1 as usize].decl().name,
         ));
       }
     }
@@ -442,7 +442,7 @@ impl RuntimeActivityStats {
         appeared.push(RuntimeActivity::AsyncOp(
           op.0,
           after.trace_for(RuntimeActivityType::AsyncOp, op.0 as _),
-          ops[op.1 as usize].decl.name,
+          ops[op.1 as usize].decl().name,
         ));
       }
     }
