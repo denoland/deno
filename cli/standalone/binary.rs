@@ -30,6 +30,7 @@ use deno_lib::shared::ReleaseChannel;
 use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::binary::Metadata;
+use deno_lib::standalone::binary::InitialWindowConfig;
 use deno_lib::standalone::binary::NodeModules;
 use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SerializedResolverWorkspaceJsrPackage;
@@ -1237,6 +1238,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .to_desktop_config()
         .ok()
         .and_then(|c| c.release.as_ref()?.base_url.clone()),
+      initial_window: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.initial_window.as_ref())
+        .map(|w| InitialWindowConfig {
+          width: w.width,
+          height: w.height,
+          frameless: w.frameless,
+          no_activate: w.no_activate,
+          transparent_titlebar: w.transparent_titlebar,
+          transparent: w.transparent,
+          show_on_first_load: w.show_on_first_load,
+        })
+        .unwrap_or_default(),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
