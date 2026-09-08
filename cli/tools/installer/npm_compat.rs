@@ -286,6 +286,9 @@ pub async fn setup_npm_compat(
   local_wasm_modules: &[(Url, String)],
   npm_resolver: &CliNpmResolver,
   resolved_compiler_options: Option<&Value>,
+  effective_compiler_options_types: Option<
+    &crate::tsc::tsconfig_gen::EffectiveCompilerOptionsTypes,
+  >,
   manage_root_tsconfig: bool,
   type_check_remote: bool,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
@@ -491,6 +494,7 @@ pub async fn setup_npm_compat(
     project_root,
     deno_compiler_options,
     resolved_compiler_options,
+    effective_compiler_options_types,
     deno_imports,
     &http_modules,
     &member_paths,
@@ -842,6 +846,9 @@ fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   resolved_compiler_options: Option<&Value>,
+  effective_compiler_options_types: Option<
+    &crate::tsc::tsconfig_gen::EffectiveCompilerOptionsTypes,
+  >,
   deno_imports: Option<&Value>,
   http_modules: &BTreeMap<Url, String>,
   member_paths: &serde_json::Map<String, Value>,
@@ -857,6 +864,7 @@ fn generate_deno_tsconfig(
     project_root,
     deno_compiler_options,
     resolved_compiler_options,
+    effective_compiler_options_types,
     deno_imports,
     // Command-line roots scope graph/dependency discovery only. Keep the
     // generated project open so bundlers can consume its resolver mappings for
