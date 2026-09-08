@@ -112,18 +112,22 @@ pub const DESKTOP_JS: &str = r#"
 
   class MouseEvent extends UIEvent {
     #button = 0;
+    #buttons = 0;
     #clientX = 0;
     #clientY = 0;
+    #screenX = 0;
+    #screenY = 0;
     #ctrlKey = false;
     #shiftKey = false;
     #altKey = false;
     #metaKey = false;
 
     get button() { return this.#button; }
+    get buttons() { return this.#buttons; }
     get clientX() { return this.#clientX; }
     get clientY() { return this.#clientY; }
-    get screenX() { return this.#clientX; }
-    get screenY() { return this.#clientY; }
+    get screenX() { return this.#screenX; }
+    get screenY() { return this.#screenY; }
     get ctrlKey() { return this.#ctrlKey; }
     get shiftKey() { return this.#shiftKey; }
     get altKey() { return this.#altKey; }
@@ -132,8 +136,11 @@ pub const DESKTOP_JS: &str = r#"
     constructor(type, init = {}) {
       super(type, init);
       this.#button = init.button ?? 0;
+      this.#buttons = init.buttons ?? 0;
       this.#clientX = init.clientX ?? 0;
       this.#clientY = init.clientY ?? 0;
+      this.#screenX = init.screenX ?? this.#clientX;
+      this.#screenY = init.screenY ?? this.#clientY;
       this.#ctrlKey = init.ctrlKey ?? false;
       this.#shiftKey = init.shiftKey ?? false;
       this.#altKey = init.altKey ?? false;
@@ -171,6 +178,422 @@ pub const DESKTOP_JS: &str = r#"
     }
   }
 
+  // width / height / aspect-ratio / orientation / resolution /
+  // device-pixel-ratio. Colon form, boolean features, MQ4 ranges.
+  function mqSplitTop(s, sep) {
+    const out = [];
+    let buf = "";
+    let depth = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth = Math.max(0, depth - 1);
+      if (ch === sep && depth === 0) {
+        out.push(buf);
+        buf = "";
+      } else {
+        buf += ch;
+      }
+    }
+    out.push(buf);
+    return out;
+  }
+
+  function mqSplitAndOr(s) {
+    const parts = [];
+    let buf = "";
+    let depth = 0;
+    let pendingOp = "";
+    const lower = s.toLowerCase();
+    const flush = (nextOp) => {
+      if (buf.trim()) {
+        parts.push({ op: pendingOp, text: buf });
+        pendingOp = nextOp;
+        buf = "";
+      }
+    };
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth = Math.max(0, depth - 1);
+      if (depth === 0) {
+        if (lower.startsWith(" and ", i) || (i === 0 && lower.startsWith("and ", i))) {
+          flush("and");
+          i += (lower.startsWith(" and ", i) ? 5 : 4) - 1;
+          continue;
+        }
+        if (lower.startsWith(" or ", i) || (i === 0 && lower.startsWith("or ", i))) {
+          flush("or");
+          i += (lower.startsWith(" or ", i) ? 4 : 3) - 1;
+          continue;
+        }
+      }
+      buf += ch;
+    }
+    flush("");
+    return parts;
+  }
+
+  function mqUnwrap(s) {
+    s = s.trim();
+    while (s.startsWith("(") && s.endsWith(")")) {
+      let depth = 0;
+      let wraps = true;
+      for (let i = 0; i < s.length; i++) {
+        if (s[i] === "(") depth++;
+        else if (s[i] === ")") {
+          depth--;
+          if (depth === 0 && i !== s.length - 1) {
+            wraps = false;
+            break;
+          }
+        }
+      }
+      if (!wraps) break;
+      s = s.slice(1, -1).trim();
+    }
+    return s;
+  }
+
+  function mqParseNumber(s) {
+    const m = String(s).trim().match(/^([+-]?(?:\d+\.?\d*|\.\d+))(.*)$/);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    if (!Number.isFinite(n)) return null;
+    return { n, unit: m[2].trim().toLowerCase() };
+  }
+
+  function mqParsePx(s) {
+    const v = mqParseNumber(s);
+    if (!v) return null;
+    if (v.unit === "" || v.unit === "px") return v.n;
+    return null;
+  }
+
+  function mqParseDppx(s) {
+    const v = mqParseNumber(s);
+    if (!v) return null;
+    if (v.unit === "" || v.unit === "dppx" || v.unit === "x") return v.n;
+    if (v.unit === "dpi") return v.n / 96;
+    if (v.unit === "dpcm") return v.n / (96 / 2.54);
+    return null;
+  }
+
+  function mqParseRatio(s) {
+    const t = String(s).trim();
+    const frac = t.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*\/\s*([+-]?(?:\d+\.?\d*|\.\d+))$/);
+    if (frac) {
+      const a = parseFloat(frac[1]);
+      const b = parseFloat(frac[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return null;
+      return a / b;
+    }
+    const n = parseFloat(t);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function mqCanonical(name) {
+    name = name.toLowerCase();
+    if (name === "-webkit-device-pixel-ratio") return "device-pixel-ratio";
+    return name;
+  }
+
+  function mqIsRangeName(name) {
+    name = mqCanonical(name);
+    return name === "width" || name === "height" || name === "aspect-ratio" ||
+      name === "resolution" || name === "device-pixel-ratio";
+  }
+
+  function mqActual(ctx, name) {
+    name = mqCanonical(name);
+    if (name === "width") return ctx.width;
+    if (name === "height") return ctx.height;
+    if (name === "aspect-ratio") {
+      return ctx.height > 0 ? ctx.width / ctx.height : 0;
+    }
+    if (name === "resolution" || name === "device-pixel-ratio") return ctx.dpr;
+    if (name === "orientation") {
+      return ctx.width >= ctx.height ? "landscape" : "portrait";
+    }
+    return null;
+  }
+
+  function mqParseValue(name, raw) {
+    name = mqCanonical(name);
+    if (name === "width" || name === "height") return mqParsePx(raw);
+    if (name === "aspect-ratio") return mqParseRatio(raw);
+    if (name === "resolution") return mqParseDppx(raw);
+    if (name === "device-pixel-ratio") {
+      const v = mqParseNumber(raw);
+      return v && (v.unit === "") ? v.n : null;
+    }
+    return null;
+  }
+
+  function mqCmp(actual, op, expected) {
+    if (actual == null || expected == null || Number.isNaN(expected)) return false;
+    switch (op) {
+      case "<": return actual < expected;
+      case "<=": return actual <= expected;
+      case ">": return actual > expected;
+      case ">=": return actual >= expected;
+      case "=": return Math.abs(actual - expected) < 1e-6;
+      default: return false;
+    }
+  }
+
+  function mqFlip(op) {
+    if (op === "<") return ">";
+    if (op === "<=") return ">=";
+    if (op === ">") return "<";
+    if (op === ">=") return "<=";
+    return op;
+  }
+
+  function mqSameDir(op1, op2) {
+    const lt = op1 === "<" || op1 === "<=";
+    const lt2 = op2 === "<" || op2 === "<=";
+    const gt = op1 === ">" || op1 === ">=";
+    const gt2 = op2 === ">" || op2 === ">=";
+    return (lt && lt2) || (gt && gt2);
+  }
+
+  function mqEvalColon(ctx, name, value) {
+    let min = false;
+    let max = false;
+    name = name.toLowerCase();
+    if (name.startsWith("min-")) {
+      min = true;
+      name = name.slice(4);
+    } else if (name.startsWith("max-")) {
+      max = true;
+      name = name.slice(4);
+    } else if (name === "-webkit-min-device-pixel-ratio") {
+      min = true;
+      name = "device-pixel-ratio";
+    } else if (name === "-webkit-max-device-pixel-ratio") {
+      max = true;
+      name = "device-pixel-ratio";
+    }
+    name = mqCanonical(name);
+    if (name === "orientation") {
+      if (min || max) return false;
+      return mqActual(ctx, name) === String(value).trim().toLowerCase();
+    }
+    if (!mqIsRangeName(name)) return false;
+    const expected = mqParseValue(name, value);
+    const actual = mqActual(ctx, name);
+    if (min) return mqCmp(actual, ">=", expected);
+    if (max) return mqCmp(actual, "<=", expected);
+    return mqCmp(actual, "=", expected);
+  }
+
+  function mqEvalBoolean(ctx, name) {
+    name = mqCanonical(name);
+    if (name === "orientation") return true;
+    if (!mqIsRangeName(name)) return false;
+    const actual = mqActual(ctx, name);
+    return typeof actual === "number" && actual > 0;
+  }
+
+  function mqEvalPlainFeature(ctx, inner) {
+    inner = inner.trim();
+    const range3 = /^(.+?)\s*(<=|>=|<|>|=)\s*([-\w]+)\s*(<=|>=|<|>|=)\s*(.+)$/
+      .exec(inner);
+    if (range3 && mqIsRangeName(range3[3])) {
+      const op1 = range3[2];
+      const op2 = range3[4];
+      if (op1 === "=" || op2 === "=" || !mqSameDir(op1, op2)) return false;
+      const name = range3[3];
+      const actual = mqActual(ctx, name);
+      return mqCmp(actual, mqFlip(op1), mqParseValue(name, range3[1])) &&
+        mqCmp(actual, op2, mqParseValue(name, range3[5]));
+    }
+    const leftName = /^([-\w]+)\s*(<=|>=|<|>|=)\s*(.+)$/.exec(inner);
+    if (leftName && mqIsRangeName(leftName[1])) {
+      const name = leftName[1];
+      return mqCmp(
+        mqActual(ctx, name),
+        leftName[2],
+        mqParseValue(name, leftName[3]),
+      );
+    }
+    const rightName = /^(.+?)\s*(<=|>=|<|>|=)\s*([-\w]+)$/.exec(inner);
+    if (rightName && mqIsRangeName(rightName[3])) {
+      const name = rightName[3];
+      return mqCmp(
+        mqActual(ctx, name),
+        mqFlip(rightName[2]),
+        mqParseValue(name, rightName[1]),
+      );
+    }
+    const colon = /^([-\w]+)\s*:\s*(.+)$/.exec(inner);
+    if (colon) return mqEvalColon(ctx, colon[1], colon[2]);
+    const bool = /^([-\w]+)$/.exec(inner);
+    if (bool) return mqEvalBoolean(ctx, bool[1]);
+    return false;
+  }
+
+  function mqEvalCondition(ctx, raw) {
+    const parts = mqSplitAndOr(raw.trim());
+    if (parts.length === 0) return false;
+    let sawAnd = false;
+    let sawOr = false;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i].op === "and") sawAnd = true;
+      if (parts[i].op === "or") sawOr = true;
+    }
+    if (sawAnd && sawOr) return false;
+    const evalPart = (text) => {
+      let t = text.trim();
+      const not = /^not\s+/i.exec(t);
+      let negated = false;
+      if (not) {
+        negated = true;
+        t = t.slice(not[0].length);
+      }
+      const inner = mqUnwrap(t);
+      let ok;
+      if (inner !== t.trim() || /^\(.*\)$/.test(t.trim())) {
+        const unwrapped = mqUnwrap(t);
+        if (
+          /\band\b|\bor\b|^not\s+/i.test(unwrapped) &&
+          !/^[-\w]+\s*(<=|>=|<|>|=|:)/.test(unwrapped)
+        ) {
+          ok = mqEvalCondition(ctx, unwrapped);
+        } else {
+          ok = mqEvalPlainFeature(ctx, unwrapped);
+        }
+      } else {
+        ok = mqEvalPlainFeature(ctx, inner);
+      }
+      return negated ? !ok : ok;
+    };
+    if (sawOr) return parts.some((p) => evalPart(p.text));
+    return parts.every((p) => evalPart(p.text));
+  }
+
+  function evalMediaQuery(ctx, query) {
+    let q = query.trim();
+    if (!q) return false;
+    let negated = false;
+    const prefix = /^(only|not)\s+/i.exec(q);
+    if (prefix) {
+      if (prefix[1].toLowerCase() === "not") negated = true;
+      q = q.slice(prefix[0].length);
+    }
+    let result;
+    if (q.startsWith("(") || /^not\s*\(/i.test(q)) {
+      result = mqEvalCondition(ctx, q);
+    } else {
+      const m = /^([a-zA-Z][\w-]*)(?:\s+and\s+([\s\S]+))?$/i.exec(q);
+      if (!m) return false;
+      const type = m[1].toLowerCase();
+      const typeOk = type === "all" || type === "screen";
+      result = typeOk && (m[2] ? mqEvalCondition(ctx, m[2]) : true);
+    }
+    return negated ? !result : result;
+  }
+
+  function evalMediaQueryList(ctx, media) {
+    const s = String(media);
+    if (s.trim() === "") return true;
+    return mqSplitTop(s, ",").some((q) => evalMediaQuery(ctx, q));
+  }
+
+  function mediaContext(win) {
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    try {
+      width = win.innerWidth;
+      height = win.innerHeight;
+      dpr = win.devicePixelRatio;
+    } catch (_) {
+      // Native getters throw on a closed window.
+    }
+    if (!(dpr > 0)) dpr = 1;
+    return { width, height, dpr };
+  }
+
+  const mediaLists = new WeakMap();
+
+  class MediaQueryListEvent extends Event {
+    #media = "";
+    #matches = false;
+    get media() { return this.#media; }
+    get matches() { return this.#matches; }
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#media = init.media ?? "";
+      this.#matches = !!init.matches;
+    }
+  }
+
+  class MediaQueryList extends EventTarget {
+    #win;
+    #query;
+    #matches;
+    #listening = false;
+
+    constructor(win, query) {
+      super();
+      if (win == null || typeof win !== "object") {
+        throw new TypeError("Illegal constructor");
+      }
+      this.#win = win;
+      this.#query = String(query);
+      this.#matches = evalMediaQueryList(mediaContext(win), this.#query);
+    }
+
+    get matches() {
+      return evalMediaQueryList(mediaContext(this.#win), this.#query);
+    }
+    get media() { return this.#query; }
+
+    #track() {
+      if (this.#listening) return;
+      this.#listening = true;
+      let set = mediaLists.get(this.#win);
+      if (!set) {
+        set = new Set();
+        mediaLists.set(this.#win, set);
+      }
+      set.add(this);
+    }
+
+    addEventListener(type, cb, opts) {
+      super.addEventListener(type, cb, opts);
+      if (type === "change" && cb != null) this.#track();
+    }
+
+    addListener(cb) {
+      if (cb == null) return;
+      this.addEventListener("change", cb);
+    }
+    removeListener(cb) {
+      if (cb == null) return;
+      this.removeEventListener("change", cb);
+    }
+
+    static reeval(win) {
+      const set = mediaLists.get(win);
+      if (!set) return;
+      for (const list of set) list.#reeval();
+    }
+
+    #reeval() {
+      const next = evalMediaQueryList(mediaContext(this.#win), this.#query);
+      if (next === this.#matches) return;
+      this.#matches = next;
+      this.dispatchEvent(new MediaQueryListEvent("change", {
+        media: this.#query,
+        matches: next,
+      }));
+    }
+  }
+  internals.defineEventHandler(MediaQueryList.prototype, "change");
+
   op_desktop_init(
     internals.webidlBrand,
     internals.setEventTargetData,
@@ -207,6 +630,56 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(BrowserWindowPrototype, "close");
   internals.defineEventHandler(BrowserWindowPrototype, "menuclick");
   internals.defineEventHandler(BrowserWindowPrototype, "contextmenuclick");
+
+  BrowserWindowPrototype.matchMedia = function(query) {
+    return new MediaQueryList(this, query);
+  };
+
+  // Per-window pressed-button mask (DOM `MouseEvent.buttons`).
+  const windowButtons = new Map();
+
+  function buttonBit(button) {
+    switch (button) {
+      case 0: return 1;
+      case 1: return 4;
+      case 2: return 2;
+      case 3: return 8;
+      case 4: return 16;
+      default: return 0;
+    }
+  }
+
+  function screenXY(target, clientX, clientY) {
+    try {
+      const pos = typeof target.getInnerPosition === "function"
+        ? target.getInnerPosition()
+        : target.getPosition();
+      if (Array.isArray(pos) && pos.length >= 2) {
+        return [pos[0] + clientX, pos[1] + clientY];
+      }
+    } catch (_) {
+      // Native getter missing or closed.
+    }
+    return [clientX, clientY];
+  }
+
+  function mouseInit(target, ev, extra) {
+    extra = extra || {};
+    const [screenX, screenY] = screenXY(target, ev.clientX, ev.clientY);
+    return {
+      button: ev.button ?? 0,
+      buttons: extra.buttons ?? 0,
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      screenX,
+      screenY,
+      ctrlKey: ev.control,
+      shiftKey: ev.shift,
+      altKey: ev.alt,
+      metaKey: ev.meta,
+      detail: extra.detail ?? 0,
+    };
+  }
 
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
@@ -309,6 +782,8 @@ pub const DESKTOP_JS: &str = r#"
     KeyboardEvent: internals.core.propNonEnumerable(KeyboardEvent),
     MouseEvent: internals.core.propNonEnumerable(MouseEvent),
     WheelEvent: internals.core.propNonEnumerable(WheelEvent),
+    MediaQueryList: internals.core.propNonEnumerable(MediaQueryList),
+    MediaQueryListEvent: internals.core.propNonEnumerable(MediaQueryListEvent),
   });
 
   const DockPrototype = Dock.prototype;
@@ -838,19 +1313,22 @@ pub const DESKTOP_JS: &str = r#"
           case "mouseClick": {
             const target = windows.get(ev.windowId);
             if (!target) break;
-            const init = {
-              button: ev.button,
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
-              detail: ev.clickCount,
-            };
+            const bit = buttonBit(ev.button);
+            let buttons = windowButtons.get(ev.windowId) ?? 0;
             if (ev.state === "pressed") {
-              target.dispatchEvent(new MouseEvent("mousedown", init));
+              buttons |= bit;
+              windowButtons.set(ev.windowId, buttons);
+              target.dispatchEvent(new MouseEvent(
+                "mousedown",
+                mouseInit(target, ev, { buttons, detail: ev.clickCount }),
+              ));
             } else {
+              buttons &= ~bit;
+              windowButtons.set(ev.windowId, buttons);
+              const init = mouseInit(target, ev, {
+                buttons,
+                detail: ev.clickCount,
+              });
               target.dispatchEvent(new MouseEvent("mouseup", init));
               if (ev.button === 0) {
                 target.dispatchEvent(new MouseEvent("click", init));
@@ -864,45 +1342,36 @@ pub const DESKTOP_JS: &str = r#"
           case "mouseMove": {
             const target = windows.get(ev.windowId);
             if (!target) break;
-            target.dispatchEvent(new MouseEvent("mousemove", {
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
-            }));
+            target.dispatchEvent(new MouseEvent(
+              "mousemove",
+              mouseInit(target, ev, {
+                buttons: windowButtons.get(ev.windowId) ?? 0,
+              }),
+            ));
             break;
           }
           case "wheel": {
             const target = windows.get(ev.windowId);
             if (!target) break;
             target.dispatchEvent(new WheelEvent("wheel", {
+              ...mouseInit(target, ev, {
+                buttons: windowButtons.get(ev.windowId) ?? 0,
+              }),
               deltaX: ev.deltaX,
               deltaY: ev.deltaY,
               deltaMode: ev.deltaMode,
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
             }));
             break;
           }
           case "cursorEnterLeave": {
             const target = windows.get(ev.windowId);
             if (!target) break;
-            const init = {
-              clientX: ev.clientX,
-              clientY: ev.clientY,
-              ctrlKey: ev.control,
-              shiftKey: ev.shift,
-              altKey: ev.alt,
-              metaKey: ev.meta,
-            };
             target.dispatchEvent(new MouseEvent(
-              ev.entered ? "mouseenter" : "mouseleave", init));
+              ev.entered ? "mouseenter" : "mouseleave",
+              mouseInit(target, ev, {
+                buttons: windowButtons.get(ev.windowId) ?? 0,
+              }),
+            ));
             break;
           }
           case "focusChanged": {
@@ -914,6 +1383,7 @@ pub const DESKTOP_JS: &str = r#"
           case "windowResize": {
             const target = windows.get(ev.windowId);
             if (!target) break;
+            MediaQueryList.reeval(target);
             target.dispatchEvent(new CustomEvent("resize", {
               detail: { width: ev.width, height: ev.height },
             }));
@@ -922,6 +1392,7 @@ pub const DESKTOP_JS: &str = r#"
           case "windowMove": {
             const target = windows.get(ev.windowId);
             if (!target) break;
+            MediaQueryList.reeval(target);
             target.dispatchEvent(new CustomEvent("move", {
               detail: { x: ev.x, y: ev.y },
             }));
@@ -1468,6 +1939,16 @@ mod tests {
     ));
     assert!(DESKTOP_JS.contains("case \"pageLoad\""));
     assert!(DESKTOP_JS.contains("dispatchEvent(new Event(\"load\"))"));
+  }
+
+  #[test]
+  fn desktop_js_installs_match_media() {
+    assert!(DESKTOP_JS.contains("BrowserWindowPrototype.matchMedia"));
+    assert!(DESKTOP_JS.contains("class MediaQueryList "));
+    assert!(DESKTOP_JS.contains("evalMediaQueryList"));
+    assert!(DESKTOP_JS.contains("MediaQueryList.reeval(target)"));
+    assert!(DESKTOP_JS.contains("case \"windowResize\""));
+    assert!(DESKTOP_JS.contains("case \"windowMove\""));
   }
 
   #[test]
