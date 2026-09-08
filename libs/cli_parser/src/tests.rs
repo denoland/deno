@@ -883,6 +883,14 @@ fn run_double_dash_trailing() {
 }
 
 #[test]
+fn run_double_dash_before_script() {
+  let r =
+    parse(&TEST_ROOT, &svec!["deno", "run", "--", "-echo.ts", "arg1"]).unwrap();
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["arg1"]);
+}
+
+#[test]
 fn global_flags_before_subcommand() {
   let r = parse(
     &TEST_ROOT,
@@ -1193,6 +1201,17 @@ fn eval_print() {
   let r = parse(&TEST_ROOT, &svec!["deno", "eval", "-p", "1+1"]).unwrap();
   assert!(r.get_bool("print"));
   assert_eq!(r.get_one("code_arg"), Some("1+1"));
+}
+
+#[test]
+fn eval_double_dash_before_code() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "eval", "--", "-1; console.log(0)", "arg1"],
+  )
+  .unwrap();
+  assert_eq!(r.get_one("code_arg"), Some("-1; console.log(0)"));
+  assert_eq!(r.trailing, vec!["arg1"]);
 }
 
 #[test]
