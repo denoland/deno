@@ -158,17 +158,25 @@ impl Service<Name> for Resolver {
   }
 }
 
-/// TCP keepalive settings applied to every connection `fetch()` opens.
+/// TCP keepalive settings applied to every connection `fetch()` opens
+/// directly or through an HTTP proxy (SOCKS-proxied connections are opened by
+/// `Socks5Stream` in `proxy.rs` and bypass this connector).
 ///
 /// A connection can die without either side noticing: the machine changes
 /// network, a NAT drops the mapping, a VPN goes down. The socket stays open as
 /// far as userspace is concerned, so hyper keeps it in its idle pool and hands
 /// it to the next request, which then hangs until the kernel gives up
 /// retransmitting — on the order of fifteen minutes. Keepalive probes make the
-/// kernel notice within roughly a minute instead, so the connection is dropped
-/// from the pool long before hyper's 90 second idle timeout would have expired.
+/// kernel notice sooner, so a connection that stays idle through the probing
+/// window errors and is evicted from the pool before hyper's 90 second idle
+/// timeout would have reaped it: 15 + 3×5 = 30s where the retry count is
+/// honored, and 15 + 10×5 = 65s on Windows, which hardcodes 10 probes and
+/// ignores the configured retries. Probes only run while the socket is idle,
+/// though — if a request checks the dead connection out of the pool before the
+/// probe budget is exhausted, the written request falls back to the kernel's
+/// retransmission timeout and the ~15 minute hang remains.
 const TCP_KEEPALIVE_TIME: Duration = Duration::from_secs(15);
-const TCP_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
+const TCP_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
 const TCP_KEEPALIVE_RETRIES: u32 = 3;
 
 /// `Service<Uri>` adapter that runs the net-deny permission check on every
