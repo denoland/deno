@@ -840,7 +840,15 @@ fn resolve_native_binary_path(
   // the package directory leaves mixed separators and `.` components on
   // Windows -- `C:\...\node_modules\ngrok\./bin/ngrok` -- and that path is
   // written verbatim into the generated `.cmd` shim, which cmd.exe then
-  // refuses to execute. Normalize to host separators so the shim is runnable.
+  // refuses to execute.
+  //
+  // `normalize_path` rebuilds the path from its components, which is what
+  // converts the separators to `\` on Windows; the `.`/`..` collapsing is
+  // incidental here. Collapsing `..` lexically means a bin value that walks
+  // out of the package dir (`"bin": "../lib/cli.js"`, legal but not
+  // packable by npm) no longer resolves through the `node_modules/<pkg>`
+  // symlink. Such an entry just misses the native-binary sniff below and
+  // falls back to a `deno run` shim, which is the safe direction.
   let bin_path = normalize_path(Cow::Owned(bin_path)).into_owned();
 
   // Only treat the bin entry as a native binary if its magic bytes match
@@ -2735,7 +2743,6 @@ mod tests {
     let mut macho_bytes = vec![0xcf, 0xfa, 0xed, 0xfe];
     macho_bytes.extend_from_slice(&[0u8; 100]);
     std::fs::write(bin_sub.join("mytool"), &macho_bytes).unwrap();
-    std::fs::write(config_dir.join("deno.json"), "{}").unwrap();
 
     let bin_name_and_url = BinaryNameAndUrl {
       name: "mytool".to_string(),
@@ -2745,26 +2752,15 @@ mod tests {
 
     let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir)
       .expect("should detect Mach-O binary");
+    let result = result.to_string_lossy();
 
+    // Compared as a string, not with `Path::ends_with`: `Path` comparison is
+    // component-wise and silently ignores the `.` component, so it would pass
+    // just as well against the unnormalized `.../mytool/./bin/mytool`.
+    let expected_suffix: PathBuf = ["mytool", "bin", "mytool"].iter().collect();
     assert!(
-      result.ends_with(Path::new("bin").join("mytool")),
-      "should return path to the binary, got: {}",
-      result.display()
-    );
-    // The `./` component must be gone on every platform...
-    assert!(
-      !result.to_string_lossy().contains("/./")
-        && !result.to_string_lossy().contains("\\.\\"),
-      "should not contain a `.` component, got: {}",
-      result.display()
-    );
-    // ...and on Windows the separators must all be backslashes, otherwise the
-    // `.cmd` shim is unrunnable.
-    #[cfg(windows)]
-    assert!(
-      !result.to_string_lossy().contains('/'),
-      "should use host separators, got: {}",
-      result.display()
+      result.ends_with(&*expected_suffix.to_string_lossy()),
+      "should be normalized to host separators, got: {result}"
     );
   }
 
