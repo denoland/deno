@@ -1970,18 +1970,12 @@ fn resolve_npm_subpath_types(pkg_dir: &Path, subpath: &str) -> Option<PathBuf> {
   }
 }
 
-/// Partition a user's `compilerOptions.types` into entries stock tsc can resolve
-/// via typeRoots (kept in the `types` array) and entries it cannot - a bare npm
-/// package the user imports, or a relative path - which are materialized as
-/// concrete `.d.ts` files added to the program instead.
+/// Partition a user's `compilerOptions.types` between the generated `types`
+/// array and concrete declaration files added to the program.
 ///
-/// Stock tsc resolves a `types` entry only as a package under
-/// `typeRoots`/`node_modules/@types`; it never consults `paths`, and a plain
-/// (non-`@types`) npm package or a relative path can't resolve that way at all,
-/// which fails the whole build with TS2688 and masks every real diagnostic. Deno
-/// accepts these because it loads them as modules; the stock-tooling equivalent
-/// is to pull the actual declaration file into the program via `files`, which
-/// carries its ambient/global declarations just the same.
+/// In Deno's generated stock-tsc compatibility config, `types` entries outside
+/// the generated/private type roots are not otherwise visible to tsc.
+/// Import-mapped npm entries are therefore materialized into `files`.
 fn partition_user_types(
   project_root: &Path,
   user_types: &[Value],
@@ -2068,8 +2062,8 @@ fn merge_user_types(base_types: &mut Vec<Value>, user_types: &[Value]) {
     };
     if !is_bare_package {
       log::debug!(
-        "sync-types: dropping non-package `types` entry {s:?} \
-         (resolved via `include` instead)"
+        "sync-types: dropping non-package `types` entry {s:?}; it is not \
+         retained in generated compilerOptions.types"
       );
       continue;
     }
