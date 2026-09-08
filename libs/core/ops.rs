@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -76,76 +77,119 @@ impl OpMetadata {
   }
 }
 
+/// The parts of an op's context that are identical for every op in a realm.
+///
+/// Stored once per realm (boxed, inside [`OpCtxs`]) and shared by pointer from
+/// every [`OpCtx`], instead of being cloned ~700 times.
+pub struct OpCommonCtx {
+  /// A stashed Isolate that ops can make use of. This is a raw isolate pointer,
+  /// and as such, is extremely dangerous to use. It is filled in once the
+  /// isolate has been created (the op contexts are built before it).
+  isolate: Cell<v8::UnsafeRawIsolatePtr>,
+  state: Rc<RefCell<OpState>>,
+  op_driver: Rc<OpDriverImpl>,
+  runtime_state: *const JsRuntimeState,
+  enable_stack_trace: bool,
+}
+
 /// Per-op context.
 ///
-// Note: We don't worry too much about the size of this struct because it's allocated once per realm, and is
-// stored in a contiguous array.
+// Note: This struct is allocated once per op per realm and stored in a
+// contiguous array, so its size is multiplied by the number of registered ops
+// (~700 in a full Deno build). Everything that is identical across ops lives in
+// the shared `OpCommonCtx`, and the `OpDecl` is borrowed from the realm's
+// declaration storage (static tables where possible) rather than copied in.
 pub struct OpCtx {
   /// The id for this op. Will be identical across realms.
   pub id: OpId,
 
-  /// A stashed Isolate that ops can make use of. This is a raw isolate pointer, and as such, is
-  /// extremely dangerous to use.
-  pub isolate: v8::UnsafeRawIsolatePtr,
+  /// Points at a declaration owned (or borrowed from static memory) by the
+  /// [`OpCtxs`] that owns this `OpCtx`. That storage is never mutated or
+  /// reallocated after the op contexts are created, so the pointee outlives
+  /// every `OpCtx`.
+  decl: *const OpDecl,
 
-  #[doc(hidden)]
-  pub state: Rc<RefCell<OpState>>,
-  #[doc(hidden)]
-  pub enable_stack_trace: bool,
+  /// Points at the `common` box owned by the [`OpCtxs`] that owns this `OpCtx`.
+  /// Same lifetime argument as `decl`.
+  common: *const OpCommonCtx,
 
-  pub(crate) decl: OpDecl,
-  pub(crate) fast_fn_info: Option<CFunction>,
   /// The fast-call overload passed to `FunctionTemplate::build_fast`. Stored
   /// here (rather than synthesized on the stack) because V8 150.x keeps the raw
   /// `CFunction` pointers directly inside `FunctionTemplateInfo`, so the slice
   /// must outlive every template built from this op. `OpCtx` lives until isolate
   /// disposal, which satisfies that.
+  ///
+  /// The single element is also the op's `CFunctionInfo` source (see
+  /// [`OpCtx::fast_fn_info`]).
   pub(crate) fast_fn_overloads: Option<[CFunction; 1]>,
   pub(crate) metrics_fn: Option<OpMetricsFn>,
-
-  op_driver: Rc<OpDriverImpl>,
-  runtime_state: *const JsRuntimeState,
 }
 
 impl OpCtx {
-  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
-  pub(crate) fn new(
+  fn new(
     id: OpId,
-    isolate: v8::UnsafeRawIsolatePtr,
-    op_driver: Rc<OpDriverImpl>,
-    decl: OpDecl,
-    state: Rc<RefCell<OpState>>,
-    runtime_state: *const JsRuntimeState,
+    decl: *const OpDecl,
+    common: *const OpCommonCtx,
     metrics_fn: Option<OpMetricsFn>,
-    enable_stack_trace: bool,
   ) -> Self {
+    // SAFETY: `decl` points into the caller's decl array, which outlives us.
+    let decl_ref = unsafe { &*decl };
     // If we want metrics for this function, create the fastcall `CFunctionInfo` from the metrics
     // `CFunction`. For some extremely fast ops, the parameter list may change for the metrics
     // version and require a slightly different set of arguments (for example, it may need the fastcall
     // callback information to get the `OpCtx`).
     let fast_fn_info = if metrics_fn.is_some() {
-      decl.fast_fn_with_metrics
+      decl_ref.fast_fn_with_metrics
     } else {
-      decl.fast_fn
+      decl_ref.fast_fn
     };
 
     Self {
       id,
-      state,
-      runtime_state,
       decl,
-      op_driver,
-      fast_fn_info,
+      common,
       fast_fn_overloads: fast_fn_info.map(|f| [f]),
-      isolate,
       metrics_fn,
-      enable_stack_trace,
     }
   }
 
   #[inline(always)]
-  pub const fn decl(&self) -> &OpDecl {
-    &self.decl
+  pub fn decl(&self) -> &OpDecl {
+    // SAFETY: the decl array owned by our `OpCtxs` outlives this `OpCtx`.
+    unsafe { &*self.decl }
+  }
+
+  #[inline(always)]
+  pub fn common(&self) -> &OpCommonCtx {
+    // SAFETY: the common context owned by our `OpCtxs` outlives this `OpCtx`.
+    unsafe { &*self.common }
+  }
+
+  /// The op state shared by every op in this realm.
+  #[doc(hidden)]
+  #[inline(always)]
+  pub fn state(&self) -> &Rc<RefCell<OpState>> {
+    &self.common().state
+  }
+
+  /// A stashed Isolate that ops can make use of. This is a raw isolate pointer,
+  /// and as such, is extremely dangerous to use.
+  #[doc(hidden)]
+  #[inline(always)]
+  pub fn isolate(&self) -> v8::UnsafeRawIsolatePtr {
+    self.common().isolate.get()
+  }
+
+  #[doc(hidden)]
+  #[inline(always)]
+  pub fn enable_stack_trace(&self) -> bool {
+    self.common().enable_stack_trace
+  }
+
+  /// The `CFunctionInfo`-bearing fastcall used to build this op's template.
+  #[inline(always)]
+  pub(crate) fn fast_fn_info(&self) -> Option<CFunction> {
+    self.fast_fn_overloads.map(|f| f[0])
   }
 
   #[inline(always)]
@@ -155,7 +199,7 @@ impl OpCtx {
 
   /// Generates four external references for each op. If an op does not have a fastcall, it generates
   /// "null" slots to avoid changing the size of the external references array.
-  pub const fn external_references(&self) -> [v8::ExternalReference; 4] {
+  pub fn external_references(&self) -> [v8::ExternalReference; 4] {
     extern "C" fn placeholder() {}
 
     let ctx_ptr = v8::ExternalReference {
@@ -164,13 +208,14 @@ impl OpCtx {
     let null = v8::ExternalReference {
       pointer: placeholder as _,
     };
+    let decl = self.decl();
 
     if self.metrics_enabled() {
       let slow_fn = v8::ExternalReference {
-        function: self.decl.slow_fn_with_metrics,
+        function: decl.slow_fn_with_metrics,
       };
       if let (Some(fast_fn), Some(fast_fn_info)) =
-        (self.decl.fast_fn_with_metrics, self.fast_fn_info)
+        (decl.fast_fn_with_metrics, self.fast_fn_info())
       {
         let fast_fn = v8::ExternalReference {
           pointer: fast_fn.address() as _,
@@ -184,10 +229,10 @@ impl OpCtx {
       }
     } else {
       let slow_fn = v8::ExternalReference {
-        function: self.decl.slow_fn,
+        function: decl.slow_fn,
       };
       if let (Some(fast_fn), Some(fast_fn_info)) =
-        (self.decl.fast_fn, self.fast_fn_info)
+        (decl.fast_fn, self.fast_fn_info())
       {
         let fast_fn = v8::ExternalReference {
           pointer: fast_fn.address() as _,
@@ -203,13 +248,114 @@ impl OpCtx {
   }
 
   pub(crate) fn op_driver(&self) -> &OpDriverImpl {
-    &self.op_driver
+    &self.common().op_driver
   }
 
   /// Get the [`JsRuntimeState`] for this op.
   pub(crate) fn runtime_state(&self) -> &JsRuntimeState {
     // SAFETY: JsRuntimeState outlives OpCtx
-    unsafe { &*self.runtime_state }
+    unsafe { &*self.common().runtime_state }
+  }
+}
+
+/// The op table of a realm: the op contexts plus the two allocations they point
+/// into.
+///
+/// The `decls` storage and the `common` box must not be mutated or dropped
+/// while `ctxs` is alive — every [`OpCtx`] holds a raw pointer into them. Every
+/// variant of [`OpDeclStorage`] keeps its declarations at a fixed address
+/// (static memory or a heap buffer), so moving this struct into the
+/// `ContextState` does not invalidate the pointers.
+pub struct OpCtxs {
+  ctxs: Box<[OpCtx]>,
+  #[allow(
+    dead_code,
+    reason = "storage for the decls borrowed by `ctxs` (via raw pointer)"
+  )]
+  decls: Vec<OpDeclStorage>,
+  common: Box<OpCommonCtx>,
+}
+
+/// A contiguous run of op declarations, in op-registration order.
+///
+/// Declarations that already live in static memory (deno_core's `BUILTIN_OPS`,
+/// an extension's method tables, and any extension whose op table is
+/// `Cow::Borrowed`) are borrowed rather than copied into the realm. The owned
+/// variant covers the cases where a declaration genuinely cannot be static:
+/// extension middleware (`Extension::middleware`) rewrites decls at startup,
+/// `extension!` builds its op table with `Cow::Owned` at runtime, and method
+/// constructors get their name patched from the enclosing `OpMethodDecl`.
+pub enum OpDeclStorage {
+  Static(&'static [OpDecl]),
+  Owned(Vec<OpDecl>),
+}
+
+impl OpDeclStorage {
+  pub fn as_slice(&self) -> &[OpDecl] {
+    match self {
+      Self::Static(decls) => decls,
+      Self::Owned(decls) => decls,
+    }
+  }
+
+  pub fn len(&self) -> usize {
+    self.as_slice().len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
+  }
+
+  pub fn iter(&self) -> std::slice::Iter<'_, OpDecl> {
+    self.as_slice().iter()
+  }
+}
+
+impl OpCtxs {
+  pub(crate) fn new(
+    decls: Vec<OpDeclStorage>,
+    state: Rc<RefCell<OpState>>,
+    op_driver: Rc<OpDriverImpl>,
+    runtime_state: *const JsRuntimeState,
+    enable_stack_trace: bool,
+    mut op_info: impl FnMut(usize, &OpDecl) -> (OpId, Option<OpMetricsFn>),
+  ) -> Self {
+    let common = Box::new(OpCommonCtx {
+      isolate: Cell::new(v8::UnsafeRawIsolatePtr::null()),
+      state,
+      op_driver,
+      runtime_state,
+      enable_stack_trace,
+    });
+    let common_ptr = common.as_ref() as *const OpCommonCtx;
+    let ctxs = decls
+      .iter()
+      .flat_map(|storage| storage.as_slice().iter())
+      .enumerate()
+      .map(|(index, decl)| {
+        let (id, metrics_fn) = op_info(index, decl);
+        OpCtx::new(id, decl as *const OpDecl, common_ptr, metrics_fn)
+      })
+      .collect::<Vec<_>>()
+      .into_boxed_slice();
+    Self {
+      ctxs,
+      decls,
+      common,
+    }
+  }
+
+  /// Hand the isolate pointer to every op once the isolate exists.
+  pub(crate) fn set_isolate(&self, isolate: v8::UnsafeRawIsolatePtr) {
+    self.common.isolate.set(isolate);
+  }
+}
+
+impl Deref for OpCtxs {
+  type Target = [OpCtx];
+  #[inline(always)]
+  fn deref(&self) -> &[OpCtx] {
+    &self.ctxs
   }
 }
 
@@ -303,5 +449,22 @@ impl Deref for OpState {
 impl DerefMut for OpState {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.gotham_state
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// `OpCtx` is instantiated once per op per realm (~700 ops in a full Deno
+  /// build), so growth here is multiplied by the op count. Everything that is
+  /// the same for every op belongs in `OpCommonCtx` instead.
+  #[test]
+  fn op_ctx_stays_small() {
+    assert!(
+      std::mem::size_of::<OpCtx>() <= 64,
+      "OpCtx grew to {} bytes; anything shared by every op belongs in OpCommonCtx",
+      std::mem::size_of::<OpCtx>()
+    );
   }
 }

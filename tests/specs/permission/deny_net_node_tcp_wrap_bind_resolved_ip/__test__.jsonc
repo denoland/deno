@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "deny_net_node_tcp_wrap_bind_resolved_ip": {
+      "args": "run --allow-net --deny-net=127.0.0.1,[::1] --unstable-node-globals main.ts",
+      "output": "main.out"
+    },
+    "numeric_aliases": {
+      // Windows does not resolve these numeric aliases in the raw binding.
+      "if": "unix",
+      "args": "run --allow-net --deny-net=127.0.0.1,[::1] --unstable-node-globals main.ts numeric",
+      "output": "numeric.out"
+    }
+  }
+}
