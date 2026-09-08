@@ -31,10 +31,14 @@ pub use ops::signal::SignalError;
 const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
   ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
-const RESERVED_INTERNAL_ENV_VARS: [&str; 3] = [
+const RESERVED_INTERNAL_ENV_VARS: [&str; 7] = [
+  "CDN_LOOP",
   "DENO_CACHE_LSC_ENDPOINT",
+  "DENO_DESKTOP_MUX_WS",
+  "DENO_TRUST_PROXY_HEADERS",
   "DENO_UNSTABLE_CRON_SOCK",
   "DENO_WEBGPU_TRACE",
+  "X_DENO_FETCH_TOKEN",
 ];
 
 pub fn is_reserved_internal_env_var(key: &str) -> bool {

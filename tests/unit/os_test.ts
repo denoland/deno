@@ -52,15 +52,23 @@ Deno.test(
   { permissions: { env: true } },
   function envRejectsReservedInternalKeys() {
     const keys = [
+      "CDN_LOOP",
       "DENO_CACHE_LSC_ENDPOINT",
+      "DENO_DESKTOP_MUX_WS",
+      "DENO_TRUST_PROXY_HEADERS",
       "DENO_UNSTABLE_CRON_SOCK",
       "DENO_WEBGPU_TRACE",
+      "X_DENO_FETCH_TOKEN",
     ];
     if (Deno.build.os === "windows") {
       keys.push(
+        "cdn_loop",
         "deno_cache_lsc_endpoint",
+        "deno_desktop_mux_ws",
+        "deno_trust_proxy_headers",
         "deno_unstable_cron_sock",
         "deno_webgpu_trace",
+        "x_deno_fetch_token",
       );
     }
     for (const key of keys) {
