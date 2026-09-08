@@ -55,6 +55,22 @@ pub fn check_unix_socket_path<'a>(
   Ok(checked)
 }
 
+/// Checks access to a multicast group using the UDP socket's bound port.
+///
+/// The group is already an IP address, but both checks are required: the
+/// first applies the requested host-and-port grant, while the second preserves
+/// IP deny rules that also apply after name resolution.
+pub fn check_multicast_membership_permission(
+  permissions: &mut deno_permissions::PermissionsContainer,
+  group: std::net::IpAddr,
+  port: u16,
+  api_name: &str,
+) -> Result<(), deno_permissions::PermissionCheckError> {
+  permissions.check_net(&(group.to_string(), Some(port)), api_name)?;
+  permissions.check_net_resolved(&group, port, api_name)?;
+  Ok(())
+}
+
 pub(crate) fn is_unix_socket_abstract_path(path: &std::path::Path) -> bool {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {

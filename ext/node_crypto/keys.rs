@@ -3455,14 +3455,28 @@ pub async fn op_node_generate_dh_group_key_async(
     .unwrap()
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum DhGenerateError {
+  // Node surfaces OpenSSL's error here verbatim, as a plain `Error` with no
+  // `code`, so match the message rather than reusing the
+  // `ERR_OSSL_DH_MODULUS_TOO_SMALL` code the `createDiffieHellman` polyfill
+  // throws: that code is not registered in `internal/errors.ts`, and naming an
+  // unregistered code in `#[class(...)]` makes the op throw `undefined`.
+  #[class(generic)]
+  #[error("error:0280007E:Diffie-Hellman routines::modulus too small")]
+  ModulusTooSmall,
+}
+
 fn dh_generate(
   prime: Option<&[u8]>,
   prime_len: usize,
   generator: usize,
-) -> KeyObjectHandlePair {
-  let prime = prime
-    .map(|p| p.into())
-    .unwrap_or_else(|| Prime::generate(prime_len));
+) -> Result<KeyObjectHandlePair, DhGenerateError> {
+  let prime = match prime {
+    Some(p) => p.into(),
+    None => Prime::generate(prime_len)
+      .map_err(|_| DhGenerateError::ModulusTooSmall)?,
+  };
   let dh = dh::DiffieHellman::new(prime.clone(), generator);
   let gen_bytes = if generator <= 0xFF {
     vec![generator as u8]
@@ -3487,7 +3501,7 @@ fn dh_generate(
     base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
-  KeyObjectHandlePair::new(
+  Ok(KeyObjectHandlePair::new(
     AsymmetricPrivateKey::Dh(DhPrivateKey {
       key: dh.private_key,
       params: params.clone(),
@@ -3496,7 +3510,7 @@ fn dh_generate(
       key: dh.public_key,
       params,
     }),
-  )
+  ))
 }
 
 #[op2]
@@ -3505,7 +3519,7 @@ pub fn op_node_generate_dh_key(
   #[buffer] prime: Option<&[u8]>,
   #[smi] prime_len: usize,
   #[smi] generator: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, DhGenerateError> {
   dh_generate(prime, prime_len, generator)
 }
 
@@ -3515,7 +3529,7 @@ pub async fn op_node_generate_dh_key_async(
   #[buffer(copy)] prime: Option<Box<[u8]>>,
   #[smi] prime_len: usize,
   #[smi] generator: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, DhGenerateError> {
   spawn_blocking(move || dh_generate(prime.as_deref(), prime_len, generator))
     .await
     .unwrap()
@@ -3526,14 +3540,16 @@ pub fn op_node_dh_keys_generate_and_export(
   #[buffer] prime: Option<&[u8]>,
   #[smi] prime_len: usize,
   #[smi] generator: usize,
-) -> (Uint8Array, Uint8Array) {
-  let prime = prime
-    .map(|p| p.into())
-    .unwrap_or_else(|| Prime::generate(prime_len));
+) -> Result<(Uint8Array, Uint8Array), DhGenerateError> {
+  let prime = match prime {
+    Some(p) => p.into(),
+    None => Prime::generate(prime_len)
+      .map_err(|_| DhGenerateError::ModulusTooSmall)?,
+  };
   let dh = dh::DiffieHellman::new(prime, generator);
   let private_key = dh.private_key.into_vec();
   let public_key = dh.public_key.into_vec();
-  (private_key.into(), public_key.into())
+  Ok((private_key.into(), public_key.into()))
 }
 
 #[op2]

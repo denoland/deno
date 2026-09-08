@@ -60,6 +60,8 @@ const {
   SymbolDispose,
   SymbolIterator,
   TypeError,
+  Uint8ArrayPrototype,
+  uncurryThis,
 } = primordials;
 
 function getSafeOwnPropertyDescriptors(object) {
@@ -913,11 +915,30 @@ function disableProtoAccessor() {
   });
 }
 
+// The TC39 arraybuffer-base64 methods land on Uint8Array.prototype during
+// V8's InstallConditionalFeatures, after snapshot deserialization, so the
+// snapshotted primordials cannot include them. Capture them here, before any
+// user code runs, for ext:deno_node/internal/buffer.mjs; when a method is
+// unavailable the slot stays undefined and the consumer uses its JS codec.
+// TODO(tomas-zijdemans): move these to primordials once V8 ships the methods
+// unconditionally (no --js-arraybuffer-base64 flag).
+function captureHexMethods() {
+  const toHex = Uint8ArrayPrototype.toHex;
+  const setFromHex = Uint8ArrayPrototype.setFromHex;
+  internals.uint8ArrayToHex = typeof toHex === "function"
+    ? uncurryThis(toHex)
+    : undefined;
+  internals.uint8ArraySetFromHex = typeof setFromHex === "function"
+    ? uncurryThis(setFromHex)
+    : undefined;
+}
+
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+    captureHexMethods();
 
     const {
       0: denoVersion,
@@ -1189,6 +1210,7 @@ function bootstrapWorkerRuntime(
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+    captureHexMethods();
 
     const {
       0: denoVersion,

@@ -99,8 +99,6 @@ Notable members:
 - `libs/resolver`, `libs/node_resolver`, `libs/npm`, `libs/npm_installer`,
   `libs/package_json`, `libs/lockfile`, `libs/config`, `libs/npmrc` — the
   resolution and package-management building blocks the CLI composes.
-- `libs/typescript_go_client` — client for the out-of-process TypeScript
-  type-checker.
 
 These crates are deliberately free of CLI concerns so they can be unit-tested in
 isolation and reused by other tools.
