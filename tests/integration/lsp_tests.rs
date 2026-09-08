@@ -17538,12 +17538,12 @@ fn lsp_vendor_dir() {
   assert!(
     temp_dir
       .path()
-      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .join("vendor/http_localhost_port_4545/subdir/mod1.ts")
       .exists()
   );
   let remote_file_path = temp_dir
     .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts");
+    .join("vendor/http_localhost_port_4545/subdir/mod1.ts");
   let remote_file_uri = remote_file_path.uri_file();
 
   // the declaration should be found in the vendor directory
@@ -17944,7 +17944,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
@@ -17956,7 +17956,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
@@ -17995,7 +17995,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_port_4545/subdir/mod2.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18007,7 +18007,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_port_4545/subdir/mod2.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18047,7 +18047,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_port_4545/subdir/mod3.js").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18059,7 +18059,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_port_4545/subdir/mod3.js").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18322,7 +18322,7 @@ fn lsp_vendor_dir_workspace_folder_added() {
     .assert_exit_code(0);
   let vendored_file = temp_dir
     .path()
-    .join("project/vendor/http_localhost_4545/subdir/mod1.ts");
+    .join("project/vendor/http_localhost_port_4545/subdir/mod1.ts");
   assert!(vendored_file.exists());
   let vendored_file_uri = vendored_file.uri_file();
 
@@ -19394,7 +19394,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
@@ -19406,7 +19406,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
