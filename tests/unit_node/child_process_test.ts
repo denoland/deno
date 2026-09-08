@@ -1820,6 +1820,78 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "shell cmd.exe rejects arguments it cannot represent literally",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    // cmd.exe has no escape for a double quote inside a quoted region, so an
+    // argument containing one cannot be passed through `/d /s /c` as a literal
+    // value. It must be rejected rather than silently broken into extra
+    // commands. \r and \n truncate the command string for the same reason.
+    for (const bad of ['safe"&echo pwned&rem "', "bad\rarg", "bad\narg"]) {
+      for (const spawnFn of [spawn, spawnSync]) {
+        assertThrows(
+          () =>
+            spawnFn(
+              Deno.execPath(),
+              ["eval", "console.log(Deno.args[0])", "--", bad],
+              { shell: true },
+            ),
+          TypeError,
+          "ERR_INVALID_ARG_VALUE",
+        );
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "shell cmd.exe still accepts arguments it can represent",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    const ret = spawnSync(
+      Deno.execPath(),
+      ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e (f) !g^h"],
+      { shell: true, encoding: "utf-8" },
+    );
+    assertEquals(ret.status, 0);
+    assertEquals(ret.stdout.trim(), "a&b|c<d>e (f) !g^h");
+  },
+});
+
+Deno.test({
+  name: "custom powershell shell escapes with PowerShell quoting",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    // Quoting is chosen from the shell that parses the command, not from the
+    // host platform. cmd.exe's double quotes would let PowerShell evaluate
+    // `$(...)`; PowerShell single quotes keep it literal.
+    const payload = "safe$(Write-Output pwned)";
+    const ret = spawnSync("Write-Output", [payload], {
+      shell: "powershell.exe",
+      encoding: "utf-8",
+    });
+    assertEquals(ret.status, 0);
+    assertEquals(ret.stdout.trim(), payload);
+  },
+});
+
+Deno.test({
+  name: "custom powershell shell runs a quoted program path",
+  ignore: Deno.build.os !== "windows",
+  fn() {
+    // A quoted token in command position is a string expression in PowerShell,
+    // so a quoted program path needs the `&` call operator to actually run.
+    const ret = spawnSync(
+      Deno.execPath(),
+      ["eval", "console.log(Deno.args[0])", "--", "hello world"],
+      { shell: "powershell.exe", encoding: "utf-8" },
+    );
+    assertEquals(ret.status, 0);
+    assertEquals(ret.stdout.trim(), "hello world");
+  },
+});
+
 Deno.test(function spawnSyncReturnsPid() {
   const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
   assertEquals(ret.status, 0);
