@@ -7,6 +7,14 @@
     },
     {
       "args": "audit",
+      "output": "[WILDCARD]invalid peer certificate: UnknownIssuer[WILDCARD]",
+      "envs": {
+        "NPM_CONFIG_REGISTRY": "https://localhost:5545/"
+      },
+      "exitCode": 1
+    },
+    {
+      "args": "audit",
       "output": "audit.out",
       "envs": {
         "DENO_CERT": "$PWD/RootCA.pem",
