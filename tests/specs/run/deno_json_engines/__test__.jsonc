@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "mismatch_warns": {
+      "args": "run mismatch/main.ts",
+      "output": "mismatch/run.out"
+    },
+    "match_silent": {
+      "args": "run match/main.ts",
+      "output": "match/run.out"
+    },
+    "invalid_range_warns": {
+      "args": "run invalid/main.ts",
+      "output": "invalid/run.out"
+    }
+  }
+}
