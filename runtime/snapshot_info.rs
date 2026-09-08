@@ -22,6 +22,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       Default::default(),
       Default::default(),
       deno_web::InMemoryBroadcastChannel::default(),
+      Default::default(),
     ),
     deno_webgpu::deno_webgpu::init(),
     deno_image::deno_image::init(),

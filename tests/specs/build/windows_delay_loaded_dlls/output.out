@@ -1,11 +1,13 @@
 [# this test is to ensure dlls don't negatively impact windows startup perf. Prefer lazily loading]
 advapi32.dll: eager
 api-ms-win-core-synch-l1-2-0.dll: eager
+api-ms-win-core-winrt-error-l1-1-0.dll: eager
 bcrypt.dll: eager
 bcryptprimitives.dll: eager
 combase.dll: delay
 crypt32.dll: eager
 dbghelp.dll: delay
+dwrite.dll: eager
 gdi32.dll: delay
 iphlpapi.dll: delay
 kernel32.dll: eager

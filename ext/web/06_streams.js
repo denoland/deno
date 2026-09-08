@@ -1371,35 +1371,57 @@ function getReadableStreamResourceBackingUnrefable(stream) {
   return stream[_resourceBackingUnrefable];
 }
 
+/**
+ * Consume a resource-backed stream in a single op call: `op` is handed the
+ * backing rid and returns whatever it read. `readableStreamCollectIntoUint8Array`
+ * passes `op_read_all`; callers that can consume the bytes entirely on the Rust
+ * side pass their own op and never allocate them in the JS heap.
+ *
+ * Only valid for an undisturbed, unlocked, resource-backed stream: check
+ * `getReadableStreamResourceBacking` and `isReadableStreamDisturbed` first.
+ *
+ * @template T
+ * @param {ReadableStream<Uint8Array>} stream
+ * @param {(rid: number) => Promise<T>} op
+ * @returns {Promise<T>}
+ */
+async function readableStreamCollectWithOp(stream, op) {
+  const resourceBacking = getReadableStreamResourceBacking(stream) ||
+    getReadableStreamResourceBackingUnrefable(stream);
+  acquireReadableStreamDefaultReader(stream);
+  try {
+    readableStreamDisturb(stream);
+    const promise = op(resourceBacking.rid);
+    if (readableStreamIsUnrefable(stream)) {
+      stream[promiseSymbol] = promise;
+      if (stream[_isUnref]) core.unrefOpPromise(promise);
+    }
+    const result = await promise;
+    stream[promiseSymbol] = undefined;
+    readableStreamThrowIfErrored(stream);
+    readableStreamClose(stream);
+    return result;
+  } catch (err) {
+    readableStreamThrowIfErrored(stream);
+    readableStreamError(stream, err);
+    throw err;
+  } finally {
+    if (resourceBacking.autoClose) {
+      core.tryClose(resourceBacking.rid);
+    }
+  }
+}
+
 async function readableStreamCollectIntoUint8Array(stream) {
   const resourceBacking = getReadableStreamResourceBacking(stream) ||
     getReadableStreamResourceBackingUnrefable(stream);
-  const reader = acquireReadableStreamDefaultReader(stream);
 
   if (resourceBacking && !isReadableStreamDisturbed(stream)) {
     // fast path, read whole body in a single op call
-    try {
-      readableStreamDisturb(stream);
-      const promise = op_read_all(resourceBacking.rid);
-      if (readableStreamIsUnrefable(stream)) {
-        stream[promiseSymbol] = promise;
-        if (stream[_isUnref]) core.unrefOpPromise(promise);
-      }
-      const buf = await promise;
-      stream[promiseSymbol] = undefined;
-      readableStreamThrowIfErrored(stream);
-      readableStreamClose(stream);
-      return buf;
-    } catch (err) {
-      readableStreamThrowIfErrored(stream);
-      readableStreamError(stream, err);
-      throw err;
-    } finally {
-      if (resourceBacking.autoClose) {
-        core.tryClose(resourceBacking.rid);
-      }
-    }
+    return await readableStreamCollectWithOp(stream, op_read_all);
   }
+
+  const reader = acquireReadableStreamDefaultReader(stream);
 
   // slow path
   /** @type {Uint8Array[]} */
@@ -8538,6 +8560,7 @@ return {
   readableStreamCancel,
   readableStreamClose,
   readableStreamCollectIntoUint8Array,
+  readableStreamCollectWithOp,
   readableStreamDefaultControllerCallPullIfNeeded,
   readableStreamDefaultControllerCanCloseOrEnqueue,
   readableStreamDefaultControllerClearAlgorithms,

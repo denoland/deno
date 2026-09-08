@@ -44,6 +44,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
+use deno_runtime::deno_web::SharedLocalFontDb;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
@@ -326,6 +327,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   pkg_json_resolver: Arc<node_resolver::PackageJsonResolver<TSys>>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   shared_array_buffer_store: SharedArrayBufferStore,
+  shared_local_font_db: SharedLocalFontDb,
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
@@ -418,6 +420,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           shared.npm_process_state_provider.clone(),
         ),
         permissions: args.permissions,
+        shared_local_font_db: shared.shared_local_font_db.clone(),
         bundle_provider: shared.bundle_provider.clone(),
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
@@ -622,6 +625,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         pkg_json_resolver,
         root_cert_store_provider,
         shared_array_buffer_store: roots.shared_array_buffer_store,
+        shared_local_font_db: Default::default(),
         storage_key_resolver,
         sys,
         options,
@@ -716,6 +720,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       ),
       feature_checker,
       permissions,
+      shared_local_font_db: shared.shared_local_font_db.clone(),
       v8_code_cache: shared.code_cache.clone(),
       bundle_provider: shared.bundle_provider.clone(),
     };

@@ -574,6 +574,13 @@ declare module "ext:deno_webidl/00_webidl.js" {
   ): void;
 
   /**
+   * Mix in the value iterator declarations defined in WebIDL.
+   * Methods are === Array.prototype counterparts.
+   * https://webidl.spec.whatwg.org/#es-iterable
+   */
+  function mixinValueIterable(interface_: any): void;
+
+  /**
    * Configure prototype properties enumerability / writability / configurability.
    */
   function configureInterface(prototype: any);

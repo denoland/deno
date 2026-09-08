@@ -127,6 +127,7 @@ import {
   memoizeLazy,
 } from "ext:runtime/98_global_scope_window.js";
 import {
+  unstableForWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
@@ -644,6 +645,23 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
+      core.defineGlobalProperties(globalThis, { ...props });
+    }
+  }
+}
+
+// Set up global properties exposed only on worker global scopes by unstable
+// features if those are enabled.
+function exposeUnstableFeaturesForWorkerGlobalScope(unstableFeatures) {
+  const featureIds = ArrayPrototypeMap(
+    ObjectKeys(unstableForWorkerGlobalScope),
+    (k) => k | 0,
+  );
+
+  for (let i = 0; i < featureIds.length; i++) {
+    const featureId = featureIds[i];
+    if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
+      const props = unstableForWorkerGlobalScope[featureId];
       core.defineGlobalProperties(globalThis, { ...props });
     }
   }
@@ -1268,6 +1286,7 @@ function bootstrapWorkerRuntime(
       );
     }
     exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    exposeUnstableFeaturesForWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     bootstrapOtel(otelConfig);
