@@ -117,6 +117,8 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub serve_cert: Option<String>,
+  pub serve_key: Option<String>,
   pub auto_serve: bool,
   pub otel_config: OtelConfig,
   pub close_on_idle: bool,
@@ -159,6 +161,8 @@ impl Default for BootstrapOptions {
       no_legacy_abort: false,
       serve_port: Default::default(),
       serve_host: Default::default(),
+      serve_cert: None,
+      serve_key: None,
       otel_config: Default::default(),
       close_on_idle: false,
       disable_offscreen_canvas: false,
@@ -198,6 +202,10 @@ struct BootstrapV8<'a>(
   // serve port
   u16,
   // serve host
+  Option<&'a str>,
+  // serve cert
+  Option<&'a str>,
+  // serve key
   Option<&'a str>,
   // serve is main
   bool,
@@ -240,6 +248,8 @@ impl BootstrapOptions {
       self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
+      self.serve_cert.as_deref(),
+      self.serve_key.as_deref(),
       matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
       match self.mode {
         WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
