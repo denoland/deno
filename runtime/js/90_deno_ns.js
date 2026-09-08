@@ -244,6 +244,7 @@ const denoNs = {
   utime: fs.utime,
   utimeSync: fs.utimeSync,
   kill: undefined,
+  processExited: undefined,
   addSignalListener: signals.addSignalListener,
   removeSignalListener: signals.removeSignalListener,
   refTimer: timers.refTimer,
@@ -287,6 +288,10 @@ core.defineGlobalProperties(denoNs, {
     lazyWebsocket,
   ),
   kill: core.propWritableLazyLoaded((process) => process.kill, lazyProcess),
+  processExited: core.propWritableLazyLoaded(
+    (process) => process.processExited,
+    lazyProcess,
+  ),
   Command: core.propWritableLazyLoaded(
     (process) => process.Command,
     lazyProcess,
