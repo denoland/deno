@@ -95,34 +95,22 @@ pub fn build_check_root_overlay(
     };
     obj.insert("extends".to_string(), extends);
 
-    // A user `compilerOptions.types` overrides the generated `types` through the
-    // `extends` chain, dropping our injected `deno`/`node` so every `Deno.*`
-    // reference would error TS2304. Deno always provides its own libs, so when
-    // the user set `types` explicitly, merge the generated entries back in
-    // (first, so they win) ahead of the user's.
+    // A user `compilerOptions.types` never overrides the generated `types`
+    // through the `extends` chain: the generated value is the canonical,
+    // sanitized representation of the user's effective `types` (npm subpaths
+    // materialized into `files`, the rest retained or dropped). Force it at
+    // the overlay root so raw user entries — set directly on the root object
+    // or inherited through the user's own `extends` chain — can't leak back
+    // into stock tsc (e.g. `vite/client` reintroduced as TS2688). Deno always
+    // provides its own libs, so the generated entries stay authoritative.
     if let Some(gen_types) = deno_value
       .as_ref()
       .and_then(|d| d.pointer("/compilerOptions/types"))
       .and_then(|t| t.as_array())
-      && obj
-        .get("compilerOptions")
-        .and_then(|c| c.get("types"))
-        .is_some()
     {
       let co = obj.entry("compilerOptions").or_insert_with(|| json!({}));
       if let Some(co_obj) = co.as_object_mut() {
-        let user_types = co_obj
-          .get("types")
-          .and_then(|t| t.as_array())
-          .cloned()
-          .unwrap_or_default();
-        let mut merged = gen_types.clone();
-        for t in user_types {
-          if !merged.contains(&t) {
-            merged.push(t);
-          }
-        }
-        co_obj.insert("types".to_string(), Value::Array(merged));
+        co_obj.insert("types".to_string(), Value::Array(gen_types.clone()));
       }
     }
   }
@@ -155,6 +143,22 @@ pub struct GeneratedTsConfig {
   pub tsconfig_path: PathBuf,
 }
 
+/// Effective root `compilerOptions.types` as resolved by Deno's
+/// `CompilerOptionsResolver` (see `sync_types_command`).
+///
+/// `entries` is the winning source's `types` list — TypeScript override
+/// semantics, so exactly one source wins, never a merge. `source` is the
+/// config file URL that defined them, so relative entries resolve against
+/// that source's directory (e.g. through `extends` chains) rather than
+/// unconditionally against the project root. `Some` with an empty list is an
+/// explicit empty override; only `None` (no source defines `types`) falls
+/// back to the raw deno.json read.
+#[derive(Debug, Clone)]
+pub struct EffectiveCompilerOptionsTypes {
+  pub source: Url,
+  pub entries: Vec<String>,
+}
+
 /// Generate `.deno/tsconfig.json` and Deno type definitions for use with
 /// stock TypeScript tooling.
 ///
@@ -178,6 +182,7 @@ pub fn generate_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   resolved_compiler_options: Option<&Value>,
+  effective_compiler_options_types: Option<&EffectiveCompilerOptionsTypes>,
   deno_imports: Option<&Value>,
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
@@ -224,6 +229,7 @@ pub fn generate_tsconfig(
     project_root,
     deno_compiler_options,
     resolved_compiler_options,
+    effective_compiler_options_types,
     deno_imports,
     files,
     http_modules,
@@ -759,6 +765,7 @@ fn build_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   resolved_compiler_options: Option<&Value>,
+  effective_compiler_options_types: Option<&EffectiveCompilerOptionsTypes>,
   deno_imports: Option<&Value>,
   check_files: &[String],
   http_modules: &BTreeMap<Url, String>,
@@ -914,19 +921,49 @@ fn build_tsconfig(
   // stock tsc can't resolve there (an imported npm package, a relative path) are
   // materialized as concrete `.d.ts` files added to the program below. See
   // `partition_user_types` / `merge_user_types`.
+  //
+  // The entries come from the effective resolved options when a root tsconfig
+  // entry exists; only when no source defines `types` do we fall back to the
+  // raw deno.json read. An explicit empty list is an override, not a missing
+  // source, so it never falls back.
+  let effective_values: Option<Vec<Value>> = effective_compiler_options_types
+    .map(|effective| effective.entries.iter().map(|s| json!(s)).collect());
+  // Relative entries resolve against the directory of the config source that
+  // defined them (e.g. a base config through `extends`), not the project
+  // root. A non-local source URL can't happen for a collected tsconfig, but
+  // stay conservative rather than panicking.
+  let types_base_dir: PathBuf = match effective_compiler_options_types {
+    Some(effective) => effective
+      .source
+      .to_file_path()
+      .ok()
+      .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+      .unwrap_or_else(|| project_root.to_path_buf()),
+    None => project_root.to_path_buf(),
+  };
+  let user_types: Option<&[Value]> =
+    effective_values.as_deref().or_else(|| {
+      deno_compiler_options
+        .and_then(|co| co.get("types"))
+        .and_then(|t| t.as_array())
+        .map(|v| v.as_slice())
+    });
   let mut extra_type_files: Vec<String> = Vec::new();
-  if let Some(user_types) = deno_compiler_options
-    .and_then(|co| co.get("types"))
-    .and_then(|t| t.as_array())
-  {
+  if let Some(user_types) = user_types {
     let (keep, files) = partition_user_types(
       project_root,
+      &types_base_dir,
       user_types,
       deno_imports,
       npm_package_paths,
     );
     extra_type_files = files;
-    if !keep.is_empty() {
+    // When the user explicitly set `types` (an effective source exists), the
+    // generated `types` is the canonical representation: ensure the key
+    // exists even if nothing was retained, so the check overlay can override
+    // raw user `types` — including ones inherited through an `extends`
+    // chain — instead of letting them leak back into stock tsc.
+    if !keep.is_empty() || effective_compiler_options_types.is_some() {
       match compiler_options.get_mut("types") {
         Some(Value::Array(types)) => merge_user_types(types, &keep),
         _ => {
@@ -1973,11 +2010,16 @@ fn resolve_npm_subpath_types(pkg_dir: &Path, subpath: &str) -> Option<PathBuf> {
 /// Partition a user's `compilerOptions.types` between the generated `types`
 /// array and concrete declaration files added to the program.
 ///
+/// `project_root` stays the base for npm package resolution (import map and
+/// `node_modules`/cache layout); `types_base_dir` is the base for relative
+/// path entries — the directory of the config source that defined them.
+///
 /// In Deno's generated stock-tsc compatibility config, `types` entries outside
 /// the generated/private type roots are not otherwise visible to tsc.
 /// Import-mapped npm entries are therefore materialized into `files`.
 fn partition_user_types(
   project_root: &Path,
+  types_base_dir: &Path,
   user_types: &[Value],
   deno_imports: Option<&Value>,
   npm_package_paths: &BTreeMap<String, PathBuf>,
@@ -1994,7 +2036,7 @@ fn partition_user_types(
     // wrong place; materialize it as an absolute file instead. A missing one is
     // left in so tsc reports it (TS6053), matching the user's intent.
     if s.starts_with('.') || s.starts_with('/') {
-      let abs = project_root.join(s.trim_start_matches("./"));
+      let abs = types_base_dir.join(s.trim_start_matches("./"));
       type_files.push(abs.to_string_lossy().replace('\\', "/"));
       continue;
     }
@@ -2462,6 +2504,7 @@ interface AlsoKeep {
 
     let (keep, files) = partition_user_types(
       project_root,
+      project_root,
       &[
         json!("vite/client"),
         json!("@scope/pkg/client"),
@@ -2771,6 +2814,7 @@ interface AlsoKeep {
       None,
       None,
       None,
+      None,
       &[],
       &BTreeMap::new(),
       &Map::new(),
@@ -2795,6 +2839,7 @@ interface AlsoKeep {
     let excludes = vec!["jsonc/testdata".to_string(), "./_site".to_string()];
     let tsconfig = build_tsconfig(
       project_root,
+      None,
       None,
       None,
       None,
@@ -2829,6 +2874,7 @@ interface AlsoKeep {
       None,
       None,
       None,
+      None,
       &files,
       &BTreeMap::new(),
       &Map::new(),
@@ -2855,6 +2901,7 @@ interface AlsoKeep {
     ];
     let tsconfig = build_tsconfig(
       Path::new("/tmp/project"),
+      None,
       None,
       None,
       None,
@@ -2893,6 +2940,7 @@ interface AlsoKeep {
     let tsconfig = build_tsconfig(
       project_root,
       Some(&compiler_options),
+      None,
       None,
       Some(&imports),
       &[],
@@ -3147,6 +3195,96 @@ interface AlsoKeep {
         { "path": "./.deno/npm/a/tsconfig.json" },
         { "path": "./.deno/npm/b/tsconfig.json" },
       ])),
+    );
+  }
+
+  fn write_overlay_fixture(
+    dir: &tempfile::TempDir,
+    generated_types: Value,
+    user_tsconfig: &str,
+  ) -> PathBuf {
+    let root = dir.path();
+    std::fs::create_dir_all(root.join(".deno")).unwrap();
+    std::fs::write(
+      root.join(".deno/tsconfig.json"),
+      serde_json::to_string_pretty(&json!({
+        "compilerOptions": { "types": generated_types },
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+    let user_path = root.join("tsconfig.json");
+    std::fs::write(&user_path, user_tsconfig).unwrap();
+    user_path
+  }
+
+  #[test]
+  fn test_build_check_root_overlay_forces_canonical_types() {
+    // Raw user `types` must not be merged back: the generated value is the
+    // canonical sanitized representation.
+    let dir = tempfile::TempDir::new().unwrap();
+    let user_path = write_overlay_fixture(
+      &dir,
+      json!(["deno", "node"]),
+      r#"{"compilerOptions":{"types":["vite/client"]},"files":["main.ts"]}"#,
+    );
+    let overlay = build_check_root_overlay(dir.path(), &user_path).unwrap();
+    assert_eq!(
+      overlay.pointer("/compilerOptions/types"),
+      Some(&json!(["deno", "node"]))
+    );
+  }
+
+  #[test]
+  fn test_build_check_root_overlay_covers_extends_chain() {
+    // Even when the root object sets no `types` itself, the canonical
+    // generated value must sit at the overlay root so it overrides raw
+    // `types` inherited through the user's own `extends` chain.
+    let dir = tempfile::TempDir::new().unwrap();
+    let user_path = write_overlay_fixture(
+      &dir,
+      json!(["deno", "node"]),
+      r#"{"extends":"./base.json","files":["main.ts"]}"#,
+    );
+    let overlay = build_check_root_overlay(dir.path(), &user_path).unwrap();
+    assert_eq!(
+      overlay.pointer("/compilerOptions/types"),
+      Some(&json!(["deno", "node"]))
+    );
+  }
+
+  #[test]
+  fn test_build_tsconfig_effective_types_use_source_dir() {
+    // Relative entries resolve against the defining config source's
+    // directory, not the project root; the base `deno` entry is retained as
+    // the canonical `types`.
+    let effective = EffectiveCompilerOptionsTypes {
+      source: Url::parse("file:///tmp/project/sub/tsconfig.base.json").unwrap(),
+      entries: vec!["./types/global.d.ts".to_string()],
+    };
+    let tsconfig = build_tsconfig(
+      Path::new("/tmp/project"),
+      None,
+      None,
+      Some(&effective),
+      None,
+      &[],
+      &BTreeMap::new(),
+      &Map::new(),
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &[],
+      None,
+      &[],
+      false,
+    );
+    assert_eq!(
+      tsconfig.get("files"),
+      Some(&json!(["/tmp/project/sub/types/global.d.ts"])),
+    );
+    assert_eq!(
+      tsconfig.pointer("/compilerOptions/types"),
+      Some(&json!(["deno"])),
     );
   }
 }
