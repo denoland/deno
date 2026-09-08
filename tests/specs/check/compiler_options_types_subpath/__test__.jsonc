@@ -2,10 +2,8 @@
   "tempDir": true,
   "tests": {
     "node_modules_dir_none": {
-      // ignored: with node_modules_dir "none", tsc can't resolve types from
-      // an npm package in the global cache.
-      // https://github.com/denoland/deno/issues/36085
-      "ignore": true,
+      // The subpath declaration is materialized into `files` as an absolute
+      // path, so it also resolves from the global npm cache.
       "steps": [
         {
           "args": "run -A ./set_node_modules_dir.ts none",
