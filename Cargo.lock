@@ -3017,6 +3017,7 @@ dependencies = [
  "sha2",
  "thiserror 2.0.12",
  "tokio",
+ "url",
  "wide",
 ]
 
