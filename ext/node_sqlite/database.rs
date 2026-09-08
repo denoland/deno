@@ -91,6 +91,36 @@ fn resolve_sqlite_system_path_alias(path: &Path) -> PathBuf {
   path.to_path_buf()
 }
 
+/// SQLite does not enforce `SQLITE_OPEN_NOFOLLOW` on Windows (its
+/// `winFullPathname` never resolves reparse points), so reject symlinks and
+/// junctions in every path component manually before opening.
+#[cfg(windows)]
+fn refuse_reparse_point_components(path: &Path) -> Result<(), rusqlite::Error> {
+  let mut current = PathBuf::new();
+  for component in path.components() {
+    current.push(component);
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "node:sqlite operates on the real file system"
+    )]
+    match std::fs::symlink_metadata(&current) {
+      Ok(metadata) if metadata.file_type().is_symlink() => {
+        return Err(rusqlite::Error::SqliteFailure(
+          rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+          Some(format!(
+            "unable to open database file: \"{}\" is a symlink",
+            current.display()
+          )),
+        ));
+      }
+      Ok(_) => {}
+      // Missing components are created (or rejected) by SQLite itself.
+      Err(_) => break,
+    }
+  }
+  Ok(())
+}
+
 /// Static mapping of JavaScript property names to SQLite limits.
 /// Order matches SQLite limit constant values (0-10).
 /// Keep in sync with LIMIT_NAMES in ext/node/polyfills/sqlite.ts.
@@ -794,6 +824,8 @@ fn open_db(
     )?
     .into_path();
   let location = resolve_sqlite_system_path_alias(&location);
+  #[cfg(windows)]
+  refuse_reparse_point_components(&location)?;
 
   if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(

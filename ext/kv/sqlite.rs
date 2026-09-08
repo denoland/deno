@@ -75,6 +75,36 @@ fn resolve_sqlite_system_path_alias(path: &Path) -> PathBuf {
   path.to_path_buf()
 }
 
+/// SQLite does not enforce `SQLITE_OPEN_NOFOLLOW` on Windows (its
+/// `winFullPathname` never resolves reparse points), so reject symlinks and
+/// junctions in every path component manually before opening.
+#[cfg(windows)]
+fn refuse_reparse_point_components(path: &Path) -> std::io::Result<()> {
+  let mut current = PathBuf::new();
+  for component in path.components() {
+    current.push(component);
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "the database path is always on the real fs"
+    )]
+    match std::fs::symlink_metadata(&current) {
+      Ok(metadata) if metadata.file_type().is_symlink() => {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          format!(
+            "unable to open database file: \"{}\" is a symlink",
+            current.display()
+          ),
+        ));
+      }
+      Ok(_) => {}
+      // Missing components are created (or rejected) by SQLite itself.
+      Err(_) => break,
+    }
+  }
+  Ok(())
+}
+
 #[async_trait(?Send)]
 impl DatabaseHandler for SqliteDbHandler {
   type DB = denokv_sqlite::Sqlite;
@@ -158,8 +188,22 @@ impl DatabaseHandler for SqliteDbHandler {
             let flags = OpenFlags::default()
               .difference(OpenFlags::SQLITE_OPEN_URI)
               | OpenFlags::SQLITE_OPEN_NOFOLLOW;
+            #[cfg(windows)]
+            refuse_reparse_point_components(path)
+              .map_err(JsErrorBox::from_err)?;
+            // Open with the unresolved path so SQLITE_OPEN_NOFOLLOW keeps
+            // rejecting symlinks, but key the notifier on the normalized
+            // absolute path so lexical aliases of the same database (e.g.
+            // `db.sqlite` and `./db.sqlite`) share one notifier. Resolving
+            // symlinks here cannot redirect the open: paths containing
+            // symlinks are refused above.
+            let notifier_key =
+              deno_path_util::fs::canonicalize_path_maybe_not_exists(
+                &sys_traits::impls::RealSys,
+                path,
+              )
+              .map_err(JsErrorBox::from_err)?;
             let path = path.clone();
-            let notifier_key = path.clone();
             (
               Arc::new(move || {
                 rusqlite::Connection::open_with_flags(&path, flags)

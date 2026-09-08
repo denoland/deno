@@ -95,7 +95,6 @@ Deno.test({
     write: true,
     run: [Deno.execPath()],
   },
-  ignore: Deno.build.os === "windows",
   name: "[node/sqlite] DatabaseSync does not follow symlink database paths",
   async fn() {
     const dir = Deno.makeTempDirSync({ prefix: "node_sqlite_symlink" });
@@ -166,7 +165,7 @@ db.close();
 
       const writeTarget = `${outsideDir}/write-target.db`;
       const writeLink = `${allowedDir}/write-link.db`;
-      Deno.symlinkSync(writeTarget, writeLink);
+      Deno.symlinkSync(writeTarget, writeLink, { type: "file" });
       await assertRefused("write", writeLink);
       assertThrows(
         () => Deno.statSync(writeTarget),
@@ -175,7 +174,7 @@ db.close();
 
       const directoryLink = `${allowedDir}/directory-link`;
       const nestedTarget = `${outsideDir}/nested-target.db`;
-      Deno.symlinkSync(outsideDir, directoryLink);
+      Deno.symlinkSync(outsideDir, directoryLink, { type: "dir" });
       await assertRefused("write", `${directoryLink}/nested-target.db`);
       assertThrows(
         () => Deno.statSync(nestedTarget),
@@ -187,7 +186,7 @@ db.close();
       readTargetDb.exec("CREATE TABLE data(value TEXT)");
       readTargetDb.close();
       const readLink = `${allowedDir}/read-link.db`;
-      Deno.symlinkSync(readTarget, readLink);
+      Deno.symlinkSync(readTarget, readLink, { type: "file" });
       await assertRefused("read", readLink);
     } finally {
       Deno.removeSync(dir, { recursive: true });

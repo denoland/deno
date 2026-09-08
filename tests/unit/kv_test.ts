@@ -55,7 +55,6 @@ Deno.test({
     write: true,
     run: [Deno.execPath()],
   },
-  ignore: Deno.build.os === "windows",
   async fn() {
     const dir = await Deno.makeTempDir({ prefix: "open_kv_symlink" });
     try {
@@ -111,13 +110,13 @@ Deno.test({
       );
       assert((await Deno.stat(regularPath)).isFile);
 
-      await Deno.symlink(target, link);
+      await Deno.symlink(target, link, { type: "file" });
       await assertRefused(link);
       await assertRejects(() => Deno.stat(target), Deno.errors.NotFound);
 
       const directoryLink = `${allowedDir}/directory-link`;
       const nestedTarget = `${outsideDir}/nested.sqlite3`;
-      await Deno.symlink(outsideDir, directoryLink);
+      await Deno.symlink(outsideDir, directoryLink, { type: "dir" });
       await assertRefused(`${directoryLink}/nested.sqlite3`);
       await assertRejects(
         () => Deno.stat(nestedTarget),
