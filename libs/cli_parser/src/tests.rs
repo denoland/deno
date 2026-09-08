@@ -1262,6 +1262,18 @@ fn default_subcommand_with_flags() {
 }
 
 #[test]
+fn default_subcommand_double_dash_before_script() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "--", "-echo.ts", "--", "--debug"],
+  )
+  .unwrap();
+  assert_eq!(r.subcommand.as_deref(), None);
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["--", "--debug"]);
+}
+
+#[test]
 fn default_subcommand_with_allow_read_values() {
   let r = parse(&TEST_ROOT, &svec!["deno", "--allow-read=/tmp", "script.ts"])
     .unwrap();
