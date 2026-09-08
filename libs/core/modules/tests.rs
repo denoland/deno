@@ -377,8 +377,14 @@ fn test_recursive_load() {
   let d_id = modules
     .get_id("file:///d.js", RequestedModuleType::None)
     .unwrap();
+  // The whole graph was instantiated as part of the load, so the live import
+  // edges are gone and only the `#[cfg(test)]` stash below still has them.
+  for id in [a_id, b_id, c_id, d_id] {
+    assert!(modules.get_requested_modules(id).unwrap().is_empty());
+  }
+
   assert_eq!(
-    modules.get_requested_modules(a_id),
+    modules.get_requested_modules_cloned(a_id),
     Some(vec![
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -401,7 +407,7 @@ fn test_recursive_load() {
     ])
   );
   assert_eq!(
-    modules.get_requested_modules(b_id),
+    modules.get_requested_modules_cloned(b_id),
     Some(vec![ModuleRequest {
       reference: crate::modules::ModuleReference {
         specifier: ModuleSpecifier::parse("file:///c.js").unwrap(),
@@ -413,7 +419,7 @@ fn test_recursive_load() {
     },])
   );
   assert_eq!(
-    modules.get_requested_modules(c_id),
+    modules.get_requested_modules_cloned(c_id),
     Some(vec![ModuleRequest {
       reference: crate::modules::ModuleReference {
         specifier: ModuleSpecifier::parse("file:///d.js").unwrap(),
@@ -424,7 +430,7 @@ fn test_recursive_load() {
       phase: crate::modules::ModuleImportPhase::Evaluation,
     },])
   );
-  assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
+  assert_eq!(modules.get_requested_modules_cloned(d_id), Some(vec![]));
 }
 
 #[test]
@@ -486,7 +492,7 @@ fn test_mods() {
       .unwrap();
 
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
-    let imports = module_map.get_requested_modules(mod_a);
+    let imports = module_map.get_requested_modules_cloned(mod_a);
     assert_eq!(
       imports,
       Some(vec![ModuleRequest {
@@ -510,7 +516,7 @@ fn test_mods() {
         None,
       )
       .unwrap();
-    let imports = module_map.get_requested_modules(mod_b).unwrap();
+    let imports = module_map.get_requested_modules_cloned(mod_b).unwrap();
     assert_eq!(imports.len(), 0);
     (mod_a, mod_b)
   };
@@ -521,6 +527,18 @@ fn test_mods() {
 
   runtime.instantiate_module(mod_a).unwrap();
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
+
+  // Instantiating `mod_a` frees the import edges of the whole graph it roots
+  // (see `ModuleMap::drop_instantiated_requests`). Only the `#[cfg(test)]`
+  // stash still knows what was parsed out of the source.
+  assert!(module_map.get_requested_modules(mod_a).unwrap().is_empty());
+  assert_eq!(
+    module_map
+      .get_requested_modules_cloned(mod_a)
+      .unwrap()
+      .len(),
+    1
+  );
 
   #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(mod_a);
@@ -884,7 +902,7 @@ fn test_json_text_bytes_modules() {
       )
       .unwrap();
 
-    let imports = module_map.get_requested_modules(mod_b);
+    let imports = module_map.get_requested_modules_cloned(mod_b);
     assert_eq!(
       imports,
       Some(vec![
@@ -925,7 +943,13 @@ fn test_json_text_bytes_modules() {
         ascii_str!("{\"a\": \"b\", \"c\": {\"d\": 10}}"),
       )
       .unwrap();
-    assert_eq!(module_map.get_requested_modules(mod_c).unwrap().len(), 0);
+    assert_eq!(
+      module_map
+        .get_requested_modules_cloned(mod_c)
+        .unwrap()
+        .len(),
+      0
+    );
 
     let mod_d = module_map
       .new_text_module(
@@ -934,7 +958,13 @@ fn test_json_text_bytes_modules() {
         ascii_str!("hello there"),
       )
       .unwrap();
-    assert_eq!(module_map.get_requested_modules(mod_d).unwrap().len(), 0);
+    assert_eq!(
+      module_map
+        .get_requested_modules_cloned(mod_d)
+        .unwrap()
+        .len(),
+      0
+    );
 
     let mod_e = module_map
       .new_bytes_module(
@@ -943,7 +973,13 @@ fn test_json_text_bytes_modules() {
         ModuleCodeBytes::Static(&[1, 2, 3]),
       )
       .unwrap();
-    assert_eq!(module_map.get_requested_modules(mod_e).unwrap().len(), 0);
+    assert_eq!(
+      module_map
+        .get_requested_modules_cloned(mod_e)
+        .unwrap()
+        .len(),
+      0
+    );
 
     (mod_b, mod_c, mod_d, mod_e)
   };
@@ -1455,6 +1491,7 @@ export const foo = bytes;
         phase: crate::modules::ModuleImportPhase::Evaluation,
       }],
       module_type: ModuleType::Other("foobar".into()),
+      is_internal: false,
     }
   );
   let info = data.info.get(mod_id - 1).unwrap();
@@ -1466,6 +1503,7 @@ export const foo = bytes;
       name: "file:///b.png".into_module_name(),
       requests: vec![],
       module_type: ModuleType::Other("foobar-synth".into()),
+      is_internal: false,
     }
   );
 }
@@ -1648,7 +1686,7 @@ fn test_circular_load() {
       .unwrap();
 
     assert_eq!(
-      modules.get_requested_modules(circular1_id),
+      modules.get_requested_modules_cloned(circular1_id),
       Some(vec![ModuleRequest {
         reference: crate::modules::ModuleReference {
           specifier: ModuleSpecifier::parse("file:///circular2.js").unwrap(),
@@ -1661,7 +1699,7 @@ fn test_circular_load() {
     );
 
     assert_eq!(
-      modules.get_requested_modules(circular2_id),
+      modules.get_requested_modules_cloned(circular2_id),
       Some(vec![ModuleRequest {
         reference: crate::modules::ModuleReference {
           specifier: ModuleSpecifier::parse("file:///circular3.js").unwrap(),
@@ -1682,7 +1720,7 @@ fn test_circular_load() {
       .get_id("file:///circular3.js", RequestedModuleType::None)
       .unwrap();
     assert_eq!(
-      modules.get_requested_modules(circular3_id),
+      modules.get_requested_modules_cloned(circular3_id),
       Some(vec![
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -1945,7 +1983,7 @@ fn recursive_load_main_with_code() {
     .unwrap();
 
   assert_eq!(
-    modules.get_requested_modules(main_id),
+    modules.get_requested_modules_cloned(main_id),
     Some(vec![
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -1968,7 +2006,7 @@ fn recursive_load_main_with_code() {
     ])
   );
   assert_eq!(
-    modules.get_requested_modules(b_id),
+    modules.get_requested_modules_cloned(b_id),
     Some(vec![ModuleRequest {
       reference: crate::modules::ModuleReference {
         specifier: ModuleSpecifier::parse("file:///c.js").unwrap(),
@@ -1980,7 +2018,7 @@ fn recursive_load_main_with_code() {
     }])
   );
   assert_eq!(
-    modules.get_requested_modules(c_id),
+    modules.get_requested_modules_cloned(c_id),
     Some(vec![ModuleRequest {
       reference: crate::modules::ModuleReference {
         specifier: ModuleSpecifier::parse("file:///d.js").unwrap(),
@@ -1991,7 +2029,7 @@ fn recursive_load_main_with_code() {
       phase: crate::modules::ModuleImportPhase::Evaluation,
     }])
   );
-  assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
+  assert_eq!(modules.get_requested_modules_cloned(d_id), Some(vec![]));
 }
 
 #[test]
