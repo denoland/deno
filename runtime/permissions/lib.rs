@@ -1962,21 +1962,28 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
-      // Compared through `comparison_path` for the same reason filesystem
-      // descriptors are: on case-insensitive filesystems (macOS APFS/HFS+,
-      // Windows NTFS) `/run/app/Control.sock` and `/run/app/control.sock`
-      // name the same socket, so a raw `==` would let a case-variant spelling
-      // slip past a `--deny-net=unix:<path>` rule.
-      (Host::UnixSocket(a), Host::UnixSocket(b)) => {
-        comparison_path(a) == comparison_path(b)
-      }
+      // Allow rules must use the exact spelling. macOS volumes may be either
+      // case-sensitive or case-insensitive, and folding here would broaden an
+      // allow rule on a case-sensitive volume.
+      (Host::UnixSocket(a), Host::UnixSocket(b)) => a == b,
       (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
     }
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self.matches_allow(other)
+    if other.1.is_some() && self.1 != other.1 {
+      return false;
+    }
+    match (&other.0, &self.0) {
+      // Deny rules conservatively fold socket paths on platforms whose usual
+      // filesystems are case-insensitive, preventing a case-variant spelling
+      // from bypassing the rule.
+      (Host::UnixSocket(a), Host::UnixSocket(b)) => {
+        comparison_path(a) == comparison_path(b)
+      }
+      _ => self.matches_allow(other),
+    }
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
@@ -10681,8 +10688,7 @@ mod tests {
   fn test_net_unix_socket_path_equivalence() {
     // Regression test: on case-insensitive filesystems a case-variant
     // spelling of a socket path names the same socket, so it must not slip
-    // past a `--deny-net=unix:<path>` rule (nor be treated as ungranted when
-    // an `--allow-net=unix:<path>` rule names it).
+    // past a `--deny-net=unix:<path>` rule.
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
     let perms = Permissions::from_options(
@@ -10713,8 +10719,8 @@ mod tests {
       assert!(case_variant_result, "case variant must not bypass the deny");
     }
 
-    // The allow side folds the same way: a scoped grant covers the
-    // case-variant spelling of the socket it names, and nothing else.
+    // Allow matching remains exact because macOS also supports case-sensitive
+    // volumes, where the case variant may name a different socket.
     let parser = TestPermissionDescriptorParser;
     let perms = Permissions::from_options(
       &parser,
@@ -10731,13 +10737,11 @@ mod tests {
         .check_net_unix_socket(Path::new("/run/app/Control.sock"), None)
         .is_ok()
     );
-    if cfg!(any(target_os = "macos", windows)) {
-      assert!(
-        perms
-          .check_net_unix_socket(Path::new("/run/app/control.sock"), None)
-          .is_ok()
-      );
-    }
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/control.sock"), None)
+        .is_err()
+    );
     assert!(
       perms
         .check_net_unix_socket(Path::new("/run/app/other.sock"), None)
