@@ -515,6 +515,17 @@ fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   {
     _ = mode;
   }
+  let path = if recursive {
+    // `DirBuilder::create` fails on trailing dot-segments (e.g. `foo/.`):
+    // `create_dir_all` falls back to `Path::parent()`, which drops the last
+    // real component along with the `.`, so that component never gets created
+    // and the retry still fails with ENOENT. Normalizing strips `.` while
+    // preserving `..` for the kernel to resolve.
+    // See https://github.com/denoland/deno/issues/35450.
+    Cow::Owned(path.components().collect::<PathBuf>())
+  } else {
+    Cow::Borrowed(path)
+  };
   builder.create(path).map_err(Into::into)
 }
 
