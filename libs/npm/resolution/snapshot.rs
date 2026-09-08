@@ -1071,6 +1071,12 @@ pub struct SnapshotFromLockfileParams<'a> {
 
 pub trait DefaultTarballUrlProvider {
   fn default_tarball_url(&self, nv: &PackageNv) -> String;
+
+  /// Returns whether an explicit lockfile tarball URL is trusted in addition
+  /// to the configured registry and the default npm registry.
+  fn is_tarball_url_allowed(&self, _nv: &PackageNv, _url: &Url) -> bool {
+    false
+  }
 }
 
 impl Default for &dyn DefaultTarballUrlProvider {
@@ -1123,7 +1129,12 @@ fn dist_from_incomplete_package_info(
   let tarball = tarball.filter(|tarball| !tarball.is_empty());
   let tarball = match tarball {
     Some(tarball) => {
-      validate_incomplete_lockfile_tarball_url(id, tarball, &default_tarball)?;
+      validate_incomplete_lockfile_tarball_url(
+        id,
+        tarball,
+        &default_tarball,
+        default_tarball_url,
+      )?;
       tarball.to_string()
     }
     None => default_tarball,
@@ -1140,6 +1151,7 @@ fn validate_incomplete_lockfile_tarball_url(
   id: &PackageNv,
   tarball: &str,
   default_tarball: &str,
+  default_tarball_url_provider: &dyn DefaultTarballUrlProvider,
 ) -> Result<(), SnapshotFromLockfileError> {
   let tarball_url = Url::parse(tarball).map_err(|_| {
     SnapshotFromLockfileError::InvalidPackageTarballUrl {
@@ -1161,6 +1173,7 @@ fn validate_incomplete_lockfile_tarball_url(
     .origin();
   if tarball_url.origin() != expected_origin
     && tarball_url.origin() != npm_registry_origin
+    && !default_tarball_url_provider.is_tarball_url_allowed(id, &tarball_url)
   {
     return Err(SnapshotFromLockfileError::PackageTarballOriginMismatch {
       package_nv: Box::new(id.clone()),
@@ -1719,6 +1732,11 @@ mod tests {
         nv.version
       )
     }
+
+    fn is_tarball_url_allowed(&self, _nv: &PackageNv, url: &Url) -> bool {
+      url.origin()
+        == Url::parse("https://tarballs.example.com").unwrap().origin()
+    }
   }
 
   async fn snapshot_from_lockfile_content(
@@ -1944,6 +1962,37 @@ mod tests {
     assert_eq!(
       package.dist.as_ref().unwrap().tarball,
       "https://scope.example.com/downloads/pkg-1.0.0.tgz"
+    );
+  }
+
+  #[tokio::test]
+  async fn test_snapshot_from_lockfile_allows_configured_tarball_origin() {
+    let snapshot = snapshot_from_lockfile_content(
+      r#"{
+        "version": "5",
+        "specifiers": {
+          "npm:@scope/pkg@1": "1.0.0"
+        },
+        "npm": {
+          "@scope/pkg@1.0.0": {
+            "integrity": "sha512-integrity1",
+            "tarball": "https://tarballs.example.com/pkg-1.0.0.tgz",
+            "dependencies": []
+          }
+        }
+      }"#,
+      &TestScopedRegistryTarballUrlProvider,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+      snapshot.as_serialized().packages[0]
+        .dist
+        .as_ref()
+        .unwrap()
+        .tarball,
+      "https://tarballs.example.com/pkg-1.0.0.tgz"
     );
   }
 
