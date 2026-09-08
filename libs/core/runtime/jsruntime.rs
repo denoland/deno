@@ -1309,25 +1309,17 @@ impl JsRuntime {
       js_runtime.files_loaded_from_fs_during_snapshot = files_loaded;
     }
 
-    // Every runtime gets a uv loop for the libuv compat layer (timers,
-    // I/O, setImmediate, etc.). Stored in both OpState (for ext/node ops
-    // that need the raw pointer) and ContextState (for event loop phases).
+    // The libuv compat layer (timers, I/O, setImmediate, ...) is created
+    // lazily: runtimes that never touch a uv handle never pay for the loop.
+    // All we install here is the factory that knows how to build and wire
+    // one up on first use — see [`ensure_uv_loop`]. Snapshotting runtimes
+    // never get a loop at all (same as before).
     if !will_snapshot {
-      // SAFETY: zeroed memory is valid for uv_loop_t before uv_loop_init.
-      let mut uv_loop =
-        Box::new(unsafe { std::mem::zeroed::<uv_compat::UvLoop>() });
-      // SAFETY: uv_loop points to valid zeroed memory.
-      unsafe { uv_compat::uv_loop_init(&mut *uv_loop) };
-      let loop_ptr: *mut uv_compat::UvLoop = &mut *uv_loop;
-      // SAFETY: loop_ptr is valid and initialized.
-      unsafe { js_runtime.register_uv_loop(loop_ptr) };
-      js_runtime.inner.state.op_state.borrow_mut().put(uv_loop);
-      js_runtime
-        .inner
-        .state
-        .op_state
-        .borrow_mut()
-        .put(uv_compat::AsyncId::default());
+      let factory = UvLoopFactory {
+        context_state: js_runtime.inner.main_realm.0.context_state.clone(),
+        context: js_runtime.inner.main_realm.0.context().clone(),
+      };
+      js_runtime.inner.state.op_state.borrow_mut().put(factory);
     }
 
     // ...and we've made it; `JsRuntime` is ready to execute user code.
@@ -1940,9 +1932,22 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
-  /// Returns the raw `uv_loop_t` pointer registered with this runtime,
-  /// or `None` if no loop is registered.
+  /// Returns the raw `uv_loop_t` pointer for this runtime, creating and
+  /// registering the libuv compat loop on first call.
+  ///
+  /// Returns `None` only for snapshotting runtimes, which never get a loop.
   pub fn uv_loop_ptr(&self) -> Option<*mut uv_compat::uv_loop_t> {
+    if let Some(loop_ptr) =
+      self.inner.main_realm.0.context_state.uv_loop_ptr.get()
+    {
+      return Some(loop_ptr);
+    }
+    ensure_uv_loop(&mut self.inner.state.op_state.borrow_mut())
+  }
+
+  /// Returns the raw `uv_loop_t` pointer if a loop has already been created
+  /// for this runtime, without creating one.
+  pub fn existing_uv_loop_ptr(&self) -> Option<*mut uv_compat::uv_loop_t> {
     self.inner.main_realm.0.context_state.uv_loop_ptr.get()
   }
 
@@ -1968,28 +1973,14 @@ impl JsRuntime {
     loop_ptr: *mut uv_compat::uv_loop_t,
   ) {
     let realm = &self.inner.main_realm;
-    let context_state = &realm.0.context_state;
-    let inner_ptr = unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
-    let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
-    context_state.uv_loop_inner.set(Some(uv_inner));
-    context_state.uv_loop_ptr.set(Some(loop_ptr));
-
-    let global_ctx = realm.0.context().clone();
-    let raw = global_ctx.into_raw();
-    // SAFETY: `loop_ptr` is a valid, initialized `uv_loop_t` guaranteed
-    // by the caller. `raw` is a persistent-handle slot pointer from
-    // `Global::into_raw()` — V8 keeps it updated across GC cycles.
-    // The raw Global is reconstructed and dropped in `JsRealmInner::destroy`.
+    // SAFETY: forwarded from the caller's contract.
     unsafe {
-      (*loop_ptr).data = raw.as_ptr() as *mut std::ffi::c_void;
-    }
-
-    // Create the check handle for setImmediate.
-    // JS controls start/stop/ref/unref via op_immediate_check.
-    // SAFETY: loop_ptr is valid per caller contract.
-    let check_handle =
-      unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
-    *context_state.immediate_check_handle.borrow_mut() = Some(check_handle);
+      register_uv_loop_with(
+        &realm.0.context_state,
+        realm.0.context().clone(),
+        loop_ptr,
+      )
+    };
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2463,9 +2454,15 @@ impl JsRuntime {
     let mut dispatched_ops = false;
     let mut did_work = false;
     let mut uv_did_io = false;
+
+    // The libuv compat loop is created lazily (see `ensure_uv_loop`), so a
+    // runtime that never touches a uv handle has none — read the pointer
+    // once here and skip every uv phase below for the whole tick.
+    let uv_inner = context_state.uv_loop_inner.get();
+
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
-    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+    if let Some(uv_inner_ptr) = uv_inner {
       // Update cached loop time at the start of each tick, matching libuv.
       unsafe { (*uv_inner_ptr).update_time() };
       unsafe { (*uv_inner_ptr).run_timers() };
@@ -2515,8 +2512,14 @@ impl JsRuntime {
     // ===== Phase 3: Idle / Prepare =====
     // In libuv: idle runs after pending callbacks, prepare runs right
     // before I/O polling. Both must precede I/O.
-    let has_uv = context_state.uv_loop_inner.get().is_some();
-    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+    // Ops and JS that ran in phase 2 may have created the loop (lazily), so
+    // refresh the pointer once before the remaining phases.
+    let uv_inner = match uv_inner {
+      Some(ptr) => Some(ptr),
+      None => context_state.uv_loop_inner.get(),
+    };
+    let has_uv = uv_inner.is_some();
+    if let Some(uv_inner_ptr) = uv_inner {
       unsafe {
         (*uv_inner_ptr).run_idle();
         (*uv_inner_ptr).run_prepare();
@@ -2534,7 +2537,7 @@ impl JsRuntime {
     // event loop processing hundreds of handles back-to-back, which
     // crushes tail latency (p99 30–200 ms vs ~1 ms with a single
     // call).
-    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+    if let Some(uv_inner_ptr) = uv_inner {
       unsafe {
         (*uv_inner_ptr).set_waker(cx.waker());
       }
@@ -2556,7 +2559,7 @@ impl JsRuntime {
     // In libuv: check runs right after I/O polling.
     // Immediates fire here, matching Node.js's setImmediate semantics
     // (libuv check phase, after I/O).
-    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+    if let Some(uv_inner_ptr) = uv_inner {
       unsafe { (*uv_inner_ptr).run_check() };
     }
     // Drain immediates in the check phase, matching Node.js semantics:
@@ -2597,7 +2600,7 @@ impl JsRuntime {
       let mut phases = context_state.event_loop_phases.borrow_mut();
       phases.run_close_callbacks();
     }
-    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+    if let Some(uv_inner_ptr) = uv_inner {
       unsafe { (*uv_inner_ptr).run_close() };
     }
     // Run V8 close callbacks (JS handle.close() callbacks).
@@ -3026,6 +3029,91 @@ impl JsRuntimeForSnapshot {
 
     snapshot::serialize(v8_data, sidecar_data)
   }
+}
+
+/// Everything needed to build and wire up a libuv compat loop after the
+/// runtime is already running. Stored in `OpState` for non-snapshotting
+/// runtimes so that the first piece of code needing a `uv_loop_t` can
+/// create one — see [`ensure_uv_loop`].
+///
+/// This is deliberately tiny: the expensive parts (the loop itself, its
+/// handle tables and the setImmediate check/idle handles) are only
+/// allocated if something actually asks for the loop.
+pub(crate) struct UvLoopFactory {
+  context_state: Rc<ContextState>,
+  context: v8::Global<v8::Context>,
+}
+
+/// Wire an already-initialized `uv_loop_t` into a context.
+///
+/// # Safety
+/// `loop_ptr` must be a valid, initialized `uv_loop_t` that outlives
+/// `context_state`.
+unsafe fn register_uv_loop_with(
+  context_state: &ContextState,
+  context: v8::Global<v8::Context>,
+  loop_ptr: *mut uv_compat::uv_loop_t,
+) {
+  // SAFETY: `loop_ptr` is a valid, initialized loop per caller contract.
+  let inner_ptr = unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
+  let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
+  context_state.uv_loop_inner.set(Some(uv_inner));
+  context_state.uv_loop_ptr.set(Some(loop_ptr));
+
+  let raw = context.into_raw();
+  // SAFETY: `loop_ptr` is a valid, initialized `uv_loop_t` guaranteed
+  // by the caller. `raw` is a persistent-handle slot pointer from
+  // `Global::into_raw()` — V8 keeps it updated across GC cycles.
+  // The raw Global is reconstructed and dropped in `JsRealmInner::destroy`.
+  unsafe {
+    (*loop_ptr).data = raw.as_ptr() as *mut std::ffi::c_void;
+  }
+
+  // Create the check handle for setImmediate.
+  // JS controls start/stop/ref/unref via op_immediate_check.
+  // SAFETY: loop_ptr is valid per caller contract.
+  let check_handle = unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
+  *context_state.immediate_check_handle.borrow_mut() = Some(check_handle);
+}
+
+/// Returns the runtime's libuv compat loop, creating and registering it on
+/// first use. This is the lazy-creation seam: anything that needs a
+/// `uv_loop_t` (a uv handle, `setImmediate` refs, napi, ...) goes through
+/// here, and runtimes that never do pay nothing.
+///
+/// Returns `None` if this `OpState` does not belong to a runtime that can
+/// host a uv loop (i.e. a snapshotting runtime).
+///
+/// The loop is owned by `OpState` as a `Box<UvLoop>`, so after the first
+/// call `op_state.borrow::<Box<UvLoop>>()` works as it always has.
+pub fn ensure_uv_loop(
+  op_state: &mut OpState,
+) -> Option<*mut uv_compat::uv_loop_t> {
+  if let Some(uv_loop) = op_state.try_borrow::<Box<uv_compat::UvLoop>>() {
+    return Some(&**uv_loop as *const uv_compat::UvLoop as *mut _);
+  }
+  let factory = op_state.try_borrow::<UvLoopFactory>()?;
+  let context_state = factory.context_state.clone();
+  let context = factory.context.clone();
+
+  // SAFETY: zeroed memory is valid for uv_loop_t before uv_loop_init.
+  let mut uv_loop =
+    Box::new(unsafe { std::mem::zeroed::<uv_compat::UvLoop>() });
+  // SAFETY: uv_loop points to valid zeroed memory.
+  unsafe { uv_compat::uv_loop_init(&mut *uv_loop) };
+  let loop_ptr: *mut uv_compat::UvLoop = &mut *uv_loop;
+  // SAFETY: the loop was just initialized and is owned by `OpState`, which
+  // outlives the context state (see `InnerIsolateState::cleanup`).
+  unsafe { register_uv_loop_with(&context_state, context, loop_ptr) };
+  // Moving the `Box` does not move the loop itself, so `loop_ptr` stays
+  // valid.
+  op_state.put(uv_loop);
+  // `put` overwrites, and ext/node hands out async ids before anything
+  // needs a uv loop, so don't reset a counter that is already running.
+  if op_state.try_borrow::<uv_compat::AsyncId>().is_none() {
+    op_state.put(uv_compat::AsyncId::default());
+  }
+  Some(loop_ptr)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -3567,10 +3655,17 @@ impl JsRuntime {
         }
       }
 
-      context_state.unrefed_ops.borrow_mut().remove(&promise_id);
-      context_state
-        .activity_traces
-        .complete(RuntimeActivityType::AsyncOp, promise_id as _);
+      // Both of these are no-ops in the common case: most runtimes never
+      // unref an op and leak tracing is off unless a test enables it. The
+      // guards avoid a `RefCell` borrow + hash/tree lookup per completion.
+      if !context_state.unrefed_ops.borrow().is_empty() {
+        context_state.unrefed_ops.borrow_mut().remove(&promise_id);
+      }
+      if context_state.activity_traces.is_enabled() {
+        context_state
+          .activity_traces
+          .complete(RuntimeActivityType::AsyncOp, promise_id as _);
+      }
       args.push(v8::Integer::new(scope, promise_id).into());
       args.push(v8::Boolean::new(scope, res.is_ok()).into());
       args.push(res.unwrap_or_else(std::convert::identity));
