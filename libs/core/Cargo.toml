@@ -98,6 +98,11 @@ path = "benches/infra/arena.rs"
 harness = false
 
 [[bench]]
+name = "state_tables"
+path = "benches/infra/state_tables.rs"
+harness = false
+
+[[bench]]
 name = "snapshot"
 path = "benches/snapshot/snapshot.rs"
 harness = false
