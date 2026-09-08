@@ -2,7 +2,8 @@
 // hostname that the OS resolver maps to the denied IP. The raw
 // `process.binding("tcp_wrap")` API skips the `node:net` JS glue that
 // pre-resolves the hostname, so the check has to happen after resolution.
-// e.g. 2130706433 is the decimal representation of 127.0.0.1.
+// Both loopback families are denied so localhost works regardless of which
+// address the resolver returns first.
 
 // deno-lint-ignore no-explicit-any
 const { TCP } = (process as any).binding("tcp_wrap");
@@ -22,16 +23,19 @@ function tryBind(name: string, address: string, bind6 = false) {
   }
 }
 
-// Binding to 127.0.0.1 directly — should be denied.
-tryBind("direct 127.0.0.1", "127.0.0.1");
+if (Deno.args[0] === "numeric") {
+  // Decimal and hex representations of 127.0.0.1 resolve on Unix. Windows
+  // returns a resolver error before reaching the post-resolution check.
+  tryBind("numeric 2130706433", "2130706433");
+  tryBind("hex 0x7f000001", "0x7f000001");
+  tryBind("bind6 numeric 2130706433", "2130706433", true);
+  tryBind("bind6 hex 0x7f000001", "0x7f000001", true);
+} else {
+  tryBind("direct 127.0.0.1", "127.0.0.1");
+  tryBind("bind6 ::1", "::1", true);
 
-// Binding via decimal numeric hostname 2130706433 — should also be denied.
-tryBind("numeric 2130706433", "2130706433");
-
-// Binding via 0x7f000001 (hex form) — should also be denied.
-tryBind("hex 0x7f000001", "0x7f000001");
-
-// Same via bind6, which has its own copy of the check.
-tryBind("bind6 ::1", "::1", true);
-tryBind("bind6 numeric 2130706433", "2130706433", true);
-tryBind("bind6 hex 0x7f000001", "0x7f000001", true);
+  // localhost passes the pre-resolution check and exercises the separate
+  // post-resolution checks in bind and bind6 on every platform.
+  tryBind("localhost", "localhost");
+  tryBind("bind6 localhost", "localhost", true);
+}
