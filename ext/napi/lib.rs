@@ -960,12 +960,11 @@ fn op_napi_open<'scope>(
   // through to other uv_* polyfill functions, which re-resolve it from
   // this thread-local in any case.
   {
-    let op_state = op_state.borrow();
-    if let Some(uv_loop) =
-      op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-    {
-      let loop_ptr =
-        &**uv_loop as *const deno_core::uv_compat::UvLoop as *mut _;
+    let mut op_state = op_state.borrow_mut();
+    // The loop is created lazily, and an addon that uses the uv timer
+    // polyfills is exactly the case that needs one, so ask for it rather
+    // than looking for one that may not exist yet.
+    if let Some(loop_ptr) = deno_core::ensure_uv_loop(&mut op_state) {
       crate::uv::register_default_uv_loop(loop_ptr);
     }
   }

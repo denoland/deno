@@ -237,6 +237,12 @@ impl From<ProviderType> for i32 {
 pub use deno_core::uv_compat::AsyncId;
 
 fn next_async_id(state: &mut OpState) -> i64 {
+  // Async ids are handed out to things that never touch a uv handle, and
+  // the counter now arrives with the lazily created uv loop, so install it
+  // on first use instead of assuming a loop already exists.
+  if state.try_borrow::<AsyncId>().is_none() {
+    state.put(AsyncId::default());
+  }
   state.borrow_mut::<AsyncId>().next()
 }
 
