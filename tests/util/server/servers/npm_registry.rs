@@ -533,7 +533,7 @@ async fn download_npm_registry_file(
   Ok(())
 }
 
-const PREBUILT_URL: &str = "https://raw.githubusercontent.com/denoland/deno_third_party/d074edee0f4199f8226e1f87b88ccb7956d94454/prebuilt/";
+const PREBUILT_URL: &str = "https://raw.githubusercontent.com/denoland/deno_third_party/11713a75449eb48d9c82af7496d9d3caf1d238bc/prebuilt/";
 
 async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
   let bin_name = match (std::env::consts::ARCH, std::env::consts::OS) {
