@@ -553,6 +553,9 @@ async fn ensure_types_node(
   // Reuse an @types/node the project already installed under node_modules.
   if !use_global_cache_layout {
     let node_modules = project_root.join("node_modules");
+    // This tree is owned by the project's package manager rather than the
+    // atomic publisher below, so `package.json` is not a valid completion
+    // marker here.
     if node_modules.join("@types/node").exists() {
       let undici_types_dir = node_modules.join("undici-types");
       return NodeTypesSetup {
@@ -1007,8 +1010,36 @@ async fn install_jsr_packages(
 /// cache, one can observe a directory the other has only started filling in,
 /// skip the download, and then fail type checking with
 /// `TS2688 Cannot find type definition file for 'node'`.
+/// npm and npm.jsr.io package tarballs are required to contain a top-level
+/// `package.json`; this marker relies on that invariant.
 fn is_materialized_package(dir: &Path) -> bool {
   dir.join("package.json").exists()
+}
+
+fn cleanup_stale_staging_dirs(
+  parent: &Path,
+  staging_prefix: &str,
+  stale_before: std::time::SystemTime,
+) {
+  let Ok(entries) = std::fs::read_dir(parent) else {
+    return;
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if !entry
+      .file_name()
+      .to_string_lossy()
+      .starts_with(staging_prefix)
+      || !entry.file_type().is_ok_and(|file_type| file_type.is_dir())
+      || !entry
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+        .is_ok_and(|modified| modified < stale_before)
+    {
+      continue;
+    }
+    let _ = std::fs::remove_dir_all(path);
+  }
 }
 
 /// Extract a gzipped npm-style tarball so that `dest` is never observable in a
@@ -1035,9 +1066,20 @@ fn extract_tarball_gz_atomic(
   let name = dest.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
     anyhow!("Invalid extract destination: {}", dest.display())
   })?;
+  // The leading dot is required because this parent is passed to TypeScript as
+  // a typeRoots directory, and TypeScript ignores dot-prefixed entries when it
+  // enumerates type packages.
+  let staging_prefix = format!(".{name}.tmp-");
+  // Reclaim staging dirs left by killed processes. Keep recent dirs because
+  // they may belong to another extraction currently racing with this one.
+  if let Some(stale_before) = std::time::SystemTime::now()
+    .checked_sub(std::time::Duration::from_secs(24 * 60 * 60))
+  {
+    cleanup_stale_staging_dirs(parent, &staging_prefix, stale_before);
+  }
   let tmp_dir = parent.join(format!(
-    ".{}.tmp-{}-{}",
-    name,
+    "{}{}-{}",
+    staging_prefix,
     std::process::id(),
     STAGING_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
   ));
@@ -1721,6 +1763,35 @@ mod tests {
       flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     std::io::Write::write_all(&mut encoder, &tar_bytes).unwrap();
     encoder.finish().unwrap()
+  }
+
+  #[test]
+  fn test_cleanup_stale_staging_dirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let staging_dir = dir.path().join(".node.tmp-123-0");
+    let other_dir = dir.path().join(".other.tmp-123-0");
+    let similarly_named_file = dir.path().join(".node.tmp-123-1");
+    std::fs::create_dir(&staging_dir).unwrap();
+    std::fs::create_dir(&other_dir).unwrap();
+    std::fs::write(&similarly_named_file, "keep").unwrap();
+
+    // A cutoff older than every filesystem entry keeps active staging dirs.
+    cleanup_stale_staging_dirs(
+      dir.path(),
+      ".node.tmp-",
+      std::time::SystemTime::UNIX_EPOCH,
+    );
+    assert!(staging_dir.exists());
+
+    // A later cutoff removes only matching directories.
+    cleanup_stale_staging_dirs(
+      dir.path(),
+      ".node.tmp-",
+      std::time::SystemTime::now() + std::time::Duration::from_secs(1),
+    );
+    assert!(!staging_dir.exists());
+    assert!(other_dir.exists());
+    assert!(similarly_named_file.exists());
   }
 
   #[test]
