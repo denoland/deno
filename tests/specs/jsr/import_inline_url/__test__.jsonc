@@ -1,0 +1,31 @@
+{
+  "tests": {
+    "benign_data": {
+      "args": "run --quiet -A benign_data.ts",
+      "output": "benign_data.out"
+    },
+    "data_remote": {
+      "args": "run --quiet -A data_remote.ts",
+      "output": "blocked.out",
+      "exitCode": 1
+    },
+    "blob_remote": {
+      "args": "run --quiet -A blob_remote.ts",
+      "output": "blocked.out",
+      "exitCode": 1
+    },
+    "chained_data_remote": {
+      "args": "run --quiet -A chained_data_remote.ts",
+      "output": "blocked.out",
+      "exitCode": 1
+    },
+    "non_jsr_inline": {
+      "args": "run --quiet -A non_jsr_inline.ts",
+      "output": "non_jsr_inline.out"
+    },
+    "import_meta_resolve": {
+      "args": "run --quiet -A import_meta_resolve.ts",
+      "output": "non_jsr_inline.out"
+    }
+  }
+}
