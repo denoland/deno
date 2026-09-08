@@ -53,6 +53,86 @@ Deno.test("messagechannel no-transferables ports is empty frozen array", async (
   mc.port2.close();
 });
 
+Deno.test("message port resource is not mutable through own symbols", () => {
+  const { port1, port2 } = new MessageChannel();
+  const other = new MessageChannel();
+
+  try {
+    const idSymbol = Object.getOwnPropertySymbols(port1).find((symbol) =>
+      symbol.description === "id"
+    );
+    if (idSymbol !== undefined) {
+      const mutablePort = port1 as unknown as Record<symbol, unknown>;
+      const mutableOther = other.port1 as unknown as Record<symbol, unknown>;
+      mutablePort[idSymbol] = mutableOther[idSymbol];
+    }
+
+    port1.close();
+    other.port1.postMessage(null);
+  } finally {
+    for (const port of [port1, port2, other.port1, other.port2]) {
+      try {
+        port.close();
+      } catch {
+        // A failed close can leave the substituted wrapper stale.
+      }
+    }
+  }
+});
+
+Deno.test("message port transfer keeps the original resource", async () => {
+  const workerSource = encodeURIComponent(`
+    onmessage = ({ data: port }) => {
+      port.postMessage("worker");
+      port.close();
+      close();
+    };
+  `);
+  const worker = new Worker(`data:application/javascript,${workerSource}`, {
+    type: "module",
+  });
+  const carrier = new MessageChannel();
+  const other = new MessageChannel();
+  const received = Promise.withResolvers<string>();
+
+  worker.onerror = (event) => received.reject(event.error);
+  carrier.port2.onmessage = () => received.resolve("carrier");
+  other.port2.onmessage = () => received.resolve("other");
+
+  try {
+    const idSymbol = Object.getOwnPropertySymbols(carrier.port1).find(
+      (symbol) => symbol.description === "id",
+    );
+    if (idSymbol !== undefined) {
+      const mutableCarrier = carrier.port1 as unknown as Record<
+        symbol,
+        unknown
+      >;
+      const mutableOther = other.port1 as unknown as Record<symbol, unknown>;
+      mutableCarrier[idSymbol] = mutableOther[idSymbol];
+    }
+
+    worker.postMessage(carrier.port1, [carrier.port1]);
+    assertEquals(await received.promise, "carrier");
+  } finally {
+    worker.terminate();
+    for (
+      const port of [
+        carrier.port1,
+        carrier.port2,
+        other.port1,
+        other.port2,
+      ]
+    ) {
+      try {
+        port.close();
+      } catch {
+        // A failed transfer can leave the substituted wrapper stale.
+      }
+    }
+  }
+});
+
 Deno.test("messagechannel primitive fast path", async () => {
   // Primitives take a custom encoding that bypasses V8's structured-clone
   // serializer; verify a representative spread round-trips exactly, including

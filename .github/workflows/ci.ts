@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 123;
+const cacheVersion = 124;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -119,6 +119,10 @@ const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootConfig = {
   name: "Set up incremental LTO and sysroot build",
+  // This normally takes under a minute, but `apt-get update` has been seen to
+  // hang indefinitely when a mirror is unreachable, burning the job's whole
+  // timeout before a single test runs. Fail fast instead.
+  timeoutMinutes: 10,
   run: `# Setting up sysroot
 export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes
@@ -1225,9 +1229,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const shouldPublishCondition = isRelease.and(isDenoland)
           .and(isTag);
         const publishStep = step.if(shouldPublishCondition)(
-          step({
-            name: "Upload release to dl.deno.land (unix)",
-            if: isWindows.not(),
+          {
+            name: "Upload release to dl.deno.land",
             env: S3Envs,
             run: [
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
@@ -1235,20 +1238,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.bsdiff"',
             ],
-          }, {
-            name: "Upload release to dl.deno.land (windows)",
-            if: isWindows,
-            env: {
-              ...S3Envs,
-              CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
-            },
-            run: [
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
-              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.bsdiff"',
-            ],
-          }),
+          },
           {
             name: "Create release notes",
             run: [

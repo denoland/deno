@@ -44,6 +44,7 @@ use std::thread_local;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
+use deno_core::V8TaskSpawner;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
@@ -69,6 +70,17 @@ pub mod function;
 mod pe;
 mod value;
 
+/// Render the source (underlying OS error) of a `libloading::Error` as a
+/// `": <error>"` suffix, or an empty string when there is no source. libloading
+/// does not include the OS error in its own `Display`.
+fn fmt_lib_load_source(err: &libloading::Error) -> String {
+  use std::error::Error;
+  match err.source() {
+    Some(source) => format!(": {source}"),
+    None => String::new(),
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NApiError {
   #[class(type)]
@@ -78,8 +90,15 @@ pub enum NApiError {
   #[error(transparent)]
   DenoRtLoad(#[from] denort_helper::LoadError),
   #[class(type)]
-  #[error(transparent)]
-  LibLoading(#[from] libloading::Error),
+  // libloading's `Display` for a failed load is opaque (e.g. just
+  // `LoadLibraryExW failed` on Windows). Surface the underlying OS error via
+  // `source` and the resolved path so the failure is actionable. See
+  // denoland/deno#36622.
+  #[error("{source}{}\n  path: {}", fmt_lib_load_source(source), path.display())]
+  LibraryLoad {
+    source: libloading::Error,
+    path: PathBuf,
+  },
   #[class(type)]
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
@@ -254,6 +273,7 @@ pub const napi_float32_array: napi_typedarray_type = 7;
 pub const napi_float64_array: napi_typedarray_type = 8;
 pub const napi_bigint64_array: napi_typedarray_type = 9;
 pub const napi_biguint64_array: napi_typedarray_type = 10;
+pub const napi_float16_array: napi_typedarray_type = 11;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq)]
@@ -343,18 +363,111 @@ impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 /// This matches Node.js's behavior of tracking references with finalize
 /// callbacks and calling them during `napi_env::DeleteMe()`.
 pub struct PendingNapiFinalizer {
+  /// Unique identity of this registration. Finalizers must be deregistered by
+  /// id, never by `data`: several live registrations can share the same `data`
+  /// pointer (addons routinely pass a null or repeated `native_object`), and
+  /// removing an arbitrary entry with a matching `data` leaves the entry whose
+  /// callback already ran behind, which then runs a second time at shutdown.
+  ///
+  /// `None` for entries in [`RefTracker::gc_ready`]: those were already
+  /// deregistered by id when the GC handed them over, and are only waiting for
+  /// a JS-safe point to run, so nothing can look them up again.
+  pub id: Option<NapiFinalizerId>,
   pub env: napi_env,
   pub cb: napi_finalize,
   pub data: *mut c_void,
   pub hint: *mut c_void,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NapiFinalizerId(u64);
+
+/// Tracked finalizer callbacks that should be called at shutdown.
+/// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+#[derive(Default)]
+pub struct RefTracker {
+  next_id: u64,
+  pending: Vec<PendingNapiFinalizer>,
+  /// Finalizers whose objects have already been collected by the GC and are
+  /// waiting to run at the next point where JavaScript execution is legal
+  /// (see [`Env::defer_gc_finalizer`]). Kept separate from `pending` because
+  /// these are already committed to run exactly once — they must not be
+  /// confused with finalizers for objects that are still alive.
+  gc_ready: Vec<PendingNapiFinalizer>,
+  /// Whether an event-loop task has already been scheduled to drain
+  /// `gc_ready`. Avoids scheduling one task per collected object when a single
+  /// GC cycle reclaims many references at once.
+  drain_requested: bool,
+}
+
+impl RefTracker {
+  /// Removes and returns all finalizers still owed at environment teardown:
+  /// GC-collected finalizers that never got a chance to drain, plus
+  /// finalizers for objects that were never collected.
+  pub fn take_pending(&mut self) -> Vec<PendingNapiFinalizer> {
+    self.drain_requested = false;
+    let mut all = std::mem::take(&mut self.gc_ready);
+    all.append(&mut self.pending);
+    all
+  }
+
+  /// Queues a GC-collected finalizer to run at the next JS-safe point,
+  /// returning `true` if the caller should schedule a fresh drain task (i.e.
+  /// no drain was already pending).
+  fn defer(&mut self, finalizer: PendingNapiFinalizer) -> bool {
+    self.gc_ready.push(finalizer);
+    let need_schedule = !self.drain_requested;
+    self.drain_requested = true;
+    need_schedule
+  }
+
+  /// Removes and returns the GC-collected finalizers ready to run, clearing
+  /// the "drain requested" flag so that finalizers queued from here on
+  /// schedule a new drain task.
+  fn take_gc_ready(&mut self) -> Vec<PendingNapiFinalizer> {
+    self.drain_requested = false;
+    std::mem::take(&mut self.gc_ready)
+  }
+
+  fn add(
+    &mut self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) -> NapiFinalizerId {
+    let id = NapiFinalizerId(self.next_id);
+    self.next_id += 1;
+    self.pending.push(PendingNapiFinalizer {
+      id: Some(id),
+      env,
+      cb,
+      data,
+      hint,
+    });
+    id
+  }
+
+  /// Removes the entry with `id`, returning `true` if it was still pending.
+  /// The return value lets the GC weak callback and env teardown coordinate
+  /// the "run once" contract: whichever path removes the entry first runs the
+  /// finalizer, and the other observes `false` and skips it.
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  fn remove(&mut self, id: NapiFinalizerId) -> bool {
+    if let Some(pos) = self.pending.iter().rposition(|f| f.id == Some(id)) {
+      self.pending.remove(pos);
+      true
+    } else {
+      false
+    }
+  }
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  /// Tracked finalizer callbacks that should be called at shutdown.
-  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
-  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  pub ref_tracker: Rc<RefCell<RefTracker>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
   /// Raw Env pointers for teardown of external string finalizers.
   pub env_ptrs: Vec<*mut Env>,
@@ -489,8 +602,13 @@ pub struct Env {
   pub open_callback_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
+  /// Same-thread event-loop task queue, used to run GC-collected finalizers at
+  /// the next JS-safe point (see [`Env::defer_gc_finalizer`]). Only ever
+  /// touched on the isolate thread; like the `Rc` fields below it relies on the
+  /// `unsafe impl Send for Env` never actually exercising these off-thread.
+  gc_finalizer_spawner: V8TaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  ref_tracker: Rc<RefCell<RefTracker>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
@@ -520,8 +638,9 @@ impl Env {
     async_hooks_after: v8::Global<v8::Function>,
     async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
+    gc_finalizer_spawner: V8TaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+    ref_tracker: Rc<RefCell<RefTracker>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
@@ -539,6 +658,7 @@ impl Env {
       open_handle_scopes: 0,
       open_callback_scopes: 0,
       async_work_sender: sender,
+      gc_finalizer_spawner,
       cleanup_hooks,
       ref_tracker,
       external_ops_tracker,
@@ -630,21 +750,135 @@ impl Env {
     cb: napi_finalize,
     data: *mut c_void,
     hint: *mut c_void,
-  ) {
-    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
-      env,
-      cb,
-      data,
-      hint,
-    });
+  ) -> NapiFinalizerId {
+    self.ref_tracker.borrow_mut().add(env, cb, data, hint)
   }
 
-  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
-    let mut tracker = self.ref_tracker.borrow_mut();
-    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
-      tracker.remove(pos);
+  /// Deregisters a shutdown finalizer entry, returning `true` if it was still
+  /// pending (see [`RefTracker::remove`]).
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) -> bool {
+    self.ref_tracker.borrow_mut().remove(id)
+  }
+
+  /// Queues a GC-collected reference's finalizer to run at the next JS-safe
+  /// point on the event loop, the way Node drains finalizers from a
+  /// `SetImmediate` rather than from the GC.
+  ///
+  /// napi finalizers are allowed to call back into JavaScript (e.g.
+  /// `napi_call_function`), but V8's second-pass weak callback — where the GC
+  /// hands us collected references — runs inside a
+  /// `DisallowJavascriptExecutionScope`, so calling into JS there aborts the
+  /// process (#36568). A V8 `RequestInterrupt` is not enough either: it is
+  /// serviced from the stack guard, which V8 also checks while unwinding a GC,
+  /// so the drain can still land inside the disallowed scope. The same-thread
+  /// [`V8TaskSpawner`] instead runs the drain from `dispatch_task_spawner`
+  /// during an event-loop poll, with a real context scope and a microtask
+  /// checkpoint — a genuinely JS-safe point.
+  ///
+  /// This is *not* the cross-thread spawner that #33260 used and #34023
+  /// reverted: that hazard was a finalizer running twice, which the
+  /// `reset()` / `was_pending` run-once handshake (#36499) now prevents
+  /// independently. The task only pushes onto an isolate-local queue on the
+  /// isolate thread.
+  ///
+  /// Takes the `Env` as a raw pointer rather than `&mut self` on purpose: the
+  /// caller (the GC weak callback) already holds a `*mut Env`, and the queued
+  /// finalizer will mutate the `Env` through it long after this call returns.
+  /// Round-tripping that pointer through a reference here would hand the
+  /// finalizer a pointer derived from a borrow that has since ended.
+  ///
+  /// # Safety
+  ///
+  /// `env_ptr` must point to a live `Env` owned by this isolate's thread.
+  pub unsafe fn defer_gc_finalizer(
+    env_ptr: *mut Env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) {
+    // SAFETY: the caller guarantees `env_ptr` is live. This shared borrow only
+    // reads the two `Rc` fields and ends before this function returns, well
+    // before the deferred finalizer can mutate the `Env`.
+    let env = unsafe { &*env_ptr };
+    let need_schedule =
+      env.ref_tracker.borrow_mut().defer(PendingNapiFinalizer {
+        // GC-ready entries were already deregistered by id, and nothing can
+        // look them up again.
+        id: None,
+        env: env_ptr as napi_env,
+        cb,
+        data,
+        hint,
+      });
+    // Only the first finalizer of a GC batch schedules a drain; the rest ride
+    // along on the same task (see `RefTracker::defer`).
+    if need_schedule {
+      let tracker = env.ref_tracker.clone();
+      env.gc_finalizer_spawner.spawn(move |scope| {
+        drain_gc_finalizers(scope, &tracker);
+      });
     }
   }
+}
+
+/// Runs the GC-collected finalizers queued by [`Env::defer_gc_finalizer`].
+/// Invoked from the event-loop task queue, so JavaScript execution is legal
+/// here and finalizers may call back into JS.
+fn drain_gc_finalizers(
+  scope: &mut v8::PinScope,
+  tracker: &RefCell<RefTracker>,
+) {
+  // Take the batch before running anything: a finalizer may call
+  // `napi_delete_reference` (re-borrowing the tracker) or defer more
+  // finalizers (which then schedule their own task).
+  let ready = tracker.borrow_mut().take_gc_ready();
+  for f in ready {
+    // Backstop `TryCatch`: each napi entry point already traps its callback's
+    // exceptions into `env.last_exception`, but keep one here so a finalizer
+    // that still lets a throw escape cannot corrupt the shared event-loop
+    // `HandleScope` (`V8TaskSpawner::spawn`'s contract). Recreating it per
+    // finalizer clears any caught exception before the next one runs.
+    v8::tc_scope!(tc, scope);
+    // SAFETY: env/data/hint were captured when the addon created the reference;
+    // V8 is alive and we hold a scope.
+    unsafe {
+      (f.cb)(f.env, f.data, f.hint);
+    }
+    // A throw from a finalizer usually never reaches the `TryCatch` above: the
+    // napi entry point the finalizer called (e.g. `napi_call_function`)
+    // records it in `env.last_exception` and returns `napi_pending_exception`
+    // (see the `napi_wrap!` macro). Nobody is going to consume that here, and
+    // leaving it set would make *every* later napi call on this env fail with
+    // `napi_pending_exception`. Node instead reports a finalizer's uncaught
+    // exception through the uncaught-exception policy and carries on, so clear
+    // it — and, since a spawner task has no event-loop exception state to hand
+    // it to, report it rather than dropping it silently.
+    if !f.env.is_null() {
+      // SAFETY: `f.env` is the `*mut Env` recorded by `defer_gc_finalizer`,
+      // still live for the same reasons the callback above could use it.
+      let env = unsafe { &mut *(f.env as *mut Env) };
+      if let Some(exception) = env.last_exception.take() {
+        let exception = v8::Local::new(tc, &exception);
+        report_finalizer_exception(tc, exception);
+      }
+    }
+    // Backstop for a throw that escaped without being recorded.
+    if let Some(exception) = tc.exception() {
+      report_finalizer_exception(tc, exception);
+    }
+  }
+}
+
+fn report_finalizer_exception(
+  scope: &v8::PinScope,
+  exception: v8::Local<v8::Value>,
+) {
+  log::error!(
+    "Uncaught exception in Node-API finalizer: {}",
+    exception.to_rust_string_lossy(scope)
+  );
 }
 
 deno_core::extension!(deno_napi,
@@ -657,7 +891,7 @@ deno_core::extension!(deno_napi,
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-      ref_tracker: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(RefTracker::default())),
       env_shared_ptrs: vec![],
       env_ptrs: vec![],
       napi_wrap: None,
@@ -697,6 +931,7 @@ fn op_napi_open<'scope>(
   // re-borrow through the NAPI module.
   let (
     async_work_sender,
+    gc_finalizer_spawner,
     cleanup_hooks,
     ref_tracker,
     external_ops_tracker,
@@ -710,6 +945,7 @@ fn op_napi_open<'scope>(
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
+      op_state.borrow::<V8TaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       napi_state.ref_tracker.clone(),
       op_state.external_ops_tracker.clone(),
@@ -783,6 +1019,7 @@ fn op_napi_open<'scope>(
     v8::Global::new(scope, async_hooks_after),
     v8::Global::new(scope, async_hooks_destroy),
     async_work_sender,
+    gc_finalizer_spawner,
     cleanup_hooks,
     ref_tracker,
     external_ops_tracker,
@@ -814,7 +1051,16 @@ fn op_napi_open<'scope>(
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
-  let library = unsafe { Library::open(Some(real_path.as_ref()), flags) }?;
+  let library = match unsafe { Library::open(Some(real_path.as_ref()), flags) }
+  {
+    Ok(library) => library,
+    Err(err) => {
+      return Err(NApiError::LibraryLoad {
+        source: err,
+        path: real_path.to_path_buf(),
+      });
+    }
+  };
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
@@ -837,7 +1083,10 @@ fn op_napi_open<'scope>(
         {
           return Err(NApiError::UnsupportedNodeBinaryAddon(path.into_owned()));
         }
-        return Err(err.into());
+        return Err(NApiError::LibraryLoad {
+          source: err,
+          path: real_path.to_path_buf(),
+        });
       }
     };
 
@@ -929,4 +1178,76 @@ pub fn print_linker_flags(name: &str) {
     "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
     symbols_path,
   );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  unsafe extern "C" fn noop_finalize(
+    _env: napi_env,
+    _data: *mut c_void,
+    _hint: *mut c_void,
+  ) {
+  }
+
+  fn add_entry(tracker: &mut RefTracker) -> NapiFinalizerId {
+    // The tracker only stores these pointers; it never dereferences them, so
+    // nulls are fine for exercising the add/remove/drain bookkeeping.
+    tracker.add(
+      std::ptr::null_mut(),
+      noop_finalize,
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+    )
+  }
+
+  // Deterministic guards for the run-once contract behind
+  // https://github.com/denoland/deno/issues/36499.
+  //
+  // A napi_wrap finalizer can be reached by two independent paths: env teardown
+  // (`run_napi_ref_finalizers` -> `take_pending`) and the GC weak callback
+  // (`Reference::reset` -> `remove_ref_finalizer` -> `remove`). The tracker is
+  // the single arbiter — whichever path removes the entry first runs the
+  // finalizer, and the other must observe that the entry is gone and skip it.
+  // These tests pin the "remove reports whether it was still pending" contract
+  // that `weak_callback`'s `if was_pending` guard relies on. Unlike the
+  // threadsafe-function repro, they fail 100% of the time on a regression.
+
+  #[test]
+  fn teardown_first_leaves_nothing_for_the_gc_path() {
+    let mut tracker = RefTracker::default();
+    let id = add_entry(&mut tracker);
+
+    // Teardown wins the race and drains every pending finalizer.
+    assert_eq!(tracker.take_pending().len(), 1);
+
+    // A later GC weak callback tries to remove the same entry. It must report
+    // `false` so `weak_callback` does not invoke the finalizer a second time.
+    assert!(
+      !tracker.remove(id),
+      "entry drained by teardown must no longer be pending"
+    );
+  }
+
+  #[test]
+  fn gc_first_leaves_nothing_for_teardown() {
+    let mut tracker = RefTracker::default();
+    let id = add_entry(&mut tracker);
+
+    // GC weak callback wins the race and claims the entry, running it once.
+    assert!(tracker.remove(id), "first removal owns the finalizer");
+
+    // Teardown drains afterwards and must find nothing left to run.
+    assert!(
+      tracker.take_pending().is_empty(),
+      "entry claimed by the GC path must not be drained again at teardown"
+    );
+
+    // A redundant second removal (e.g. `Drop` after `reset`) is a no-op.
+    assert!(
+      !tracker.remove(id),
+      "double removal must report not-pending"
+    );
+  }
 }

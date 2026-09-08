@@ -75,7 +75,6 @@ const {
 const { ares_strerror } = core.loadExtScript(
   "ext:deno_node/internal_binding/ares.ts",
 );
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 
 interface LookupAddress {
   address: string;
@@ -307,6 +306,9 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #maxTimeout: number;
   #pendingQueries: Set<QueryReqWrap> = new SafeSet();
   #cancelRids: Set<number> = new SafeSet();
+  // Local bind address(es) set via `setLocalAddress`. Currently only stored so
+  // the call matches Node's behavior; not yet applied to outgoing queries.
+  #localAddress: { ipv4?: string; ipv6?: string } | null = null;
 
   constructor(timeout: number, tries: number, maxTimeout: number) {
     super(providerType.DNSCHANNEL);
@@ -345,6 +347,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
         if (
           code === 0 || code === codeMap.get("EAI_NODATA")! ||
+          code === "ENOTFOUND" || code === "ENODATA" ||
           code === "ETIMEOUT"
         ) {
           break;
@@ -431,9 +434,20 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           if (attempt < tries - 1) continue;
           code = "ETIMEOUT";
         } else if (
+          typeof (e as { ares_code?: string })?.ares_code === "string" &&
+          (e as { ares_code: string }).ares_code !== ""
+        ) {
+          // The Rust op classified the underlying resolver error into a
+          // c-ares style code (e.g. `EBADNAME`, `ENOTFOUND`, `ENODATA`).
+          // Pass the string code through so `dnsException` reports the same
+          // `code` (and `errno: undefined`) as Node.js.
+          code = (e as { ares_code: string }).ares_code;
+        } else if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)
         ) {
-          code = codeMap.get("EAI_NODATA")!;
+          // A "not found" error without a more specific c-ares code, e.g. an
+          // empty answer. Report `ENOTFOUND`, matching Node.js.
+          code = "ENOTFOUND";
         } else {
           // TODO(cmorten): map errors to appropriate error codes.
           code = codeMap.get("UNKNOWN")!;
@@ -891,8 +905,45 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  setLocalAddress(_addr0: string, _addr1?: string) {
-    notImplemented("cares.ChannelWrap.prototype.setLocalAddress");
+  setLocalAddress(addr0: string, addr1?: string) {
+    // Mirror Node's c-ares `ChannelWrap::SetLocalAddress`: the first argument
+    // may be either an IPv4 or IPv6 address; if a second argument is given it
+    // must be the *other* family (so exactly one IPv4 and one IPv6 address, in
+    // either order). The caller (`Resolver.setLocalAddress` in
+    // `internal/dns/utils.ts`) has already validated the arguments are strings.
+    //
+    // We validate the addresses here and record them so the call no longer
+    // throws and matches Node's observable behavior. The underlying resolver op
+    // (`op_dns_resolve`) does not yet expose a per-query bind address, so the
+    // stored value is not applied to outgoing queries; see
+    // https://github.com/denoland/deno/issues/36518.
+    let type0: 4 | 6;
+    if (isIPv4(addr0)) {
+      type0 = 4;
+    } else if (isIPv6(addr0)) {
+      type0 = 6;
+    } else {
+      throw new Error(`Invalid IP address: ${addr0}`);
+    }
+
+    if (addr1 !== undefined) {
+      if (isIPv4(addr1)) {
+        if (type0 === 4) {
+          throw new Error("Cannot specify two IPv4 addresses");
+        }
+      } else if (isIPv6(addr1)) {
+        if (type0 === 6) {
+          throw new Error("Cannot specify two IPv6 addresses");
+        }
+      } else {
+        throw new Error(`Invalid IP address: ${addr1}`);
+      }
+    }
+
+    this.#localAddress = {
+      ipv4: type0 === 4 ? addr0 : addr1,
+      ipv6: type0 === 6 ? addr0 : addr1,
+    };
   }
 
   cancel() {

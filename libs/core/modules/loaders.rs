@@ -186,11 +186,15 @@ pub trait ModuleLoader {
   /// `load()`, so its cache cannot ride on a `ModuleSource`). Returns the
   /// stored bytes + source hash so the compile can consume the cache.
   ///
+  /// The hash must be derived from the full source contents — V8 only checks
+  /// the source length when it validates cached data, so a key that ignores
+  /// contents lets an equal-length edit execute stale bytecode.
+  ///
   /// It's not required to implement this method.
   fn get_code_cache(
     &self,
     _specifier: &ModuleSpecifier,
-    _source: &v8::String,
+    _source: &str,
   ) -> Option<SourceCodeCacheInfo> {
     None
   }

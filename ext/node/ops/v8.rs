@@ -693,6 +693,7 @@ pub fn op_v8_write_value(
 
 struct DeserBuffer {
   ptr: Option<NonNull<u8>>,
+  len: usize,
   // Hold onto backing store to keep the underlying buffer
   // alive while we hold a reference to it.
   _backing_store: v8::SharedRef<v8::BackingStore>,
@@ -775,7 +776,7 @@ pub fn op_v8_new_deserializer(
     (
       // SAFETY: the len is valid, from v8, and the data_ptr is valid (as above)
       unsafe { std::slice::from_raw_parts(data_ptr.cast_const().cast(), len) },
-      Some(data.cast()),
+      NonNull::new(data_ptr),
     )
   } else {
     (&[] as &[u8], None::<NonNull<u8>>)
@@ -796,6 +797,7 @@ pub fn op_v8_new_deserializer(
     buf: DeserBuffer {
       _backing_store: backing_store,
       ptr: buf_ptr,
+      len,
     },
   })
 }
@@ -844,16 +846,31 @@ pub fn op_v8_read_header(
 pub fn op_v8_read_raw_bytes(
   #[cppgc] deser: &Deserializer,
   #[number] length: usize,
-) -> usize {
-  let Some(buf_ptr) = deser.buf.ptr else {
-    return 0;
+) -> isize {
+  let Some(buf) = deser.inner.read_raw_bytes(length) else {
+    return -1;
   };
-  if let Some(buf) = deser.inner.read_raw_bytes(length) {
-    let ptr = buf.as_ptr();
-    (ptr as usize) - (buf_ptr.as_ptr() as usize)
-  } else {
-    0
+  let Some(buf_ptr) = deser.buf.ptr else {
+    return if length == 0 && buf.is_empty() && deser.buf.len == 0 {
+      0
+    } else {
+      -1
+    };
+  };
+
+  let Some(offset) =
+    (buf.as_ptr() as usize).checked_sub(buf_ptr.as_ptr() as usize)
+  else {
+    return -1;
+  };
+  let Some(end) = offset.checked_add(buf.len()) else {
+    return -1;
+  };
+  if end > deser.buf.len {
+    return -1;
   }
+
+  isize::try_from(offset).unwrap_or(-1)
 }
 
 #[op2(fast)]

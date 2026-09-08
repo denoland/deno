@@ -1,8 +1,8 @@
 error[missing-jsdoc]: exported symbol is missing JSDoc documentation
- --> [WILDCARD]:2:1
+ --> [WILDCARD]:2:18
   | 
 2 | export interface 插件描述 {
-  | ^
+  |                  ^^
 
 
 error[missing-jsdoc]: exported symbol is missing JSDoc documentation
@@ -20,10 +20,10 @@ error[missing-jsdoc]: exported symbol is missing JSDoc documentation
 
 
 error[missing-jsdoc]: exported symbol is missing JSDoc documentation
-  --> [WILDCARD]:13:1
+  --> [WILDCARD]:13:18
    | 
 13 | export interface 公共接口 {
-   | ^
+   |                  ^^
 
 
 error[private-type-ref]: public type '公共接口["prop"]' references private type '私有类型'

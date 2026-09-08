@@ -94,6 +94,7 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmCacheServices;
 use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmInstallerFactory;
@@ -308,6 +309,8 @@ struct CliFactoryServices {
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
+  import_deny_permissions: Deferred<Option<PermissionsContainer>>,
+  import_http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
   memory_files: Arc<MemoryFiles>,
@@ -495,13 +498,66 @@ impl CliFactory {
       })
   }
 
+  /// The `--deny-import` rules on their own, as a permissions container.
+  ///
+  /// Module fetches are checked against these so that a deny rule written as
+  /// an IP literal also covers hostnames that resolve to it. Scoped to the
+  /// module fetcher: npm and jsr package resolution is not an `import` and is
+  /// not governed by `--deny-import`.
+  ///
+  /// Deliberately not `root_permissions_container`: building that resolves the
+  /// main module, which needs the file fetcher this feeds.
+  fn import_deny_permissions(
+    &self,
+  ) -> Result<&Option<PermissionsContainer>, AnyError> {
+    self.services.import_deny_permissions.get_or_try_init(|| {
+      let options = self.cli_options()?.import_deny_permissions_options()?;
+      if options.deny_import.as_ref().is_none_or(|d| d.is_empty()) {
+        // nothing to check against, so leave the plain client and its
+        // connection pool alone
+        return Ok(None);
+      }
+      let desc_parser = self.permission_desc_parser()?.clone();
+      let permissions =
+        Permissions::from_options(desc_parser.as_ref(), &options)?;
+      Ok(Some(PermissionsContainer::new(desc_parser, permissions)))
+    })
+  }
+
+  /// The HTTP client used to load code.
+  ///
+  /// Identical to [`Self::http_client_provider`] except that its connections
+  /// re-check the address they resolved to against `--deny-import`: the check
+  /// on the specifier itself happens before DNS resolution, so it cannot tell
+  /// that a hostname points at a denied address.
+  fn import_http_client_provider(
+    &self,
+  ) -> Result<&Arc<HttpClientProvider>, AnyError> {
+    self
+      .services
+      .import_http_client_provider
+      .get_or_try_init(|| {
+        let Some(permissions) = self.import_deny_permissions()?.clone() else {
+          return Ok(self.http_client_provider().clone());
+        };
+        Ok(Arc::new(
+          HttpClientProvider::new(
+            Some(self.root_cert_store_provider().clone()),
+            self.flags.unsafely_ignore_certificate_errors.clone(),
+          )
+          .with_import_permissions(permissions),
+        ))
+      })
+  }
+
   pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
+      let http_client_provider = self.import_http_client_provider()?.clone();
       let cli_options = self.cli_options()?;
       Ok(Arc::new(create_cli_file_fetcher(
         self.blob_store().clone(),
         self.http_cache()?.clone(),
-        self.http_client_provider().clone(),
+        http_client_provider,
         self.services.memory_files.clone(),
         self.sys(),
         CreateCliFileFetcherOptions {
@@ -540,6 +596,42 @@ impl CliFactory {
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
     self.npm_installer_factory()?.npm_cache()
+  }
+
+  pub fn create_npm_cache_services(
+    &self,
+    npmrc: Arc<ResolvedNpmRc>,
+  ) -> Result<CliNpmCacheServices, AnyError> {
+    let sys = self.sys();
+    let npm_cache_dir = Arc::new(NpmCacheDir::new(
+      &sys,
+      self.deno_dir()?.npm_folder_path(),
+      npmrc.get_all_known_registries_urls(),
+    ));
+    let packument_format = if npmrc.min_release_age_days.is_some()
+      || npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off
+    {
+      NpmPackumentFormat::Full
+    } else {
+      NpmPackumentFormat::Abbreviated
+    };
+    let npm_client = Arc::new(CliNpmCacheHttpClient::new(
+      self.http_client_provider().clone(),
+      self.text_only_progress_bar().clone(),
+      packument_format,
+    ));
+    Ok(CliNpmCacheServices::new(
+      npm_cache_dir,
+      sys,
+      NpmCacheSetting::from_cache_setting(&self.cli_options()?.cache_setting()),
+      npmrc,
+      npm_client,
+      packument_format,
+      self
+        .install_reporter()?
+        .cloned()
+        .map(|r| r as Arc<dyn deno_npm_cache::TarballCacheReporter>),
+    ))
   }
 
   pub fn npm_cache_dir(&self) -> Result<&Arc<NpmCacheDir>, AnyError> {
@@ -591,6 +683,8 @@ impl CliFactory {
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
+          // npm registry traffic is not an `import`: `--deny-import` governs
+          // `https://` module specifiers, not package resolution
           self.http_client_provider().clone(),
           self.text_only_progress_bar().clone(),
           if needs_full_packument {

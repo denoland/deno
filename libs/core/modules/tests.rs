@@ -2039,6 +2039,7 @@ fn main_and_side_module() {
 
 #[test]
 fn dynamic_imports_snapshot() {
+  let _snapshot_lock = crate::runtime::tests::snapshot_test_lock();
   //TODO: Once the issue with the ModuleNamespaceEntryGetter is fixed, we can maintain a reference to the module
   // and use it when loading the snapshot
   let snapshot = {
@@ -2079,6 +2080,7 @@ fn dynamic_imports_snapshot() {
 
 #[test]
 fn import_meta_snapshot() {
+  let _snapshot_lock = crate::runtime::tests::snapshot_test_lock();
   let snapshot = {
     const MAIN_WITH_CODE_SRC: &str = r#"
       if (import.meta.url != 'file:///main_with_code.js') throw Error();
@@ -2334,6 +2336,51 @@ fn builtin_core_module() {
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
+  runtime.module_map().set_loading_internal_modules(false);
+}
+
+#[test]
+fn safe_array_iterator_remains_done_after_array_grows() {
+  let main_specifier =
+    resolve_url("ext:///safe_array_iterator_test.js").unwrap();
+
+  let source_code = r#"
+    import { primordials } from "ext:core/mod.js";
+
+    const array = [1, 2];
+    const iterator = new primordials.SafeArrayIterator(array);
+
+    for (const value of iterator) {
+      if (value !== 1) throw new Error("unexpected first value");
+      break;
+    }
+
+    const resumed = iterator.next();
+    if (resumed.done || resumed.value !== 2) {
+      throw new Error("iterator did not resume after an early exit");
+    }
+    if (!iterator.next().done) throw new Error("iterator was not exhausted");
+
+    array.push(3);
+    if (!iterator.next().done) {
+      throw new Error("exhausted iterator resumed after the array grew");
+    }
+  "#;
+  let loader = StaticModuleLoader::new([(main_specifier.clone(), source_code)]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(loader)),
+    ..Default::default()
+  });
+  runtime.module_map().set_loading_internal_modules(true);
+
+  let main_id =
+    futures::executor::block_on(runtime.load_main_es_module(&main_specifier))
+      .unwrap();
+  let receiver = runtime.mod_evaluate(main_id);
+  futures::executor::block_on(runtime.run_event_loop(Default::default()))
+    .unwrap();
+  futures::executor::block_on(receiver).unwrap();
   runtime.module_map().set_loading_internal_modules(false);
 }
 

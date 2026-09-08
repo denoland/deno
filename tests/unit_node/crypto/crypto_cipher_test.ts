@@ -1238,6 +1238,108 @@ Deno.test({
   },
 });
 
+function viewToBuffer(view: ArrayBufferView): Buffer {
+  return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+}
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() uses byteLength for ArrayBufferView inputs",
+  fn() {
+    const key = Buffer.alloc(32, 1);
+
+    const backing = new Uint8Array(64);
+    for (let i = 0; i < backing.length; i++) backing[i] = i;
+
+    const bufferWithSpoofedLength = Buffer.from(backing);
+    Object.defineProperty(bufferWithSpoofedLength, "length", { value: 1 });
+
+    const uint16WithSpoofedLength = new Uint16Array(
+      backing.buffer.slice(0),
+      0,
+      32,
+    );
+    Object.defineProperty(uint16WithSpoofedLength, "length", { value: 1 });
+
+    const dataView = new DataView(backing.buffer, 5, 37);
+
+    for (
+      const input of [
+        bufferWithSpoofedLength,
+        uint16WithSpoofedLength,
+        dataView,
+      ]
+    ) {
+      const plaintext = viewToBuffer(input);
+
+      for (
+        const [algorithm, iv] of [
+          ["aes-256-ctr", Buffer.alloc(16, 2)],
+          ["aes-256-cbc", Buffer.alloc(16, 3)],
+        ] as const
+      ) {
+        const cipher = crypto.createCipheriv(algorithm, key, iv);
+        const encrypted = Buffer.concat([
+          cipher.update(input),
+          cipher.final(),
+        ]);
+
+        const decipher = crypto.createDecipheriv(algorithm, key, iv);
+        const encryptedView = new DataView(
+          encrypted.buffer,
+          encrypted.byteOffset,
+          encrypted.byteLength,
+        );
+        const decrypted = Buffer.concat([
+          decipher.update(encryptedView),
+          decipher.final(),
+        ]);
+
+        assertEquals(decrypted, plaintext, algorithm);
+      }
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "chacha20-poly1305 update() is not affected by Buffer.allocUnsafe override",
+  fn() {
+    const originalAllocUnsafe = Buffer.allocUnsafe;
+    try {
+      Buffer.allocUnsafe = ((_: number) => {
+        return originalAllocUnsafe(1);
+      }) as typeof Buffer.allocUnsafe;
+
+      const key = Buffer.alloc(32, 1);
+      const iv = Buffer.alloc(12, 2);
+      const plaintext = Buffer.alloc(1024, 3);
+
+      const cipher = crypto.createCipheriv("chacha20-poly1305", key, iv, {
+        authTagLength: 16,
+      });
+      const encrypted = Buffer.concat([
+        cipher.update(plaintext),
+        cipher.final(),
+      ]);
+      assertEquals(encrypted.length, plaintext.length);
+      const tag = (cipher as crypto.CipherGCM).getAuthTag();
+
+      const decipher = crypto.createDecipheriv("chacha20-poly1305", key, iv, {
+        authTagLength: 16,
+      });
+      (decipher as crypto.DecipherGCM).setAuthTag(tag);
+      const decrypted = Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final(),
+      ]);
+      assertEquals(decrypted, plaintext);
+    } finally {
+      Buffer.allocUnsafe = originalAllocUnsafe;
+    }
+  },
+});
+
 Deno.test({
   name:
     "Cipheriv/Decipheriv update() leaves stream usable after type-error throw",

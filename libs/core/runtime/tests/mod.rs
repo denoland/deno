@@ -102,3 +102,14 @@ fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
   assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
   (runtime, dispatch_count)
 }
+
+/// Snapshot-creating isolates crash (SIGSEGV inside V8) when two
+/// `JsRuntimeForSnapshot`s are constructed concurrently in one process — see
+/// denoland/deno_core_revamp#17. Every test that builds a
+/// `JsRuntimeForSnapshot` must hold this lock for its whole body; without it
+/// the tests pass in the diluted full suite most of the time and reliably
+/// crash under a narrow test filter, which made this look like a flake.
+pub(crate) fn snapshot_test_lock() -> parking_lot::MutexGuard<'static, ()> {
+  static LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+  LOCK.lock()
+}

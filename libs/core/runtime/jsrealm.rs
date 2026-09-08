@@ -169,6 +169,13 @@ pub struct ContextState {
   /// registered (e.g. during snapshotting).
   pub(crate) immediate_check_handle:
     RefCell<Option<crate::uv_compat::ImmediateCheckHandle>>,
+  /// Wakeup for the next pending libuv (N-API) timer deadline. Unlike JS
+  /// timers, native `uv_timer_t` handles have no other mechanism to re-poll
+  /// the event loop at their deadline, so we arm this sleep from
+  /// `uv_compat`'s `next_timeout` each tick. `uv_timer_wake_deadline` caches
+  /// the currently-armed absolute deadline so we only re-arm when it changes.
+  pub(crate) uv_timer_wake: UserTimer<DefaultReactor>,
+  pub(crate) uv_timer_wake_deadline: Cell<Option<u64>>,
 }
 
 impl ContextState {
@@ -225,6 +232,8 @@ impl ContextState {
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
       immediate_check_handle: RefCell::new(None),
+      uv_timer_wake: Default::default(),
+      uv_timer_wake_deadline: Cell::new(None),
     }
   }
 }

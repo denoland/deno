@@ -9,6 +9,7 @@ import {
   createSecretKey,
   createSign,
   createVerify,
+  diffieHellman,
   generateKeyPair,
   generateKeyPairSync,
   KeyObject,
@@ -43,11 +44,91 @@ const generateKeyPairAsync = promisify(
 
 const testDir = new URL(".", import.meta.url);
 
+function x448PrivateKey(raw: Buffer): KeyObject {
+  const pkcs8 = Buffer.concat([
+    Buffer.from("3046020100300506032b656f043a0438", "hex"),
+    raw,
+  ]);
+  return createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
+}
+
+function x448PublicKey(raw: Buffer): KeyObject {
+  const spki = Buffer.concat([
+    Buffer.from("3042300506032b656f033900", "hex"),
+    raw,
+  ]);
+  return createPublicKey({ key: spki, format: "der", type: "spki" });
+}
+
+function x448RawPublicKey(key: KeyObject): Buffer {
+  const spki = Buffer.from(key.export({ format: "der", type: "spki" }));
+  return spki.subarray(-56);
+}
+
 const pemBuffer = Buffer.from(
   await Deno.readTextFile(
     new URL("../testdata/x509.pem", import.meta.url),
   ),
 );
+
+Deno.test("X448 imported private key derives RFC 7748 values", () => {
+  const privateKey = x448PrivateKey(Buffer.from(
+    "27a4354608f3bdd38f1f5af305f3e0682efe4e25808249d8fcb55927f6a9f446b8dc1d0a2c3b8cb133a5673b59a6d55ce754ec0c9a555401",
+    "hex",
+  ));
+  assertEquals(
+    x448RawPublicKey(createPublicKey(privateKey)).toString("hex"),
+    "145d083ea7a6379dbb32dcbd8aff4c206ea5d069b75e96c6dd2a3e38f441471ac97adca641fdad66685a96f32b7c3e064635fab3cc89234e",
+  );
+
+  const rfcPrivateKey = x448PrivateKey(Buffer.from(
+    "3d262fddf9ec8e88495266fea19a34d28882acef045104d0d1aae121700a779c984c24f8cdd78fbff44943eba368f54b29259a4f1c600ad3",
+    "hex",
+  ));
+  const rfcPublicKey = x448PublicKey(Buffer.from(
+    "06fce640fa3487bfda5f6cf2d5263f8aad88334cbd07437f020f08f9814dc031ddbdc38c19c6da2583fa5429db94ada18aa7a7fb4ef8a086",
+    "hex",
+  ));
+  assertEquals(
+    diffieHellman({
+      privateKey: rfcPrivateKey,
+      publicKey: rfcPublicKey,
+    }).toString("hex"),
+    "ce3e4ff95a60dc6697da1db1d85e6afbdf79b50a2412d7546d5f239fe14fbaadeb445fc66a01b0779d98223961111e21766282f73dd96b6f",
+  );
+});
+
+Deno.test("X448 generated peers derive the same secret", () => {
+  const alice = generateKeyPairSync("x448");
+  const bob = generateKeyPairSync("x448");
+  const aliceSecret = diffieHellman({
+    privateKey: alice.privateKey,
+    publicKey: bob.publicKey,
+  });
+  const bobSecret = diffieHellman({
+    privateKey: bob.privateKey,
+    publicKey: alice.publicKey,
+  });
+  assertEquals(aliceSecret, bobSecret);
+});
+
+Deno.test("X448 rejects low-order public keys", () => {
+  const privateKey = x448PrivateKey(Buffer.alloc(56, 42));
+  const pMinusOne = Buffer.alloc(56, 0xff);
+  pMinusOne[0] = 0xfe;
+  pMinusOne[28] = 0xfe;
+
+  for (
+    const rawPublicKey of [
+      Buffer.alloc(56),
+      Buffer.from([1, ...Buffer.alloc(55)]),
+      pMinusOne,
+    ]
+  ) {
+    const publicKey = x448PublicKey(rawPublicKey);
+    assertThrows(() => diffieHellman({ privateKey, publicKey }));
+  }
+});
 
 Deno.test({
   name: "create secret key",
@@ -787,6 +868,155 @@ Deno.test("generateKeyPair promisify", async () => {
 
   assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
   assert(privateKey.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
+});
+
+Deno.test("private key export preserves passphrase bytes", async (t) => {
+  const { privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
+  const expected = privateKey.export({ type: "pkcs8", format: "der" });
+  const bytes = [0xff, 0xfe, 0x80, 0x61, 0xc3];
+  const passphrases: [
+    string,
+    () => unknown,
+    readonly number[] | string,
+  ][] = [
+    ["Buffer", () => Buffer.from(bytes), bytes],
+    ["Uint8Array", () => new Uint8Array(bytes), bytes],
+    ["ArrayBuffer", () => new Uint8Array(bytes).buffer, bytes],
+    [
+      "DataView",
+      () => {
+        const data = new Uint8Array([0, ...bytes, 0]);
+        return new DataView(data.buffer, 1, bytes.length);
+      },
+      bytes,
+    ],
+    [
+      "Int8Array",
+      () => {
+        const data = new Uint8Array([0, ...bytes, 0]);
+        const passphrase = new Int8Array(data.buffer, 1, bytes.length);
+        return passphrase;
+      },
+      bytes,
+    ],
+    [
+      "Uint16Array",
+      () => {
+        const data = new Uint8Array(8);
+        data.set([0xff, 0xfe, 0x80, 0xc3], 2);
+        const passphrase = new Uint16Array(data.buffer, 2, 2);
+        return passphrase;
+      },
+      [0xff, 0xfe, 0x80, 0xc3],
+    ],
+    [
+      "Float32Array",
+      () => {
+        const data = new Uint8Array(12);
+        data.set([0xff, 0xfe, 0x80, 0xc3], 4);
+        const passphrase = new Float32Array(data.buffer, 4, 1);
+        return passphrase;
+      },
+      [0xff, 0xfe, 0x80, 0xc3],
+    ],
+    ["string", () => "pässphrase", "pässphrase"],
+  ];
+
+  for (const format of ["pem", "der"] as const) {
+    for (const [name, createPassphrase, expectedPassphrase] of passphrases) {
+      await t.step(`${format} ${name}`, () => {
+        const passphrase = createPassphrase();
+        const expectedPassphraseBytes = Buffer.from(expectedPassphrase);
+        const encrypted = privateKey.export({
+          type: "pkcs8",
+          format,
+          cipher: "aes-256-cbc",
+          passphrase,
+        } as any);
+        const imported = createPrivateKey({
+          key: encrypted,
+          type: "pkcs8",
+          format,
+          passphrase: expectedPassphraseBytes,
+        } as any);
+        assertEquals(
+          imported.export({ type: "pkcs8", format: "der" }),
+          expected,
+        );
+
+        const importedWithOriginalView = createPrivateKey({
+          key: encrypted,
+          type: "pkcs8",
+          format,
+          passphrase,
+        } as any);
+        assertEquals(
+          importedWithOriginalView.export({ type: "pkcs8", format: "der" }),
+          expected,
+        );
+      });
+    }
+  }
+
+  await t.step("pem sec1 Buffer", () => {
+    const passphrase = Buffer.from(bytes);
+    const encrypted = privateKey.export({
+      type: "sec1",
+      format: "pem",
+      cipher: "aes-256-cbc",
+      passphrase,
+    });
+    const imported = createPrivateKey({
+      key: encrypted,
+      format: "pem",
+      passphrase,
+    });
+    assertEquals(
+      imported.export({ type: "pkcs8", format: "der" }),
+      expected,
+    );
+  });
+});
+
+Deno.test("private key export validates passphrase options", () => {
+  const { privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
+
+  for (const passphrase of [undefined, null, 1, {}, true]) {
+    const error = assertThrows(
+      () =>
+        privateKey.export({
+          type: "pkcs8",
+          format: "pem",
+          cipher: "aes-256-cbc",
+          passphrase,
+        } as any),
+      TypeError,
+      "options.passphrase",
+    );
+    assertEquals(
+      (error as Error & { code: string }).code,
+      "ERR_INVALID_ARG_VALUE",
+    );
+  }
+
+  const error = assertThrows(
+    () =>
+      privateKey.export({
+        type: "pkcs8",
+        format: "pem",
+        passphrase: "secret",
+      } as any),
+    TypeError,
+    "options.cipher",
+  );
+  assertEquals(
+    (error as Error & { code: string }).code,
+    "ERR_INVALID_ARG_VALUE",
+  );
 });
 
 Deno.test("RSA export private JWK", function () {

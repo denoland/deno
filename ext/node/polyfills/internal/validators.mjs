@@ -277,12 +277,12 @@ function validatePort(port, name = "Port", allowZero = true) {
       StringPrototypeTrim(port).length === 0) ||
     +port !== (+port >>> 0) ||
     port > 0xFFFF ||
-    (port === 0 && !allowZero)
+    (+port === 0 && !allowZero)
   ) {
     throw new codes.ERR_SOCKET_BAD_PORT(name, port, allowZero);
   }
 
-  return port;
+  return port | 0;
 }
 
 /**

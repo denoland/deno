@@ -352,6 +352,10 @@ fn make_program_args(
   args: &[&OsStr],
   verbatim_arguments: bool,
 ) -> Result<WCString, std::io::Error> {
+  for arg in args {
+    ensure_no_nuls(arg)?;
+  }
+
   let mut dst_len = 0;
   let mut temp_buffer_len = 0;
 
@@ -1652,5 +1656,32 @@ mod tests {
     let verbatim_arguments = false;
     let result = make_program_args(&args, verbatim_arguments).unwrap();
     assert_eq!(result, WCString::new("hello world \"\\\"hello world\\\"\""));
+  }
+
+  fn assert_make_program_args_rejects_nuls(verbatim_arguments: bool) {
+    for nul_index in 0..3 {
+      // Keep an argument after the invalid one so an embedded terminator
+      // cannot silently discard the rest of a verbatim command line.
+      let mut args = [
+        OsStr::new("program"),
+        OsStr::new("before"),
+        OsStr::new("must-not-be-dropped"),
+      ];
+      args[nul_index] = OsStr::new("invalid\0argument");
+
+      let error = make_program_args(&args, verbatim_arguments).unwrap_err();
+      assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+      assert_eq!(error.to_string(), "nul byte found in provided data");
+    }
+  }
+
+  #[test]
+  fn test_make_program_args_rejects_nuls() {
+    assert_make_program_args_rejects_nuls(false);
+  }
+
+  #[test]
+  fn test_make_program_args_verbatim_rejects_nuls() {
+    assert_make_program_args_rejects_nuls(true);
   }
 }

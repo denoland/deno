@@ -1333,12 +1333,28 @@ fn get_desktop_specific_filepath(
     Some(target) => target.contains("darwin"),
     None => cfg!(target_os = "macos"),
   };
-  if is_windows {
-    output.with_extension("dll")
+  let ext = if is_windows {
+    "dll"
   } else if is_darwin {
-    output.with_extension("dylib")
+    "dylib"
   } else {
-    output.with_extension("so")
+    "so"
+  };
+  append_extension(output, ext)
+}
+
+/// Add `ext` to `output` without dropping whatever follows the last dot of the
+/// file name: `PathBuf::with_extension` treats `my-app-2.9.2` as having the
+/// extension `2` and would produce `my-app-2.9.so` (issue #35971). The app name
+/// the desktop bundler derives from this path must survive the round trip, so
+/// version-like names keep every dot.
+fn append_extension(output: PathBuf, ext: &str) -> PathBuf {
+  match output.extension() {
+    Some(existing) if existing.eq_ignore_ascii_case(ext) => output,
+    Some(existing) => {
+      output.with_extension(format!("{}.{}", existing.to_string_lossy(), ext))
+    }
+    None => output.with_extension(ext),
   }
 }
 
@@ -1501,6 +1517,37 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_desktop_specific_file_path() {
+    fn run_test(path: &str, target: &str, expected: &str) {
+      assert_eq!(
+        get_desktop_specific_filepath(
+          PathBuf::from(path),
+          &Some(target.to_string())
+        ),
+        PathBuf::from(expected)
+      );
+    }
+
+    run_test("my-app", "x86_64-unknown-linux-gnu", "my-app.so");
+    run_test("my-app", "aarch64-apple-darwin", "my-app.dylib");
+    run_test("my-app", "x86_64-pc-windows-msvc", "my-app.dll");
+
+    // A dotted app name is not an extension to be replaced: the bundler derives
+    // the app name back out of this path, and the launcher looks the library up
+    // by that name (issue #35971).
+    run_test(
+      "out/my-app-2.9.2",
+      "x86_64-unknown-linux-gnu",
+      "out/my-app-2.9.2.so",
+    );
+    run_test("my-app.v1.2", "aarch64-apple-darwin", "my-app.v1.2.dylib");
+    run_test("my-app.v1.2", "x86_64-pc-windows-msvc", "my-app.v1.2.dll");
+
+    // Already the right extension — don't stutter it.
+    run_test("my-app.so", "x86_64-unknown-linux-gnu", "my-app.so");
   }
 
   #[test]

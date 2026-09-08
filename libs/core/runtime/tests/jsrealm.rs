@@ -133,6 +133,7 @@ async fn js_realm_ref_unref_ops() {
 
 #[test]
 fn es_snapshot() {
+  let _snapshot_lock = super::snapshot_test_lock();
   let startup_data = {
     deno_core::extension!(
       module_snapshot,

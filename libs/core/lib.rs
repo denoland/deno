@@ -36,6 +36,7 @@ pub mod reactor;
 #[cfg(feature = "reactor-tokio")]
 pub mod reactor_tokio;
 mod runtime;
+mod snapshot_format;
 mod source_map;
 mod tasks;
 #[allow(

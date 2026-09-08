@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-const EXPECTED_OP_COUNT = 42;
+const EXPECTED_OP_COUNT = 44;
+// Two fewer than the main scope: the clipboard ops are stripped from workers
+// (see WORKER_EXCLUDED_OPS in 99_main.js).
 const EXPECTED_WORKER_OP_COUNT = 20;
 
 function getExposedOpNames(): string[] {

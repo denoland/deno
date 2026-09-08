@@ -87,12 +87,14 @@ impl FromV8<'_> for SessionOptions {
 }
 
 pub struct Session {
-  pub(crate) inner: *mut ffi::sqlite3_session,
-  pub(crate) freed: Cell<bool>,
+  pub(crate) inner: InnerSessionPtr,
 
   // Hold a weak reference to the database.
   pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
+  pub(crate) sessions: Rc<RefCell<Vec<InnerSessionPtr>>>,
 }
+
+pub(crate) type InnerSessionPtr = Rc<Cell<Option<*mut ffi::sqlite3_session>>>;
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for Session {
@@ -111,18 +113,21 @@ impl Drop for Session {
 
 impl Session {
   fn delete(&self) -> Result<(), SqliteError> {
-    if self.freed.get() {
-      return Err(SqliteError::SessionClosed);
+    let ptr = self.inner.take().ok_or(SqliteError::SessionClosed)?;
+    let mut sessions = self.sessions.borrow_mut();
+    if let Some(pos) = sessions
+      .iter()
+      .position(|session| Rc::ptr_eq(session, &self.inner))
+    {
+      sessions.remove(pos);
     }
-
-    self.freed.set(true);
     if self.db.borrow().is_none() {
       return Ok(());
     }
-    // Safety: `self.inner` is a valid session. double free is
-    // prevented by `freed` flag.
+    // Safety: `ptr` is a valid session. Double free is prevented by taking
+    // the pointer from `inner` before deleting it.
     unsafe {
-      ffi::sqlite3session_delete(self.inner);
+      ffi::sqlite3session_delete(ptr);
     }
 
     Ok(())
@@ -157,11 +162,9 @@ impl Session {
     if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
-    if self.freed.get() {
-      return Err(SqliteError::SessionClosed);
-    }
+    let ptr = self.inner.get().ok_or(SqliteError::SessionClosed)?;
 
-    session_buffer_op(self.inner, ffi::sqlite3session_changeset)
+    session_buffer_op(ptr, ffi::sqlite3session_changeset)
   }
 
   // Similar to the method above, but generates a more compact patchset.
@@ -172,11 +175,9 @@ impl Session {
     if self.db.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
-    if self.freed.get() {
-      return Err(SqliteError::SessionClosed);
-    }
+    let ptr = self.inner.get().ok_or(SqliteError::SessionClosed)?;
 
-    session_buffer_op(self.inner, ffi::sqlite3session_patchset)
+    session_buffer_op(ptr, ffi::sqlite3session_patchset)
   }
 }
 

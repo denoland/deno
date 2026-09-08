@@ -107,6 +107,36 @@ fn generate_bash(cmd: &CommandDef) -> Vec<u8> {
   out.into_bytes()
 }
 
+/// Render an arg's help text as the `[description]` suffix of a zsh
+/// `_arguments` spec, ready to be embedded in a single-quoted shell string.
+///
+/// Returns an empty string when there is no help text: `'-h[]'` is accepted by
+/// zsh, but an empty description is noise, and only the full spec matters.
+/// Descriptions are truncated to the first line (Deno's help strings are often
+/// multi-line, and a raw newline inside `_arguments` breaks the spec) and `[`,
+/// `]` and `\` are backslash-escaped so the description can't terminate early.
+fn zsh_description(help: &str) -> String {
+  let first_line = help.lines().next().unwrap_or_default().trim();
+  if first_line.is_empty() {
+    return String::new();
+  }
+  let mut escaped = String::with_capacity(first_line.len() + 2);
+  escaped.push('[');
+  for c in first_line.chars() {
+    match c {
+      '\\' | '[' | ']' => {
+        escaped.push('\\');
+        escaped.push(c);
+      }
+      // Escape for the surrounding single-quoted shell string.
+      '\'' => escaped.push_str("'\\''"),
+      _ => escaped.push(c),
+    }
+  }
+  escaped.push(']');
+  escaped
+}
+
 fn generate_zsh(cmd: &CommandDef) -> Vec<u8> {
   let name = cmd.name;
   let mut out = String::new();
@@ -119,7 +149,15 @@ fn generate_zsh(cmd: &CommandDef) -> Vec<u8> {
     if sub.name == "help" {
       continue;
     }
-    let about = sub.about.replace('\'', "'\\''");
+    // `_describe` entries are `name:description` on a single line, so only the
+    // first line of the (often multi-paragraph) about text is usable.
+    let about = sub
+      .about
+      .lines()
+      .next()
+      .unwrap_or_default()
+      .trim()
+      .replace('\'', "'\\''");
     out.push_str(&format!("        '{}:{}'\n", sub.name, about));
   }
   out.push_str(
@@ -134,13 +172,13 @@ fn generate_zsh(cmd: &CommandDef) -> Vec<u8> {
   // Global flags
   for arg in cmd.all_args().filter(|a| !a.hidden && !a.positional) {
     if let Some(long) = arg.long {
-      let help = arg.help.replace('\'', "'\\''");
+      let desc = zsh_description(arg.help);
       if let Some(short) = arg.short {
         out.push_str(&format!(
-          "        '(-{short} --{long})'{{{short},--{long}}}'[{help}]' \\\n"
+          "        '(-{short} --{long})'{{-{short},--{long}}}'{desc}' \\\n"
         ));
       } else {
-        out.push_str(&format!("        '--{long}[{help}]' \\\n"));
+        out.push_str(&format!("        '--{long}{desc}' \\\n"));
       }
     }
   }
@@ -163,8 +201,8 @@ fn generate_zsh(cmd: &CommandDef) -> Vec<u8> {
     ));
     for arg in sub.all_args().filter(|a| !a.hidden && !a.positional) {
       if let Some(long) = arg.long {
-        let help = arg.help.replace('\'', "'\\''");
-        out.push_str(&format!("                '--{long}[{help}]' \\\n"));
+        let desc = zsh_description(arg.help);
+        out.push_str(&format!("                '--{long}{desc}' \\\n"));
       }
     }
     out.push_str("                '*:file:_files'\n            ;;\n");
@@ -707,6 +745,52 @@ mod tests {
     assert_eq!(&v[0..2], &["build", "test"], "{v:?}");
     // ...then the subcommand's long flags (e.g. --config) are also offered.
     assert!(v.iter().any(|f| f.starts_with("--")), "{v:?}");
+  }
+
+  #[test]
+  fn generate_zsh_short_flags_keep_their_dash() {
+    // Regression test for #36713: the brace expansion dropped the `-` on the
+    // short form, so `deno <TAB>` made zsh bail out with
+    // `_arguments:comparguments:327: invalid argument: (-h --help)h[]`.
+    let s =
+      String::from_utf8(generate("zsh", &crate::defs::DENO_ROOT)).unwrap();
+    assert!(s.contains("'(-h --help)'{-h,--help}'"), "{s}");
+    assert!(!s.contains("'(-h --help)'{h,--help}'"), "{s}");
+    for line in s.lines() {
+      let line = line.trim();
+      assert!(
+        !line.starts_with("'(-") || line.contains("'{-"),
+        "short flag lost its dash: {line}"
+      );
+    }
+  }
+
+  #[test]
+  fn generate_zsh_descriptions_are_single_line_and_escaped() {
+    let s =
+      String::from_utf8(generate("zsh", &crate::defs::DENO_ROOT)).unwrap();
+    // A spec line must be exactly one line, so no description may leak a
+    // newline out of its `_arguments` entry.
+    for line in s.lines() {
+      let line = line.trim();
+      if line.starts_with('\'') {
+        assert!(line.ends_with("' \\") || line.ends_with('\''), "{line}");
+      }
+    }
+    // `--help` has no help text, so it gets no `[]` description at all.
+    assert!(s.contains("'(-h --help)'{-h,--help}'' \\"), "{s}");
+  }
+
+  #[test]
+  fn zsh_description_escapes_and_truncates() {
+    assert_eq!(zsh_description(""), "");
+    assert_eq!(zsh_description("Print version"), "[Print version]");
+    assert_eq!(zsh_description("first\nsecond"), "[first]");
+    assert_eq!(
+      zsh_description("[possible values: a, b]"),
+      "[\\[possible values: a, b\\]]"
+    );
+    assert_eq!(zsh_description("don't"), "[don'\\''t]");
   }
 
   #[test]

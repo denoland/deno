@@ -2,6 +2,7 @@
 
 use std::ffi::c_void;
 use std::ptr;
+use std::ptr::NonNull;
 
 use deno_core::v8;
 use libffi::middle::Arg;
@@ -80,47 +81,76 @@ pub enum IRError {
     "Resizable backing stores are not supported for nonblocking FFI calls"
   )]
   ResizableBackingStore,
+  #[error(
+    "Invalid FFI struct return buffer: expected at least {expected} bytes, got {actual}"
+  )]
+  InvalidStructReturnBuffer { expected: usize, actual: usize },
+  #[error("Missing FFI struct return buffer")]
+  MissingStructReturnBuffer,
   #[error("Invalid FFI function type, expected null, or External")]
   InvalidFunctionType,
 }
 
-pub struct OutBuffer(pub *mut u8);
+#[derive(Clone, Copy)]
+pub struct OutBuffer {
+  ptr: Option<NonNull<u8>>,
+  byte_length: usize,
+}
 
-// SAFETY: OutBuffer is allocated by us in 00_ffi.js and is guaranteed to be
-// only used for the purpose of writing return value of structs.
+// SAFETY: synchronous callers keep the TypedArray alive for the duration of the
+// call, while nonblocking callers retain its backing store in a holder.
 unsafe impl Send for OutBuffer {}
 // SAFETY: See above
 unsafe impl Sync for OutBuffer {}
 
+impl OutBuffer {
+  pub fn validate_size(self, expected: usize) -> Result<Self, IRError> {
+    if self.byte_length < expected {
+      return Err(IRError::InvalidStructReturnBuffer {
+        expected,
+        actual: self.byte_length,
+      });
+    }
+    self.ptr.ok_or(IRError::InvalidStructReturnBuffer {
+      expected,
+      actual: self.byte_length,
+    })?;
+    Ok(self)
+  }
+
+  pub fn as_ptr(self) -> *mut u8 {
+    self
+      .ptr
+      .expect("struct return buffer was validated")
+      .as_ptr()
+  }
+}
+
 pub fn out_buffer_as_ptr(
-  scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
 ) -> Option<OutBuffer> {
-  match out_buffer {
-    Some(out_buffer) => {
-      let ab = out_buffer.buffer(scope).unwrap();
-      ab.data()
-        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8))
-    }
-    None => None,
-  }
+  out_buffer.map(|out_buffer| OutBuffer {
+    ptr: NonNull::new(out_buffer.data().cast()),
+    byte_length: out_buffer.byte_length(),
+  })
 }
 
 /// Like `out_buffer_as_ptr` but also returns the backing store reference
 /// to prevent GC from freeing the buffer during nonblocking FFI calls.
 pub fn out_buffer_as_ptr_nonblocking(
-  scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
   holder: &mut BackingStoreHolder,
 ) -> Result<Option<OutBuffer>, IRError> {
   match out_buffer {
     Some(out_buffer) => {
-      let ab = out_buffer.buffer(scope).unwrap();
-      holder.push(ab.get_backing_store())?;
-      Ok(
-        ab.data()
-          .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8)),
-      )
+      let byte_length = out_buffer.byte_length();
+      if let Some(backing_store) = out_buffer.get_backing_store() {
+        holder.push(backing_store)?;
+      }
+      Ok(Some(OutBuffer {
+        ptr: NonNull::new(out_buffer.data().cast()),
+        byte_length,
+      }))
     }
     None => Ok(None),
   }

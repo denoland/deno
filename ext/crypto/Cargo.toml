@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.271.0"
+version = "0.272.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -25,9 +25,9 @@ const-oid.workspace = true
 ctr.workspace = true
 curve25519-dalek.workspace = true
 deno_core.workspace = true
+deno_crypto_provider.workspace = true
 deno_error.workspace = true
 ecdsa.workspace = true
-ed448-goldilocks = { workspace = true }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
 fips203 = { workspace = true, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024"] }
 fips205.workspace = true
@@ -47,6 +47,7 @@ sha2.workspace = true
 sha3.workspace = true
 signature.workspace = true
 spki.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 tiny-keccak = { workspace = true, features = ["k12", "kmac"] }
 tokio.workspace = true
