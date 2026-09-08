@@ -263,12 +263,18 @@ impl ModuleMap {
     }
 
     let Some(value) = module.evaluate(tc_scope) else {
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
       let exception = tc_scope.exception().unwrap();
       return Err(
         CoreErrorKind::Js(JsError::from_v8_exception(tc_scope, exception))
           .into_box(),
       );
     };
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
 
     // Under Explicit microtask policy, V8 won't drain microtasks after
     // module.evaluate(). We must do it ourselves so that the module
@@ -285,6 +291,9 @@ impl ModuleMap {
     // (checked above), so its promise settles without a checkpoint.
     if !self.evaluating_top_level.get() {
       tc_scope.perform_microtask_checkpoint();
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
     }
 
     if let Some(exception) = tc_scope.exception() {

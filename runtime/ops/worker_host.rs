@@ -140,35 +140,13 @@ impl Drop for WorkerThread {
     // and pending lock resources live in its own op_state and
     // release/cancel by id when its `JsRuntime` drops.
     //
-    // `cleanup_locks_for_client_id` re-grants the worker's held locks to other
-    // clients synchronously. If the worker were still executing a callback under
-    // an exclusive lock (e.g. mutating a `SharedArrayBuffer` in a synchronous
-    // loop), the new grantee could run concurrently with it, violating mutual
-    // exclusion. `terminate()` alone doesn't prevent this: it only wakes the
-    // event loop and can't interrupt synchronous JS already in flight. So when
-    // the worker actually holds a lock we're about to hand off, we first call
-    // `terminate_execution()`, which makes the worker's isolate throw a
-    // termination exception at the next interrupt point, halting any such loop
-    // and its callback continuation/microtasks before the lock is handed off.
-    //
-    // The `client_holds_lock` gate matters: `terminate_execution()` can abort an
-    // in-progress synthetic module instantiation (e.g. a lazy `require` during
-    // boot, which panics on failure), so we must not force-halt a worker that
-    // has no held lock to protect. A worker that holds a lock is past boot and
-    // parked in — or synchronously looping inside — its lock callback.
-    //
-    // This narrows the window but can't fully close it: `terminate_execution()`
-    // returns without waiting for the isolate to stop, so a native op already in
-    // flight on the worker keeps running until it returns to JS, and a lock
-    // acquired between the `client_holds_lock` check and cleanup isn't halted.
-    // Any lock left held in that residual window is still released by the
-    // resource-drop backstop when the worker's `JsRuntime` drops.
+    // `terminate()` requests a V8 interrupt before
+    // `cleanup_locks_for_client_id` re-grants held locks to other clients.
+    // The request returns without waiting for the isolate to stop, so a native
+    // operation already in flight keeps running until it returns to JavaScript.
+    // Locks left held in that window are released when the worker's
+    // `JsRuntime` drops.
     let handle = self.worker_handle.clone();
-    if let Some(client_id) = &self.web_lock_client_id
-      && deno_web::locks::client_holds_lock(client_id)
-    {
-      handle.terminate_execution();
-    }
     handle.terminate();
     if let Some(client_id) = &self.web_lock_client_id {
       deno_web::locks::cleanup_locks_for_client_id(client_id);
@@ -482,11 +460,7 @@ fn op_create_worker(
 fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
   match state.borrow_mut::<WorkersTable>().entry(id) {
     std::collections::hash_map::Entry::Occupied(mut entry) => {
-      if matches!(entry.get().worker_type, WorkerThreadType::Node) {
-        entry.remove().finish_termination();
-      } else {
-        entry.get_mut().request_termination();
-      }
+      entry.get_mut().request_termination();
     }
     std::collections::hash_map::Entry::Vacant(_) => {
       debug!("tried to terminate non-existent worker {}", id);
@@ -570,8 +544,19 @@ async fn op_host_recv_ctrl(
     }
     Ok(None) => {
       // If there was no event from worker it means it has already been closed.
+      let node_worker_was_terminated = {
+        let state = state.borrow();
+        let workers_table = state.borrow::<WorkersTable>();
+        workers_table.get(&id).is_some_and(|worker| {
+          matches!(worker.worker_type, WorkerThreadType::Node)
+            && worker.termination_requested
+        })
+      };
+      // Node Worker.terminate() resolves with exit code 1 when termination
+      // tears down the worker instead of the worker closing itself.
+      let exit_code = if node_worker_was_terminated { 1 } else { 0 };
       close_channel(state, id, WorkerChannel::Ctrl);
-      WorkerControlEvent::Close(0)
+      WorkerControlEvent::Close(exit_code)
     }
     Err(_) => {
       // The worker was terminated.
