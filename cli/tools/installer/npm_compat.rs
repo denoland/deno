@@ -553,6 +553,9 @@ async fn ensure_types_node(
   // Reuse an @types/node the project already installed under node_modules.
   if !use_global_cache_layout {
     let node_modules = project_root.join("node_modules");
+    // This tree is owned by the project's package manager rather than the
+    // atomic publisher below, so `package.json` is not a valid completion
+    // marker here.
     if node_modules.join("@types/node").exists() {
       let undici_types_dir = node_modules.join("undici-types");
       return NodeTypesSetup {
@@ -566,10 +569,11 @@ async fn ensure_types_node(
   let type_root = "./npm-compat/@types".to_string();
   let node_dir = modules_dir.join("@types/node");
   let undici_types_dir = modules_dir.join("undici-types");
-  if node_dir.exists() {
+  if is_materialized_package(&node_dir) {
     return NodeTypesSetup {
       type_root: Some(type_root),
-      undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+      undici_types_dir: is_materialized_package(&undici_types_dir)
+        .then_some(undici_types_dir),
     };
   }
   match download_npm_package(&modules_dir, "@types/node", None, http_client)
@@ -586,8 +590,9 @@ async fn ensure_types_node(
         .await;
       }
       NodeTypesSetup {
-        type_root: node_dir.exists().then_some(type_root),
-        undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+        type_root: is_materialized_package(&node_dir).then_some(type_root),
+        undici_types_dir: is_materialized_package(&undici_types_dir)
+          .then_some(undici_types_dir),
       }
     }
     _ => NodeTypesSetup {
@@ -637,9 +642,8 @@ async fn download_npm_package(
   };
   let tb = http_client.download(Url::parse(tarball)?).await?;
   let dest = modules_dir.join(pkg);
-  if let Err(e) = extract_tarball_gz(&tb, &dest) {
+  if let Err(e) = extract_tarball_gz_atomic(&tb, &dest) {
     log::debug!("Failed to extract {pkg}: {e}");
-    let _ = std::fs::remove_dir_all(&dest);
     return Ok(None);
   }
   let deps = vinfo
@@ -911,7 +915,7 @@ async fn install_jsr_packages(
 
     let npm_name = format!("{}__{}", scope.trim_start_matches('@'), name);
     let pkg_dir = jsr_packages_dir.join(&npm_name);
-    if pkg_dir.exists() {
+    if is_materialized_package(&pkg_dir) {
       continue;
     }
 
@@ -981,9 +985,8 @@ async fn install_jsr_packages(
       }
     };
 
-    if let Err(e) = extract_tarball_gz(&tarball_bytes, &pkg_dir) {
+    if let Err(e) = extract_tarball_gz_atomic(&tarball_bytes, &pkg_dir) {
       log::debug!("Failed to extract {registry_name}: {e}");
-      let _ = std::fs::remove_dir_all(&pkg_dir);
       continue;
     }
 
@@ -994,6 +997,134 @@ async fn install_jsr_packages(
   }
 
   Ok(installed)
+}
+
+/// Whether `dir` holds a fully materialized package rather than a directory
+/// that some other process is still extracting into (or left half-extracted
+/// after being killed).
+///
+/// `package.json` is the last thing [`extract_tarball_gz_atomic`] publishes -
+/// it only ever appears via the atomic rename of a complete staging dir - so
+/// its presence is the marker that the tree is usable. A bare `exists()` check
+/// on the destination is not: with several `deno check` processes sharing a
+/// cache, one can observe a directory the other has only started filling in,
+/// skip the download, and then fail type checking with
+/// `TS2688 Cannot find type definition file for 'node'`.
+/// npm and npm.jsr.io package tarballs are required to contain a top-level
+/// `package.json`; this marker relies on that invariant.
+fn is_materialized_package(dir: &Path) -> bool {
+  dir.join("package.json").exists()
+}
+
+fn cleanup_stale_staging_dirs(
+  parent: &Path,
+  staging_prefix: &str,
+  stale_before: std::time::SystemTime,
+) {
+  let Ok(entries) = std::fs::read_dir(parent) else {
+    return;
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if !entry
+      .file_name()
+      .to_string_lossy()
+      .starts_with(staging_prefix)
+      || !entry.file_type().is_ok_and(|file_type| file_type.is_dir())
+      || !entry
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+        .is_ok_and(|modified| modified < stale_before)
+    {
+      continue;
+    }
+    let _ = std::fs::remove_dir_all(path);
+  }
+}
+
+/// Extract a gzipped npm-style tarball so that `dest` is never observable in a
+/// half-extracted state: unpack into a sibling staging directory on the same
+/// filesystem, then `rename` it into place.
+///
+/// Concurrent `deno check` invocations sharing a cache race to materialize the
+/// same package. The rename makes each one either publish a complete tree or
+/// lose harmlessly to a winner that already did.
+fn extract_tarball_gz_atomic(
+  gz_bytes: &[u8],
+  dest: &Path,
+) -> Result<(), AnyError> {
+  let parent = dest.parent().ok_or_else(|| {
+    anyhow!("Invalid extract destination: {}", dest.display())
+  })?;
+  std::fs::create_dir_all(parent)?;
+
+  // Stage as a sibling so the rename stays within one filesystem. The pid plus
+  // a process-local counter keeps concurrent extractions - across processes and
+  // within one - from sharing a staging dir.
+  static STAGING_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+  let name = dest.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+    anyhow!("Invalid extract destination: {}", dest.display())
+  })?;
+  // The leading dot is required because this parent is passed to TypeScript as
+  // a typeRoots directory, and TypeScript ignores dot-prefixed entries when it
+  // enumerates type packages.
+  let staging_prefix = format!(".{name}.tmp-");
+  // Reclaim staging dirs left by killed processes. Keep recent dirs because
+  // they may belong to another extraction currently racing with this one.
+  if let Some(stale_before) = std::time::SystemTime::now()
+    .checked_sub(std::time::Duration::from_secs(24 * 60 * 60))
+  {
+    cleanup_stale_staging_dirs(parent, &staging_prefix, stale_before);
+  }
+  let tmp_dir = parent.join(format!(
+    "{}{}-{}",
+    staging_prefix,
+    std::process::id(),
+    STAGING_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+  ));
+  // A staging dir left over from a previous crashed run would make extraction
+  // append to a foreign tree.
+  let _ = std::fs::remove_dir_all(&tmp_dir);
+
+  if let Err(e) = extract_tarball_gz(gz_bytes, &tmp_dir) {
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    return Err(e);
+  }
+
+  match std::fs::rename(&tmp_dir, dest) {
+    Ok(()) => Ok(()),
+    Err(rename_err) => {
+      // `dest` is in the way. On Windows a rename onto *any* existing directory
+      // fails; on Unix only onto a non-empty one - so this is the normal path
+      // for a lost race, not just an error path.
+      if is_materialized_package(dest) {
+        // Another process published a complete copy first. Its tree is as good
+        // as ours, so keep it and drop the staging dir.
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Ok(());
+      }
+      // `dest` is stale: half-extracted by a killed process, or written
+      // non-atomically by an older Deno. Clearing it is what heals a cache that
+      // is already poisoned - otherwise every later run skips the download and
+      // keeps type checking against an incomplete tree.
+      let _ = std::fs::remove_dir_all(dest);
+      match std::fs::rename(&tmp_dir, dest) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+          let _ = std::fs::remove_dir_all(&tmp_dir);
+          // A third process may have published `dest` in between.
+          if is_materialized_package(dest) {
+            return Ok(());
+          }
+          Err(anyhow!(
+            "Failed to move extracted package into {}: {e} (initial: {rename_err})",
+            dest.display()
+          ))
+        }
+      }
+    }
+  }
 }
 
 /// Extract a gzipped npm-style tarball into `dest`, stripping the leading
@@ -1606,6 +1737,139 @@ mod tests {
     // Without an exports map, keep the literal subpath wildcard fallback.
     assert_eq!(paths.get("dep"), Some(&json!([folder])));
     assert_eq!(paths.get("dep/*"), Some(&json!([format!("{folder}/*")])));
+  }
+
+  /// A minimal npm-style `.tgz`: every entry under a leading `package/`.
+  fn make_tarball_gz(files: &[(&str, &str)]) -> Vec<u8> {
+    let mut tar_bytes = Vec::new();
+    {
+      let mut builder = tar::Builder::new(&mut tar_bytes);
+      for (path, contents) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(contents.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+          .append_data(
+            &mut header,
+            format!("package/{path}"),
+            contents.as_bytes(),
+          )
+          .unwrap();
+      }
+      builder.finish().unwrap();
+    }
+    let mut encoder =
+      flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    std::io::Write::write_all(&mut encoder, &tar_bytes).unwrap();
+    encoder.finish().unwrap()
+  }
+
+  #[test]
+  fn test_cleanup_stale_staging_dirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let staging_dir = dir.path().join(".node.tmp-123-0");
+    let other_dir = dir.path().join(".other.tmp-123-0");
+    let similarly_named_file = dir.path().join(".node.tmp-123-1");
+    std::fs::create_dir(&staging_dir).unwrap();
+    std::fs::create_dir(&other_dir).unwrap();
+    std::fs::write(&similarly_named_file, "keep").unwrap();
+
+    // A cutoff older than every filesystem entry keeps active staging dirs.
+    cleanup_stale_staging_dirs(
+      dir.path(),
+      ".node.tmp-",
+      std::time::SystemTime::UNIX_EPOCH,
+    );
+    assert!(staging_dir.exists());
+
+    // A later cutoff removes only matching directories.
+    cleanup_stale_staging_dirs(
+      dir.path(),
+      ".node.tmp-",
+      std::time::SystemTime::now() + std::time::Duration::from_secs(1),
+    );
+    assert!(!staging_dir.exists());
+    assert!(other_dir.exists());
+    assert!(similarly_named_file.exists());
+  }
+
+  #[test]
+  fn test_extract_tarball_gz_atomic_leaves_no_staging_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("@types/node");
+    let gz = make_tarball_gz(&[
+      ("package.json", r#"{"name":"@types/node"}"#),
+      ("index.d.ts", "declare const x: number;"),
+    ]);
+
+    extract_tarball_gz_atomic(&gz, &dest).unwrap();
+
+    assert!(is_materialized_package(&dest));
+    assert_eq!(
+      std::fs::read_to_string(dest.join("index.d.ts")).unwrap(),
+      "declare const x: number;"
+    );
+    // The staging sibling must be gone, not left behind next to `dest`.
+    let leftovers = std::fs::read_dir(dest.parent().unwrap())
+      .unwrap()
+      .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+      .filter(|n| n.starts_with('.') && n.contains(".tmp-"))
+      .collect::<Vec<_>>();
+    assert!(leftovers.is_empty(), "leftover staging dirs: {leftovers:?}");
+  }
+
+  #[test]
+  fn test_extract_tarball_gz_atomic_heals_partial_dest() {
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("node");
+    // A tree a killed process left half-extracted: no `package.json`, plus a
+    // stale file that must not survive into the published package.
+    std::fs::create_dir_all(dest.join("ts5.0")).unwrap();
+    std::fs::write(dest.join("ts5.0/stale.d.ts"), "stale").unwrap();
+    assert!(dest.exists());
+    assert!(!is_materialized_package(&dest));
+
+    let gz = make_tarball_gz(&[
+      ("package.json", r#"{"name":"@types/node"}"#),
+      ("index.d.ts", "fresh"),
+    ]);
+    extract_tarball_gz_atomic(&gz, &dest).unwrap();
+
+    assert!(is_materialized_package(&dest));
+    assert_eq!(
+      std::fs::read_to_string(dest.join("index.d.ts")).unwrap(),
+      "fresh"
+    );
+    assert!(!dest.join("ts5.0/stale.d.ts").exists());
+  }
+
+  #[test]
+  fn test_extract_tarball_gz_atomic_keeps_winners_package() {
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("node");
+    // Stand in for a concurrent process that published `dest` first.
+    std::fs::create_dir_all(&dest).unwrap();
+    std::fs::write(dest.join("package.json"), r#"{"name":"winner"}"#).unwrap();
+    std::fs::write(dest.join("index.d.ts"), "winner").unwrap();
+
+    let gz = make_tarball_gz(&[
+      ("package.json", r#"{"name":"loser"}"#),
+      ("index.d.ts", "loser"),
+    ]);
+    // Losing the race is not an error, and must not clobber the winner.
+    extract_tarball_gz_atomic(&gz, &dest).unwrap();
+
+    assert_eq!(
+      std::fs::read_to_string(dest.join("index.d.ts")).unwrap(),
+      "winner"
+    );
+    let leftovers = std::fs::read_dir(dest.parent().unwrap())
+      .unwrap()
+      .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+      .filter(|n| n.starts_with('.') && n.contains(".tmp-"))
+      .collect::<Vec<_>>();
+    assert!(leftovers.is_empty(), "leftover staging dirs: {leftovers:?}");
   }
 
   #[test]

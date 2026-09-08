@@ -1,0 +1,4 @@
+PASS: direct 127.0.0.1 denied
+PASS: bind6 ::1 denied
+PASS: localhost denied
+PASS: bind6 localhost denied
