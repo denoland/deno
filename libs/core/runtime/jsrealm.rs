@@ -8,6 +8,7 @@ use std::hash::Hasher;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use super::event_loop_flags::SchedFlags;
 use super::exception_state::ExceptionState;
 #[cfg(test)]
 use super::op_driver::OpDriver;
@@ -97,6 +98,9 @@ pub struct ContextState {
   // record from the ESM integration proposal (same trick as Node.js).
   pub(crate) wasm_instances_map: RefCell<Option<v8::Global<v8::Object>>>,
   pub(crate) unrefed_ops: UnrefedOps,
+  /// Event-loop scheduling word shared with `OpState` and `ExceptionState`.
+  /// See [`SchedFlags`] for the set/clear discipline.
+  pub(crate) sched: SchedFlags,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
   // We don't explicitly re-read this prop but need the slice to live alongside
@@ -179,6 +183,35 @@ pub struct ContextState {
 }
 
 impl ContextState {
+  /// True when either promise-rejection queue is non-empty.
+  ///
+  /// Gated on the scheduling bits so the common (empty) case costs one `Cell`
+  /// read rather than two `RefCell` borrows. Clears each bit that is found to
+  /// be stale, which is safe here: the observation and the clear happen back
+  /// to back with no yield to JS in between.
+  pub(crate) fn has_pending_rejections(&self) -> bool {
+    let mut pending = false;
+    if self.sched.has(SchedFlags::PROMISE_REJECTIONS) {
+      let empty = self
+        .exception_state
+        .pending_promise_rejections
+        .borrow()
+        .is_empty();
+      self.sched.clear_if(SchedFlags::PROMISE_REJECTIONS, empty);
+      pending |= !empty;
+    }
+    if self.sched.has(SchedFlags::HANDLED_REJECTIONS) {
+      let empty = self
+        .exception_state
+        .pending_handled_promise_rejections
+        .borrow()
+        .is_empty();
+      self.sched.clear_if(SchedFlags::HANDLED_REJECTIONS, empty);
+      pending |= !empty;
+    }
+    pending
+  }
+
   pub(crate) fn has_tick_scheduled(&self) -> bool {
     self.tick_info[0] != 0
   }
@@ -191,6 +224,10 @@ impl ContextState {
     self.tick_info[1] != 0
   }
 
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "plumbing shared state built before the context exists"
+  )]
   pub(crate) fn new(
     op_driver: Rc<OpDriverImpl>,
     isolate_ptr: v8::UnsafeRawIsolatePtr,
@@ -199,10 +236,11 @@ impl ContextState {
     methods_ctx_offset: usize,
     external_ops_tracker: ExternalOpsTracker,
     unrefed_ops: UnrefedOps,
+    sched: SchedFlags,
   ) -> Self {
     Self {
       isolate: Some(isolate_ptr),
-      exception_state: Default::default(),
+      exception_state: Rc::new(ExceptionState::new(sched.clone())),
       tick_info: Box::new([0u8; 2]),
       immediate_info: Box::new([0u32; 3]),
       js_event_loop_tick_cb: Default::default(),
@@ -225,6 +263,7 @@ impl ContextState {
       timer_info: Box::new([0i32; 1]),
       active_timers: Default::default(),
       unrefed_ops,
+      sched,
       external_ops_tracker,
       ext_import_meta_proto: Default::default(),
       webidl_sequence_keys: Default::default(),

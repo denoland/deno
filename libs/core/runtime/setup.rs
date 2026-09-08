@@ -36,7 +36,54 @@ pub(crate) fn isolate_ptr_to_key(ptr: v8::UnsafeRawIsolatePtr) -> usize {
 /// Thread-safe queue of V8 foreground tasks, shared between the global
 /// isolate registry (written by V8 background threads) and the event
 /// loop (drained on the main thread). Cloning is cheap (Arc).
-pub type ForegroundTaskQueue = std::sync::Arc<Mutex<Vec<v8::Task>>>;
+///
+/// The `has_tasks` flag mirrors the `V8TaskSpawnerFactory` pattern in
+/// `core/tasks.rs`: the event loop drains this queue every tick and it is
+/// almost always empty, so the common case must not pay for a mutex
+/// acquisition. A `false` load guarantees the queue is empty; a `true` load
+/// means it is very likely non-empty (the push and the flag store are not
+/// atomic with respect to each other, so a drain may find nothing — see
+/// `take()`).
+#[derive(Default)]
+pub struct ForegroundTaskQueueInner {
+  tasks: Mutex<Vec<v8::Task>>,
+  has_tasks: AtomicBool,
+}
+
+impl ForegroundTaskQueueInner {
+  /// Push a task, marking the queue non-empty. Called from V8 background
+  /// threads and from tokio timer tasks.
+  pub fn push(&self, task: v8::Task) {
+    self.tasks.lock().unwrap().push(task);
+    // Release: the push above happens-before any acquire load of the flag.
+    self.has_tasks.store(true, Ordering::Release);
+  }
+
+  /// Take every queued task, or `None` when the queue is (almost certainly)
+  /// empty. The empty case costs a single atomic compare-exchange.
+  pub fn take(&self) -> Option<Vec<v8::Task>> {
+    // If the flag is false there are definitely no tasks. Clearing it here
+    // (rather than after the drain) means a task pushed while we run the
+    // drained batch re-sets the flag and is picked up on the next tick,
+    // instead of being silently dropped by a blind post-drain clear.
+    if self
+      .has_tasks
+      .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+      .is_err()
+    {
+      return None;
+    }
+    let tasks = std::mem::take(&mut *self.tasks.lock().unwrap());
+    if tasks.is_empty() {
+      // Lost an unlikely race: the pusher stored the flag before we cleared
+      // it but has not pushed to the vector yet. It will store `true` again.
+      return None;
+    }
+    Some(tasks)
+  }
+}
+
+pub type ForegroundTaskQueue = std::sync::Arc<ForegroundTaskQueueInner>;
 
 /// Per-isolate state stored in the global registry. Kept minimal: just
 /// enough for platform callbacks (which only have an isolate pointer) to
@@ -80,7 +127,7 @@ pub fn unregister_isolate(isolate_ptr: usize) {
 fn queue_task(key: usize, task: v8::Task) {
   let map = ISOLATE_ENTRIES.lock().unwrap();
   if let Some(entry) = map.get(&key) {
-    entry.tasks.lock().unwrap().push(task);
+    entry.tasks.push(task);
     entry.waker.wake();
   }
 }
@@ -112,7 +159,7 @@ fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
   let waker = entry.waker.clone();
   handle.spawn(async move {
     tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
-    tasks.lock().unwrap().push(task);
+    tasks.push(task);
     waker.wake();
   });
 }

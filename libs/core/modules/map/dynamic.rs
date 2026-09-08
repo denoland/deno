@@ -200,6 +200,18 @@ impl ModuleMap {
     self.pending_dyn_mod_evaluations.is_pending()
   }
 
+  /// True when [`ModuleMap::poll_progress`] could do anything at all.
+  ///
+  /// Every queue it drains is gated on a `Cell<bool>`, so this is a handful of
+  /// `Cell` reads and lets the event loop prove that a tick's module phase was
+  /// a no-op (and therefore cannot have queued a microtask).
+  pub(crate) fn has_pending_work(&self) -> bool {
+    self.preparing_dynamic_imports.is_pending()
+      || self.pending_dynamic_imports.is_pending()
+      || self.code_cache_ready_futs.is_pending()
+      || self.pending_dyn_mod_evaluations.is_pending()
+  }
+
   fn dynamic_import_module_evaluate(
     &self,
     scope: &mut v8::PinScope,

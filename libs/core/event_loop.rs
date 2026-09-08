@@ -37,10 +37,14 @@ pub struct EventLoopPhases {
 
 impl EventLoopPhases {
   /// Drain and run all close callbacks.
-  pub fn run_close_callbacks(&mut self) {
+  /// Returns `true` if at least one callback ran.
+  pub fn run_close_callbacks(&mut self) -> bool {
+    let mut ran = false;
     while let Some(cb) = self.close_callbacks.pop_front() {
+      ran = true;
       (cb.callback)();
     }
+    ran
   }
 
   /// Drain all V8 close callbacks (called with a scope from jsruntime).

@@ -123,8 +123,11 @@ use crate::modules::script_origin;
 use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::ops_metrics::dispatch_metrics_async;
 use crate::runtime::ContextState;
+use crate::runtime::EventLoopPendingBuilder;
+use crate::runtime::EventLoopPendingState;
 use crate::runtime::JsRealm;
 use crate::runtime::OpDriverImpl;
+use crate::runtime::SchedFlags;
 use crate::runtime::jsrealm;
 use crate::runtime::jsrealm::IMM_IDX_COUNT;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
@@ -133,6 +136,23 @@ use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
 use crate::uv_compat;
+
+#[cfg(debug_assertions)]
+static MICROTASK_CHECKPOINTS: std::sync::atomic::AtomicU64 =
+  std::sync::atomic::AtomicU64::new(0);
+
+/// `scope.perform_microtask_checkpoint()`, counted in debug builds.
+///
+/// Every checkpoint made by the event loop tick goes through this macro so
+/// that `JsRuntime::microtask_checkpoint_count()` can report the per-tick
+/// count. Compiles to the bare call in release.
+macro_rules! checkpoint {
+  ($scope:expr) => {{
+    #[cfg(debug_assertions)]
+    MICROTASK_CHECKPOINTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    $scope.perform_microtask_checkpoint();
+  }};
+}
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
 
@@ -816,6 +836,7 @@ impl JsRuntime {
     let _phase = startup_phase_begin();
     let mut op_state = OpState::new(options.maybe_op_stack_trace_callback);
     let unrefed_ops = op_state.unrefed_ops.clone();
+    let sched = op_state.sched.clone();
 
     let lazy_extensions =
       extension_set::setup_op_state(&mut op_state, &mut extensions);
@@ -1014,6 +1035,7 @@ impl JsRuntime {
       methods_ctx_offset,
       op_state.borrow().external_ops_tracker.clone(),
       unrefed_ops,
+      sched,
     ));
 
     // TODO(bartlomieju): factor out
@@ -2395,6 +2417,15 @@ impl JsRuntime {
     result
   }
 
+  /// Number of `perform_microtask_checkpoint` calls made from the event loop
+  /// tick, for measuring checkpoint elimination. Debug builds only: counting
+  /// is build-independent, so a debug run answers "how many checkpoints does
+  /// an idle tick make?" without putting an atomic in the release hot path.
+  #[cfg(debug_assertions)]
+  pub fn microtask_checkpoint_count() -> u64 {
+    MICROTASK_CHECKPOINTS.load(std::sync::atomic::Ordering::Relaxed)
+  }
+
   /// Phase-based event loop tick, loosely following libuv's architecture:
   ///
   /// 1. Timers          -- fire expired libuv C timers + JS user timers
@@ -2405,7 +2436,18 @@ impl JsRuntime {
   /// 5. Check            -- libuv check callbacks + immediates
   /// 6. Close            -- close callbacks (Rust + libuv)
   ///
-  /// Microtask checkpoints run between phases.
+  /// Microtask checkpoints run between phases — but only where the preceding
+  /// phase can actually have queued a microtask. `microtasks_dirty` tracks
+  /// that: it starts `true` (whatever ran between polls is unknown to us), is
+  /// cleared by every checkpoint, and is re-set by every phase that entered
+  /// JS. A checkpoint whose `microtasks_dirty` is `false` is provably a no-op
+  /// — V8's queue was drained by the previous checkpoint and nothing has run
+  /// since — so it is skipped. An idle tick therefore performs exactly one
+  /// checkpoint (the pre-phase one) instead of four (six with a uv loop).
+  ///
+  /// Phases report "did I run anything?" rather than being inferred from
+  /// queue state, so the flag can never be cleared while a phase is midway
+  /// through calling into JS.
   fn poll_event_loop_inner(
     &self,
     cx: &mut Context,
@@ -2415,6 +2457,10 @@ impl JsRuntime {
     let has_inspector = self.inner.state.has_inspector.get();
     self.inner.state.waker.register(cx.waker());
 
+    // Whether anything may have queued a microtask since the last checkpoint.
+    // Starts `true`: an embedder can run arbitrary JS between two polls.
+    let mut microtasks_dirty = true;
+
     // Pre-phase: Inspector + drain foreground tasks + microtask checkpoint
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
@@ -2422,16 +2468,19 @@ impl JsRuntime {
     {
       // Drain and run foreground tasks queued by the custom V8 platform.
       // Uses the local Arc shared with the registry — no global map lookup.
-      let tasks =
-        std::mem::take(&mut *self.inner.state.foreground_tasks.lock().unwrap());
-      for task in tasks {
-        task.run();
+      // `take()` short-circuits on an atomic load, so the (overwhelmingly
+      // common) empty case never touches the mutex.
+      if let Some(tasks) = self.inner.state.foreground_tasks.take() {
+        for task in tasks {
+          task.run();
+        }
       }
 
       v8::tc_scope!(let tc_scope, scope);
       let context_state = JsRealm::state_from_scope(tc_scope);
       if !context_state.has_tick_scheduled() {
-        tc_scope.perform_microtask_checkpoint();
+        checkpoint!(tc_scope);
+        microtasks_dirty = false;
       }
       if let Some(exception) = tc_scope.exception() {
         return Poll::Ready(Err(
@@ -2465,11 +2514,15 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = uv_inner {
       // Update cached loop time at the start of each tick, matching libuv.
       unsafe { (*uv_inner_ptr).update_time() };
-      unsafe { (*uv_inner_ptr).run_timers() };
+      microtasks_dirty |= unsafe { (*uv_inner_ptr).run_timers() };
     }
 
     // ===== Phase 2: Pending work =====
-    // Module progress polling (before ops, matching original ordering)
+    // Module progress polling (before ops, matching original ordering).
+    // `poll_progress` still runs unconditionally — it registers the module
+    // waker every tick — but when nothing is queued every drain inside it
+    // returns early, so it cannot have entered JS.
+    microtasks_dirty |= modules.has_pending_work();
     modules.poll_progress(cx, scope)?;
 
     // 2a. V8 task spawner tasks
@@ -2482,17 +2535,19 @@ impl JsRuntime {
     let timer_ready = Self::dispatch_user_timers(cx, scope, context_state)?;
     did_work |= timer_ready;
     dispatched_ops |= Self::dispatch_event_loop_tick(cx, scope, context_state)?;
+    microtasks_dirty |= dispatched_ops || timer_ready;
     // Microtask checkpoint after timer/op processing, but only when
     // no ticks are scheduled (matching original guard after timers).
-    if !context_state.has_tick_scheduled() {
-      scope.perform_microtask_checkpoint();
+    if microtasks_dirty && !context_state.has_tick_scheduled() {
+      checkpoint!(scope);
+      microtasks_dirty = false;
     }
 
     // 2c. Dispatch "rejectionhandled" events before tick processing.
     // This ensures rejectionhandled fires before unhandledrejection for
     // later promises, since processTicksAndRejections drains unhandled
     // rejections via processPromiseRejections.
-    Self::dispatch_handled_rejections(scope, exception_state);
+    microtasks_dirty |= Self::dispatch_handled_rejections(scope, context_state);
 
     // 2d. nextTick drain + macrotask drain.
     // Only drain if there's actual work (ops dispatched, tick scheduled,
@@ -2502,12 +2557,19 @@ impl JsRuntime {
     dispatched_ops |= has_tick_scheduled;
     if dispatched_ops || did_work || has_tick_scheduled {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+      // `drainTicks` ends in a checkpoint of its own, but a nextTick callback
+      // running after it can queue more, so stay conservative.
+      microtasks_dirty = true;
     }
 
     // 2e. Handle promise rejections (after nextTick/macrotask, since
     // unhandledrejection handlers are run in macrotask callbacks).
-    Self::dispatch_rejections(scope, context_state, exception_state)?;
-    scope.perform_microtask_checkpoint();
+    microtasks_dirty |=
+      Self::dispatch_rejections(scope, context_state, exception_state)?;
+    if microtasks_dirty {
+      checkpoint!(scope);
+      microtasks_dirty = false;
+    }
 
     // ===== Phase 3: Idle / Prepare =====
     // In libuv: idle runs after pending callbacks, prepare runs right
@@ -2518,14 +2580,20 @@ impl JsRuntime {
       Some(ptr) => Some(ptr),
       None => context_state.uv_loop_inner.get(),
     };
-    let has_uv = uv_inner.is_some();
     if let Some(uv_inner_ptr) = uv_inner {
-      unsafe {
-        (*uv_inner_ptr).run_idle();
-        (*uv_inner_ptr).run_prepare();
+      let ran = unsafe {
+        let idle = (*uv_inner_ptr).run_idle();
+        let prepare = (*uv_inner_ptr).run_prepare();
+        idle || prepare
       };
-      // Idle/prepare callbacks may call into JS; flush microtasks.
-      scope.perform_microtask_checkpoint();
+      // Idle/prepare callbacks may call into JS; flush microtasks. With no
+      // active idle/prepare handles neither loop invoked a callback, so
+      // there is nothing to flush.
+      microtasks_dirty |= ran;
+      if microtasks_dirty {
+        checkpoint!(scope);
+        microtasks_dirty = false;
+      }
     }
 
     // ===== Phase 4: I/O =====
@@ -2547,10 +2615,12 @@ impl JsRuntime {
         // Flush microtasks from I/O callbacks, then drain ticks.
         // processTicksAndRejections runs op_run_microtasks internally,
         // so the trailing checkpoint is only needed when no ticks ran.
-        scope.perform_microtask_checkpoint();
+        checkpoint!(scope);
         Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+        microtasks_dirty = true;
         if !context_state.has_tick_scheduled() {
-          scope.perform_microtask_checkpoint();
+          checkpoint!(scope);
+          microtasks_dirty = false;
         }
       }
     }
@@ -2560,7 +2630,7 @@ impl JsRuntime {
     // Immediates fire here, matching Node.js's setImmediate semantics
     // (libuv check phase, after I/O).
     if let Some(uv_inner_ptr) = uv_inner {
-      unsafe { (*uv_inner_ptr).run_check() };
+      microtasks_dirty |= unsafe { (*uv_inner_ptr).run_check() };
     }
     // Drain immediates in the check phase, matching Node.js semantics:
     // - Refed immediates always fire (they keep the event loop alive).
@@ -2577,6 +2647,7 @@ impl JsRuntime {
         && (has_refed || did_work || dispatched_ops || uv_did_io)
       {
         Self::do_js_run_immediate_callbacks(scope, context_state)?;
+        microtasks_dirty = true;
         // Drain ticks queued by immediate callbacks so they don't
         // require an extra full event loop iteration.
         if context_state.has_tick_scheduled() {
@@ -2584,7 +2655,10 @@ impl JsRuntime {
         }
       }
     }
-    scope.perform_microtask_checkpoint();
+    if microtasks_dirty {
+      checkpoint!(scope);
+      microtasks_dirty = false;
+    }
 
     // Drain nextTick queue before close phase, matching Node.js/libuv
     // where process.nextTick fires between each event loop phase.
@@ -2592,16 +2666,17 @@ impl JsRuntime {
     // close callbacks (Phase 6).
     if context_state.has_tick_scheduled() {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+      microtasks_dirty = true;
     }
 
     // ===== Phase 6: Close =====
     exception_state.check_exception_condition(scope)?;
     {
       let mut phases = context_state.event_loop_phases.borrow_mut();
-      phases.run_close_callbacks();
+      microtasks_dirty |= phases.run_close_callbacks();
     }
     if let Some(uv_inner_ptr) = uv_inner {
-      unsafe { (*uv_inner_ptr).run_close() };
+      microtasks_dirty |= unsafe { (*uv_inner_ptr).run_close() };
     }
     // Run V8 close callbacks (JS handle.close() callbacks).
     // These are deferred to Phase 6 to match libuv's uv_close behavior
@@ -2612,19 +2687,14 @@ impl JsRuntime {
         .event_loop_phases
         .borrow_mut()
         .drain_v8_close_callbacks();
+      microtasks_dirty |= !v8_cbs.is_empty();
       for cb in v8_cbs {
         (cb.callback)(scope);
       }
     }
-    // libuv close callbacks may call into JS; flush microtasks if present.
-    if has_uv
-      || !context_state
-        .event_loop_phases
-        .borrow()
-        .v8_close_callbacks
-        .is_empty()
-    {
-      scope.perform_microtask_checkpoint();
+    // Close callbacks may call into JS; flush microtasks if any actually ran.
+    if microtasks_dirty {
+      checkpoint!(scope);
     }
 
     // Evaluate pending state
@@ -2685,40 +2755,38 @@ impl JsRuntime {
     }
 
     // Re-wake logic for next iteration
-    #[allow(
-      clippy::suspicious_else_formatting,
-      clippy::if_same_then_else,
-      reason = "intentional structure for clarity of re-wake conditions"
-    )]
     {
-      if pending_state.has_pending_background_tasks
-        || pending_state.has_tick_scheduled
-        || pending_state.has_outstanding_immediates
+      /// Work that must be revisited on the very next tick.
+      const REWAKE_IMMEDIATELY: u16 = EventLoopPendingState::BACKGROUND_TASKS
+        | EventLoopPendingState::TICK_SCHEDULED
+        | EventLoopPendingState::OUTSTANDING_IMMEDIATES
+        | EventLoopPendingState::PROMISE_EVENTS;
+      /// Module evaluation can only progress if ops were dispatched.
+      const REWAKE_IF_OPS_DISPATCHED: u16 = EventLoopPendingState::MODULE_EVAL
+        | EventLoopPendingState::DYN_MODULE_EVAL;
+
+      if pending_state.has(REWAKE_IMMEDIATELY)
         || context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
-        || pending_state.has_pending_promise_events
         || uv_did_io
-      {
-        self.inner.state.waker.wake();
-      } else
-      // If ops were dispatched we may have progress on pending modules that we should re-check
-      if (pending_state.has_pending_module_evaluation
-        || pending_state.has_pending_dyn_module_evaluation)
-        && dispatched_ops
+        // If ops were dispatched we may have progress on pending modules that
+        // we should re-check
+        || (dispatched_ops && pending_state.has(REWAKE_IF_OPS_DISPATCHED))
       {
         self.inner.state.waker.wake();
       }
     }
 
-    if pending_state.has_pending_module_evaluation {
-      if pending_state.has_pending_ops
-        || pending_state.has_pending_dyn_imports
-        || pending_state.has_pending_dyn_module_evaluation
-        || pending_state.has_pending_background_tasks
-        || pending_state.has_pending_external_ops
-        || pending_state.has_tick_scheduled
-        || pending_state.has_pending_timers
-        || pending_state.has_uv_alive_handles
-      {
+    if pending_state.has(EventLoopPendingState::MODULE_EVAL) {
+      /// Anything that could still drive a stalled top-level await forward.
+      const MAY_UNSTALL: u16 = EventLoopPendingState::PENDING_OPS
+        | EventLoopPendingState::DYN_IMPORTS
+        | EventLoopPendingState::DYN_MODULE_EVAL
+        | EventLoopPendingState::BACKGROUND_TASKS
+        | EventLoopPendingState::EXTERNAL_OPS
+        | EventLoopPendingState::TICK_SCHEDULED
+        | EventLoopPendingState::TIMERS
+        | EventLoopPendingState::UV_ALIVE_HANDLES;
+      if pending_state.has(MAY_UNSTALL) {
         // pass, will be polled again
       } else {
         // Last-resort: try one more microtask checkpoint before reporting
@@ -2767,15 +2835,16 @@ impl JsRuntime {
       }
     }
 
-    if pending_state.has_pending_dyn_module_evaluation {
-      if pending_state.has_pending_ops
-        || pending_state.has_pending_dyn_imports
-        || pending_state.has_pending_background_tasks
-        || pending_state.has_pending_external_ops
-        || pending_state.has_tick_scheduled
-        || pending_state.has_pending_timers
-        || pending_state.has_uv_alive_handles
-      {
+    if pending_state.has(EventLoopPendingState::DYN_MODULE_EVAL) {
+      /// Same as `MAY_UNSTALL` above, minus `DYN_MODULE_EVAL` itself.
+      const MAY_UNSTALL: u16 = EventLoopPendingState::PENDING_OPS
+        | EventLoopPendingState::DYN_IMPORTS
+        | EventLoopPendingState::BACKGROUND_TASKS
+        | EventLoopPendingState::EXTERNAL_OPS
+        | EventLoopPendingState::TICK_SCHEDULED
+        | EventLoopPendingState::TIMERS
+        | EventLoopPendingState::UV_ALIVE_HANDLES;
+      if pending_state.has(MAY_UNSTALL) {
         // pass, will be polled again
       } else if realm.modules_idle() {
         if let Some(js_error) =
@@ -3116,75 +3185,111 @@ pub fn ensure_uv_loop(
   Some(loop_ptr)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) struct EventLoopPendingState {
-  has_pending_ops: bool,
-  has_pending_refed_ops: bool,
-  has_pending_dyn_imports: bool,
-  has_pending_dyn_module_evaluation: bool,
-  has_pending_module_evaluation: bool,
-  has_pending_background_tasks: bool,
-  has_tick_scheduled: bool,
-  has_pending_promise_events: bool,
-  has_pending_external_ops: bool,
-  has_outstanding_immediates: bool,
-  has_pending_timers: bool,
-  has_uv_alive_handles: bool,
-}
-
 impl EventLoopPendingState {
   /// Collect event loop state from all the sub-states.
+  ///
+  /// Every source below is either a `Cell`/atomic/shared-buffer read (already
+  /// free) or is gated on a [`SchedFlags`] bit so the `RefCell` behind it is
+  /// never borrowed on an idle tick. The gated sources also take the
+  /// opportunity to *clear* their bit once observed empty — the only place in
+  /// the tick where clearing is safe for these queues, because the check and
+  /// the clear happen with no intervening yield to JS.
   pub fn new(
     scope: &mut v8::PinScope<()>,
     state: &ContextState,
     modules: &ModuleMap,
   ) -> Self {
-    let num_unrefed_ops = state.unrefed_ops.borrow().len();
+    let sched = &state.sched;
+    let mut bits = EventLoopPendingBuilder::new();
+
+    // --- op liveness -------------------------------------------------------
+    // `pending_ops.len()` and the task-spawner/external-op flags are a `Cell`
+    // and two atomics respectively; only `unrefed_ops` is a `RefCell`.
     let num_pending_ops = state.pending_ops.len();
+    let num_unrefed_ops = if sched.has(SchedFlags::UNREFED_OPS) {
+      let unrefed = state.unrefed_ops.borrow();
+      sched.clear_if(SchedFlags::UNREFED_OPS, unrefed.is_empty());
+      unrefed.len()
+    } else {
+      0
+    };
     let has_pending_tasks = state.task_spawner_factory.has_pending_tasks();
     // User timers: JS manages these; the timer handle is refed when
     // there are refed timers (timer_info[0] > 0).
     let has_pending_refed_user_timers = state.user_timer.is_refed();
-    let has_pending_dyn_imports = modules.has_pending_dynamic_imports();
-    let has_pending_dyn_module_evaluation =
-      modules.has_pending_dyn_module_evaluation();
-    let has_pending_module_evaluation = modules.has_pending_module_evaluation();
-    let has_pending_promise_events = !state
-      .exception_state
-      .pending_promise_rejections
-      .borrow()
-      .is_empty()
-      || !state
-        .exception_state
-        .pending_handled_promise_rejections
-        .borrow()
-        .is_empty();
     let has_pending_refed_ops = has_pending_tasks
       || has_pending_refed_user_timers
       || num_pending_ops > num_unrefed_ops;
-    let has_outstanding_immediates =
-      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0;
-    let has_pending_timers = !state.active_timers.borrow().is_empty();
-    let has_uv_alive_handles =
-      if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
-        unsafe { (*uv_inner_ptr).has_alive_handles() }
-      } else {
-        false
-      };
-    EventLoopPendingState {
-      has_pending_ops: has_pending_refed_ops || (num_pending_ops > 0),
+    bits.set_if(
+      EventLoopPendingState::PENDING_REFED_OPS,
       has_pending_refed_ops,
-      has_pending_dyn_imports,
-      has_pending_dyn_module_evaluation,
-      has_pending_module_evaluation,
-      has_pending_background_tasks: scope.has_pending_background_tasks(),
-      has_tick_scheduled: state.has_tick_scheduled(),
+    );
+    bits.set_if(
+      EventLoopPendingState::PENDING_OPS,
+      has_pending_refed_ops || num_pending_ops > 0,
+    );
+    bits.set_if(
+      EventLoopPendingState::EXTERNAL_OPS,
+      state.external_ops_tracker.has_pending_ops(),
+    );
+
+    // --- modules -----------------------------------------------------------
+    // All three are `Cell<bool>` reads on `ModuleMap`.
+    bits.set_if(
+      EventLoopPendingState::DYN_IMPORTS,
+      modules.has_pending_dynamic_imports(),
+    );
+    bits.set_if(
+      EventLoopPendingState::DYN_MODULE_EVAL,
+      modules.has_pending_dyn_module_evaluation(),
+    );
+    bits.set_if(
+      EventLoopPendingState::MODULE_EVAL,
+      modules.has_pending_module_evaluation(),
+    );
+
+    // --- promise rejections ------------------------------------------------
+    let has_pending_promise_events = state.has_pending_rejections();
+    bits.set_if(
+      EventLoopPendingState::PROMISE_EVENTS,
       has_pending_promise_events,
-      has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
-      has_outstanding_immediates,
-      has_pending_timers,
-      has_uv_alive_handles,
+    );
+
+    // --- JS-side shared buffers (plain array reads) ------------------------
+    bits.set_if(
+      EventLoopPendingState::TICK_SCHEDULED,
+      state.has_tick_scheduled(),
+    );
+    bits.set_if(
+      EventLoopPendingState::OUTSTANDING_IMMEDIATES,
+      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
+    );
+
+    // --- timers tracked for the leak sanitizer -----------------------------
+    if sched.has(SchedFlags::ACTIVE_TIMERS) {
+      let active_timers = state.active_timers.borrow();
+      sched.clear_if(SchedFlags::ACTIVE_TIMERS, active_timers.is_empty());
+      bits.set_if(EventLoopPendingState::TIMERS, !active_timers.is_empty());
     }
+
+    // --- libuv compat ------------------------------------------------------
+    // The loop is created lazily, so a runtime that never touched a uv handle
+    // has a null pointer here and skips the C call entirely.
+    if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
+      // SAFETY: the pointee outlives the `ContextState` (see `uv_loop_inner`).
+      let alive = unsafe { (*uv_inner_ptr).has_alive_handles() };
+      bits.set_if(EventLoopPendingState::UV_ALIVE_HANDLES, alive);
+    }
+
+    // --- V8 ----------------------------------------------------------------
+    // Not flaggable: V8 may start background work (compilation, GC) without
+    // going through any Rust enqueue point.
+    bits.set_if(
+      EventLoopPendingState::BACKGROUND_TASKS,
+      scope.has_pending_background_tasks(),
+    );
+
+    bits.build()
   }
 
   /// Collect event loop state from all the states stored in the scope.
@@ -3192,18 +3297,6 @@ impl EventLoopPendingState {
     let module_map = JsRealm::module_map_from(scope);
     let context_state = JsRealm::state_from_scope(scope);
     Self::new(scope, &context_state, &module_map)
-  }
-
-  pub fn is_pending(&self) -> bool {
-    self.has_pending_refed_ops
-      || self.has_pending_dyn_imports
-      || self.has_pending_dyn_module_evaluation
-      || self.has_pending_module_evaluation
-      || self.has_pending_background_tasks
-      || self.has_tick_scheduled
-      || self.has_pending_promise_events
-      || self.has_pending_external_ops
-      || self.has_uv_alive_handles
   }
 }
 
@@ -3658,8 +3751,12 @@ impl JsRuntime {
       // Both of these are no-ops in the common case: most runtimes never
       // unref an op and leak tracing is off unless a test enables it. The
       // guards avoid a `RefCell` borrow + hash/tree lookup per completion.
-      if !context_state.unrefed_ops.borrow().is_empty() {
-        context_state.unrefed_ops.borrow_mut().remove(&promise_id);
+      if context_state.sched.has(SchedFlags::UNREFED_OPS) {
+        let mut unrefed = context_state.unrefed_ops.borrow_mut();
+        unrefed.remove(&promise_id);
+        context_state
+          .sched
+          .clear_if(SchedFlags::UNREFED_OPS, unrefed.is_empty());
       }
       if context_state.activity_traces.is_enabled() {
         context_state
@@ -3699,10 +3796,19 @@ impl JsRuntime {
   /// reported as unhandled but have since had handlers attached.
   /// This must run before unhandled rejection processing so that
   /// rejectionhandled fires before unhandledrejection for later promises.
+  ///
+  /// Returns `true` if a handler was invoked, i.e. if this entered JS.
   fn dispatch_handled_rejections<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
-    exception_state: &ExceptionState,
-  ) {
+    context_state: &ContextState,
+  ) -> bool {
+    // Fast path: nothing was ever queued, so skip the `RefCell` borrow and
+    // the `v8::undefined` local this would otherwise allocate every tick.
+    if !context_state.sched.has(SchedFlags::HANDLED_REJECTIONS) {
+      return false;
+    }
+    let mut called = false;
+    let exception_state = &context_state.exception_state;
     let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
     while let Some((promise, result)) = exception_state
       .pending_handled_promise_rejections
@@ -3719,27 +3825,40 @@ impl JsRuntime {
           v8::Local::new(scope, promise).into(),
           v8::Local::new(scope, result),
         ];
+        called = true;
         function.call(scope, undefined, &args);
       }
     }
+    // The loop above exits only once `pop_front` returns `None`, i.e. with the
+    // queue observed empty. A handler that queued a *new* handled rejection
+    // would have been popped by this same loop, so clearing here cannot drop
+    // work.
+    context_state.sched.clear(SchedFlags::HANDLED_REJECTIONS);
+    called
   }
 
   /// Phase 2c: Handle promise rejections.
+  ///
+  /// Returns `true` if this entered JS (see `dispatch_handled_rejections`).
   fn dispatch_rejections<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
     exception_state: &ExceptionState,
-  ) -> Result<(), Box<JsError>> {
+  ) -> Result<bool, Box<JsError>> {
     // First handle "handled" rejections
-    Self::dispatch_handled_rejections(scope, exception_state);
+    let called = Self::dispatch_handled_rejections(scope, context_state);
 
     // Then handle unhandled rejections
+    if !context_state.sched.has(SchedFlags::PROMISE_REJECTIONS) {
+      return Ok(called);
+    }
     if exception_state
       .pending_promise_rejections
       .borrow()
       .is_empty()
     {
-      return Ok(());
+      context_state.sched.clear(SchedFlags::PROMISE_REJECTIONS);
+      return Ok(called);
     }
 
     let mut pending_rejections =
@@ -3747,6 +3866,9 @@ impl JsRuntime {
     let mut rejections = VecDeque::default();
     std::mem::swap(&mut *pending_rejections, &mut rejections);
     drop(pending_rejections);
+    // The queue was just swapped out for an empty one. Anything the handler
+    // call below queues re-sets the bit through `track_promise_rejection`.
+    context_state.sched.clear(SchedFlags::PROMISE_REJECTIONS);
 
     let mut args: SmallVec<[v8::Local<v8::Value>; 16]> =
       SmallVec::with_capacity(rejections.len() * 3);
@@ -3768,7 +3890,7 @@ impl JsRuntime {
       return exception_to_err_result(tc_scope, exception, false, true);
     }
 
-    Ok(())
+    Ok(true)
   }
 
   /// Drain nextTick queue and macrotask queue (no op resolution).

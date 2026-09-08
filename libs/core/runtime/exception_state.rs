@@ -6,9 +6,12 @@ use std::collections::VecDeque;
 
 use crate::error::JsError;
 use crate::error::exception_to_err_result;
+use crate::runtime::SchedFlags;
 
-#[derive(Default)]
 pub(crate) struct ExceptionState {
+  /// Shared event-loop scheduling word; bits are set when a rejection is
+  /// pushed onto either queue below. See [`SchedFlags`].
+  sched: SchedFlags,
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   dispatched_exception: Cell<Option<v8::Global<v8::Value>>>,
@@ -36,6 +39,20 @@ pub(crate) struct ExceptionState {
 }
 
 impl ExceptionState {
+  pub(crate) fn new(sched: SchedFlags) -> Self {
+    Self {
+      sched,
+      dispatched_exception: Default::default(),
+      dispatched_exception_is_promise: Default::default(),
+      pending_promise_rejections: Default::default(),
+      pending_handled_promise_rejections: Default::default(),
+      js_build_custom_error_cb: Default::default(),
+      js_error_constructors: Default::default(),
+      js_handled_promise_rejection_cb: Default::default(),
+      js_format_exception_cb: Default::default(),
+    }
+  }
+
   /// Clear all the associated v8 objects to prepare for this isolate to be torn down, either for
   /// a snapshot or for process termination purposes.
   ///
@@ -48,6 +65,7 @@ impl ExceptionState {
     self.js_handled_promise_rejection_cb.borrow_mut().take();
     self.js_format_exception_cb.borrow_mut().take();
     self.pending_promise_rejections.borrow_mut().clear();
+    self.sched.clear(SchedFlags::PROMISE_REJECTIONS);
     self.dispatched_exception.set(None);
   }
 
@@ -149,6 +167,9 @@ impl ExceptionState {
           error_global,
           async_context_global,
         ));
+        // Enqueue point: the event loop skips the rejection phase entirely
+        // when this bit is clear.
+        self.sched.set(SchedFlags::PROMISE_REJECTIONS);
       }
       PromiseHandlerAddedAfterReject => {
         // The code has until the event loop yields to attach a handler and avoid an unhandled rejection
@@ -158,6 +179,9 @@ impl ExceptionState {
         let mut rejections = self.pending_promise_rejections.borrow_mut();
         let previous_len = rejections.len();
         rejections.retain(|(key, _, _)| key != &promise_global);
+        self
+          .sched
+          .clear_if(SchedFlags::PROMISE_REJECTIONS, rejections.is_empty());
         if rejections.len() == previous_len {
           // Don't hold the lock while we go back into v8
           drop(rejections);
@@ -170,6 +194,8 @@ impl ExceptionState {
               .pending_handled_promise_rejections
               .borrow_mut()
               .push_back((promise_global, error_global));
+            // Enqueue point for the "rejectionhandled" phase.
+            self.sched.set(SchedFlags::HANDLED_REJECTIONS);
           }
         }
       }

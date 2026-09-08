@@ -7,6 +7,10 @@
 //!   nothing to do but a far-future timer. Each poll walks every event loop
 //!   phase, so this is the cost of an otherwise idle tick.
 //! - `new [N]`    -- create and drop `N` (default 50) empty runtimes.
+//!
+//! Built with `debug_assertions`, `ticks` additionally reports
+//! `ticks_checkpoints_per_iteration` -- the number of V8 microtask
+//! checkpoints the event loop performs per tick.
 //! - `ops [B] [S]` -- await `B` (default 2000) batches of `S` (default 100)
 //!   `op_void_async_deferred` calls via `Promise.all`, i.e. the async op
 //!   completion path.
@@ -99,6 +103,11 @@ async fn main() {
       }
       let waker = std::task::Waker::noop();
       let mut cx = std::task::Context::from_waker(waker);
+      // Microtask checkpoints are only counted in debug builds (the counter
+      // would otherwise sit in the release hot path); the count itself does
+      // not depend on optimization level.
+      #[cfg(debug_assertions)]
+      let checkpoints_before = JsRuntime::microtask_checkpoint_count();
       let start = Instant::now();
       let cpu_start = cpu_time_ns();
       for _ in 0..n {
@@ -115,6 +124,12 @@ async fn main() {
       println!(
         "ticks_per_iteration_ns={:.1}",
         elapsed.as_nanos() as f64 / n as f64
+      );
+      #[cfg(debug_assertions)]
+      println!(
+        "ticks_checkpoints_per_iteration={:.3}",
+        (JsRuntime::microtask_checkpoint_count() - checkpoints_before) as f64
+          / n as f64
       );
     }
     "new" => {
