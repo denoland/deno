@@ -1864,18 +1864,6 @@ fn filter_stock_libs(libs: &[Value]) -> Value {
   Value::Array(out)
 }
 
-/// Merge the user's `compilerOptions.types` into `base_types`, keeping only the
-/// entries that actually resolve as `types` entries.
-///
-/// `compilerOptions.types` resolves entries as type *packages* via
-/// typeRoots/node_modules; it does NOT consult `paths`. So only a bare package
-/// name belongs here: unscoped (`node`) or scoped (`@types/react`). A subpath
-/// entry (`lume/types.ts`) can't resolve this way and would make stock tsc/tsgo
-/// fail the whole program build (TS2688), masking every real diagnostic, so it
-/// is dropped. Deno accepts such entries because it loads them as modules; the
-/// stock-tooling equivalent is that the (materialized) file is pulled into the
-/// program by the tsconfig `include` glob, which carries its ambient
-/// declarations and `/// <reference lib=... />` directives just the same.
 /// Resolve the cache/node_modules directory of a `compilerOptions.types` entry
 /// that names an npm package the user imports (matched by import alias).
 fn npm_types_pkg_dir(
@@ -1920,109 +1908,66 @@ fn split_pkg_subpath(s: &str) -> Option<(&str, &str)> {
   Some((&s[..slash], subpath))
 }
 
-/// Whether a package.json declares an `exports` encapsulation boundary. Any
-/// present `exports` value (object, conditions-only object, string, or array)
-/// means only exported subpaths are reachable; an absent (or null) field
-/// means the legacy file layout applies.
-fn package_has_exports(pkg_dir: &Path) -> bool {
-  let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json"))
-  else {
-    return false;
-  };
-  let Ok(pkg_json) = serde_json::from_str::<Value>(&content) else {
-    return false;
-  };
-  matches!(
-    pkg_json.get("exports"),
-    Some(Value::String(_) | Value::Object(_) | Value::Array(_))
-  )
-}
-
-/// Whether a name denotes a TypeScript source or declaration file. Used to
-/// gate `exports` targets: a bare-string export like
-/// `"./client": "./client.js"` names a runtime-only target, which must never
-/// become a `compilerOptions.types` root.
 fn is_typescript_file(name: &str) -> bool {
   name.ends_with(".ts") || name.ends_with(".mts") || name.ends_with(".cts")
 }
 
-/// Read a package's `exports[export_key]` entry value, if the package has an
-/// `exports` map containing that exact key.
-fn package_exports_entry(pkg_dir: &Path, export_key: &str) -> Option<Value> {
-  let content = std::fs::read_to_string(pkg_dir.join("package.json")).ok()?;
-  let pkg_json: Value = serde_json::from_str(&content).ok()?;
-  pkg_json.get("exports")?.get(export_key).cloned()
+fn has_windows_drive_prefix(path: &str) -> bool {
+  let bytes = path.as_bytes();
+  bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
-/// Resolve the declaration file for an exported subpath: exact export key
-/// only (`pkg/types.ts` tries `./types.ts`, never a rewritten `./types` —
-/// what the user wrote is part of the package contract). The entry must
-/// carry a `types` condition (or be a bare string already naming a TypeScript
-/// file), and the resolved target must exist, be type-bearing, and stay
-/// inside the package. A runtime-only export (`"./client": "./client.js"`)
-/// resolves to `None`.
-fn resolve_exported_subpath_types(
-  pkg_dir: &Path,
-  subpath: &str,
-) -> Option<PathBuf> {
-  let key = format!("./{subpath}");
-  let entry = package_exports_entry(pkg_dir, &key)?;
-  let types_bearing = exports_declares_types(&entry)
-    || entry.as_str().is_some_and(is_typescript_file);
-  if !types_bearing {
-    return None;
-  }
-  let p = resolve_package_types_entry_path(pkg_dir, &key)?;
-  // Containment: the declared target must stay inside the package. A
-  // compromised `types` target (`../../../evil.d.ts`) must never be
-  // materialized even though the user entry itself was well-formed.
-  let root =
-    deno_path_util::normalize_path(std::borrow::Cow::Borrowed(pkg_dir));
-  let normalized =
-    deno_path_util::normalize_path(std::borrow::Cow::Borrowed(&p));
-  if !normalized.starts_with(root.as_ref()) {
-    return None;
-  }
-  let is_dts = p
-    .file_name()
-    .and_then(|n| n.to_str())
-    .is_some_and(is_typescript_file);
-  (p.exists() && is_dts).then_some(p)
-}
-
-/// Resolve the declaration file for a `compilerOptions.types` subpath entry
-/// (`vite/client`).
-///
-/// A package WITH an `exports` map is encapsulated: only an exact exported
-/// key whose target is type-bearing resolves; anything else is `None` — the
-/// filesystem is never consulted past the boundary, so private declarations
-/// stay private. A package WITHOUT `exports` keeps the legacy file layout: a
-/// sibling `.d.ts`, or the subpath itself when it already names a TypeScript
-/// file (`pkg/types.ts`).
-fn resolve_npm_subpath_types(pkg_dir: &Path, subpath: &str) -> Option<PathBuf> {
-  // A `types` entry is never a legitimate package subpath with parent
-  // references, an absolute path, or a backslash (package specifiers use
-  // `/`; on Windows `Path::join` treats `\`-rooted segments specially).
-  // Refuse to let it escape the package directory via `Path::join` below.
-  if subpath.starts_with('/')
-    || subpath.contains('\\')
-    || subpath.split('/').any(|seg| seg == "..")
+fn package_type_file(pkg_dir: &Path, target: &str) -> Option<PathBuf> {
+  if !is_typescript_file(target)
+    || target.contains('\\')
+    || Path::new(target).is_absolute()
+    || has_windows_drive_prefix(target)
   {
     return None;
   }
-  if package_has_exports(pkg_dir) {
-    return resolve_exported_subpath_types(pkg_dir, subpath);
+  let root =
+    deno_path_util::normalize_path(std::borrow::Cow::Borrowed(pkg_dir));
+  let path = deno_path_util::normalize_path(std::borrow::Cow::Owned(
+    pkg_dir.join(target),
+  ));
+  (path.starts_with(root.as_ref()) && path.is_file())
+    .then_some(path.into_owned())
+}
+
+/// Resolve the declaration file for a `compilerOptions.types` npm subpath.
+/// Packages with `exports` accept only an exact key and either its string
+/// target or a direct string `types` condition. Nested conditions and arrays
+/// are deliberately not guessed, and an exports boundary never falls back to
+/// files on disk. Packages without exports retain the legacy sibling/as-is
+/// lookup.
+fn resolve_npm_subpath_types(pkg_dir: &Path, subpath: &str) -> Option<PathBuf> {
+  if subpath.contains('\\')
+    || Path::new(subpath).is_absolute()
+    || has_windows_drive_prefix(subpath)
+    || subpath.split('/').any(|segment| segment == "..")
+  {
+    return None;
   }
-  let direct = pkg_dir.join(format!("{subpath}.d.ts"));
-  if direct.exists() {
-    return Some(direct);
+
+  let content = std::fs::read_to_string(pkg_dir.join("package.json")).ok()?;
+  let pkg_json: Value = serde_json::from_str(&content).ok()?;
+  let pkg_json = pkg_json.as_object()?;
+  match pkg_json.get("exports") {
+    Some(exports) if !exports.is_null() => {
+      let entry = exports.as_object()?.get(&format!("./{subpath}"))?;
+      let target = match entry {
+        Value::String(target) => Some(target.as_str()),
+        Value::Object(conditions) => {
+          conditions.get("types").and_then(Value::as_str)
+        }
+        _ => None,
+      }?;
+      // Package export targets are package-relative and must use `./`.
+      package_type_file(pkg_dir, target.strip_prefix("./")?)
+    }
+    _ => package_type_file(pkg_dir, &format!("{subpath}.d.ts"))
+      .or_else(|| package_type_file(pkg_dir, subpath)),
   }
-  let as_is = pkg_dir.join(subpath);
-  let is_dts = as_is
-    .file_name()
-    .and_then(|n| n.to_str())
-    .is_some_and(is_typescript_file);
-  (is_dts && as_is.exists()).then_some(as_is)
 }
 
 /// Partition a user's `compilerOptions.types` into entries stock tsc can resolve
@@ -2050,9 +1995,6 @@ fn partition_user_types(
       keep_in_types.push(entry.clone());
       continue;
     };
-    // A relative/path-like entry (`./types.d.ts`) resolves relative to the
-    // generated tsconfig in `.deno/`, pointing at the wrong place; materialize
-    // it as an absolute file instead.
     // A genuine relative/absolute path (`./types.d.ts`, `/abs/x.d.ts`)
     // resolves relative to the generated tsconfig in `.deno/`, pointing at the
     // wrong place; materialize it as an absolute file instead. A missing one is
@@ -2062,11 +2004,10 @@ fn partition_user_types(
       type_files.push(abs.to_string_lossy().replace('\\', "/"));
       continue;
     }
-    // A subpath of an npm package the user imports (`vite/client`, where
-    // `vite` is import-mapped to npm): stock tsc can't resolve subpaths via
-    // `types` (TS2688), and the `include` glob excludes node_modules, so
-    // resolve the subpath's declaration file and pull it into the program.
-    // Without this the entry's ambient declarations are silently lost.
+    // A subpath of an import-mapped npm package (`vite/client`) is filtered
+    // from the generated `types`, while `include` excludes node_modules.
+    // Resolve its declaration and add it to `files`, or its ambient
+    // declarations would not enter the program through another path.
     // This must run before the generic `ends_with(".ts")` branch below: a
     // `pkg/types.ts` entry whose package part is an import-mapped npm package
     // is a package subpath, not a project-local path.
@@ -2281,287 +2222,282 @@ interface AlsoKeep {
     assert_eq!(split_pkg_subpath("/abs/types.d.ts"), None);
   }
 
-  #[test]
-  fn test_partition_user_types_npm_subpath() {
-    // fake project with an installed npm package exposing a subpath export
-    let dir = tempfile::TempDir::new().unwrap();
-    let project_root = dir.path();
-    let pkg_dir = project_root.join("node_modules/vite");
-    std::fs::create_dir_all(&pkg_dir).unwrap();
-    std::fs::write(
-      pkg_dir.join("package.json"),
-      r#"{"name":"vite","version":"7.3.1","exports":{".":{"types":"./index.d.ts"},"./client":{"types":"./client.d.ts"}}}"#,
-    )
-    .unwrap();
-    std::fs::write(
-      pkg_dir.join("client.d.ts"),
-      "declare module '*.css' { const c: any; export default c; }",
-    )
-    .unwrap();
-    let imports = json!({ "vite": "npm:vite@7.3.1" });
-    let npm_package_paths = BTreeMap::new();
-
-    // `vite/client` resolves to the subpath declaration file
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("vite/client")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(keep.is_empty());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].ends_with("node_modules/vite/client.d.ts"));
-
-    // package without `exports`: falls back to a sibling `.d.ts`
-    let bare_dir = project_root.join("node_modules/bare-pkg");
-    std::fs::create_dir_all(&bare_dir).unwrap();
-    std::fs::write(
-      bare_dir.join("package.json"),
-      r#"{"name":"bare-pkg","version":"1.0.0"}"#,
-    )
-    .unwrap();
-    std::fs::write(bare_dir.join("sub.d.ts"), "export {};").unwrap();
-    let imports = json!({ "bare-pkg": "npm:bare-pkg@1" });
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("bare-pkg/sub")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(keep.is_empty());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].ends_with("node_modules/bare-pkg/sub.d.ts"));
-
-    // unresolvable subpath is left for `merge_user_types`, which drops it
-    // (stock tsc would fail the whole build with TS2688)
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("vite/missing")],
-      Some(&json!({ "vite": "npm:vite@7.3.1" })),
-      &npm_package_paths,
-    );
-    assert_eq!(keep, vec![json!("vite/missing")]);
-    assert!(files.is_empty());
-    let mut base = vec![json!("deno")];
-    merge_user_types(&mut base, &keep);
-    assert_eq!(base, vec![json!("deno")]);
-  }
-
   fn write_test_pkg(
     project_root: &Path,
     name: &str,
     package_json: &str,
     files: &[(&str, &str)],
-  ) {
+  ) -> PathBuf {
     let pkg_dir = project_root.join(format!("node_modules/{name}"));
     std::fs::create_dir_all(&pkg_dir).unwrap();
     std::fs::write(pkg_dir.join("package.json"), package_json).unwrap();
     for (file, content) in files {
-      std::fs::write(pkg_dir.join(file), content).unwrap();
+      let path = pkg_dir.join(file);
+      std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+      std::fs::write(path, content).unwrap();
+    }
+    pkg_dir
+  }
+
+  #[test]
+  fn test_resolve_npm_subpath_types() {
+    type TestCase = (
+      &'static str,
+      &'static str,
+      &'static [(&'static str, &'static str)],
+      &'static [&'static str],
+      &'static str,
+      Option<&'static str>,
+    );
+    let cases: &[TestCase] = &[
+      (
+        "direct types condition",
+        r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "string declaration export",
+        r#"{"exports":{"./client":"./client.d.ts"}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "types with other conditions",
+        r#"{"exports":{"./client":{"types":"./client.d.ts","default":"./client.js","import":"./client.mjs"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "legacy sibling declaration",
+        r#"{"name":"pkg"}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "legacy explicit typescript file",
+        r#"{"name":"pkg"}"#,
+        &[("types.ts", "export {};")],
+        &[],
+        "types.ts",
+        Some("types.ts"),
+      ),
+      (
+        "legacy sibling precedes explicit typescript file",
+        r#"{"name":"pkg"}"#,
+        &[("types.ts.d.ts", "export {};"), ("types.ts", "export {};")],
+        &[],
+        "types.ts",
+        Some("types.ts.d.ts"),
+      ),
+      (
+        "null exports uses legacy lookup",
+        r#"{"exports":null}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "unexported existing file",
+        r#"{"exports":{".":{"types":"./index.d.ts"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "runtime only export",
+        r#"{"exports":{"./client":"./client.js"}}"#,
+        &[("client.js", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "missing target",
+        r#"{"exports":{"./client":{"types":"./missing.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "directory target",
+        r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+        &[],
+        &["client.d.ts"],
+        "client",
+        None,
+      ),
+      (
+        "nested conditions",
+        r#"{"exports":{"./client":{"browser":{"types":"./browser.d.ts"},"node":{"types":"./node.d.ts"}}}}"#,
+        &[("browser.d.ts", "export {};"), ("node.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "array candidates",
+        r#"{"exports":{"./client":[{"types":"./client.d.ts"},"./client.js"]}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "wildcard without exact key",
+        r#"{"exports":{"./*":{"types":"./*.d.ts"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "requested extension is not rewritten",
+        r#"{"exports":{"./types":{"types":"./types.d.ts"}}}"#,
+        &[("types.d.ts", "export {};")],
+        &[],
+        "types.ts",
+        None,
+      ),
+      (
+        "parent traversal subpath",
+        r#"{"exports":null}"#,
+        &[("../../../evil.d.ts", "export {};")],
+        &[],
+        "../../../evil",
+        None,
+      ),
+      ("backslash subpath", "{}", &[], &[], r"dir\types", None),
+      ("windows drive subpath", "{}", &[], &[], "C:/types", None),
+      ("absolute subpath", "{}", &[], &[], "/types", None),
+      (
+        "escaping export target exists",
+        r#"{"exports":{"./client":{"types":"./../../../evil.d.ts"}}}"#,
+        &[("../../../evil.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "absolute export target",
+        r#"{"exports":{"./client":{"types":"/tmp/client.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "windows drive export target",
+        r#"{"exports":{"./client":{"types":"C:/client.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "backslash export target",
+        r#"{"exports":{"./client":{"types":".\\client.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "malformed package json does not fall back",
+        "{",
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+    ];
+
+    for &(name, package_json, files, dirs, subpath, expected) in cases {
+      let dir = tempfile::TempDir::new().unwrap();
+      let project_root = dir.path().join("x/y");
+      let pkg_dir = write_test_pkg(&project_root, "pkg", package_json, files);
+      for directory in dirs {
+        std::fs::create_dir_all(pkg_dir.join(directory)).unwrap();
+      }
+      assert_eq!(
+        resolve_npm_subpath_types(&pkg_dir, subpath),
+        expected.map(|path| pkg_dir.join(path)),
+        "{name}"
+      );
     }
   }
 
   #[test]
-  fn test_partition_user_types_respects_exports_boundary() {
-    // A package WITH `exports` is encapsulated: a subpath that exists on disk
-    // but is not exported must never be materialized past the boundary.
+  fn test_partition_user_types_npm_subpath_integration() {
     let dir = tempfile::TempDir::new().unwrap();
     let project_root = dir.path();
     write_test_pkg(
       project_root,
-      "encap-pkg",
-      r#"{"name":"encap-pkg","version":"1.0.0","exports":{".":{"types":"./index.d.ts"}}}"#,
-      &[
-        ("index.d.ts", "export {};"),
-        ("internal.d.ts", "export {};"),
-      ],
-    );
-    let imports = json!({ "encap-pkg": "npm:encap-pkg@1" });
-    let npm_package_paths = BTreeMap::new();
-
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("encap-pkg/internal")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(files.is_empty());
-    // left for `merge_user_types`, which drops non-bare entries (TS2688)
-    assert_eq!(keep, vec![json!("encap-pkg/internal")]);
-
-    // parent references must not escape the package directory either
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("encap-pkg/../../evil")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(files.is_empty());
-    assert_eq!(keep, vec![json!("encap-pkg/../../evil")]);
-  }
-
-  #[test]
-  fn test_partition_user_types_ts_subpath() {
-    // `pkg/types.ts` whose package part is an import-mapped npm package is a
-    // package subpath, not a project-local path: it must reach npm resolution
-    // instead of being dropped by the generic `ends_with(".ts")` branch.
-    // Exact export key only: the fixture exports `./types.ts` verbatim.
-    let dir = tempfile::TempDir::new().unwrap();
-    let project_root = dir.path();
-    write_test_pkg(
-      project_root,
-      "lume-pkg",
-      r#"{"name":"lume-pkg","version":"1.0.0","exports":{"./types.ts":{"types":"./types.d.ts"}}}"#,
-      &[("types.d.ts", "export {};")],
-    );
-    let imports = json!({ "lume-pkg": "npm:lume-pkg@1" });
-    let npm_package_paths = BTreeMap::new();
-
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("lume-pkg/types.ts")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(keep.is_empty());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].ends_with("node_modules/lume-pkg/types.d.ts"));
-
-    // package without `exports`: the named TypeScript file itself resolves
-    write_test_pkg(
-      project_root,
-      "legacy-pkg",
-      r#"{"name":"legacy-pkg","version":"1.0.0"}"#,
-      &[("types.ts", "export {};")],
-    );
-    let imports = json!({ "legacy-pkg": "npm:legacy-pkg@1" });
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("legacy-pkg/types.ts")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(keep.is_empty());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].ends_with("node_modules/legacy-pkg/types.ts"));
-  }
-
-  #[test]
-  fn test_partition_user_types_rejects_runtime_export() {
-    // A runtime-only export target is not a declaration root and must never
-    // be materialized as one.
-    let dir = tempfile::TempDir::new().unwrap();
-    let project_root = dir.path();
-    write_test_pkg(
-      project_root,
-      "rt-pkg",
-      r#"{"name":"rt-pkg","version":"1.0.0","exports":{"./client":"./client.js"}}"#,
-      &[("client.js", "export {};")],
-    );
-    let imports = json!({ "rt-pkg": "npm:rt-pkg@1" });
-    let npm_package_paths = BTreeMap::new();
-
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("rt-pkg/client")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(files.is_empty());
-    assert_eq!(keep, vec![json!("rt-pkg/client")]);
-
-    // ...while a bare-string export naming a declaration file still resolves
-    write_test_pkg(
-      project_root,
-      "str-pkg",
-      r#"{"name":"str-pkg","version":"1.0.0","exports":{"./data":"./data.d.ts"}}"#,
-      &[("data.d.ts", "export {};")],
-    );
-    let imports = json!({ "str-pkg": "npm:str-pkg@1" });
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("str-pkg/data")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(keep.is_empty());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].ends_with("node_modules/str-pkg/data.d.ts"));
-  }
-
-  #[test]
-  fn test_partition_user_types_rejects_escaping_export_target() {
-    // A well-formed entry must not materialize a target outside the package:
-    // pkg = $T/x/y/node_modules/evil-pkg, so `../../../evil.d.ts` normalizes
-    // to $T/x/evil.d.ts, which really exists — and must still be rejected.
-    let dir = tempfile::TempDir::new().unwrap();
-    let project_root = dir.path().join("x/y");
-    write_test_pkg(
-      &project_root,
-      "evil-pkg",
-      r#"{"name":"evil-pkg","version":"1.0.0","exports":{"./client":{"types":"../../../evil.d.ts"}}}"#,
-      &[],
-    );
-    std::fs::write(dir.path().join("x/evil.d.ts"), "export {};").unwrap();
-    let imports = json!({ "evil-pkg": "npm:evil-pkg@1" });
-    let npm_package_paths = BTreeMap::new();
-
-    let (keep, files) = partition_user_types(
-      &project_root,
-      &[json!("evil-pkg/client")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(files.is_empty());
-    assert_eq!(keep, vec![json!("evil-pkg/client")]);
-  }
-
-  #[test]
-  fn test_partition_user_types_rejects_backslash_subpath() {
-    // Package specifiers use `/`; a backslash subpath never resolves.
-    let dir = tempfile::TempDir::new().unwrap();
-    let project_root = dir.path();
-    write_test_pkg(
-      project_root,
-      "bk-pkg",
-      r#"{"name":"bk-pkg","version":"1.0.0","exports":{"./client":{"types":"./client.d.ts"}}}"#,
+      "vite",
+      r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
       &[("client.d.ts", "export {};")],
     );
-    let imports = json!({ "bk-pkg": "npm:bk-pkg@1" });
-    let npm_package_paths = BTreeMap::new();
-
-    let (keep, files) = partition_user_types(
-      project_root,
-      &[json!("bk-pkg/\\evil")],
-      Some(&imports),
-      &npm_package_paths,
-    );
-    assert!(files.is_empty());
-    assert_eq!(keep, vec![json!("bk-pkg/\\evil")]);
-  }
-
-  #[test]
-  fn test_partition_user_types_scoped_subpath() {
-    let dir = tempfile::TempDir::new().unwrap();
-    let project_root = dir.path();
     write_test_pkg(
       project_root,
       "@scope/pkg",
-      r#"{"name":"@scope/pkg","version":"1.0.0","exports":{".":{"types":"./index.d.ts"},"./client":{"types":"./client.d.ts"}}}"#,
-      &[("index.d.ts", "export {};"), ("client.d.ts", "export {};")],
+      r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+      &[("client.d.ts", "export {};")],
     );
-    let imports = json!({ "@scope/pkg": "npm:@scope/pkg@1" });
-    let npm_package_paths = BTreeMap::new();
+    write_test_pkg(
+      project_root,
+      "lume-pkg",
+      r#"{"exports":{"./types.ts":{"types":"./types.d.ts"}}}"#,
+      &[("types.d.ts", "export {};")],
+    );
+    let imports = json!({
+      "vite": "npm:vite@7",
+      "@scope/pkg": "npm:@scope/pkg@1",
+      "lume-pkg": "npm:lume-pkg@1",
+    });
 
     let (keep, files) = partition_user_types(
       project_root,
-      &[json!("@scope/pkg/client")],
+      &[
+        json!("vite/client"),
+        json!("@scope/pkg/client"),
+        json!("lume-pkg/types.ts"),
+        json!("vite/missing"),
+      ],
       Some(&imports),
-      &npm_package_paths,
+      &BTreeMap::new(),
     );
-    assert!(keep.is_empty());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].ends_with("node_modules/@scope/pkg/client.d.ts"));
+
+    assert_eq!(keep, vec![json!("vite/missing")]);
+    assert_eq!(files.len(), 3);
+    assert!(
+      files
+        .iter()
+        .any(|p| p.ends_with("node_modules/vite/client.d.ts"))
+    );
+    assert!(
+      files
+        .iter()
+        .any(|p| p.ends_with("node_modules/@scope/pkg/client.d.ts"))
+    );
+    assert!(
+      files
+        .iter()
+        .any(|p| p.ends_with("node_modules/lume-pkg/types.d.ts"))
+    );
+    let mut types = vec![json!("deno")];
+    merge_user_types(&mut types, &keep);
+    assert_eq!(types, vec![json!("deno")]);
   }
 
   #[test]
