@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(clippy::print_stdout, reason = "example code")]
 //! Measures per-iteration event loop cost.
 //!
 //! Two modes, both printing `key=value` lines on stdout:
