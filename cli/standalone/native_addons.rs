@@ -220,10 +220,13 @@ fn find_byonm_native_addon_packages(
       continue;
     };
     for entry in entries.flatten() {
-      let path = entry.path();
-      if !path.is_dir() {
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if !file_type.is_dir() {
         continue;
       }
+      let path = entry.path();
       if path.file_name() == Some(OsStr::new("node_modules")) {
         node_modules_dirs.push_back(path);
       } else {
@@ -329,5 +332,51 @@ mod tests {
     let found = find_byonm_native_addon_packages(root);
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].folder, nested);
+  }
+
+  #[test]
+  fn byonm_skips_linked_workspace_paths() {
+    let tmp = test_util::TempDir::new();
+    let workspace = tmp.path().join("workspace").to_path_buf();
+    std::fs::create_dir_all(&workspace).unwrap();
+
+    let linked_root_target =
+      tmp.path().join("linked_root_target").to_path_buf();
+    touch(&linked_root_target.join("pkg/addon.node"));
+    tmp.symlink_dir(&linked_root_target, workspace.join("node_modules"));
+
+    let linked_intermediate_target =
+      tmp.path().join("linked_intermediate_target").to_path_buf();
+    touch(&linked_intermediate_target.join("node_modules/pkg/addon.node"));
+    tmp.symlink_dir(
+      &linked_intermediate_target,
+      workspace.join("packages/linked"),
+    );
+
+    let real_pkg = workspace.join("packages/real/node_modules/pkg");
+    touch(&real_pkg.join("addon.node"));
+
+    let found = find_byonm_native_addon_packages(&workspace);
+    assert_eq!(
+      found.len(),
+      1,
+      "linked workspace paths must not participate in automatic discovery"
+    );
+    assert_eq!(found[0].folder, real_pkg);
+  }
+
+  #[test]
+  fn byonm_follows_package_link_in_real_node_modules() {
+    let tmp = test_util::TempDir::new();
+    let workspace = tmp.path().join("workspace").to_path_buf();
+    let package_target = tmp.path().join("package_target").to_path_buf();
+    touch(&package_target.join("addon.node"));
+
+    let package_link = workspace.join("node_modules/pkg");
+    tmp.symlink_dir(&package_target, &package_link);
+
+    let found = find_byonm_native_addon_packages(&workspace);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].folder, package_link);
   }
 }
