@@ -137,6 +137,7 @@ impl BundleProvider for CliBundleProvider {
           flags,
           &bundle_flags,
           Some(permissions.clone()),
+          &[],
         )
         .await
         {
