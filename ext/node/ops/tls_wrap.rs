@@ -3335,9 +3335,10 @@ impl TLSWrap {
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
-    let loop_ = &**op_state.borrow::<Box<uv_compat::uv_loop_t>>()
-      as *const uv_compat::uv_loop_t
-      as *mut uv_compat::uv_loop_t;
+    // The uv loop is created lazily; make sure it exists before we stash a
+    // pointer to it.
+    let loop_ =
+      deno_core::ensure_uv_loop(op_state).expect("uv loop unavailable");
 
     inner.underlying = UnderlyingStream::Js { loop_ptr: loop_ };
     // SAFETY: scope is valid for the current isolate
