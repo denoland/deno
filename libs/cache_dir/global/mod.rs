@@ -224,7 +224,15 @@ mod test {
       ),
       (
         "https://deno.land:8080/x/foo.ts",
-        "https/deno.land_PORT8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8",
+        "https/deno.land_port_8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8",
+      ),
+      (
+        "http://api_8080/x/foo.ts",
+        "http/api%5f8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8",
+      ),
+      (
+        "http://api:8080/x/foo.ts",
+        "http/api_port_8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8",
       ),
       (
         "https://deno.land/",

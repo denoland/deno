@@ -787,8 +787,8 @@ impl JsRuntime {
   pub fn op_metadata(&self, name: &str) -> Option<OpMetadata> {
     let state = &self.inner.main_realm.0.context_state;
     state.op_ctxs.iter().find_map(|ctx| {
-      if ctx.decl.name == name {
-        Some(ctx.decl.metadata)
+      if ctx.decl().name == name {
+        Some(ctx.decl().metadata)
       } else {
         None
       }
@@ -909,7 +909,7 @@ impl JsRuntime {
     let op_driver = Rc::new(OpDriverImpl::default());
     let op_metrics_factory_fn = options.op_metrics_factory_fn.take();
 
-    let (mut op_ctxs, methods_ctx_offset) = extension_set::create_op_ctxs(
+    let (op_ctxs, methods_ctx_offset) = extension_set::create_op_ctxs(
       op_decls,
       &mut op_method_decls,
       op_metrics_factory_fn,
@@ -1001,9 +1001,7 @@ impl JsRuntime {
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
-    for op_ctx in op_ctxs.iter_mut() {
-      op_ctx.isolate = isolate_ptr;
-    }
+    op_ctxs.set_isolate(isolate_ptr);
 
     op_state.borrow_mut().put(isolate_ptr);
 
@@ -1997,7 +1995,7 @@ impl JsRuntime {
   /// Returns the runtime's op names, ordered by OpId.
   pub fn op_names(&self) -> Vec<&'static str> {
     let state = &self.inner.main_realm.0.context_state;
-    state.op_ctxs.iter().map(|o| o.decl.name).collect()
+    state.op_ctxs.iter().map(|o| o.decl().name).collect()
   }
 
   /// Executes traditional, non-ECMAScript-module JavaScript code, This code executes in

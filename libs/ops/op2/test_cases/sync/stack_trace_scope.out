@@ -112,8 +112,8 @@ const fn op_stack_trace() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(unsafe { fast_api_callback_options.data })
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
-            if opctx.enable_stack_trace {
+            let opstate = opctx.state();
+            if opctx.enable_stack_trace() {
                 let stack_trace_msg = deno_core::v8::String::empty(&mut scope);
                 let stack_trace_error = deno_core::v8::Exception::error(
                     &mut scope,
@@ -156,8 +156,8 @@ const fn op_stack_trace() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
-            if opctx.enable_stack_trace {
+            let opstate = opctx.state();
+            if opctx.enable_stack_trace() {
                 let stack_trace_msg = deno_core::v8::String::empty(&mut scope);
                 let stack_trace_error = deno_core::v8::Exception::error(
                     &mut scope,

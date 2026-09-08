@@ -450,25 +450,33 @@ impl RecursiveModuleLoad {
       // resolve bare specifiers via the package's `package.json`. Using the
       // original specifier (e.g. `npm:foo@^1`) here strands intra-package
       // imports without resolution context.
-      let canonical_specifier = self
-        .module_map_rc
-        .get_name_by_id(module_id)
-        .and_then(|n| ModuleSpecifier::parse(&n).ok())
-        .unwrap_or_else(|| module_reference.specifier.clone());
-      let referrer = &canonical_specifier;
-      let imports = self
-        .module_map_rc
-        .get_requested_modules(module_id)
-        .unwrap()
-        .clone();
-      for module_request in imports {
-        if !self.visited.contains(&module_request.reference)
-          && !self
-            .visited_as_alias
-            .borrow()
-            .contains(module_request.reference.specifier.as_str())
-        {
-          match self.module_map_rc.get_id(
+      let module_map_rc = self.module_map_rc.clone();
+      let canonical_specifier = module_map_rc.canonical_specifier_if_different(
+        module_id,
+        &module_reference.specifier,
+      );
+      let referrer = canonical_specifier
+        .as_ref()
+        .unwrap_or(&module_reference.specifier);
+      // The requests of an already-registered module used to be cloned
+      // wholesale here (every `Url` + specifier string), even though only the
+      // not-yet-registered edges need an owned copy. Classify them under a
+      // shared borrow, then release it: building the load futures below runs
+      // `source_mapped_module_load_referrer`, which calls into the embedder's
+      // `ModuleLoader`, and that must not observe the module map mid-borrow.
+      let needs_load = {
+        let imports = module_map_rc.get_requested_modules(module_id).unwrap();
+        let mut needs_load = Vec::new();
+        for module_request in imports.iter() {
+          if self.visited.contains(&module_request.reference)
+            || self
+              .visited_as_alias
+              .borrow()
+              .contains(module_request.reference.specifier.as_str())
+          {
+            continue;
+          }
+          match module_map_rc.get_id(
             module_request.reference.specifier.as_str(),
             &module_request.reference.requested_module_type,
           ) {
@@ -476,95 +484,119 @@ impl RecursiveModuleLoad {
               already_registered
                 .push_back((module_id, module_request.reference.clone()));
             }
-            _ => {
-              let request = module_request.clone();
-              let visited_as_alias = self.visited_as_alias.clone();
-              let referrer_info = code.and_then(|code| {
-                let source_offset = request.referrer_source_offset?;
-                source_mapped_module_load_referrer(
-                  &self.module_map_rc.source_mapper,
-                  referrer,
-                  code,
-                  source_offset,
-                )
-              });
-              let loader = self.loader.clone();
-              let is_dynamic_import = self.is_dynamic_import();
-              let is_synchronous = self.is_synchronous();
-              let requested_module_type =
-                request.reference.requested_module_type.clone();
-              let module_map_rc = self.module_map_rc.clone();
-              let fut = async move {
-                // `visited_as_alias` unlike `visited` is checked as late as
-                // possible because it can only be populated after completed
-                // loads, meaning a duplicate load future may have already been
-                // dispatched before we know it's a duplicate.
-                if visited_as_alias
-                  .borrow()
-                  .contains(request.reference.specifier.as_str())
-                {
-                  return Ok(None);
-                }
-
-                // Imports are pre-resolved in `new_module_from_js_source` --
-                // `request.reference.specifier` already holds the final URL.
-                let resolved_specifier = request.reference.specifier.clone();
-
-                // First check if this module is a lazy-loaded ESM source
-                // (embedded in binary but not snapshotted).
-                let load_result = if let Some(source_code) = module_map_rc
-                  .take_lazy_esm_source(resolved_specifier.as_str())
-                {
-                  Ok(ModuleSource::new(
-                    crate::ModuleType::JavaScript,
-                    ModuleSourceCode::String(source_code),
-                    &resolved_specifier,
-                    None,
-                  ))
-                } else if module_map_rc
-                  .has_synthetic_esm_module(resolved_specifier.as_str())
-                  && !loader
-                    .should_load_synthetic_esm(resolved_specifier.as_str())
-                {
-                  // Sentinel source. `register_and_recurse` detects the
-                  // synthetic_esm specifier and constructs the module from
-                  // its backing script's cached exports object instead of
-                  // calling `new_module` with this source.
-                  Ok(ModuleSource::new(
-                    crate::ModuleType::JavaScript,
-                    ModuleSourceCode::String("".to_string().into()),
-                    &resolved_specifier,
-                    None,
-                  ))
-                } else {
-                  let load_response = loader.load(
-                    &resolved_specifier,
-                    referrer_info.as_ref(),
-                    ModuleLoadOptions {
-                      is_dynamic_import,
-                      is_synchronous,
-                      requested_module_type,
-                    },
-                  );
-                  match load_response {
-                    ModuleLoadResponse::Sync(result) => result,
-                    ModuleLoadResponse::Async(fut) => fut.await,
-                  }
-                };
-                if let Ok(source) = &load_result
-                  && let Some(found_specifier) = &source.module_url_found
-                {
-                  visited_as_alias
-                    .borrow_mut()
-                    .insert(found_specifier.as_str().to_string());
-                }
-                load_result.map(|s| Some((request, s)))
-              };
-              self.pending.push(fut.boxed_local());
-            }
+            _ => needs_load.push(module_request.clone()),
           }
-          self.visited.insert(module_request.reference);
+          self.visited.insert(module_request.reference.clone());
         }
+        needs_load
+      };
+
+      for request in needs_load {
+        let visited_as_alias = self.visited_as_alias.clone();
+        let referrer_info = code.and_then(|code| {
+          let source_offset = request.referrer_source_offset?;
+          source_mapped_module_load_referrer(
+            &self.module_map_rc.source_mapper,
+            referrer,
+            code,
+            source_offset,
+          )
+        });
+        let loader = self.loader.clone();
+        let is_dynamic_import = self.is_dynamic_import();
+        let is_synchronous = self.is_synchronous();
+        let requested_module_type =
+          request.reference.requested_module_type.clone();
+        let module_map_rc = self.module_map_rc.clone();
+        let fut = async move {
+          // `visited_as_alias` unlike `visited` is checked as late as
+          // possible because it can only be populated after completed
+          // loads, meaning a duplicate load future may have already been
+          // dispatched before we know it's a duplicate.
+          if visited_as_alias
+            .borrow()
+            .contains(request.reference.specifier.as_str())
+          {
+            return Ok(None);
+          }
+
+          // Imports are pre-resolved in `new_module_from_js_source` --
+          // `request.reference.specifier` already holds the final URL.
+          let resolved_specifier = request.reference.specifier.clone();
+
+          // First check if this module is a lazy-loaded ESM source
+          // (embedded in binary but not snapshotted).
+          let load_result = if let Some(source_code) =
+            module_map_rc.take_lazy_esm_source(resolved_specifier.as_str())
+          {
+            Ok(ModuleSource::new(
+              crate::ModuleType::JavaScript,
+              ModuleSourceCode::String(source_code),
+              &resolved_specifier,
+              None,
+            ))
+          } else if module_map_rc
+            .has_lazy_esm_source(resolved_specifier.as_str())
+            && module_map_rc
+              .get_id(resolved_specifier.as_str(), &RequestedModuleType::None)
+              .is_some()
+          {
+            // A concurrent load registered this lazy module while this
+            // future was queued, which frees the source (see
+            // `ModuleMapData::create_module_info`). Hand back a sentinel
+            // source: `new_module_with_pending` dedups on the already
+            // registered module before it ever looks at the code.
+            //
+            // The lookup key has to match the one that dedup uses —
+            // `RequestedModuleType::from(ModuleType::JavaScript)`, i.e.
+            // `None` — not the import's requested type. Otherwise a
+            // mismatch would register this empty sentinel as a real
+            // module instead of deduping onto the existing one.
+            Ok(ModuleSource::new(
+              crate::ModuleType::JavaScript,
+              ModuleSourceCode::String("".to_string().into()),
+              &resolved_specifier,
+              None,
+            ))
+          } else if module_map_rc
+            .has_synthetic_esm_module(resolved_specifier.as_str())
+            && !loader.should_load_synthetic_esm(resolved_specifier.as_str())
+          {
+            // Sentinel source. `register_and_recurse` detects the
+            // synthetic_esm specifier and constructs the module from
+            // its backing script's cached exports object instead of
+            // calling `new_module` with this source.
+            Ok(ModuleSource::new(
+              crate::ModuleType::JavaScript,
+              ModuleSourceCode::String("".to_string().into()),
+              &resolved_specifier,
+              None,
+            ))
+          } else {
+            let load_response = loader.load(
+              &resolved_specifier,
+              referrer_info.as_ref(),
+              ModuleLoadOptions {
+                is_dynamic_import,
+                is_synchronous,
+                requested_module_type,
+              },
+            );
+            match load_response {
+              ModuleLoadResponse::Sync(result) => result,
+              ModuleLoadResponse::Async(fut) => fut.await,
+            }
+          };
+          if let Ok(source) = &load_result
+            && let Some(found_specifier) = &source.module_url_found
+          {
+            visited_as_alias
+              .borrow_mut()
+              .insert(found_specifier.as_str().to_string());
+          }
+          load_result.map(|s| Some((request, s)))
+        };
+        self.pending.push(fut.boxed_local());
       }
     }
   }
