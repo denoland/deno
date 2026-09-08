@@ -1,0 +1,7 @@
+{
+  "name": "a-sh",
+  "version": "1.0.0",
+  "bin": {
+    "foo": "./tool.sh"
+  }
+}

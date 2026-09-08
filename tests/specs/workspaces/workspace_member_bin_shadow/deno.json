@@ -1,0 +1,11 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/a-sh",
+    "./packages/z-js",
+    "./apps/web"
+  ],
+  "tasks": {
+    "root-foo": "foo"
+  }
+}

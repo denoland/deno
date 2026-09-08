@@ -1,0 +1,12 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cli": "local-cli"
+  },
+  "dependencies": {
+    "local-cli": "workspace:*"
+  }
+}

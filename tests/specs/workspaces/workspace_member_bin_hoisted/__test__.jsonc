@@ -1,0 +1,41 @@
+// The hoisted-linker counterpart of the `workspace_member_bin` spec: a local
+// workspace member that declares a `bin` in its package.json must be linked
+// into `node_modules/.bin` (the workspace root's and the depending member's)
+// and be invocable from `deno task`. The linker is selected through the
+// deno.json `nodeModulesLinker` option so every nested `deno` invocation uses
+// it too. No network access is required — the workspace contains only local
+// members.
+//
+// The `shtool` member (a `#!/bin/sh` bin) is here so `check_bin.ts` can assert
+// the hoisted linker links non-JavaScript executables too, but it is NOT run as
+// a task: `nodeModulesDir: "manual"` means `deno task` resolves through the
+// BYONM npm resolver, which routes *every* `.bin` entry through `deno run`. The
+// isolated `workspace_member_bin` spec covers running a shell-script bin from a
+// task.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read check_bin.ts",
+      "output": "ok\n"
+    },
+    {
+      // "Hello from deno" (rather than "node") asserts the task runner resolves
+      // the member's JS bin to a `deno run` command instead of leaving it to a
+      // `PATH` lookup, which would execute the `#!/usr/bin/env node` shebang
+      // with whatever Node happens to be installed — or fail outright.
+      "args": "task --cwd apps/web cli",
+      "output": "member_task.out"
+    },
+    {
+      "args": "task root-cli",
+      "output": "root_task.out"
+    }
+  ]
+}
