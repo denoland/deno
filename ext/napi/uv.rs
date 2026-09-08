@@ -544,12 +544,23 @@ struct uv_idle_t {
   idle_cb: uv_idle_cb,
 }
 
+#[cfg(windows)]
 struct PollBridge {
   active: AtomicBool,
-  #[cfg(unix)]
-  fd: c_int,
-  #[cfg(unix)]
-  cb: uv_poll_cb,
+}
+
+// Heap-allocated bridge owned by the N-API layer after Box::into_raw transfers
+// it out of this initializer. It cannot live in the addon's fixed-size
+// `uv_poll_t`, whose libuv layout must stay intact. `inner` is first so
+// `napi_poll_trampoline` and `napi_poll_stopped` can cast their handle pointer
+// back to this bridge. The poll worker receives numeric state only and never
+// an addon pointer.
+#[cfg(unix)]
+#[repr(C)]
+struct NapiPollBridge {
+  inner: uv_compat::uv_poll_t,
+  napi_handle: *mut uv_poll_t,
+  user_cb: uv_poll_cb,
 }
 
 #[cfg(unix)]
@@ -571,17 +582,58 @@ struct uv_poll_t {
       - size_of::<Option<uv_close_cb>>())
       / size_of::<usize>()
   }],
+  #[cfg(unix)]
+  bridge: *mut NapiPollBridge,
+  #[cfg(windows)]
   bridge: *mut Arc<PollBridge>,
   active: bool,
   refed: bool,
   _padding: [MaybeUninit<usize>; const {
     (UV_POLL_SIZE
       - 96
-      - size_of::<*mut Arc<PollBridge>>()
+      - size_of::<*mut c_void>()
       - size_of::<bool>()
       - size_of::<bool>())
       / size_of::<usize>()
   }],
+}
+
+#[cfg(unix)]
+unsafe fn napi_poll_mark_stopped(poll: *mut uv_poll_t) {
+  unsafe {
+    if (*poll).active {
+      (*poll).active = false;
+      if (*poll).refed {
+        (&mut *(*poll).r#loop).external_ops_tracker.unref_op();
+      }
+    }
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn napi_poll_trampoline(
+  inner: *mut uv_compat::uv_poll_t,
+  status: c_int,
+  events: c_int,
+) {
+  unsafe {
+    let bridge = inner.cast::<NapiPollBridge>();
+    let napi_handle = (*bridge).napi_handle;
+    if status != 0 {
+      napi_poll_mark_stopped(napi_handle);
+    }
+    if let Some(cb) = (*bridge).user_cb {
+      cb(napi_handle, status, events);
+    }
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn napi_poll_stopped(inner: *mut uv_compat::uv_poll_t) {
+  unsafe {
+    let bridge = inner.cast::<NapiPollBridge>();
+    napi_poll_mark_stopped((*bridge).napi_handle);
+  }
 }
 
 #[cfg(unix)]
@@ -878,25 +930,67 @@ unsafe extern "C" fn uv_poll_init_socket(
   fd: uv_os_sock_t,
 ) -> c_int {
   unsafe {
-    let data = (*poll).data;
-    std::ptr::write_bytes(poll.cast::<u8>(), 0, UV_POLL_SIZE);
-    addr_of_mut!((*poll).data).write(data);
-    addr_of_mut!((*poll).r#loop).write(r#loop);
-    addr_of_mut!((*poll).r#type).write(uv_handle_type::UV_POLL);
-    addr_of_mut!((*poll).bridge).write(std::ptr::null_mut());
-    addr_of_mut!((*poll).active).write(false);
-    addr_of_mut!((*poll).refed).write(true);
-    let bridge = Arc::new(PollBridge {
-      active: AtomicBool::new(false),
-      #[cfg(unix)]
-      fd,
-      #[cfg(unix)]
-      cb: None,
-    });
+    #[cfg(unix)]
+    {
+      let env = &*r#loop;
+      let Some(_guard) =
+        uv_compat::uv_loop_operation_guard(&env.uv_loop_liveness)
+      else {
+        return uv_compat::UV_ECANCELED;
+      };
+      let mut bridge_box: Box<MaybeUninit<NapiPollBridge>> =
+        Box::new(MaybeUninit::zeroed());
+      let bridge = bridge_box.as_mut_ptr();
+      let result = uv_compat::uv_poll_init(
+        env.uv_loop,
+        addr_of_mut!((*bridge).inner),
+        fd,
+        env.poll_scope.clone(),
+      );
+      if result != 0 {
+        return result;
+      }
+      addr_of_mut!((*bridge).napi_handle).write(poll);
+      addr_of_mut!((*bridge).user_cb).write(None);
+      uv_compat::uv_poll_set_stop_callback(
+        addr_of_mut!((*bridge).inner),
+        Some(napi_poll_stopped),
+      );
+
+      let data = (*poll).data;
+      std::ptr::write_bytes(poll.cast::<u8>(), 0, UV_POLL_SIZE);
+      addr_of_mut!((*poll).data).write(data);
+      addr_of_mut!((*poll).r#loop).write(r#loop);
+      addr_of_mut!((*poll).r#type).write(uv_handle_type::UV_POLL);
+      addr_of_mut!((*poll).bridge).write(bridge);
+      addr_of_mut!((*poll).active).write(false);
+      addr_of_mut!((*poll).refed).write(true);
+      // UvLoopInner's poll-handle registry keeps a non-owning pointer to
+      // `inner`. Normal close unregisters it before freeing this Box. Once
+      // loop liveness is invalidated, the loop no longer dispatches that
+      // handle.
+      let _ = Box::into_raw(bridge_box);
+      0
+    }
+
     #[cfg(windows)]
-    let _ = fd;
-    addr_of_mut!((*poll).bridge).write(Box::into_raw(Box::new(bridge)));
+    {
+      let data = (*poll).data;
+      std::ptr::write_bytes(poll.cast::<u8>(), 0, UV_POLL_SIZE);
+      addr_of_mut!((*poll).data).write(data);
+      addr_of_mut!((*poll).r#loop).write(r#loop);
+      addr_of_mut!((*poll).r#type).write(uv_handle_type::UV_POLL);
+      addr_of_mut!((*poll).bridge).write(std::ptr::null_mut());
+      addr_of_mut!((*poll).active).write(false);
+      addr_of_mut!((*poll).refed).write(true);
+      let bridge = Arc::new(PollBridge {
+        active: AtomicBool::new(false),
+      });
+      let _ = fd;
+      addr_of_mut!((*poll).bridge).write(Box::into_raw(Box::new(bridge)));
+    }
   }
+  #[cfg(windows)]
   0
 }
 
@@ -918,62 +1012,58 @@ unsafe extern "C" fn uv_poll_start(
   unsafe {
     let bridge_ptr = (*poll).bridge;
     if bridge_ptr.is_null() {
-      return -1;
+      return uv_compat::UV_EINVAL;
     }
 
-    (&*bridge_ptr).active.store(false, Ordering::Release);
-    if !(*poll).active {
-      (*poll).active = true;
-      if (*poll).refed {
-        (&mut *(*poll).r#loop).external_ops_tracker.ref_op();
+    #[cfg(unix)]
+    {
+      let env = &*(*poll).r#loop;
+      let Some(_guard) =
+        uv_compat::uv_loop_operation_guard(&env.uv_loop_liveness)
+      else {
+        return uv_compat::UV_ECANCELED;
+      };
+      let result = uv_compat::uv_poll_start(
+        addr_of_mut!((*bridge_ptr).inner),
+        events,
+        cb.map(|_| {
+          napi_poll_trampoline
+            as unsafe extern "C" fn(*mut uv_compat::uv_poll_t, c_int, c_int)
+        }),
+      );
+      if result != 0 {
+        return result;
       }
+      (*bridge_ptr).user_cb = cb;
+      if events == 0 {
+        napi_poll_mark_stopped(poll);
+      } else if !(*poll).active {
+        (*poll).active = true;
+        if (*poll).refed {
+          (&mut *(*poll).r#loop).external_ops_tracker.ref_op();
+        }
+      }
+      0
     }
-    let bridge = Arc::new(PollBridge {
-      active: AtomicBool::new(true),
-      #[cfg(unix)]
-      fd: (&*bridge_ptr).fd,
-      #[cfg(unix)]
-      cb,
-    });
-    *bridge_ptr = bridge;
-    #[cfg(unix)]
-    let bridge = Arc::clone(&*bridge_ptr);
-    let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
-    let poll_ptr = SendPtr(poll as *const uv_poll_t);
-    #[cfg(unix)]
-    std::thread::spawn(move || {
-      let mut poll_events = 0;
-      if events & 1 != 0 {
-        poll_events |= libc::POLLIN;
-      }
-      if events & 2 != 0 {
-        poll_events |= libc::POLLOUT;
-      }
-      while bridge.active.load(Ordering::Acquire) {
-        let mut fds = libc::pollfd {
-          fd: bridge.fd,
-          events: poll_events,
-          revents: 0,
-        };
-        let result = libc::poll(&mut fds, 1, 10);
-        if result <= 0 {
-          continue;
-        }
-        if !bridge.active.swap(false, Ordering::AcqRel) {
-          break;
-        }
-        if let Some(cb) = bridge.cb {
-          let poll_ptr = SendPtr(poll_ptr.take());
-          sender.spawn(move |_| {
-            let poll = poll_ptr.take() as *mut uv_poll_t;
-            cb(poll, 0, events);
-          });
-        }
-        break;
-      }
-    });
+
     #[cfg(windows)]
     {
+      if events == 0 {
+        return uv_poll_stop(poll);
+      }
+      (&*bridge_ptr).active.store(false, Ordering::Release);
+      if !(*poll).active {
+        (*poll).active = true;
+        if (*poll).refed {
+          (&mut *(*poll).r#loop).external_ops_tracker.ref_op();
+        }
+      }
+      let bridge = Arc::new(PollBridge {
+        active: AtomicBool::new(true),
+      });
+      *bridge_ptr = bridge;
+      let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
+      let poll_ptr = SendPtr(poll as *const uv_poll_t);
       if let Some(cb) = cb {
         sender.spawn(move |_| {
           let poll = poll_ptr.take() as *mut uv_poll_t;
@@ -982,6 +1072,7 @@ unsafe extern "C" fn uv_poll_start(
       }
     }
   }
+  #[cfg(windows)]
   0
 }
 
@@ -994,13 +1085,21 @@ unsafe fn uv_poll_close(poll: *mut uv_poll_t) {
     if bridge_ptr.is_null() {
       return;
     }
-    (&*bridge_ptr).active.store(false, Ordering::Release);
-    if (*poll).active {
-      (*poll).active = false;
-      if (*poll).refed {
-        (&mut *(*poll).r#loop).external_ops_tracker.unref_op();
+    #[cfg(unix)]
+    {
+      let env = &*(*poll).r#loop;
+      // With the guard held, close unregisters the handle from UvLoopInner's
+      // poll registry before freeing the bridge. Once loop liveness is
+      // invalidated, the loop no longer dispatches that handle.
+      if let Some(_guard) =
+        uv_compat::uv_loop_operation_guard(&env.uv_loop_liveness)
+      {
+        uv_compat::uv_poll_close(addr_of_mut!((*bridge_ptr).inner));
       }
+      napi_poll_mark_stopped(poll);
     }
+    #[cfg(windows)]
+    uv_poll_stop(poll);
     drop(Box::from_raw(bridge_ptr));
     (*poll).bridge = std::ptr::null_mut();
   }
@@ -1016,14 +1115,31 @@ unsafe extern "C" fn uv_poll_stop(poll: *mut uv_poll_t) -> c_int {
     if bridge_ptr.is_null() {
       return 0;
     }
-    (&*bridge_ptr).active.store(false, Ordering::Release);
-    if (*poll).active {
-      (*poll).active = false;
-      if (*poll).refed {
-        (&mut *(*poll).r#loop).external_ops_tracker.unref_op();
+    #[cfg(unix)]
+    {
+      let env = &*(*poll).r#loop;
+      let result = if let Some(_guard) =
+        uv_compat::uv_loop_operation_guard(&env.uv_loop_liveness)
+      {
+        uv_compat::uv_poll_stop(addr_of_mut!((*bridge_ptr).inner))
+      } else {
+        0
+      };
+      napi_poll_mark_stopped(poll);
+      result
+    }
+    #[cfg(windows)]
+    {
+      (&*bridge_ptr).active.store(false, Ordering::Release);
+      if (*poll).active {
+        (*poll).active = false;
+        if (*poll).refed {
+          (&mut *(*poll).r#loop).external_ops_tracker.unref_op();
+        }
       }
     }
   }
+  #[cfg(windows)]
   0
 }
 
@@ -1111,6 +1227,13 @@ unsafe extern "C" fn uv_ref(handle: *mut uv_handle_t) {
           if (*handle).active {
             (&mut *(*handle).r#loop).external_ops_tracker.ref_op();
           }
+          #[cfg(unix)]
+          if !(*handle).bridge.is_null() {
+            let liveness = &(*(*handle).r#loop).uv_loop_liveness;
+            if let Some(_guard) = uv_compat::uv_loop_operation_guard(liveness) {
+              uv_compat::uv_ref(addr_of_mut!((*(*handle).bridge).inner).cast());
+            }
+          }
         }
       }
       uv_handle_type::UV_TIMER => {
@@ -1153,6 +1276,15 @@ unsafe extern "C" fn uv_unref(handle: *mut uv_handle_t) {
           (*handle).refed = false;
           if (*handle).active {
             (&mut *(*handle).r#loop).external_ops_tracker.unref_op();
+          }
+          #[cfg(unix)]
+          if !(*handle).bridge.is_null() {
+            let liveness = &(*(*handle).r#loop).uv_loop_liveness;
+            if let Some(_guard) = uv_compat::uv_loop_operation_guard(liveness) {
+              uv_compat::uv_unref(
+                addr_of_mut!((*(*handle).bridge).inner).cast(),
+              );
+            }
           }
         }
       }
@@ -1751,6 +1883,255 @@ mod tests {
       std::mem::size_of::<u32>()
         <= std::mem::size_of::<libuv_sys_lite::uv_cond_t>()
     );
+  }
+
+  #[cfg(unix)]
+  struct ActiveNapiPollCleanup {
+    poll: *mut uv_poll_t,
+    _read_fd: std::os::fd::OwnedFd,
+    _write_fd: std::os::fd::OwnedFd,
+    callback_count: Arc<std::sync::atomic::AtomicUsize>,
+    cleanup_count: Arc<std::sync::atomic::AtomicUsize>,
+    storage_freed: Arc<AtomicBool>,
+  }
+
+  #[cfg(unix)]
+  unsafe extern "C" fn active_napi_poll_callback(
+    poll: *mut uv_poll_t,
+    _status: c_int,
+    _events: c_int,
+  ) {
+    unsafe {
+      let callback_count =
+        &*((*poll).data.cast::<std::sync::atomic::AtomicUsize>());
+      callback_count.fetch_add(1, Ordering::SeqCst);
+    }
+  }
+
+  #[cfg(unix)]
+  unsafe extern "C" fn cleanup_active_napi_poll(data: *mut c_void) {
+    unsafe {
+      let cleanup = Box::from_raw(data.cast::<ActiveNapiPollCleanup>());
+      assert_eq!(
+        cleanup.cleanup_count.fetch_add(1, Ordering::SeqCst),
+        0,
+        "NapiState must run each environment cleanup hook once"
+      );
+
+      let bridge = (*cleanup.poll).bridge;
+      assert!(!bridge.is_null(), "cleanup owns an armed N-API poll bridge");
+      // NapiState invalidates each Env's poll scope before running addon hooks.
+      // The rejected restart verifies this hook observes that invalidation.
+      // Loop dispatch consults the same poll-scope state to discard readiness.
+      assert_eq!(
+        uv_compat::uv_poll_start(
+          addr_of_mut!((*bridge).inner),
+          uv_compat::UV_READABLE,
+          Some(napi_poll_trampoline),
+        ),
+        uv_compat::UV_ECANCELED,
+        "cleanup must observe that its Env poll scope was invalidated"
+      );
+      assert_eq!(
+        cleanup.callback_count.load(Ordering::SeqCst),
+        0,
+        "no queued poll callback may reach addon storage during teardown"
+      );
+
+      // Exercise the same production ABI cleanup path as the native fixture.
+      uv_poll_close(cleanup.poll);
+      drop(Box::from_raw(cleanup.poll));
+      cleanup.storage_freed.store(true, Ordering::SeqCst);
+    }
+  }
+
+  #[cfg(unix)]
+  unsafe fn new_test_napi_env(runtime: &mut deno_core::JsRuntime) -> *mut Env {
+    let uv_loop = runtime
+      .uv_loop_ptr()
+      .expect("N-API-enabled JsRuntime should have a uv loop");
+    let (
+      sender,
+      gc_finalizer_spawner,
+      cleanup_hooks,
+      ref_tracker,
+      external_ops_tracker,
+    ) = {
+      let op_state = runtime.op_state();
+      let op_state = op_state.borrow();
+      let napi_state = op_state.borrow::<NapiState>();
+      (
+        op_state
+          .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+          .clone(),
+        op_state.borrow::<deno_core::V8TaskSpawner>().clone(),
+        napi_state.env_cleanup_hooks.clone(),
+        napi_state.ref_tracker.clone(),
+        op_state.external_ops_tracker.clone(),
+      )
+    };
+
+    let isolate_ptr = unsafe { runtime.v8_isolate().as_raw_isolate_ptr() };
+    let (uv_loop_liveness, poll_scope) = unsafe {
+      (
+        uv_compat::uv_loop_liveness(uv_loop),
+        uv_compat::new_poll_scope(uv_loop),
+      )
+    };
+    let env_ptr = {
+      deno_core::scope!(scope, runtime);
+      let context = scope.get_current_context();
+      let global = context.global(scope);
+      let callback =
+        deno_core::JsRuntime::eval::<v8::Function>(scope, "()=>{}")
+          .expect("test callback must compile");
+      let napi_wrap = v8::Global::new(scope, v8::Private::new(scope, None));
+      let type_tag = v8::Global::new(scope, v8::Private::new(scope, None));
+      let mut env = Env::new(
+        isolate_ptr,
+        v8::Global::new(scope, context),
+        v8::Global::new(scope, global),
+        v8::Global::new(scope, callback),
+        v8::Global::new(scope, callback),
+        v8::Global::new(scope, callback),
+        v8::Global::new(scope, callback),
+        v8::Global::new(scope, callback),
+        v8::Global::new(scope, callback),
+        sender,
+        gc_finalizer_spawner,
+        cleanup_hooks,
+        ref_tracker,
+        external_ops_tracker,
+        uv_loop,
+        uv_loop_liveness,
+        poll_scope,
+      );
+      env.shared = Box::into_raw(Box::new(EnvShared::new(
+        napi_wrap,
+        type_tag,
+        "test-napi-env\\0".to_owned(),
+      )));
+      Box::into_raw(Box::new(env))
+    };
+    let op_state = runtime.op_state();
+    let mut op_state = op_state.borrow_mut();
+    let napi_state = op_state.borrow_mut::<NapiState>();
+    napi_state
+      .env_shared_ptrs
+      .push(unsafe { (*env_ptr).shared });
+    napi_state.env_ptrs.push(env_ptr);
+    env_ptr
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn active_napi_poll_teardown_joins_runtime_thread() {
+    use std::os::fd::AsRawFd;
+    use std::os::fd::FromRawFd;
+    use std::os::fd::OwnedFd;
+    use std::time::Duration;
+
+    const REPETITIONS: usize = 10;
+    const WATCHDOG: Duration = Duration::from_secs(10);
+
+    for unref in [false, true] {
+      for _ in 0..REPETITIONS {
+        let (armed_sender, armed_receiver) = std::sync::mpsc::sync_channel(0);
+        let (teardown_sender, teardown_receiver) =
+          std::sync::mpsc::sync_channel(0);
+        let (unwound_sender, unwound_receiver) =
+          std::sync::mpsc::sync_channel(0);
+        let worker = std::thread::spawn(move || {
+          let mut fds = [-1; 2];
+          assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+          let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+          let write_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+          let mut runtime =
+            deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+              extensions: vec![crate::deno_napi::init(None)],
+              ..Default::default()
+            });
+          let env = unsafe { new_test_napi_env(&mut runtime) };
+          let callback_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+          let cleanup_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+          let storage_freed = Arc::new(AtomicBool::new(false));
+          let poll_ptr: *mut uv_poll_t =
+            Box::into_raw(Box::new(MaybeUninit::<uv_poll_t>::zeroed())).cast();
+
+          unsafe {
+            addr_of_mut!((*poll_ptr).data)
+              .write(Arc::as_ptr(&callback_count).cast_mut().cast());
+            assert_eq!(
+              uv_poll_init(env.cast(), poll_ptr, read_fd.as_raw_fd()),
+              0
+            );
+            assert_eq!(
+              uv_poll_start(
+                poll_ptr,
+                uv_compat::UV_READABLE,
+                Some(active_napi_poll_callback),
+              ),
+              0
+            );
+            if unref {
+              uv_unref(poll_ptr.cast());
+            }
+            assert_eq!(
+              libc::write(write_fd.as_raw_fd(), b"x".as_ptr().cast(), 1),
+              1
+            );
+          }
+          unsafe {
+            (*env).add_cleanup_hook(
+              cleanup_active_napi_poll,
+              Box::into_raw(Box::new(ActiveNapiPollCleanup {
+                poll: poll_ptr,
+                _read_fd: read_fd,
+                _write_fd: write_fd,
+                callback_count: callback_count.clone(),
+                cleanup_count: cleanup_count.clone(),
+                storage_freed: storage_freed.clone(),
+              }))
+              .cast(),
+            );
+          }
+          armed_sender
+            .send(())
+            .expect("host stopped waiting before arming");
+
+          teardown_receiver
+            .recv()
+            .expect("host dropped the teardown request sender");
+          // Move and drop the extension's actual NapiState. Its production Drop
+          // implementation invalidates each Env's poll scope before invoking
+          // this hook.
+          let napi_state = runtime.op_state().borrow_mut().take::<NapiState>();
+          drop(napi_state);
+          assert_eq!(cleanup_count.load(Ordering::SeqCst), 1);
+          assert!(storage_freed.load(Ordering::SeqCst));
+          unsafe {
+            let shared = (*env).shared;
+            drop(Box::from_raw(env));
+            drop(Box::from_raw(shared));
+          }
+          drop(runtime);
+          unwound_sender
+            .send(())
+            .expect("host stopped waiting for runtime teardown");
+        });
+
+        armed_receiver
+          .recv_timeout(WATCHDOG)
+          .expect("poll fixture did not arm before the watchdog");
+        teardown_sender
+          .send(())
+          .expect("runtime worker stopped before teardown request");
+        unwound_receiver
+          .recv_timeout(WATCHDOG)
+          .expect("runtime teardown did not complete before the watchdog");
+        worker.join().expect("runtime worker thread panicked");
+      }
+    }
   }
 
   // Drives the uv_sem_* / uv_thread_* polyfills the way a native addon

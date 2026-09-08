@@ -3,6 +3,8 @@
 // Drop-in replacement for libuv integrated with deno_core's event loop.
 
 mod pipe;
+#[cfg(unix)]
+mod poll;
 mod stream;
 mod tcp;
 mod tty;
@@ -20,6 +22,16 @@ use std::ffi::CStr;
 use std::ffi::c_int;
 use std::ffi::c_void;
 use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::Mutex;
+#[cfg(unix)]
+use std::sync::MutexGuard;
+#[cfg(unix)]
+use std::sync::Weak;
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Waker;
 use std::time::Duration;
@@ -39,6 +51,7 @@ pub enum uv_handle_type {
   UV_PREPARE = 3,
   UV_CHECK = 4,
   UV_NAMED_PIPE = 7,
+  UV_POLL = 8,
   UV_TCP = 12,
   UV_TTY = 13,
   UV_UDP = 15,
@@ -48,6 +61,11 @@ pub enum uv_handle_type {
 const UV_HANDLE_ACTIVE: u32 = 1 << 0;
 const UV_HANDLE_REF: u32 = 1 << 1;
 const UV_HANDLE_CLOSING: u32 = 1 << 2;
+
+pub const UV_READABLE: c_int = 1;
+pub const UV_WRITABLE: c_int = 2;
+pub const UV_DISCONNECT: c_int = 4;
+pub const UV_PRIORITIZED: c_int = 8;
 
 // libuv-compatible error codes (negative errno values on unix,
 // which vary depending on platform, fixed values on windows).
@@ -78,6 +96,13 @@ uv_errno!(UV_ECONNRESET, libc::ECONNRESET, -4077);
 uv_errno!(UV_ECONNABORTED, libc::ECONNABORTED, -4079);
 uv_errno!(UV_ETIMEDOUT, libc::ETIMEDOUT, -4039);
 uv_errno!(UV_EACCES, libc::EACCES, -4092);
+uv_errno!(UV_EEXIST, libc::EEXIST, -4075);
+uv_errno!(UV_EFAULT, libc::EFAULT, -4074);
+uv_errno!(UV_EIO, libc::EIO, -4070);
+uv_errno!(UV_ENOMEM, libc::ENOMEM, -4057);
+uv_errno!(UV_EMFILE, libc::EMFILE, -4066);
+uv_errno!(UV_ENFILE, libc::ENFILE, -4061);
+uv_errno!(UV_ENOSYS, libc::ENOSYS, -4054);
 pub const UV_EOF: i32 = -4095;
 
 pub fn uv_error_message(err: c_int) -> Option<&'static CStr> {
@@ -100,6 +125,13 @@ pub fn uv_error_message(err: c_int) -> Option<&'static CStr> {
     x if x == UV_ECONNABORTED => c"software caused connection abort",
     x if x == UV_ETIMEDOUT => c"connection timed out",
     x if x == UV_EACCES => c"permission denied",
+    x if x == UV_EEXIST => c"file already exists",
+    x if x == UV_EFAULT => c"bad address in system call argument",
+    x if x == UV_EIO => c"i/o error",
+    x if x == UV_ENOMEM => c"not enough memory",
+    x if x == UV_EMFILE => c"too many open files",
+    x if x == UV_ENFILE => c"file table overflow",
+    x if x == UV_ENOSYS => c"function not implemented",
     x if x == UV_EOF => c"end of file",
     _ => return None,
   };
@@ -237,6 +269,96 @@ pub struct uv_check_t {
   cb: Option<unsafe extern "C" fn(*mut uv_check_t)>,
 }
 
+#[cfg(unix)]
+pub type uv_poll_cb = unsafe extern "C" fn(*mut uv_poll_t, c_int, c_int);
+
+/// A poll scope groups handles created by one embedding context, such as an
+/// N-API Env, and can invalidate them together.
+///
+/// Invalidating it removes matching worker watches and causes the loop to
+/// discard queued readiness and reject new starts. Loop-side handle state and
+/// fd ownership remain until each handle is stopped or closed. The worker sees
+/// only this numeric scope ID; it never retains an addon or ABI-handle pointer.
+#[cfg(unix)]
+#[derive(Clone)]
+pub struct UvPollScope {
+  scope_id: u64,
+  live: Arc<AtomicBool>,
+  control: Weak<poll::PollControl>,
+}
+
+#[cfg(unix)]
+/// Coordinates access to loop-associated state with loop teardown.
+///
+/// `uv_loop_operation_guard` holds this mutex during an operation. Teardown
+/// takes the same mutex before invalidating the token, so it waits for
+/// in-flight operations and later guards return `None`.
+pub struct UvLoopLiveness {
+  live: AtomicBool,
+  lock: Mutex<()>,
+}
+
+#[cfg(unix)]
+impl UvLoopLiveness {
+  fn new() -> Self {
+    Self {
+      live: AtomicBool::new(true),
+      lock: Mutex::new(()),
+    }
+  }
+  fn invalidate(&self) {
+    let _guard = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+    self.live.store(false, Ordering::Release);
+  }
+}
+
+#[cfg(unix)]
+/// Prevents loop teardown while the caller accesses loop-associated external
+/// state. Returns `None` once teardown has begun; callers must hold the guard
+/// for their entire operation.
+pub fn uv_loop_operation_guard(
+  liveness: &UvLoopLiveness,
+) -> Option<MutexGuard<'_, ()>> {
+  let guard = liveness.lock.lock().unwrap_or_else(|p| p.into_inner());
+  if liveness.live.load(Ordering::Acquire) {
+    Some(guard)
+  } else {
+    None
+  }
+}
+
+#[cfg(unix)]
+impl UvPollScope {
+  pub fn invalidate(&self) {
+    self.live.store(false, Ordering::Release);
+    if let Some(control) = self.control.upgrade() {
+      control.stop_scope(self.scope_id);
+    }
+  }
+}
+
+/// Caller storage containing this handle must remain valid until
+/// `uv_poll_close` removes it from the loop registry or loop teardown
+/// invalidates `UvLoopLiveness`.
+#[cfg(unix)]
+#[repr(C)]
+pub struct uv_poll_t {
+  pub r#type: uv_handle_type,
+  pub loop_: *mut uv_loop_t,
+  pub data: *mut c_void,
+  pub flags: u32,
+  // The token identifies this handle without sharing its ABI pointer with the
+  // worker. The generation identifies its current start/update, so readiness
+  // queued for an older watch can be discarded after stop or restart.
+  internal_token: u64,
+  internal_generation: u64,
+  internal_fd: c_int,
+  internal_requested_events: c_int,
+  internal_cb: Option<uv_poll_cb>,
+  internal_stop_cb: Option<unsafe extern "C" fn(*mut uv_poll_t)>,
+  internal_scope: Option<UvPollScope>,
+}
+
 pub type uv_timer_cb = unsafe extern "C" fn(*mut uv_timer_t);
 pub type uv_idle_cb = unsafe extern "C" fn(*mut uv_idle_t);
 pub type uv_prepare_cb = unsafe extern "C" fn(*mut uv_prepare_t);
@@ -254,6 +376,8 @@ struct TimerKey {
 }
 
 pub(crate) struct UvLoopInner {
+  #[cfg(unix)]
+  liveness: Arc<UvLoopLiveness>,
   timers: RefCell<BTreeSet<TimerKey>>,
   next_timer_id: Cell<u64>,
   timer_handles: RefCell<HashMap<u64, *mut uv_timer_t>>,
@@ -263,6 +387,20 @@ pub(crate) struct UvLoopInner {
   tcp_handles: RefCell<Vec<*mut uv_tcp_t>>,
   pipe_handles: RefCell<Vec<*mut uv_pipe_t>>,
   tty_handles: RefCell<Vec<*mut uv_tty_t>>,
+  #[cfg(unix)]
+  poll_driver: RefCell<poll::PollDriver>,
+  #[cfg(unix)]
+  poll_handles: RefCell<HashMap<u64, *mut uv_poll_t>>,
+  // Mirrors libuv's loop-wide uv__fd_exists duplicate-fd registry rather than
+  // poll-local ownership. Only poll handles participate today. An entry
+  // reserves its raw fd until stop or close; closing the fd first can let OS
+  // reuse make a later setup fail with UV_EEXIST.
+  #[cfg(unix)]
+  fd_watchers: RefCell<HashMap<c_int, u64>>,
+  #[cfg(unix)]
+  next_poll_token: Cell<u64>,
+  #[cfg(unix)]
+  next_poll_scope_id: Cell<u64>,
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
   time_origin: Instant,
@@ -278,7 +416,12 @@ pub(crate) struct UvLoopInner {
 impl UvLoopInner {
   fn new() -> Self {
     let origin = Instant::now();
+    let shared = waker::LoopShared::new();
+    #[cfg(unix)]
+    let poll_driver = poll::PollDriver::new(shared.clone());
     Self {
+      #[cfg(unix)]
+      liveness: Arc::new(UvLoopLiveness::new()),
       timers: RefCell::new(BTreeSet::new()),
       next_timer_id: Cell::new(1),
       timer_handles: RefCell::new(HashMap::with_capacity(16)),
@@ -288,11 +431,21 @@ impl UvLoopInner {
       tcp_handles: RefCell::new(Vec::with_capacity(8)),
       pipe_handles: RefCell::new(Vec::with_capacity(4)),
       tty_handles: RefCell::new(Vec::with_capacity(4)),
+      #[cfg(unix)]
+      poll_driver: RefCell::new(poll_driver),
+      #[cfg(unix)]
+      poll_handles: RefCell::new(HashMap::new()),
+      #[cfg(unix)]
+      fd_watchers: RefCell::new(HashMap::new()),
+      #[cfg(unix)]
+      next_poll_token: Cell::new(1),
+      #[cfg(unix)]
+      next_poll_scope_id: Cell::new(1),
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
       time_origin: origin,
       cached_time_ms: Cell::new(0),
-      shared: waker::LoopShared::new(),
+      shared,
     }
   }
 
@@ -416,6 +569,23 @@ impl UvLoopInner {
       let handle = unsafe { &**handle_ptr };
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && handle.flags & UV_HANDLE_REF != 0
+      {
+        return true;
+      }
+    }
+    #[cfg(unix)]
+    for handle_ptr in self.poll_handles.borrow().values() {
+      // SAFETY: Poll pointers are retained by their C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0
+        && handle.flags & UV_HANDLE_REF != 0
+        // Scope invalidation is an Env-scoped close signal. The handle can
+        // remain allocated until its bridge processes close, but it must not
+        // keep this runtime alive after that scope is gone.
+        && handle
+          .internal_scope
+          .as_ref()
+          .is_some_and(|scope| scope.live.load(Ordering::Acquire))
       {
         return true;
       }
@@ -669,6 +839,13 @@ impl UvLoopInner {
         any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
       }
 
+      #[cfg(unix)]
+      {
+        // Preserve one-pass I/O ordering: tokio-backed TCP/pipe/TTY callbacks
+        // run before worker-driven poll callbacks.
+        any_work |= unsafe { self.run_poll_io() };
+      }
+
       any_work
     }
   }
@@ -877,6 +1054,127 @@ impl UvLoopInner {
       (*handle).flags &= !UV_HANDLE_ACTIVE;
     }
   }
+
+  #[cfg(unix)]
+  unsafe fn stop_poll(&self, handle: *mut uv_poll_t) {
+    // SAFETY: Caller guarantees handle is valid and initialized.
+    let handle_ref = unsafe { &mut *handle };
+    let generation = handle_ref.internal_generation;
+    handle_ref.internal_generation = generation.wrapping_add(1);
+    handle_ref.flags &= !UV_HANDLE_ACTIVE;
+    handle_ref.internal_requested_events = 0;
+    handle_ref.internal_cb = None;
+
+    // Release fd ownership before notifying the embedding: its stop hook or a
+    // subsequent error callback may synchronously install a replacement.
+    let mut watchers = self.fd_watchers.borrow_mut();
+    if watchers
+      .get(&handle_ref.internal_fd)
+      .is_some_and(|token| *token == handle_ref.internal_token)
+    {
+      watchers.remove(&handle_ref.internal_fd);
+    }
+    drop(watchers);
+    self
+      .poll_driver
+      .borrow()
+      .stop(handle_ref.internal_token, generation);
+    if let Some(callback) = handle_ref.internal_stop_cb {
+      unsafe { callback(handle) };
+    }
+  }
+
+  /// Dispatch the poll worker's currently queued readiness on the loop thread.
+  #[cfg(unix)]
+  unsafe fn run_poll_io(&self) -> bool {
+    let ready = self.poll_driver.borrow().drain_ready();
+    let mut any_work = false;
+
+    for ready in ready {
+      let snapshot = unsafe {
+        // Keep the registry borrow scoped to this block so the callback can
+        // close or restart the handle.
+        let handles = self.poll_handles.borrow();
+        if let Some(handle_ptr) = handles.get(&ready.token) {
+          let handle = &mut **handle_ptr;
+          if handle.internal_token != ready.token
+            || handle.internal_generation != ready.generation
+            || handle.flags & UV_HANDLE_ACTIVE == 0
+            || !handle
+              .internal_scope
+              .as_ref()
+              .is_some_and(|scope| scope.live.load(Ordering::Acquire))
+          {
+            None
+          } else {
+            let (status, events) = if ready.status != 0 {
+              (ready.status, 0)
+            } else {
+              poll::poll_revents_to_uv_callback_args(
+                ready.revents,
+                handle.internal_requested_events,
+              )
+            };
+            handle
+              .internal_cb
+              .map(|callback| (*handle_ptr, callback, status, events))
+          }
+        } else {
+          None
+        }
+      };
+      let Some((handle_ptr, callback, status, events)) = snapshot else {
+        continue;
+      };
+
+      if status != 0 {
+        // Stop first so the poll callback can install a replacement watch.
+        unsafe { self.stop_poll(handle_ptr) };
+      }
+      // SAFETY: Callback and pointer were copied while the registry entry was
+      // live. The C caller keeps the handle valid until its close callback.
+      unsafe { callback(handle_ptr, status, events) };
+      any_work = true;
+
+      let should_rearm = unsafe {
+        let handles = self.poll_handles.borrow();
+        handles.get(&ready.token).is_some_and(|handle_ptr| {
+          let handle = &**handle_ptr;
+          handle.internal_token == ready.token
+            && handle.internal_generation == ready.generation
+            && handle.flags & UV_HANDLE_ACTIVE != 0
+            && handle
+              .internal_scope
+              .as_ref()
+              .is_some_and(|scope| scope.live.load(Ordering::Acquire))
+        })
+      };
+      if should_rearm
+        && self
+          .poll_driver
+          .borrow()
+          .rearm(ready.token, ready.generation)
+          .is_err()
+      {
+        // The worker has entered a terminal state after this callback was
+        // delivered. It cannot accept the rearm, so release loop ownership
+        // instead of leaving a referenced but unserviceable handle alive.
+        unsafe { self.stop_poll(handle_ptr) };
+      }
+    }
+
+    any_work
+  }
+}
+
+#[cfg(unix)]
+impl Drop for UvLoopInner {
+  fn drop(&mut self) {
+    self.liveness.invalidate();
+    // Join before the token registry and LoopShared are dropped. The worker
+    // only owns tokens, but it can still wake LoopShared while shutting down.
+    self.poll_driver.get_mut().shutdown();
+  }
 }
 
 /// ### Safety
@@ -997,6 +1295,205 @@ pub unsafe fn uv_loop_get_inner_ptr(
 ) -> *const std::ffi::c_void {
   // SAFETY: Caller guarantees loop_ is valid and was initialized by uv_loop_init.
   unsafe { (*loop_).internal as *const std::ffi::c_void }
+}
+
+/// Create a poll scope that can invalidate poll handles registered with
+/// `loop_`.
+///
+/// ### Safety
+/// `loop_` must be a valid loop initialized by `uv_loop_init`.
+#[cfg(unix)]
+pub unsafe fn new_poll_scope(loop_: *mut uv_loop_t) -> UvPollScope {
+  // SAFETY: Caller guarantees loop_ is initialized.
+  let inner = unsafe { get_inner(loop_) };
+  let scope_id = inner.next_poll_scope_id.get();
+  inner.next_poll_scope_id.set(scope_id.wrapping_add(1));
+  UvPollScope {
+    scope_id,
+    live: Arc::new(AtomicBool::new(true)),
+    control: inner.poll_driver.borrow().control(),
+  }
+}
+
+/// Returns the shared operation/lifetime token for an initialized uv loop.
+///
+/// ### Safety
+/// `loop_` must point to a live initialized loop.
+#[cfg(unix)]
+pub unsafe fn uv_loop_liveness(loop_: *mut uv_loop_t) -> Arc<UvLoopLiveness> {
+  unsafe { get_inner(loop_) }.liveness.clone()
+}
+
+/// ### Safety
+/// `loop_` must be initialized and `handle` must be valid writable storage.
+#[cfg(unix)]
+pub unsafe fn uv_poll_init(
+  loop_: *mut uv_loop_t,
+  handle: *mut uv_poll_t,
+  fd: c_int,
+  scope: UvPollScope,
+) -> c_int {
+  // SAFETY: Caller guarantees loop_ and handle are valid.
+  let inner = unsafe { get_inner(loop_) };
+  // Match libuv's uv__fd_exists check before changing descriptor flags or
+  // registering this handle. An active watch owns its fd for this loop.
+  if inner.fd_watchers.borrow().contains_key(&fd) {
+    return UV_EEXIST;
+  }
+  if let Err(errno) = poll::set_fd_nonblocking(fd) {
+    return -errno;
+  }
+  let token = inner.next_poll_token.get();
+  inner.next_poll_token.set(token.wrapping_add(1));
+  // SAFETY: handle is valid writable storage supplied by the caller.
+  unsafe {
+    std::ptr::write(
+      handle,
+      uv_poll_t {
+        r#type: uv_handle_type::UV_POLL,
+        loop_,
+        data: std::ptr::null_mut(),
+        flags: UV_HANDLE_REF,
+        internal_token: token,
+        internal_generation: 0,
+        internal_fd: fd,
+        internal_requested_events: 0,
+        internal_cb: None,
+        internal_stop_cb: None,
+        internal_scope: Some(scope),
+      },
+    );
+  }
+  inner.poll_handles.borrow_mut().insert(token, handle);
+  0
+}
+
+/// Install a loop-thread notification invoked whenever a poll handle stops.
+///
+/// ### Safety
+/// `handle` must be a live initialized poll handle.
+#[cfg(unix)]
+pub unsafe fn uv_poll_set_stop_callback(
+  handle: *mut uv_poll_t,
+  callback: Option<unsafe extern "C" fn(*mut uv_poll_t)>,
+) {
+  unsafe { (*handle).internal_stop_cb = callback };
+}
+
+/// Start or update a poll handle.
+///
+/// ### Safety
+/// `handle` must have been initialized by `uv_poll_init` and remain valid.
+#[cfg(unix)]
+pub unsafe fn uv_poll_start(
+  handle: *mut uv_poll_t,
+  events: c_int,
+  cb: Option<uv_poll_cb>,
+) -> c_int {
+  const VALID_EVENTS: c_int =
+    UV_READABLE | UV_WRITABLE | UV_DISCONNECT | UV_PRIORITIZED;
+  // SAFETY: Caller guarantees handle is valid and initialized.
+  let handle_ref = unsafe { &mut *handle };
+  if handle_ref.flags & UV_HANDLE_CLOSING != 0 || events & !VALID_EVENTS != 0 {
+    return UV_EINVAL;
+  }
+  // SAFETY: An initialized poll handle always records its initialized loop.
+  let inner = unsafe { get_inner(handle_ref.loop_) };
+  let Some(scope) = handle_ref.internal_scope.as_ref() else {
+    return UV_EINVAL;
+  };
+  if !scope.live.load(Ordering::Acquire) {
+    return UV_ECANCELED;
+  }
+
+  // libuv validates fd ownership before treating a zero mask as stop.
+  if inner
+    .fd_watchers
+    .borrow()
+    .get(&handle_ref.internal_fd)
+    .is_some_and(|token| *token != handle_ref.internal_token)
+  {
+    return UV_EEXIST;
+  }
+  // libuv stores a null callback without validation and would later invoke it
+  // during event dispatch. Reject it synchronously instead.
+  if events != 0 && cb.is_none() {
+    return UV_EINVAL;
+  }
+  if events == 0 {
+    return unsafe { uv_poll_stop(handle) };
+  }
+
+  let generation = handle_ref.internal_generation.wrapping_add(1);
+  let watch = poll::PollWatch {
+    token: handle_ref.internal_token,
+    generation,
+    scope_id: scope.scope_id,
+    fd: handle_ref.internal_fd,
+    poll_events: poll::uv_events_to_poll_events(events),
+  };
+  // Commit loop state only after lazy worker startup accepts the watch, so a
+  // failure leaves an existing registration, generation, and fd owner intact.
+  // This leaves fd ownership unpublished during upsert, which is safe because
+  // uv_poll_start and upsert run synchronously and non-reentrantly on the loop
+  // thread. Reserve the fd before upsert if either assumption changes.
+  if let Err(errno) = inner.poll_driver.borrow_mut().upsert(watch, &scope.live)
+  {
+    return -errno;
+  }
+  handle_ref.internal_generation = generation;
+  handle_ref.internal_requested_events = events;
+  handle_ref.internal_cb = cb;
+  handle_ref.flags |= UV_HANDLE_ACTIVE;
+  inner
+    .fd_watchers
+    .borrow_mut()
+    .insert(handle_ref.internal_fd, handle_ref.internal_token);
+  0
+}
+
+/// Stop a poll handle and invalidate queued readiness for its current
+/// generation.
+///
+/// ### Safety
+/// `handle` must have been initialized by `uv_poll_init` and remain valid.
+#[cfg(unix)]
+pub unsafe fn uv_poll_stop(handle: *mut uv_poll_t) -> c_int {
+  // SAFETY: Caller guarantees handle is valid and initialized.
+  let loop_ = unsafe { (*handle).loop_ };
+  if loop_.is_null() || unsafe { (*loop_).internal.is_null() } {
+    // SAFETY: handle is valid per this function's contract.
+    unsafe { (*handle).flags &= !UV_HANDLE_ACTIVE };
+    return 0;
+  }
+  // SAFETY: loop_ is initialized while its internal pointer is non-null.
+  let inner = unsafe { get_inner(loop_) };
+  unsafe { inner.stop_poll(handle) };
+  0
+}
+
+/// ### Safety
+/// `handle` must have been initialized by `uv_poll_init` and remain valid.
+#[cfg(unix)]
+pub unsafe fn uv_poll_close(handle: *mut uv_poll_t) {
+  // SAFETY: Caller guarantees handle is valid and initialized.
+  let loop_ = unsafe { (*handle).loop_ };
+  if !loop_.is_null() && unsafe { !(*loop_).internal.is_null() } {
+    // SAFETY: loop_ is initialized while its internal pointer is non-null.
+    let inner = unsafe { get_inner(loop_) };
+    unsafe { inner.stop_poll(handle) };
+    // SAFETY: handle remains valid until its caller completes close handling.
+    inner
+      .poll_handles
+      .borrow_mut()
+      .remove(&unsafe { (*handle).internal_token });
+  }
+  // SAFETY: handle is valid per this function's contract.
+  unsafe {
+    (*handle).flags |= UV_HANDLE_CLOSING;
+    (*handle).flags &= !(UV_HANDLE_ACTIVE | UV_HANDLE_REF);
+    (*handle).internal_scope = None;
+  }
 }
 
 /// ### Safety
@@ -1493,6 +1990,10 @@ pub unsafe extern "C" fn uv_close(
       }
       uv_handle_type::UV_NAMED_PIPE => {
         inner.stop_pipe(handle as *mut uv_pipe_t);
+      }
+      #[cfg(unix)]
+      uv_handle_type::UV_POLL => {
+        uv_poll_close(handle as *mut uv_poll_t);
       }
       _ => {}
     }
