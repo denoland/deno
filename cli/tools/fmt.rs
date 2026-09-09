@@ -432,7 +432,23 @@ fn get_resolved_lax_css_config(
     line_width: options.line_width.unwrap_or(80),
     use_tabs: options.use_tabs.unwrap_or_default(),
     indent_width: options.indent_width.unwrap_or(2),
-    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    new_line_kind: match options.new_line_kind.unwrap_or(NewLineKind::LineFeed)
+    {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    },
     ignore_node_comment_text: "deno-fmt-ignore".to_string(),
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
     single_line: false,
@@ -1930,6 +1946,26 @@ mod test {
       // should use double quotes for the string with a single quote
       "console.log(\"there's\");\nconsole.log('hi');\nconsole.log('bye');\n",
     );
+  }
+
+  #[test]
+  fn test_css_respects_crlf_new_line_kind() {
+    let file_text = format_file(
+      Path::new("test.css"),
+      &FileContents {
+        had_bom: false,
+        text: "a {\ncolor: red;\n}\n".into(),
+      },
+      &FmtOptionsConfig {
+        new_line_kind: Some(NewLineKind::CarriageReturnLineFeed),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(file_text, "a {\r\n  color: red;\r\n}\r\n");
   }
 
   #[test]
