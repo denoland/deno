@@ -132,6 +132,24 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.versions.unicode matches RegExp engine capability",
+  fn() {
+    const versionMatch = process.versions.unicode.match(/^(\d+)/);
+    assert(versionMatch !== null);
+    const majorVersion = parseInt(versionMatch[1], 10);
+    
+    // U+323B0 is CJK Unified Ideographs Extension J, added in Unicode 17.0
+    const isUnicode17Supported = /\p{Letter}/u.test("\u{323B0}");
+    
+    if (majorVersion >= 17) {
+      assert(isUnicode17Supported, "process.versions.unicode claims >= 17.0, but RegExp engine failed to identify U+323B0 as a Letter");
+    } else {
+      assert(!isUnicode17Supported, "RegExp engine supports Unicode 17.0, but process.versions.unicode claims < 17.0");
+    }
+  }
+});
+
+Deno.test({
   name: "process.platform",
   fn() {
     const expectedOs = Deno.build.os == "windows" ? "win32" : Deno.build.os;

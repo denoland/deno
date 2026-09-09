@@ -253,7 +253,7 @@ const versions = {
   cldr: "48.0",
   icu: "78.3",
   tz: "2026b",
-  unicode: "17.0",
+  unicode: "16.0",
   ngtcp2: "",
   nghttp3: "",
   sqlite: "3.53.1",
