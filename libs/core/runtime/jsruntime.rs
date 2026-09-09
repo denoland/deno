@@ -71,6 +71,7 @@ use super::bindings::watch_promise;
 use super::exception_state::ExceptionState;
 use super::jsrealm::JsRealmInner;
 use super::op_driver::OpDriver;
+use super::ops_exports;
 use super::setup;
 use super::snapshot;
 use super::stats::RuntimeActivityStatsFactory;
@@ -598,6 +599,28 @@ pub struct RuntimeOptions {
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
+  /// Make the `ext:core/ops` synthetic module export **every** registered op,
+  /// the way it did before the export list was shrunk to the set of names that
+  /// extension sources actually import.
+  ///
+  /// By default deno_core scans the extension sources it is given — including
+  /// `lazy_loaded_*` and residual sources — for
+  /// `import { … } from "ext:core/ops"` clauses and exports only those names.
+  /// Anything the scan cannot prove to be a plain named import (a namespace
+  /// import, an `export * from`, a dynamic `import("ext:core/ops")`) already
+  /// switches that runtime back to exporting everything automatically, so this
+  /// flag is only needed when the importing module is **not** among the sources
+  /// deno_core sees — e.g. a module served by the embedder's own
+  /// `ModuleLoader` that imports ops by name.
+  ///
+  /// Turning this on restores the pre-shrink blob cost: one export cell, and
+  /// hence one materialized op function, per registered op (~270 bytes of
+  /// snapshot each). Prefer letting the scanner see the source.
+  ///
+  /// Only meaningful when the runtime builds the module itself, i.e. when there
+  /// is no startup snapshot or the snapshot is being created.
+  pub export_all_ops_from_virtual_module: bool,
+
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
 
@@ -848,6 +871,69 @@ impl JsRuntime {
       },
     )?;
     startup_phase_end(_phase, "into_sources_and_source_maps");
+
+    // Work out which names `ext:core/ops` has to export, before the sources are
+    // externalized. Only the runtime that *builds* the module pays for this;
+    // when the module comes out of a snapshot it is already shaped.
+    let ops_export_filter = if init_mode == InitMode::New {
+      let _phase = startup_phase_begin();
+      let mut scan = ops_exports::OpsImportScan::default();
+      if options.export_all_ops_from_virtual_module {
+        scan.force_export_all();
+      }
+      for source in sources
+        .js
+        .iter()
+        .chain(sources.esm.iter())
+        .chain(sources.lazy_esm.iter())
+        .chain(sources.lazy_js.iter())
+      {
+        scan.add_source(source.code.as_str());
+      }
+      // Residual `lazy_loaded_*` sources are instantiated *after* the snapshot
+      // is deserialized, but they are known here, so their imports go into the
+      // same union rather than exploding at load time.
+      for (_, source) in options
+        .residual_lazy_js_sources
+        .iter()
+        .chain(options.residual_lazy_esm_sources.iter())
+      {
+        scan.add_source(source);
+      }
+      // deno_core's own built-ins are executed after the synthetic module is
+      // created, so they have to be in the union too.
+      for source in CONTEXT_SETUP_SOURCES.iter().chain(BUILTIN_SOURCES.iter()) {
+        scan.add_source(source.source.as_str());
+      }
+      for source in &BUILTIN_ES_MODULES {
+        scan.add_source(source.load()?.as_str());
+      }
+      let filter = scan.finish();
+      startup_phase_end(_phase, "scan_ops_module_imports");
+      if startup_phases_enabled() {
+        #[allow(clippy::print_stderr, reason = "diagnostic")]
+        {
+          // The fail-safe direction of this analysis is "export everything",
+          // which costs the whole win silently. Make it visible next to the
+          // other startup diagnostics.
+          match &filter {
+            ops_exports::OpsExportFilter::All => eprintln!(
+              "[startup] {:>32}  ALL (export-all requested, or a source uses \
+               ext:core/ops in a way the scanner cannot analyse)",
+              "ext:core/ops exports"
+            ),
+            ops_exports::OpsExportFilter::Only(names) => eprintln!(
+              "[startup] {:>32}  {} names",
+              "ext:core/ops exports",
+              names.len()
+            ),
+          }
+        }
+      }
+      filter
+    } else {
+      ops_exports::OpsExportFilter::All
+    };
 
     for loaded_source in sources
       .js
@@ -1257,8 +1343,11 @@ impl JsRuntime {
       // ) {
       if init_mode == InitMode::New {
         let _phase = startup_phase_begin();
-        js_runtime
-          .execute_virtual_ops_module(context_global, module_map.clone());
+        js_runtime.execute_virtual_ops_module(
+          context_global,
+          module_map.clone(),
+          &ops_export_filter,
+        );
         startup_phase_end(_phase, "execute_virtual_ops_module");
       }
 
@@ -1471,6 +1560,7 @@ impl JsRuntime {
     &mut self,
     context_global: &v8::Global<v8::Context>,
     module_map: Rc<ModuleMap>,
+    filter: &ops_exports::OpsExportFilter,
   ) {
     scope!(scope, self);
     let context_local = v8::Local::new(scope, context_global);
@@ -1482,6 +1572,7 @@ impl JsRuntime {
       context_state.methods_ctx_offset,
       scope,
       global,
+      filter,
     );
     let mod_id = module_map.new_synthetic_module(
       scope,

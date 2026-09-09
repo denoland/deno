@@ -1286,6 +1286,9 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     residual_lazy_esm_sources: opts.residual_lazy_esm_sources,
     create_params: opts.create_params,
     skip_op_registration: opts.skip_op_registration,
+    // Every `ext:core/ops` importer in this repo is an extension source, so
+    // the import scan sees them all and the export list can shrink.
+    export_all_ops_from_virtual_module: false,
     shared_array_buffer_store: opts.shared_array_buffer_store,
     compiled_wasm_module_store: opts.compiled_wasm_module_store,
     extensions: opts.extensions,

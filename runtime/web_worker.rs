@@ -666,6 +666,9 @@ impl WebWorker {
         .then(crate::worker::create_permissions_stack_trace_callback),
       extension_code_cache: None,
       skip_op_registration: false,
+      // Every `ext:core/ops` importer in this repo is an extension source, so
+      // the import scan sees them all and the export list can shrink.
+      export_all_ops_from_virtual_module: false,
       v8_platform: None,
       is_main: false,
       worker_id: Some(options.worker_id.0),
