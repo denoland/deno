@@ -6,7 +6,7 @@
       "exitCode": 1
     },
     "not_node_modules": {
-      "args": "run not_node_modules.js",
+      "args": "run --allow-read=not_node_modules.js.map not_node_modules.js",
       "output": "not_node_modules.out",
       "exitCode": 1
     }
