@@ -1459,6 +1459,9 @@ fn run_on_runtime_thread<F: FnOnce() + Send + 'static>(f: F) {
 /// Run as a headless worker (no Laufey window). Used when a framework dev
 /// server forks child processes that re-execute this dylib.
 fn run_headless_worker() {
+  unsafe {
+    std::env::remove_var("DENO_SERVE_ADDRESS");
+  }
   denort::init_logging(None, None);
   deno_runtime::deno_permissions::mark_standalone();
   rustls::crypto::aws_lc_rs::default_provider()

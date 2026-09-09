@@ -1830,9 +1830,17 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 
 #[op2]
 pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
+  static CONSUMED: AtomicBool = AtomicBool::new(false);
+
   if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
-    return parse_serve_address(&val);
-  };
+    let parsed = parse_serve_address(&val);
+    if parsed.0 != 0 && CONSUMED.swap(true, Ordering::AcqRel) {
+      // Already handed out to an earlier server in this process:
+      // behave as if the variable were unset.
+      return (0, String::new(), 0, false);
+    }
+    return parsed;
+  }
 
   if deno_net::tunnel::get_tunnel().is_some() {
     return (4, String::new(), 0, true);
