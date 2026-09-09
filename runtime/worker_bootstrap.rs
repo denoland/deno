@@ -156,7 +156,7 @@ impl Default for BootstrapOptions {
       node_cluster_sched_policy: None,
       node_ipc_init: None,
       mode: WorkerExecutionMode::None,
-      no_legacy_abort: false,
+      no_legacy_abort: true,
       serve_port: Default::default(),
       serve_host: Default::default(),
       otel_config: Default::default(),
