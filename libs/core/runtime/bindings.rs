@@ -44,6 +44,7 @@ use crate::ops::OpCtx;
 use crate::runtime::ContextState;
 use crate::runtime::InitMode;
 use crate::runtime::JsRealm;
+use crate::runtime::ops_exports::OpsExportFilter;
 
 pub(crate) fn create_external_references(
   ops: &[OpCtx],
@@ -2096,12 +2097,16 @@ where
 
 /// This function generates a list of tuples, that are a mapping of `<op_name>`
 /// to a JavaScript function that executes and op.
+///
+/// Only names `filter` allows get an export cell; see
+/// [`crate::runtime::ops_exports`] for how that set is derived.
 pub fn create_exports_for_ops_virtual_module<'s, 'i>(
   op_ctxs: &[OpCtx],
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
   scope: &mut v8::PinScope<'s, 'i>,
   global: v8::Local<'s, v8::Object>,
+  filter: &OpsExportFilter,
 ) -> Vec<(FastStaticString, v8::Local<'s, v8::Value>)> {
   let mut exports = Vec::with_capacity(op_ctxs.len());
 
@@ -2120,15 +2125,25 @@ pub fn create_exports_for_ops_virtual_module<'s, 'i>(
       index += 1;
     }
 
+    index += decl.methods.len() + decl.static_methods.len();
+
+    // Reading the name off `Deno.core.ops` goes through the lazy-ops
+    // interceptor and *materializes* the function -- which is then held alive
+    // by the export cell, and lands in the snapshot blob. Skipping the names
+    // nothing imports is the whole point of this filter.
     let name = decl.name.1;
+    if !filter.allows(decl.name.0) {
+      continue;
+    }
     let op_fn = get(scope, ops_obj, name, "op");
     exports.push((name, op_fn));
-
-    index += decl.methods.len() + decl.static_methods.len();
   }
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
+    if !filter.allows(op_ctx.decl().name) {
+      continue;
+    }
     let op_fn = get(scope, ops_obj, op_ctx.decl().name_fast, "op");
     exports.push((op_ctx.decl().name_fast, op_fn));
   }

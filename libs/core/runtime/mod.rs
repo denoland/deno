@@ -8,6 +8,7 @@ mod jsruntime;
 pub mod op_driver;
 #[doc(hidden)]
 pub mod ops;
+mod ops_exports;
 pub mod ops_rust_to_v8;
 mod setup;
 mod snapshot;

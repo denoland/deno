@@ -19,6 +19,7 @@ mod error;
 mod jsrealm;
 mod misc;
 mod ops;
+mod ops_exports;
 mod snapshot;
 
 #[derive(Copy, Clone)]
