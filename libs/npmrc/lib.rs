@@ -718,6 +718,13 @@ mod test {
 
   use super::*;
 
+  #[test]
+  fn parse_strips_a_leading_utf8_bom() {
+    let sys = InMemorySys::default();
+    let npm_rc =
+      NpmRc::parse(&sys, "\u{feff}registry=https://example.com/\n").unwrap();
+    assert_eq!(npm_rc.registry.as_deref(), Some("https://example.com/"));
+  }
   fn replace_tarball_url(
     config: &str,
     registry: &str,

@@ -153,6 +153,10 @@ fn parse_env_content_hook_impl(
   mut substitution_map: Option<SubstitutionMap<'_, '_>>,
   cb: &mut dyn FnMut(&str, &str),
 ) {
+  // Editors on Windows routinely save `.env` with a UTF-8 BOM, and every other
+  // text file deno reads has one stripped. Left in place it becomes part of the
+  // first key.
+  let content = content.strip_prefix('\u{feff}').unwrap_or(content);
   let raw = content.as_bytes();
   let mut filtered = Vec::new();
   let mut saw_cr = false;
@@ -588,6 +592,21 @@ mod tests {
       map.insert(key.to_string(), value.to_string());
     });
     map
+  }
+
+  #[test]
+  fn parse_strips_a_leading_utf8_bom() {
+    assert_parsed_eq(
+      "\u{feff}FOO=bar\nBAZ=qux\n",
+      &[("FOO", "bar"), ("BAZ", "qux")],
+    );
+    assert_parsed_eq(
+      "\u{feff}FOO=bar\r\nBAZ=qux\r\n",
+      &[("FOO", "bar"), ("BAZ", "qux")],
+    );
+    // Only the leading one, and only one of it: anywhere else it is ordinary text.
+    assert_parsed_eq("FOO=\u{feff}bar\n", &[("FOO", "\u{feff}bar")]);
+    assert_parsed_eq("\u{feff}\u{feff}FOO=bar\n", &[("\u{feff}FOO", "bar")]);
   }
 
   fn assert_parsed_eq(content: &str, expected: &[(&str, &str)]) {
