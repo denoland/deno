@@ -262,20 +262,16 @@ pub fn create_isolate(
     if let Some(snapshot) = maybe_startup_snapshot {
       params = params.snapshot_blob(v8::StartupData::from(snapshot.0));
     }
-    static FIRST_SNAPSHOT_INIT: AtomicBool = AtomicBool::new(false);
-    static SNAPSHOW_INIT_MUT: Mutex<()> = Mutex::new(());
+    static SNAPSHOT_INIT_MUT: Mutex<()> = Mutex::new(());
 
-    // On Windows, the snapshot deserialization code appears to be crashing and we are not
-    // certain of the reason. We take a mutex the first time an isolate with a snapshot to
-    // prevent this. https://github.com/denoland/deno/issues/15590
-    if cfg!(windows)
-      && has_snapshot
-      && FIRST_SNAPSHOT_INIT.load(Ordering::SeqCst)
-    {
-      let _g = SNAPSHOW_INIT_MUT.lock().unwrap();
-      let res = v8::Isolate::new(params);
-      FIRST_SNAPSHOT_INIT.store(true, Ordering::SeqCst);
-      res
+    // On Windows, concurrent snapshot deserialization can crash
+    // (https://github.com/denoland/deno/issues/15590). Serialize all
+    // snapshot-backed Isolate::new calls. The previous FIRST_SNAPSHOT_INIT
+    // guard started false and was only set inside the locked branch, so the
+    // mutex never ran.
+    if cfg!(windows) && has_snapshot {
+      let _g = SNAPSHOT_INIT_MUT.lock().unwrap();
+      v8::Isolate::new(params)
     } else {
       v8::Isolate::new(params)
     }
