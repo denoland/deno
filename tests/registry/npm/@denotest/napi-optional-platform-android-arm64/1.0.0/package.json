@@ -1,0 +1,12 @@
+{
+  "name": "@denotest/napi-optional-platform-android-arm64",
+  "version": "1.0.0",
+  "main": "index.js",
+  "publishDate": "2035-01-01T00:00:00.000Z",
+  "os": [
+    "android"
+  ],
+  "cpu": [
+    "arm64"
+  ]
+}
