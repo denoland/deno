@@ -1984,6 +1984,15 @@ function spawnSync(
   includeNpmProcessState = builtCommand[2];
   const input_ = normalizeInput(input);
 
+  // Route stdin through toDenoStdio so a numeric fd or "inherit" is preserved
+  // for the child, matching the async spawn path and Node.js. spawnSync has no
+  // live stdin writer, so a "piped" stdin with no `input` would leave the child
+  // blocked on read; map that case to "null" (empty stdin) to match Node.
+  let stdin_deno = toDenoStdio(stdin_);
+  if (stdin_deno === "piped" && input_ == null) {
+    stdin_deno = "null";
+  }
+
   const result = {};
   try {
     const output = nodeSpawnSyncChild({
@@ -1994,7 +2003,7 @@ function spawnSync(
       argv0: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
-      stdin: stdin_ == "inherit" ? "inherit" : "null",
+      stdin: stdin_deno,
       uid,
       gid,
       clearEnv: false,
