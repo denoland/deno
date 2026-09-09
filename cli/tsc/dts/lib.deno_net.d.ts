@@ -443,6 +443,30 @@ declare namespace Deno {
    */
   export function connect(options: ConnectOptions): Promise<TcpConn>;
 
+  /** Options for tuning TCP keep-alive behavior, passed to
+   * {@linkcode Deno.TcpConn.setKeepAlive}.
+   *
+   * Durations are in milliseconds and must be at least `1000`. On Unix the
+   * operating system floors them to whole seconds. Fields left unspecified
+   * keep their operating system defaults. Per-field platform support
+   * (unsupported fields are ignored):
+   *
+   * - `time`: all platforms (`TCP_KEEPIDLE`).
+   * - `interval`: Unix and Windows (`TCP_KEEPINTVL`).
+   * - `retries`: Unix only (`TCP_KEEPCNT`).
+   *
+   * @category Network */
+  export interface TcpKeepAliveOptions {
+    /** The number of milliseconds a connection is idle before the first
+     * keep-alive probe is sent. */
+    time?: number;
+    /** The number of milliseconds between keep-alive probes once they
+     * start. */
+    interval?: number;
+    /** The number of failed probes before the connection is dropped. */
+    retries?: number;
+  }
+
   /** A TCP stream connection.
    *
    * @category Network */
@@ -465,10 +489,14 @@ declare namespace Deno {
      */
     setNoDelay(noDelay?: boolean): void;
     /**
-     * Enable or disable TCP keep-alive probes on this connection. Pass `true`
-     * to enable keep-alive and `false` to disable it.
+     * Enable or disable TCP keep-alive probes on this connection, optionally
+     * tuning the keep-alive timers.
+     *
+     * Pass `true` (or a {@linkcode Deno.TcpKeepAliveOptions} object) to enable
+     * keep-alive, or `false` to disable it. Passing an options object always
+     * enables keep-alive and applies the provided timers.
      */
-    setKeepAlive(keepAlive?: boolean): void;
+    setKeepAlive(keepAlive?: boolean | TcpKeepAliveOptions): void;
   }
 
   /** Options which can be set when connecting to a Unix domain socket via
