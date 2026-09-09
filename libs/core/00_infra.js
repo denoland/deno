@@ -14,6 +14,7 @@
     ObjectAssign,
     ObjectDefineProperty,
     ObjectFreeze,
+    ObjectHasOwn,
     Promise,
     PromiseReject,
     PromiseResolve,
@@ -42,6 +43,7 @@
 
   let isLeakTracingEnabled = false;
   let submitLeakTrace;
+  let registerErrorClassNative;
 
   // Exposed for testing promise id wraparound behavior.
   function __setNextPromiseId(promiseId) {
@@ -56,8 +58,12 @@
     return isLeakTracingEnabled;
   }
 
-  function __initializeCoreMethods(submitLeakTrace_) {
+  function __initializeCoreMethods(
+    submitLeakTrace_,
+    registerErrorClassNative_,
+  ) {
     submitLeakTrace = submitLeakTrace_;
+    registerErrorClassNative = registerErrorClassNative_;
   }
 
   const build = {
@@ -84,11 +90,9 @@
 
   const errorMap = {};
   // Maps a registered error class name to its constructor. Unlike `errorMap`
-  // (which stores builder closures), this keeps a reference to the class itself
-  // so the Rust side can restore the exact prototype when building an exception
-  // natively (e.g. from inside a V8 fast call, where re-entering JS to call
-  // `buildCustomError` is forbidden). Null prototype so class names can't
-  // collide with `Object.prototype` members.
+  // (which stores builder closures), this lets native error construction
+  // restore the exact prototype. Null prototype and immutable entries keep
+  // lookups independent of inherited properties or later map mutations.
   const errorConstructors = { __proto__: null };
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -114,9 +118,16 @@
         const keys = [];
         for (const property of new SafeArrayIterator(additionalProperties)) {
           const key = property[0];
-          if (!(key in error)) {
+          // Match native registered-error construction: preserve existing own
+          // properties without consulting or invoking prototype accessors.
+          if (!ObjectHasOwn(error, key)) {
             keys.push(key);
-            error[key] = property[1];
+            ObjectDefineProperty(error, key, {
+              value: property[1],
+              writable: true,
+              enumerable: true,
+              configurable: true,
+            });
           }
         }
         ObjectDefineProperty(error, SymbolFor("errorAdditionalPropertyKeys"), {
@@ -133,7 +144,18 @@
 
   function registerErrorClass(className, errorClass) {
     registerErrorBuilder(className, (msg) => new errorClass(msg));
-    errorConstructors[className] = errorClass;
+    ObjectDefineProperty(errorConstructors, className, {
+      value: errorClass,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    // Registered op errors bypass their constructors in both slow and fast
+    // dispatch. Native reconstruction requires a non-Proxy function with an
+    // own data `prototype`; other constructors remain builder-only and become
+    // plain Error instances on fast dispatch. Classes that depend on
+    // constructor-created state must use a builder and remain slow-only.
+    registerErrorClassNative?.(className, errorClass);
   }
 
   function registerErrorBuilder(className, errorBuilder) {
