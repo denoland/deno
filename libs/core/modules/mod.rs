@@ -327,6 +327,13 @@ pub(crate) fn parse_import_attributes<'s, 'i>(
   attributes: v8::Local<'s, v8::FixedArray>,
   kind: ImportAttributesKind,
 ) -> HashMap<String, String> {
+  // The overwhelmingly common case: an import with no attributes at all.
+  // Every static import edge goes through here (twice — once at compile and
+  // once in `module_resolve_callback`), so skip the work entirely.
+  if attributes.length() == 0 {
+    return HashMap::default();
+  }
+
   let mut assertions: HashMap<String, String> = HashMap::default();
 
   let assertions_per_line = match kind {
@@ -779,6 +786,10 @@ pub(crate) struct ModuleInfo {
   pub name: ModuleName,
   pub requests: Vec<ModuleRequest>,
   pub module_type: ModuleType,
+  /// Whether `name` is an internal (`ext:`/`node:`/`checkin:`) specifier.
+  /// Computed once at registration so the instantiate path doesn't have to
+  /// clone the name and re-`Url::parse` it on every module.
+  pub is_internal: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -911,6 +922,7 @@ impl ModuleInfo {
     e.str(self.name.as_str());
     e.seq(self.requests.iter(), |e, r| r.encode(e));
     self.module_type.encode(e);
+    e.bool(self.is_internal);
   }
 
   pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
@@ -920,6 +932,7 @@ impl ModuleInfo {
       name: d.fast_string()?,
       requests: d.seq(ModuleRequest::decode)?,
       module_type: ModuleType::decode(d)?,
+      is_internal: d.bool()?,
     })
   }
 }

@@ -14,6 +14,7 @@ use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
 
+use deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
 
@@ -1193,26 +1194,6 @@ fn watch_arg_parse_with_paths(
 // Subcommand conversion functions
 // ============================================================
 
-/// Known valid sys descriptors.
-const VALID_SYS_DESCRIPTORS: &[&str] = &[
-  "hostname",
-  "osRelease",
-  "osUptime",
-  "loadavg",
-  "networkInterfaces",
-  "systemMemoryInfo",
-  "uid",
-  "gid",
-  "cpus",
-  "homedir",
-  "getegid",
-  "username",
-  "statfs",
-  "getPriority",
-  "setPriority",
-  "userInfo",
-];
-
 fn validate_permission_args(
   _result: &ParseResult,
   flags: &Flags,
@@ -1242,7 +1223,7 @@ fn validate_permission_args(
   // Validate sys descriptor names
   if let Some(ref sys) = flags.permissions.allow_sys {
     for name in sys {
-      if !name.is_empty() && !VALID_SYS_DESCRIPTORS.contains(&name.as_str()) {
+      if !name.is_empty() && SysDescriptor::parse(name.to_string()).is_err() {
         return Err(CliError::new(
           CliErrorKind::InvalidValue,
           format!("unknown sys descriptor: '{name}'"),
@@ -1252,7 +1233,7 @@ fn validate_permission_args(
   }
   if let Some(ref sys) = flags.permissions.deny_sys {
     for name in sys {
-      if !name.is_empty() && !VALID_SYS_DESCRIPTORS.contains(&name.as_str()) {
+      if !name.is_empty() && SysDescriptor::parse(name.to_string()).is_err() {
         return Err(CliError::new(
           CliErrorKind::InvalidValue,
           format!("unknown sys descriptor: '{name}'"),

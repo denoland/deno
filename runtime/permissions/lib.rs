@@ -1823,6 +1823,72 @@ pub enum HostParseError {
   },
 }
 
+/// `--allow-net=unix:<path>` rules.
+///
+/// A leading `/` is an absolute POSIX path on every host, including
+/// `deno compile --target=<unix>` from Windows (`Path::is_absolute()` on
+/// Windows requires a drive letter, so `/var/run/docker.sock` would be
+/// rejected). Otherwise fall back to host semantics so Windows named pipes
+/// (`\\.\pipe\foo`) remain expressible as a scoped rule.
+///
+/// Host-side paths follow `PathQueryDescriptor`: `\\?\` verbatim prefixes
+/// are stripped when lossless, and `\\.\` device paths are passed through
+/// without `normalize_path` (that helper does not preserve the device
+/// prefix). On Windows a leading `\` without a drive (`unix:\foo`) is not
+/// absolute — use a drive letter, `\\.\pipe\name`, or a POSIX `/path`.
+fn parse_unix_socket_allow_path(
+  hostname: &str,
+  rest: &str,
+) -> Result<PathBuf, NetDescriptorParseError> {
+  if rest.is_empty() {
+    return Err(NetDescriptorParseError::InvalidUnixSocket(
+      hostname.to_string(),
+    ));
+  }
+  if rest.starts_with('/') {
+    return Ok(normalize_posix_unix_socket_path(rest));
+  }
+  let path = strip_verbatim_prefix(Cow::Owned(PathBuf::from(rest)));
+  let path_bytes = path.as_os_str().as_encoded_bytes();
+  let is_windows_device_path = cfg!(windows)
+    && path_bytes.starts_with(br"\\.\")
+    && !path_bytes.contains(&b':');
+  if is_windows_device_path {
+    return Ok(path.into_owned());
+  }
+  if path.is_absolute() {
+    return Ok(normalize_path(path).into_owned());
+  }
+  #[cfg(windows)]
+  if rest.starts_with('\\') {
+    return Err(NetDescriptorParseError::InvalidUnixSocketWindowsSlash(
+      hostname.to_string(),
+    ));
+  }
+  Err(NetDescriptorParseError::InvalidUnixSocket(
+    hostname.to_string(),
+  ))
+}
+
+fn normalize_posix_unix_socket_path(path: &str) -> PathBuf {
+  debug_assert!(path.starts_with('/'));
+  let mut out: Vec<&str> = Vec::new();
+  for part in path.split('/') {
+    match part {
+      "" | "." => {}
+      ".." => {
+        let _ = out.pop();
+      }
+      p => out.push(p),
+    }
+  }
+  if out.is_empty() {
+    PathBuf::from("/")
+  } else {
+    PathBuf::from(format!("/{}", out.join("/")))
+  }
+}
+
 /// Strip IPv6 zone index from an address string if present.
 /// (e.g., fe80::1%eth0 or fe80::1%18)
 fn strip_ipv6_zone_index(addr: &str) -> &str {
@@ -1963,6 +2029,9 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
+      // Allow rules must use the exact spelling. macOS volumes may be either
+      // case-sensitive or case-insensitive, and folding here would broaden an
+      // allow rule on a case-sensitive volume.
       (Host::UnixSocket(a), Host::UnixSocket(b)) => a == b,
       (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
@@ -1970,7 +2039,18 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
-    self.matches_allow(other)
+    if other.1.is_some() && self.1 != other.1 {
+      return false;
+    }
+    match (&other.0, &self.0) {
+      // Deny rules conservatively fold socket paths on platforms whose usual
+      // filesystems are case-insensitive, preventing a case-variant spelling
+      // from bypassing the rule.
+      (Host::UnixSocket(a), Host::UnixSocket(b)) => {
+        comparison_path(a) == comparison_path(b)
+      }
+      _ => self.matches_allow(other),
+    }
   }
 
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
@@ -2041,6 +2121,10 @@ pub enum NetDescriptorParseError {
   InvalidVsock(String),
   #[error("invalid unix socket: '{0}' (path must be absolute and non-empty)")]
   InvalidUnixSocket(String),
+  #[error(
+    "invalid unix socket: '{0}' (on Windows a leading '\\' is not an absolute path; use a drive letter, \\\\.\\pipe\\name, or a POSIX /path)"
+  )]
+  InvalidUnixSocketWindowsSlash(String),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -2089,17 +2173,7 @@ impl NetDescriptor {
     }
 
     if let Some(rest) = hostname.strip_prefix("unix:") {
-      let path = PathBuf::from(rest);
-      if rest.is_empty() || !path.is_absolute() {
-        return Err(NetDescriptorParseError::InvalidUnixSocket(
-          hostname.to_string(),
-        ));
-      }
-      // Lexically normalize `.`/`..` components (without resolving symlinks)
-      // so the rule matches the path produced by the call side, which goes
-      // through the same `normalize_path` in `PathQueryDescriptor`. Otherwise
-      // `unix:/var/run/../run/foo.sock` would silently never match.
-      let path = normalize_path(Cow::Owned(path)).into_owned();
+      let path = parse_unix_socket_allow_path(hostname, rest)?;
       return Ok(NetDescriptor(Host::UnixSocket(path), None));
     }
 
@@ -4728,7 +4802,8 @@ impl PermissionsContainer {
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
+    let desc =
+      NetDescriptor(Host::Ip(normalize_ip(*resolved_ip)), Some(port.into()));
     inner.net.check_resolved_ip_deny(&desc)?;
     Ok(())
   }
@@ -6321,6 +6396,56 @@ mod tests {
       perms.net.check_resolved_ip_deny(&desc).is_ok(),
       "resolved 192.168.1.1 should not be denied"
     );
+  }
+
+  #[test]
+  fn test_check_net_resolved_ipv4_mapped_ipv6() {
+    for deny_rule in ["127.0.0.1", "127.0.0.0/8", "127.0.0.1:8080"] {
+      let parser = TestPermissionDescriptorParser;
+      let perms = Permissions::from_options(
+        &parser,
+        &PermissionsOptions {
+          allow_net: Some(svec!["example.com"]),
+          deny_net: Some(vec![deny_rule.to_string()]),
+          prompt: false,
+          ..Default::default()
+        },
+      )
+      .unwrap();
+      let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+      // The hostname is allowed before DNS resolution.
+      assert!(perms.check_net(&("example.com", Some(8080)), "api").is_ok());
+      for ip in ["127.0.0.1", "::ffff:127.0.0.1"] {
+        assert!(
+          perms
+            .check_net_resolved(&ip.parse().unwrap(), 8080, "api")
+            .is_err(),
+          "resolved {ip}:8080 should be denied by {deny_rule}"
+        );
+      }
+
+      // Unrelated addresses remain allowed by the post-resolution check.
+      for ip in ["192.168.1.1", "::ffff:192.168.1.1", "::1"] {
+        assert!(
+          perms
+            .check_net_resolved(&ip.parse().unwrap(), 8080, "api")
+            .is_ok(),
+          "resolved {ip}:8080 should not be denied by {deny_rule}"
+        );
+      }
+      if deny_rule == "127.0.0.1:8080" {
+        assert!(
+          perms
+            .check_net_resolved(
+              &"::ffff:127.0.0.1".parse().unwrap(),
+              9090,
+              "api"
+            )
+            .is_ok()
+        );
+      }
+    }
   }
 
   #[test]
@@ -8378,10 +8503,9 @@ mod tests {
           Some(8080),
         )),
       ),
-      // Unix socket rules are lexically normalized at parse time (`.`/`..`
-      // removed, symlinks not resolved) to match the call-side path, which
-      // goes through the same normalization in `check_open`.
-      #[cfg(unix)]
+      // Unix socket rules are POSIX paths on every host (including Windows
+      // `deno compile --target=linux`). Lexically normalize `.`/`..` at parse
+      // time so the rule matches the call-side path.
       (
         "unix:/var/run/docker.sock",
         Some(NetDescriptor(
@@ -8389,7 +8513,6 @@ mod tests {
           None,
         )),
       ),
-      #[cfg(unix)]
       (
         "unix:/var/run/../run/./docker.sock",
         Some(NetDescriptor(
@@ -8399,6 +8522,29 @@ mod tests {
       ),
       ("unix:", None),
       ("unix:relative.sock", None),
+      #[cfg(unix)]
+      ("unix:C:\\sockets\\app.sock", None),
+      #[cfg(windows)]
+      (
+        r"unix:C:\sockets\app.sock",
+        Some(NetDescriptor(
+          Host::UnixSocket(
+            normalize_path(Cow::Owned(PathBuf::from(r"C:\sockets\app.sock")))
+              .into_owned(),
+          ),
+          None,
+        )),
+      ),
+      #[cfg(windows)]
+      (
+        r"unix:\\.\pipe\app",
+        Some(NetDescriptor(
+          Host::UnixSocket(PathBuf::from(r"\\.\pipe\app")),
+          None,
+        )),
+      ),
+      #[cfg(windows)]
+      (r"unix:\foo", None),
     ];
 
     for (input, expected) in cases {
@@ -8408,6 +8554,31 @@ mod tests {
         "'{input}'"
       );
     }
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn test_net_unix_named_pipe_match() {
+    // Same construction as PermissionsContainer::check_net_unix_socket:
+    // the query is the call-side path, not re-parsed as a unix: rule.
+    let allow = NetDescriptor::parse_for_list(r"unix:\\.\pipe\app").unwrap();
+    let query_hit =
+      NetDescriptor(Host::UnixSocket(PathBuf::from(r"\\.\pipe\app")), None);
+    let query_miss =
+      NetDescriptor(Host::UnixSocket(PathBuf::from(r"\\.\pipe\other")), None);
+    assert!(query_hit.matches_allow(&allow));
+    assert!(!query_miss.matches_allow(&allow));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn test_unix_leading_backslash_error() {
+    let err = NetDescriptor::parse_for_list(r"unix:\foo").unwrap_err();
+    let msg = err.to_string();
+    assert!(
+      msg.contains("leading '\\' is not an absolute path"),
+      "{msg}"
+    );
   }
 
   #[test]
@@ -10857,6 +11028,72 @@ mod tests {
     // Unrelated domain should prompt (denied since no-prompt by default
     // in test)
     assert!(perms.check_net(&("other.com", None), "api").is_err());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn test_net_unix_socket_path_equivalence() {
+    // Regression test: on case-insensitive filesystems a case-variant
+    // spelling of a socket path names the same socket, so it must not slip
+    // past a `--deny-net=unix:<path>` rule.
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec![]),
+        deny_net: Some(svec!["unix:/run/app/Control.sock"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Exact spelling is denied.
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/Control.sock"), None)
+        .is_err()
+    );
+
+    // A case-variant spelling resolves to the same socket where the
+    // filesystem is case-insensitive, so it must be denied there too. On
+    // case-sensitive platforms it is a genuinely different path.
+    let case_variant_result = perms
+      .check_net_unix_socket(Path::new("/run/app/control.sock"), None)
+      .is_err();
+    if cfg!(any(target_os = "macos", windows)) {
+      assert!(case_variant_result, "case variant must not bypass the deny");
+    }
+
+    // Allow matching remains exact because macOS also supports case-sensitive
+    // volumes, where the case variant may name a different socket.
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["unix:/run/app/Control.sock"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/Control.sock"), None)
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/control.sock"), None)
+        .is_err()
+    );
+    assert!(
+      perms
+        .check_net_unix_socket(Path::new("/run/app/other.sock"), None)
+        .is_err()
+    );
   }
 
   #[test]
