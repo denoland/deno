@@ -384,9 +384,15 @@ fn op_create_worker(
   };
   let cpu_thread_handle = Arc::new(AtomicU64::new(0));
   let cpu_thread_handle_writer = cpu_thread_handle.clone();
+  let cwd_override = deno_fs::current_cwd_override();
 
   // Spawn it
   thread_builder.spawn(move || {
+    let _cwd_override_guard = cwd_override.map(|cwd| {
+      deno_fs::CwdOverrideGuard::new(cwd)
+        .expect("captured cwd override should remain a directory")
+    });
+
     // Capture the OS thread handle for CPU usage queries from the host.
     cpu_thread_handle_writer
       .store(capture_current_thread_handle(), Ordering::Release);
