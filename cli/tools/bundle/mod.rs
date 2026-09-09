@@ -865,6 +865,7 @@ pub async fn bundle_for_compile(
   entrypoint: String,
   external: Vec<String>,
   minify: bool,
+  keep_names: bool,
 ) -> Result<Vec<u8>, AnyError> {
   let bundle_flags = BundleFlags {
     entrypoints: vec![entrypoint],
@@ -874,7 +875,7 @@ pub async fn bundle_for_compile(
     external,
     format: BundleFormat::Esm,
     minify,
-    keep_names: false,
+    keep_names,
     code_splitting: false,
     inline_imports: true,
     packages: PackageHandling::Bundle,

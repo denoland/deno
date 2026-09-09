@@ -214,6 +214,7 @@ pub struct CompileFlags {
   pub app_name: Option<String>,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
+  pub keep_names: bool,
   /// Prune the embedded managed npm snapshot to only those packages reachable
   /// from npm specifiers in the module graph. Opt-in because non-statically
   /// analyzable dynamic imports may not appear in the graph; pass
