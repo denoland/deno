@@ -574,3 +574,88 @@ fn lazy_loaded_esm_not_snapshotted_but_metadata_survives() {
     );
   }
 }
+
+#[op2(fast)]
+#[smi]
+fn op_snap_lazy_add(#[smi] a: i32, #[smi] b: i32) -> i32 {
+  a + b
+}
+
+#[op2]
+#[string]
+fn op_snap_lazy_slow(#[string] s: String) -> String {
+  format!("{s}?")
+}
+
+deno_core::extension!(
+  snap_lazy_ops,
+  ops = [op_snap_lazy_add, op_snap_lazy_slow],
+);
+
+/// Round-trip for the lazily materialized `Deno.core.ops`
+/// (deno_core_revamp#41): op functions are not baked into the blob, so both
+/// directions have to work.
+///
+///  * During snapshot creation the ops must be reachable from JS -- the
+///    interceptor materializes them without fast-call overloads, since V8
+///    will not serialize those.
+///  * After rehydration a runtime that never bound any op property must still
+///    resolve them, with fast calls this time, and with stable identity.
+#[test]
+fn lazy_ops_survive_a_snapshot_round_trip() {
+  let _snapshot_lock = super::snapshot_test_lock();
+  let snapshot = {
+    let mut runtime = JsRuntimeForSnapshot::new(RuntimeOptions {
+      extensions: vec![snap_lazy_ops::init()],
+      ..Default::default()
+    });
+    // Reaching an op during snapshot-build JS eval must work.
+    runtime
+      .execute_script(
+        "snapshot_build.js",
+        r#"
+        if (Deno.core.ops.op_snap_lazy_add(1, 2) !== 3) {
+          throw new Error("op not callable at snapshot build time");
+        }
+        globalThis.snapshotTimeSum = Deno.core.ops.op_snap_lazy_add(20, 22);
+        "#,
+      )
+      .unwrap();
+    runtime.snapshot()
+  };
+
+  let snapshot = Box::leak(snapshot);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![snap_lazy_ops::init()],
+    startup_snapshot: Some(snapshot),
+    skip_op_registration: true,
+    ..Default::default()
+  });
+  runtime
+    .execute_script(
+      "after_rehydration.js",
+      r#"
+      function assert(cond, msg) {
+        if (!cond) throw new Error(msg);
+      }
+      assert(globalThis.snapshotTimeSum === 42, "snapshot state lost");
+
+      const ops = Deno.core.ops;
+      const add = ops.op_snap_lazy_add;
+      assert(typeof add === "function", "op did not materialize");
+      assert(add === ops.op_snap_lazy_add, "identity not stable");
+      assert(add.name === "op_snap_lazy_add", "wrong name: " + add.name);
+      assert(add(1, 2) === 3, "op returned the wrong value");
+      // Warm enough to take the fast-call path, which is the thing the
+      // deleted `upgrade_snapshotted_ops_with_fast_calls` pass used to
+      // restore after deserialization.
+      for (let i = 0; i < 10_000; i++) {
+        assert(add(i, 1) === i + 1, "fast-call path is wrong");
+      }
+      assert(ops.op_snap_lazy_slow("x") === "x?", "slow op is wrong");
+      assert(Object.keys(ops).includes("op_snap_lazy_add"),
+        "op missing from Object.keys after rehydration");
+      "#,
+    )
+    .unwrap();
+}

@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
@@ -39,6 +41,7 @@ use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::parse_import_attributes;
 use crate::modules::synthetic_module_evaluation_steps;
 use crate::ops::OpCtx;
+use crate::runtime::ContextState;
 use crate::runtime::InitMode;
 use crate::runtime::JsRealm;
 
@@ -51,7 +54,8 @@ pub(crate) fn create_external_references(
 ) -> Vec<v8::ExternalReference> {
   // Overallocate a bit, it's better than having to resize the vector.
   let mut references = Vec::with_capacity(
-    6 + CONTEXT_SETUP_SOURCES.len()
+    6 + 3 // lazy-ops interceptor callbacks
+      + CONTEXT_SETUP_SOURCES.len()
       + BUILTIN_SOURCES.len()
       + (ops.len() * 4)
       + additional_references.len()
@@ -80,6 +84,20 @@ pub(crate) fn create_external_references(
 
   references.push(v8::ExternalReference {
     function: cppgc_template_constructor.map_fn_to(),
+  });
+
+  // The `Deno.core.ops` named-property interceptor (see [`LazyOps`]). Three
+  // entries for the whole runtime, regardless of op count -- the per-op
+  // discriminator is the property name, resolved against the `OpCtx` table at
+  // call time, so this costs nothing per op.
+  references.push(v8::ExternalReference {
+    named_getter: lazy_ops_getter.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    named_query: lazy_ops_query.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    enumerator: lazy_ops_enumerator.map_fn_to(),
   });
 
   // Using v8::OneByteConst and passing external references to it
@@ -347,8 +365,30 @@ pub(crate) fn initialize_deno_core_namespace<'s, 'i>(
 
   let deno_obj = v8::Object::new(scope);
   let deno_core_key = CORE.v8_string(scope).unwrap();
-  // Set up `Deno.core.ops` object
-  let deno_core_ops_obj = v8::Object::new(scope);
+  // Set up the `Deno.core.ops` object. It carries a named-property
+  // interceptor and *no* op properties of its own: op functions are
+  // materialized by [`lazy_ops_getter`] on first access. See [`LazyOps`] for
+  // why, and for the enumeration semantics the query/enumerator callbacks
+  // give us.
+  let deno_core_ops_obj = {
+    let tmpl = v8::ObjectTemplate::new(scope);
+    tmpl.set_named_property_handler(
+      v8::NamedPropertyHandlerConfiguration::new()
+        .getter(lazy_ops_getter)
+        .query(lazy_ops_query)
+        .enumerator(lazy_ops_enumerator)
+        // NON_MASKING: real own properties always win, so anything an
+        // embedder or user assigns to `Deno.core.ops` shadows the op of the
+        // same name exactly as it did when ops were plain data properties.
+        // ONLY_INTERCEPT_STRINGS: op names are strings; symbol lookups skip
+        // the interceptor entirely.
+        .flags(
+          v8::PropertyHandlerFlags::NON_MASKING
+            | v8::PropertyHandlerFlags::ONLY_INTERCEPT_STRINGS,
+        ),
+    );
+    tmpl.new_instance(scope).unwrap()
+  };
   let deno_core_ops_key = OPS.v8_string(scope).unwrap();
 
   let deno_core_obj = v8::Object::new(scope);
@@ -429,13 +469,16 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 ) {
   let global = context.global(scope);
 
-  // Set up JavaScript bindings for the defined op - this will insert proper
-  // `v8::Function` into `Deno.core.ops` object. For async ops, there a bit
-  // more machinery involved, see comment below.
+  // Nothing here writes op properties onto `Deno.core.ops` any more: every
+  // entry of that object is materialized on demand by [`lazy_ops_getter`].
+  // What still has to happen eagerly is building the cppgc class *templates*,
+  // because they are registered in the runtime-wide `FunctionTemplateData`
+  // (cppgc wrapping resolves them by type name) and because `inherit()`
+  // requires the parent template to exist by the time the child is built.
+  // The class *functions* are still lazy -- the interceptor pulls them out of
+  // the template store.
   let deno_obj = get(scope, global, DENO, "Deno");
   let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
-  let deno_core_ops_obj: v8::Local<v8::Object> =
-    get(scope, deno_core_obj, OPS, "Deno.core.ops");
 
   let set_up_async_stub_fn: v8::Local<v8::Function> = get(
     scope,
@@ -445,7 +488,6 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
   );
 
   let prototype_key = v8::String::new(scope, "prototype").unwrap();
-  let undefined = v8::undefined(scope);
   let mut index = 0;
 
   for decl in op_method_decls {
@@ -566,201 +608,447 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
       }
     }
 
-    deno_core_ops_obj.set(scope, key.into(), op_fn.into());
-
     let id = (decl.type_name)().to_string();
     fn_template_store.insert(id, v8::Global::new(scope, tmpl));
   }
+}
 
-  let op_ctxs = &op_ctxs[index..];
-  for op_ctx in op_ctxs {
-    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
-    let mut op_fn = if will_snapshot && !op_ctx.decl().constructable {
-      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
-    } else {
-      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
-    };
-    let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
+// ===========================================================================
+// Lazily materialized `Deno.core.ops`
+// ===========================================================================
 
-    // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
-    // this call will generate an optimized function that binds to the provided
-    // op, while keeping track of promises and error remapping.
-    if op_ctx.decl().is_async {
-      let result = set_up_async_stub_fn
-        .call(scope, undefined.into(), &[key.into(), op_fn.into()])
-        .unwrap();
-      op_fn = result.try_into().unwrap()
-    }
+/// Longest op name the interceptor will resolve without allocating. Op names
+/// are ASCII identifiers; anything longer than this is definitively not one,
+/// so the interceptor can decline it outright.
+const MAX_OP_NAME_LEN: usize = 96;
 
-    deno_core_ops_obj.set(scope, key.into(), op_fn.into());
+/// Which entry of the op tables a `Deno.core.ops` property name resolves to.
+#[derive(Clone, Copy)]
+enum LazyOpSlot {
+  /// A plain op: index into [`ContextState::op_ctxs`].
+  Op(u32),
+  /// A cppgc class: index into [`ContextState::op_method_decls`], plus the
+  /// index of the first `OpCtx` belonging to that class.
+  Class { decl: u32, ctx: u32 },
+}
+
+struct LazyOpEntry {
+  slot: LazyOpSlot,
+  /// The op's name as a `FastStaticString`, so the enumerator can hand V8 the
+  /// same externalized one-byte string the rest of the runtime uses.
+  name: FastStaticString,
+  /// The materialized function, once something has read this property. Held
+  /// as a strong `Global` (not a weak handle) so identity survives GC:
+  /// `core.ops.op_foo === core.ops.op_foo` must hold forever.
+  func: Option<v8::Global<v8::Function>>,
+}
+
+/// Per-realm state behind the `Deno.core.ops` named-property interceptor.
+///
+/// # Why an interceptor
+///
+/// `Deno.core.ops` used to be an ordinary object carrying one `v8::Function`
+/// property per registered op. In a snapshot-based runtime that costs ~284
+/// bytes of blob and ~0.55 µs of `JsRuntime::new` *per op*, paid by every
+/// runtime and every worker whether or not the op is ever read. Almost all of
+/// it is the function objects themselves, so the fix is to not create them.
+///
+/// The ops object is now built from an `ObjectTemplate` carrying a single
+/// named-property handler and *no* op properties. Nothing about an op reaches
+/// the blob except its `OpCtx` and the four external references it already
+/// contributed (measured at 0.065 B/op). The first read of `core.ops.op_foo`
+/// runs [`lazy_ops_getter`], which builds the function -- with its fast-call
+/// overload, its name and, for async ops, its `setUpAsyncStub` wrapper -- and
+/// memoizes it here.
+///
+/// # Why this also deletes the deferred fast-call upgrade
+///
+/// V8 14.9+ refuses to serialize the `Managed<CFunctionWithSignature>` a
+/// fast-call overload needs, so a snapshot baked the *slow* version of every
+/// op function and a post-deserialization pass
+/// (`upgrade_snapshotted_ops_with_fast_calls`, O(all ops), ~0.9 ms on a real
+/// Deno worker) rebuilt them. Nothing on `core.ops` is baked any more: every
+/// function is built after deserialization, on demand, already fast. The pass
+/// and its `deferred_fast_ops` / `fast_ops_upgraded` plumbing are gone.
+///
+/// # Enumeration semantics
+///
+/// A getter-only interceptor is invisible to `OwnPropertyKeys`, which would
+/// have silently changed `Object.keys(core.ops)` to `[]`. Instead the handler
+/// also carries a query and an enumerator callback, so `Object.keys`,
+/// `for..in`, `in` and `hasOwnProperty` all report the full op set *without*
+/// materializing a single function -- enumeration is served straight from the
+/// name table. `Object.getOwnPropertyDescriptor` does materialize, because it
+/// has to produce a value.
+///
+/// Two behaviours do change, both documented in the module's
+/// breaking-notes and both already accounted for by `createOpsSubset`:
+/// `delete core.ops.op_foo` no longer removes the op (there is no deleter
+/// callback, and the interceptor keeps serving it), and assigning to
+/// `core.ops.op_foo` shadows the op with a real own property rather than
+/// replacing it.
+#[derive(Default)]
+pub(crate) struct LazyOps {
+  /// Name -> slot, built on the first interceptor hit and never rebuilt.
+  /// `None` until then; runtimes that never touch `core.ops` never pay for it.
+  table: RefCell<Option<HashMap<&'static str, LazyOpEntry>>>,
+  /// `Deno.core.setUpAsyncStub`, captured while `Deno.core` is still on the
+  /// global. Async ops materialized after bootstrap (which scrubs `Deno.core`
+  /// from the public `Deno`) cannot read it from there any more.
+  set_up_async_stub: RefCell<Option<v8::Global<v8::Function>>>,
+  /// Build op functions without fast-call overloads (snapshot build only).
+  will_snapshot: Cell<bool>,
+  /// The cppgc class templates came out of a snapshot, so their prototype and
+  /// static methods are the slow variants and need re-attaching when the class
+  /// is first read. False when this runtime built the templates itself.
+  classes_need_fast_call_upgrade: Cell<bool>,
+}
+
+impl LazyOps {
+  /// Record how op functions must be materialized in this realm. Called once,
+  /// from `JsRuntime::new_inner`, while `Deno.core` is still reachable.
+  pub(crate) fn configure(
+    &self,
+    set_up_async_stub: v8::Global<v8::Function>,
+    will_snapshot: bool,
+    classes_need_fast_call_upgrade: bool,
+  ) {
+    *self.set_up_async_stub.borrow_mut() = Some(set_up_async_stub);
+    self.will_snapshot.set(will_snapshot);
+    self
+      .classes_need_fast_call_upgrade
+      .set(classes_need_fast_call_upgrade);
+  }
+
+  /// Drop every V8 handle held here. Used before snapshotting, where the
+  /// materialized functions are already reachable from the `ext:core/ops`
+  /// export cells and this cache must not keep the isolate's handles alive
+  /// past teardown.
+  pub(crate) fn clear(&self) {
+    self.table.borrow_mut().take();
+    self.set_up_async_stub.borrow_mut().take();
   }
 }
 
-/// Re-attach fast-call overloads to snapshotted ops after deserialization.
-///
-/// Fast-call setup creates V8 `Managed<CFunctionWithSignature>` resources,
-/// which the V8 14.9 snapshot serializer rejects (see `op_ctx_template`), so
-/// the snapshot bakes the slow version of every op function. This pass builds
-/// fresh fast-call-equipped functions for each op that declares a `fast_fn`
-/// and overwrites:
-///
-/// 1. the top-level entries in `Deno.core.ops`,
-/// 2. instance methods on each cppgc class prototype,
-/// 3. static methods on each cppgc class function itself.
-///
-/// Accessors stay as-is because they're built with plain
-/// `FunctionTemplate::build` (no `Managed`) and survived the snapshot.
-pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i>,
-  // `Deno.core.ops` and `Deno.core.setUpAsyncStub`, passed in directly because
-  // `Deno.core` is scrubbed from the public `Deno` after bootstrap and the
-  // deferred caller can no longer read them from the global (see
-  // `snapshotted_fast_op_refs` / `ensure_fast_ops_upgraded`).
-  deno_core_ops_obj: v8::Local<'s, v8::Object>,
-  set_up_async_stub_fn: v8::Local<'s, v8::Function>,
-  op_ctxs: &[OpCtx],
-  op_method_decls: &[OpMethodDecl],
-  methods_ctx_offset: usize,
-) {
-  let prototype_key = v8::String::new(scope, "prototype").unwrap();
-  let undefined = v8::undefined(scope);
-
-  let mut index = 0;
-  for decl in op_method_decls {
-    if index == methods_ctx_offset {
-      break;
-    }
-
-    if decl.constructor.is_some() {
-      index += 1;
-    }
-
-    // Resolve the class function from `Deno.core.ops`; we need it both as the
-    // anchor for prototype methods and to receive static methods.
-    let class_key = decl.name.1.v8_string(scope).unwrap();
-    let class_fn_val = deno_core_ops_obj.get(scope, class_key.into());
-    let class_fn =
-      class_fn_val.and_then(|v| v8::Local::<v8::Function>::try_from(v).ok());
-    let prototype = class_fn.and_then(|f| {
-      let p = f.get(scope, prototype_key.into())?;
-      v8::Local::<v8::Object>::try_from(p).ok()
-    });
-
-    let method_ctxs = &op_ctxs[index..index + decl.methods.len()];
-    for method in method_ctxs {
-      let needs_upgrade =
-        method_needs_fast_call_upgrade(method) && !method.decl().is_accessor();
-      if !needs_upgrade {
-        continue;
-      }
-      let Some(prototype) = prototype else { continue };
-      let method_fn =
-        op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
-      let method_key = name_key(scope, method.decl());
-      if method.decl().is_async {
-        // `setUpAsyncStub` installs the wrapped fn on `class_fn.prototype`
-        // when given the class as the third argument.
-        let Some(class_fn) = class_fn else { continue };
-        let _ = set_up_async_stub_fn.call(
-          scope,
-          undefined.into(),
-          &[method_key.into(), method_fn.into(), class_fn.into()],
-        );
-      } else {
-        prototype.set(scope, method_key.into(), method_fn.into());
-      }
-    }
-    index += decl.methods.len();
-
-    let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
-    for method in static_method_ctxs {
-      if !method_needs_fast_call_upgrade(method) {
-        continue;
-      }
-      let Some(class_fn) = class_fn else { continue };
-      let method_fn =
-        op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
-      let method_key = name_key(scope, method.decl());
-      class_fn.set(scope, method_key.into(), method_fn.into());
-    }
-    index += decl.static_methods.len();
-  }
-
-  for op_ctx in &op_ctxs[methods_ctx_offset..] {
-    if !method_needs_fast_call_upgrade(op_ctx) {
-      continue;
-    }
-
-    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
-    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
-    let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
-
-    if op_ctx.decl().is_async {
-      let result = set_up_async_stub_fn
-        .call(scope, undefined.into(), &[key.into(), op_fn.into()])
-        .unwrap();
-      op_fn = result.try_into().unwrap();
-    }
-
-    deno_core_ops_obj.set(scope, key.into(), op_fn.into());
-  }
-}
-
-/// Run the deferred fast-call op upgrade exactly once, lazily. Called from the
-/// residual ext-module loaders (`op_lazy_load_esm` / `op_load_ext_script`)
-/// before the loaded module's body captures its op references, so runtime
-/// modules see the fast-call overloads. Programs that never load a residual
-/// module (e.g. `deno run empty.js`) never trigger it, saving the ~0.9ms pass.
-/// No-op during snapshot build / fresh-bind (flag pre-set in `new_inner`).
-/// Read `Deno.core.ops` + `Deno.core.setUpAsyncStub` from the global. Valid
-/// only while `Deno.core` is still present (during `new_inner`, before the
-/// bootstrap scrubs `Deno.core` from the public `Deno`). The deferred upgrade
-/// stashes the result (`ContextState::deferred_fast_ops`) for later use.
-pub(crate) fn snapshotted_fast_op_refs<'s, 'i>(
+/// Capture `Deno.core.setUpAsyncStub` while `Deno.core` is still reachable
+/// from the global. Ops materialized later (bootstrap scrubs `Deno.core` off
+/// the public `Deno`) cannot look it up any more.
+pub(crate) fn capture_set_up_async_stub<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   context: v8::Local<'s, v8::Context>,
-) -> (v8::Local<'s, v8::Object>, v8::Local<'s, v8::Function>) {
+) -> v8::Global<v8::Function> {
   let global = context.global(scope);
   let deno_obj = get(scope, global, DENO, "Deno");
   let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
-  let deno_core_ops_obj: v8::Local<v8::Object> =
-    get(scope, deno_core_obj, OPS, "Deno.core.ops");
   let set_up_async_stub_fn: v8::Local<v8::Function> = get(
     scope,
     deno_core_obj,
     SET_UP_ASYNC_STUB,
     "Deno.core.setUpAsyncStub",
   );
-  (deno_core_ops_obj, set_up_async_stub_fn)
+  v8::Global::new(scope, set_up_async_stub_fn)
 }
 
-pub(crate) fn ensure_fast_ops_upgraded(scope: &mut v8::PinScope) {
-  let context_state = JsRealm::state_from_scope(scope);
-  if context_state.fast_ops_upgraded.get() {
-    return;
+/// Build the name -> slot table. Mirrors the iteration order of
+/// [`initialize_deno_core_ops_bindings`] exactly, including the
+/// `methods_ctx_offset` cutoff, so the two can never disagree about which
+/// `OpCtx` belongs to which name.
+fn lazy_ops_build_table(
+  state: &ContextState,
+) -> HashMap<&'static str, LazyOpEntry> {
+  let op_ctxs = &state.op_ctxs;
+  let mut table = HashMap::with_capacity(op_ctxs.len());
+  let mut index = 0usize;
+  for (decl_idx, decl) in state.op_method_decls.iter().enumerate() {
+    if index == state.methods_ctx_offset {
+      break;
+    }
+    let ctx = index;
+    if decl.constructor.is_some() {
+      index += 1;
+    }
+    index += decl.methods.len() + decl.static_methods.len();
+    table.insert(
+      decl.name.0,
+      LazyOpEntry {
+        slot: LazyOpSlot::Class {
+          decl: decl_idx as u32,
+          ctx: ctx as u32,
+        },
+        name: decl.name.1,
+        func: None,
+      },
+    );
   }
-  // Set the flag BEFORE running the upgrade so any reentrant residual load
-  // during the upgrade (which calls back into JS via setUpAsyncStub) no-ops.
-  context_state.fast_ops_upgraded.set(true);
-  let refs = context_state.deferred_fast_ops.borrow().clone();
-  let Some((ops_global, stub_global)) = refs else {
-    return;
-  };
-  let deno_core_ops_obj = v8::Local::new(scope, &ops_global);
-  let set_up_async_stub_fn = v8::Local::new(scope, &stub_global);
+  for (offset, op_ctx) in op_ctxs[index..].iter().enumerate() {
+    table.insert(
+      op_ctx.decl().name,
+      LazyOpEntry {
+        slot: LazyOpSlot::Op((index + offset) as u32),
+        name: op_ctx.decl().name_fast,
+        func: None,
+      },
+    );
+  }
+  table
+}
 
-  // NOTE: `capturedCore.ops` (01_core.js) is the *same* object as
-  // `deno_core_ops_obj`, so the `.set`s below are observed by residual ext
-  // modules with no mirroring pass. (It used to be a shallow clone, which had
-  // to be resolved and written through here as well.)
-  upgrade_snapshotted_ops_with_fast_calls(
-    scope,
-    deno_core_ops_obj,
-    set_up_async_stub_fn,
-    &context_state.op_ctxs,
-    &context_state.op_method_decls,
-    context_state.methods_ctx_offset,
-  );
+/// Read a property key into `buf` as a `&str`, or `None` if it cannot be an
+/// op name (non-string key, too long, or not Latin-1). Avoids allocating on
+/// every `core.ops.x` access.
+fn lazy_ops_key_str<'b>(
+  scope: &mut v8::PinScope,
+  key: v8::Local<v8::Name>,
+  buf: &'b mut [u8; MAX_OP_NAME_LEN],
+) -> Option<&'b str> {
+  let key = v8::Local::<v8::String>::try_from(key).ok()?;
+  let len = key.length();
+  if len == 0 || len > MAX_OP_NAME_LEN || !key.contains_only_onebyte() {
+    return None;
+  }
+  key.write_one_byte_v2(scope, 0, &mut buf[..len], v8::WriteFlags::empty());
+  std::str::from_utf8(&buf[..len]).ok()
+}
+
+/// The `Deno.core.ops` getter interceptor: materialize the named op on first
+/// read, then serve the memoized function forever after.
+fn lazy_ops_getter<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  key: v8::Local<'s, v8::Name>,
+  _args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<v8::Value>,
+) -> v8::Intercepted {
+  let mut buf = [0u8; MAX_OP_NAME_LEN];
+  let Some(name) = lazy_ops_key_str(scope, key, &mut buf) else {
+    return v8::Intercepted::kNo;
+  };
+  let state = JsRealm::state_from_scope(scope);
+
+  // Resolve the name and take a *copy* of the cached handle: materialization
+  // below calls back into JS (`setUpAsyncStub`), which can re-enter this
+  // interceptor, so no borrow of `table` may be held across it.
+  let (slot, cached, name) = {
+    let mut table = state.lazy_ops.table.borrow_mut();
+    let table = table.get_or_insert_with(|| lazy_ops_build_table(&state));
+    match table.get_key_value(name) {
+      None => return v8::Intercepted::kNo,
+      Some((name, entry)) => (entry.slot, entry.func.clone(), *name),
+    }
+  };
+  if let Some(func) = cached {
+    rv.set(v8::Local::new(scope, func).into());
+    return v8::Intercepted::kYes;
+  }
+
+  let Some(func) = lazy_ops_materialize(scope, &state, slot) else {
+    // Materialization can only fail if JS threw (a `setUpAsyncStub` failure).
+    // Leave the pending exception alone and report "not intercepted" rather
+    // than handing back a half-built function.
+    return v8::Intercepted::kNo;
+  };
+
+  // Re-entrancy: if materializing this op somehow materialized it again,
+  // keep the first function so identity stays stable.
+  let mut table = state.lazy_ops.table.borrow_mut();
+  let entry = table.as_mut().unwrap().get_mut(name).unwrap();
+  let func = match &entry.func {
+    Some(existing) => v8::Local::new(scope, existing),
+    None => {
+      entry.func = Some(v8::Global::new(scope, func));
+      func
+    }
+  };
+  drop(table);
+  rv.set(func.into());
+  v8::Intercepted::kYes
+}
+
+/// The query interceptor: report an op's attributes without building it.
+/// This is what keeps `Object.keys`, `for..in`, `in` and `hasOwnProperty`
+/// honest under the interceptor while still materializing nothing.
+fn lazy_ops_query<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  key: v8::Local<'s, v8::Name>,
+  _args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<v8::Integer>,
+) -> v8::Intercepted {
+  let mut buf = [0u8; MAX_OP_NAME_LEN];
+  let Some(name) = lazy_ops_key_str(scope, key, &mut buf) else {
+    return v8::Intercepted::kNo;
+  };
+  let state = JsRealm::state_from_scope(scope);
+  let known = {
+    let mut table = state.lazy_ops.table.borrow_mut();
+    let table = table.get_or_insert_with(|| lazy_ops_build_table(&state));
+    table.contains_key(name)
+  };
+  if !known {
+    return v8::Intercepted::kNo;
+  }
+  // Ops are writable, enumerable and configurable, exactly as the data
+  // properties they replaced were.
+  rv.set_uint32(v8::PropertyAttribute::NONE.as_u32());
+  v8::Intercepted::kYes
+}
+
+/// The enumerator interceptor: the names of every op, materializing none of
+/// them.
+fn lazy_ops_enumerator<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  _args: v8::PropertyCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<v8::Array>,
+) {
+  let state = JsRealm::state_from_scope(scope);
+  let names: Vec<FastStaticString> = {
+    let mut table = state.lazy_ops.table.borrow_mut();
+    let table = table.get_or_insert_with(|| lazy_ops_build_table(&state));
+    table.values().map(|entry| entry.name).collect()
+  };
+  let names: Vec<v8::Local<v8::Value>> = names
+    .into_iter()
+    .map(|name| name.v8_string(scope).unwrap().into())
+    .collect();
+  rv.set(v8::Array::new_with_elements(scope, &names));
+}
+
+// Counts op functions actually built by `lazy_ops_materialize`, so tests can
+// assert that enumeration (`Object.keys`, `for..in`, `in`) materializes
+// nothing -- the whole point of giving the interceptor query and enumerator
+// callbacks rather than a getter alone.
+#[cfg(test)]
+thread_local! {
+  static MATERIALIZED_OPS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Number of op functions built so far on this thread.
+#[cfg(test)]
+pub(crate) fn materialized_op_count() -> usize {
+  MATERIALIZED_OPS.with(|c| c.get())
+}
+
+/// Build the `v8::Function` for one `Deno.core.ops` entry.
+fn lazy_ops_materialize<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  state: &ContextState,
+  slot: LazyOpSlot,
+) -> Option<v8::Local<'s, v8::Function>> {
+  #[cfg(test)]
+  MATERIALIZED_OPS.with(|c| c.set(c.get() + 1));
+  match slot {
+    LazyOpSlot::Op(index) => {
+      let op_ctx = &state.op_ctxs[index as usize];
+      let will_snapshot = state.lazy_ops.will_snapshot.get();
+      let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+      let mut op_fn = if will_snapshot && !op_ctx.decl().constructable {
+        op_ctx_plain_function(scope, op_ctx, constructor_behavior)
+      } else {
+        op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
+      };
+      if op_ctx.decl().is_async {
+        // Async ops are wrapped by `Deno.core.setUpAsyncStub`, which builds
+        // the promise/error-remapping trampoline around the raw op function.
+        let stub = state.lazy_ops.set_up_async_stub.borrow().clone()?;
+        let stub = v8::Local::new(scope, stub);
+        let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
+        let undefined = v8::undefined(scope);
+        let result =
+          stub.call(scope, undefined.into(), &[key.into(), op_fn.into()])?;
+        op_fn = result.try_into().ok()?;
+      }
+      Some(op_fn)
+    }
+    LazyOpSlot::Class { decl, ctx } => {
+      lazy_ops_materialize_class(scope, state, decl as usize, ctx as usize)
+    }
+  }
+}
+
+/// Resolve a cppgc class function from the realm's template store, upgrading
+/// its methods to their fast-call variants if the templates came out of a
+/// snapshot.
+///
+/// The template itself is *not* built here: it is created eagerly by
+/// [`initialize_deno_core_ops_bindings`] (or restored from the snapshot),
+/// because cppgc wrapping resolves templates by type name and `inherit()`
+/// needs the parent to exist. Only the class function -- and, from a
+/// snapshot, its fast-call methods -- is deferred.
+fn lazy_ops_materialize_class<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  state: &ContextState,
+  decl_index: usize,
+  ctx_index: usize,
+) -> Option<v8::Local<'s, v8::Function>> {
+  let decl = &state.op_method_decls[decl_index];
+  let tmpl = state
+    .function_templates
+    .borrow()
+    .get_raw((decl.type_name)())
+    .cloned()?;
+  let tmpl = v8::Local::new(scope, tmpl);
+  let class_fn = tmpl.get_function(scope)?;
+  let class_key = decl.name.1.v8_string(scope).unwrap();
+  class_fn.set_name(class_key);
+
+  if !state.lazy_ops.classes_need_fast_call_upgrade.get() {
+    return Some(class_fn);
+  }
+
+  // Snapshot path: the prototype and static methods baked into the blob are
+  // the slow variants (V8 will not serialize a fast-call overload). Rebuild
+  // the ones that declare a fast function. This is the per-class remnant of
+  // the old `upgrade_snapshotted_ops_with_fast_calls` pass -- but it now runs
+  // only for classes something actually reads.
+  let prototype_key = v8::String::new(scope, "prototype").unwrap();
+  let prototype = class_fn
+    .get(scope, prototype_key.into())
+    .and_then(|p| v8::Local::<v8::Object>::try_from(p).ok());
+  let undefined = v8::undefined(scope);
+  let set_up_async_stub_fn = state.lazy_ops.set_up_async_stub.borrow().clone();
+
+  let mut index = ctx_index;
+  if decl.constructor.is_some() {
+    index += 1;
+  }
+  let method_ctxs = &state.op_ctxs[index..index + decl.methods.len()];
+  for method in method_ctxs {
+    if !method_needs_fast_call_upgrade(method) || method.decl().is_accessor() {
+      continue;
+    }
+    let Some(prototype) = prototype else { continue };
+    let method_fn =
+      op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
+    let method_key = name_key(scope, method.decl());
+    if method.decl().is_async {
+      // `setUpAsyncStub` installs the wrapped fn on `class_fn.prototype` when
+      // given the class as the third argument.
+      let Some(stub) = set_up_async_stub_fn.clone() else {
+        continue;
+      };
+      let stub = v8::Local::new(scope, stub);
+      let _ = stub.call(
+        scope,
+        undefined.into(),
+        &[method_key.into(), method_fn.into(), class_fn.into()],
+      );
+    } else {
+      prototype.set(scope, method_key.into(), method_fn.into());
+    }
+  }
+  index += decl.methods.len();
+
+  let static_method_ctxs =
+    &state.op_ctxs[index..index + decl.static_methods.len()];
+  for method in static_method_ctxs {
+    if !method_needs_fast_call_upgrade(method) {
+      continue;
+    }
+    let method_fn =
+      op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
+    let method_key = name_key(scope, method.decl());
+    class_fn.set(scope, method_key.into(), method_fn.into());
+  }
+
+  Some(class_fn)
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {

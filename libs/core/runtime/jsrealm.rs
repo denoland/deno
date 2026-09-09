@@ -104,20 +104,16 @@ pub struct ContextState {
   pub(crate) op_ctxs: OpCtxs,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
-  /// Snapshots built against V8 14.9+ bake the *slow* version of each op
-  /// (see `op_ctx_template`); fast-call overloads are re-attached at runtime
-  /// by `upgrade_snapshotted_ops_with_fast_calls`. That pass creates ~1.6k V8
-  /// functions (~0.9ms). It only benefits ops accessed at runtime (baked
-  /// modules captured their slow refs at snapshot eval), so we DEFER it until
-  /// the first residual ext-module load — a program that never loads a
-  /// residual module (e.g. `deno run empty.js`) never pays for it.
-  pub(crate) fast_ops_upgraded: Cell<bool>,
-  /// `(Deno.core.ops, Deno.core.setUpAsyncStub)` captured at `new_inner` time,
-  /// because `Deno.core` is scrubbed from the public `Deno` after bootstrap and
-  /// the deferred upgrade (which runs post-bootstrap) can no longer read them
-  /// from the global. `None` when the upgrade isn't deferred.
-  pub(crate) deferred_fast_ops:
-    RefCell<Option<(v8::Global<v8::Object>, v8::Global<v8::Function>)>>,
+  /// Memoization behind the `Deno.core.ops` named-property interceptor. Op
+  /// functions are not in the snapshot and are not built at startup: they are
+  /// materialized here on first access. See [`crate::runtime::bindings::LazyOps`].
+  /// Boxed to keep `ContextState` -- which is on the hot path of every op
+  /// dispatch -- the same size it was before this state existed. The
+  /// indirection is only ever taken on a first-access miss.
+  pub(crate) lazy_ops: Box<crate::runtime::bindings::LazyOps>,
+  /// The runtime-wide cppgc class template store, needed by the lazy-ops
+  /// interceptor to resolve a class function from its type name.
+  pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) isolate: Option<v8::UnsafeRawIsolatePtr>,
   pub(crate) exception_state: Rc<ExceptionState>,
   /// Shared tick info buffer exposed to JS as a Uint8Array.
@@ -191,6 +187,11 @@ impl ContextState {
     self.tick_info[1] != 0
   }
 
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "one-shot constructor; every argument is realm state that is \
+              only available at this point in `JsRuntime::new_inner`"
+  )]
   pub(crate) fn new(
     op_driver: Rc<OpDriverImpl>,
     isolate_ptr: v8::UnsafeRawIsolatePtr,
@@ -199,6 +200,7 @@ impl ContextState {
     methods_ctx_offset: usize,
     external_ops_tracker: ExternalOpsTracker,
     unrefed_ops: UnrefedOps,
+    function_templates: Rc<RefCell<FunctionTemplateData>>,
   ) -> Self {
     Self {
       isolate: Some(isolate_ptr),
@@ -217,8 +219,8 @@ impl ContextState {
       op_ctxs,
       op_method_decls,
       methods_ctx_offset,
-      fast_ops_upgraded: Cell::new(false),
-      deferred_fast_ops: RefCell::new(None),
+      lazy_ops: Default::default(),
+      function_templates,
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
