@@ -1377,7 +1377,7 @@ fn op_desktop_alert(
 }
 
 /// True while an error dialog is on screen. Single-flight at the native
-/// boundary: this op sits on `core.ops` and survives `removeImportedOps()`,
+/// boundary: this op sits on `core.ops` and is in `NOT_IMPORTED_OPS`,
 /// so it is reachable by any code in the runtime, not only the error handler
 /// that respects its own `_exiting` flag. Without a guard here, a loop
 /// calling it directly would park an unbounded number of pool threads, each
@@ -1596,7 +1596,7 @@ fn op_desktop_send_error_report(state: &mut OpState, #[string] body: &str) {
   // The report destination is operator config — it is baked into the app at
   // build time (`error_reporting_url`) and stored in `ERROR_REPORT_CONFIG`.
   // It is deliberately NOT accepted from JS: this op is exposed on
-  // `core.ops` and survives `removeImportedOps()`, so any (untrusted) code
+  // `core.ops` and is in `NOT_IMPORTED_OPS`, so any (untrusted) code
   // in the runtime can call it. Trusting a caller-supplied URL would turn
   // this into an unrestricted file-append (`file://`) or network-POST
   // (`https://`) primitive that bypasses the `--allow-write`/`--allow-net`
