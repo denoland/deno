@@ -9,6 +9,13 @@
       "args": "audit",
       "output": "audit.out",
       "exitCode": 1
+    },
+    {
+      // The second advisory has an open-ended vulnerable range, so no fix can
+      // be inferred and `--ignore-unfixable` hides it.
+      "args": "audit --ignore-unfixable",
+      "output": "audit_ignore_unfixable.out",
+      "exitCode": 1
     }
   ]
 }
