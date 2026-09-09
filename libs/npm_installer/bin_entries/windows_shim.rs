@@ -25,12 +25,15 @@ use std::path::PathBuf;
 
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
+use sys_traits::FsRead;
 use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
 
 use crate::bin_entries::EntrySetupOutcome;
 use crate::bin_entries::bin_script_stays_in_package;
 use crate::bin_entries::relative_path;
+
+const ERROR_SHARING_VIOLATION: i32 = 32;
 
 // note: parts of logic and pretty much all of the shims ported from https://github.com/npm/cmd-shim
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -297,7 +300,7 @@ impl ShimData {
 }
 
 pub fn set_up_bin_shim<'a>(
-  sys: &(impl FsOpen + FsWrite + FsMetadata),
+  sys: &(impl FsOpen + FsWrite + FsMetadata + FsRead),
   package: &'a deno_npm::NpmResolutionPackage,
   extra: &'a deno_npm::NpmPackageExtraInfo,
   bin_name: &'a str,
@@ -339,8 +342,26 @@ pub fn set_up_bin_shim<'a>(
   let shebang = resolve_shebang(sys.as_ref(), &target_file);
   let shim = ShimData::new(rel_target.to_string_lossy(), shebang);
 
-  let write_shim =
-    |path: PathBuf, contents: &str| sys.fs_write(&path, contents);
+  let write_shim = |path: PathBuf, contents: &str| -> std::io::Result<()> {
+    if let Ok(existing) = sys.fs_read(&path) {
+      if existing == contents.as_bytes() {
+        return Ok(());
+      }
+    }
+    // retry on Windows sharing violation (os error 32) when another deno process holds the file
+    let mut last_err = None;
+    for _ in 0..3 {
+      match sys.fs_write(&path, contents) {
+        Ok(()) => return Ok(()),
+        Err(e) if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
+          last_err = Some(e);
+          std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        Err(e) => return Err(e),
+      }
+    }
+    Err(last_err.unwrap())
+  };
 
   write_shim(shim_path.with_extension("cmd"), &shim.generate_cmd())?;
   write_shim(shim_path.clone(), &shim.generate_sh())?;
