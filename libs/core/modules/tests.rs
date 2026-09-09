@@ -828,6 +828,93 @@ fn test_lazy_loaded_script() {
     .unwrap();
 }
 
+/// Regression guard for the captured-`__bootstrap` contract that deno's
+/// residual ext polyfills depend on (deno_core_revamp#39(b)).
+///
+/// `capturedCore.ops` used to be an `ObjectAssign` clone of `core.ops`, made so
+/// that it would survive deno's `removeImportedOps()` deleting ~940 entries out
+/// of the live ops object. It is now the live object itself, so this test pins
+/// down the two halves of the replacement contract:
+///
+///  1. a residual ext script destructuring `__bootstrap.core.ops` at load time
+///     still sees every op, after `globalThis.__bootstrap` is gone, and
+///  2. `core.createOpsSubset()` is the supported way to derive the reduced,
+///     user-visible ops surface -- without enumerating or mutating `core.ops`.
+#[test]
+fn test_lazy_loaded_script_captured_bootstrap_ops() {
+  #[op2(fast)]
+  fn op_bootstrap_add(a: u32, b: u32) -> u32 {
+    a + b
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_bootstrap_add],
+    lazy_loaded_js =
+      [dir "modules/testdata", "lazy_script_bootstrap_ops.js"]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "test_captured_bootstrap_ops.js",
+      r#"
+      const core = Deno.core;
+      function assert(cond, msg) {
+        if (!cond) throw new Error(msg);
+      }
+
+      // Derive the reduced user-visible surface the way an embedder now
+      // should: build a subset instead of deleting out of `core.ops`.
+      const userVisibleOps = core.createOpsSubset([
+        "op_add_main_module_handler",
+        "op_op_that_does_not_exist",
+      ]);
+      assert(
+        typeof userVisibleOps.op_add_main_module_handler === "function",
+        "subset should carry ops that exist",
+      );
+      assert(
+        !("op_op_that_does_not_exist" in userVisibleOps),
+        "subset should skip ops that don't exist",
+      );
+      assert(
+        !("op_bootstrap_add" in userVisibleOps),
+        "subset should not carry ops outside the allowlist",
+      );
+      assert(
+        Object.getPrototypeOf(userVisibleOps) === null,
+        "subset should be null-prototype",
+      );
+      // Building the subset must not disturb the canonical ops object.
+      assert(
+        typeof core.ops.op_bootstrap_add === "function",
+        "core.ops must not be mutated by createOpsSubset",
+      );
+
+      // Reproduce the runtime bootstrap teardown.
+      delete globalThis.__bootstrap;
+      assert(
+        typeof globalThis.__bootstrap === "undefined",
+        "__bootstrap should be gone",
+      );
+
+      const mod = core.loadExtScript(
+        "ext:test_ext/lazy_script_bootstrap_ops.js",
+      );
+      assert(mod.bootstrapDeleted, "script saw a global __bootstrap");
+      assert(mod.addIsFunction, "destructured op was not a function");
+      assert(mod.sum === 42, "destructured op returned " + mod.sum);
+      assert(mod.viaOpsObject === 3, "core.ops.op_x() returned " + mod.viaOpsObject);
+      "#,
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_lazy_loaded_script_not_found() {
   deno_core::extension!(test_ext);

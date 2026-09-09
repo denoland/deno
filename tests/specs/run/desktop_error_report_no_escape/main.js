@@ -1,7 +1,7 @@
 // Regression test for a sandbox-escape via `op_desktop_send_error_report`.
 //
-// The op is exposed on `Deno[Deno.internal].core.ops` and survives
-// `removeImportedOps()` (it's in NOT_IMPORTED_OPS), so untrusted code can
+// The op is exposed on `Deno[Deno.internal].core.ops` because it is listed in
+// `NOT_IMPORTED_OPS` in `99_main.js`, so untrusted code can
 // call it in a plain `deno run`. It used to accept a caller-supplied `url`
 // and, without any permission check, append to that `file://` path (a
 // `--allow-write` bypass) or POST to that `https://` URL (a `--allow-net`

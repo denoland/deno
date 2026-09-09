@@ -5,7 +5,6 @@ delete Intl.v8BreakIterator;
 
 const internalConsole = core.loadExtScript("ext:deno_web/01_console.js");
 import { core, internals, primordials } from "ext:core/mod.js";
-const ops = core.ops;
 import {
   op_bootstrap_args,
   op_bootstrap_is_from_unconfigured_runtime,
@@ -754,18 +753,47 @@ const WORKER_EXCLUDED_OPS = [
   "op_desktop_write_clipboard_text",
 ];
 
-function removeImportedOps(isWorker = false) {
-  const allOpNames = ObjectKeys(ops);
-  for (let i = 0; i < allOpNames.length; i++) {
-    const opName = allOpNames[i];
-    if (isWorker && ArrayPrototypeIncludes(WORKER_EXCLUDED_OPS, opName)) {
-      delete ops[opName];
-      continue;
-    }
-    if (!ArrayPrototypeIncludes(NOT_IMPORTED_OPS, opName)) {
-      delete ops[opName];
-    }
+// The user-visible ops object, built up from `NOT_IMPORTED_OPS` instead of by
+// deleting the ~940 other entries out of `core.ops`. Three reasons:
+//
+//  * `core.ops` is canonical. deno_core's captured `__bootstrap` view -- the
+//    object every residual ext polyfill is evaluated against -- now holds it
+//    by reference rather than as an `ObjectAssign` clone, so stripping it in
+//    place would strip it for those polyfills too.
+//  * the old sweep was `ObjectKeys` over ~1,005 names x an up-to-64-entry
+//    linear scan plus ~940 `delete`s, which also forced `core.ops` into
+//    dictionary mode. It ran three times per runtime. This is O(64) and runs
+//    at most once, lazily.
+//  * once ops become lazily materialized properties, any enumeration of
+//    `core.ops` forces every op into existence at bootstrap -- and under a
+//    named-property interceptor `ObjectKeys` stops seeing them at all, so a
+//    delete sweep would silently stop stripping anything.
+//
+// `core.createOpsSubset` reads only the listed names and skips the ones this
+// binary/subcommand doesn't register, which is exactly the set the delete
+// sweep left behind. Only the `ObjectKeys` *order* changes: declaration order
+// rather than op-registration order.
+//
+// Deferring the build to first access (rather than doing it while
+// `userVisibleCore` is assembled, which happens at snapshot-build time) keeps
+// two properties of the old code: the entries are the fast-call-upgraded op
+// functions, and nothing is paid by runtimes that never touch
+// `Deno[Deno.internal].core.ops`. It is also what lets the worker exclusions
+// below work: whether this is a worker scope is only known once one of the
+// bootstrap functions has run.
+let isWorkerScope = false;
+let userVisibleOps;
+function getUserVisibleOps() {
+  if (userVisibleOps === undefined) {
+    const names = isWorkerScope
+      ? ArrayPrototypeFilter(
+        NOT_IMPORTED_OPS,
+        (name) => !ArrayPrototypeIncludes(WORKER_EXCLUDED_OPS, name),
+      )
+      : NOT_IMPORTED_OPS;
+    userVisibleOps = core.createOpsSubset(names);
   }
+  return userVisibleOps;
 }
 
 // `Deno[Deno.internal]` is reachable from user code. Preserve its existing
@@ -774,6 +802,13 @@ function removeImportedOps(isWorker = false) {
 const userVisibleCoreDescriptors = getSafeOwnPropertyDescriptors(core);
 delete userVisibleCoreDescriptors.createLazyLoader;
 delete userVisibleCoreDescriptors.loadExtScript;
+userVisibleCoreDescriptors.ops = {
+  __proto__: null,
+  get: getUserVisibleOps,
+  set: undefined,
+  enumerable: true,
+  configurable: false,
+};
 const userVisibleCore = ObjectFreeze(ObjectDefineProperties(
   { __proto__: null },
   userVisibleCoreDescriptors,
@@ -1050,8 +1085,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       });
     }
 
-    removeImportedOps();
-
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
@@ -1231,7 +1264,8 @@ function bootstrapWorkerRuntime(
 
     closeOnIdle = runtimeOptions[14];
 
-    removeImportedOps(true);
+    // Consulted lazily by `getUserVisibleOps()`; see `WORKER_EXCLUDED_OPS`.
+    isWorkerScope = true;
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -1393,8 +1427,6 @@ event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
 (new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
-
-removeImportedOps();
 
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);
