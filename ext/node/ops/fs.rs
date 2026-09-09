@@ -774,26 +774,53 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-/// Create an anonymous pipe pair and return (read_fd, write_fd).
-/// The returned fds are NOT registered in FdTable; the caller
-/// is responsible for registering or closing them.
+fn register_created_pipe(
+  state: &mut OpState,
+  read_fd: i32,
+  write_fd: i32,
+) -> Result<(), FsError> {
+  let (read_registered, write_registered) = {
+    let fd_table = state.borrow_mut::<deno_io::FdTable>();
+    let read_registered = fd_table.register_uv_adoptable(read_fd);
+    let write_registered = fd_table.register_uv_adoptable(write_fd);
+    if read_registered && !write_registered {
+      fd_table.remove(read_fd);
+    } else if write_registered && !read_registered {
+      fd_table.remove(write_fd);
+    }
+    (read_registered, write_registered)
+  };
+  if read_registered && write_registered {
+    return Ok(());
+  }
+  // SAFETY: these are the two newly-created descriptors, and neither was
+  // returned to JavaScript after registration failed.
+  unsafe {
+    libc::close(read_fd);
+    libc::close(write_fd);
+  }
+  Err(ebadf())
+}
+
+/// Create an anonymous pipe pair and register both ends for later adoption.
 #[cfg(unix)]
 #[op2]
 #[serde]
-pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+pub fn op_node_create_pipe(state: &mut OpState) -> Result<(i32, i32), FsError> {
   let mut fds = [0i32; 2];
   // SAFETY: pipe() writes two valid fds into the array on success.
   let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
   if ret != 0 {
     return Err(FsError::Io(std::io::Error::last_os_error()));
   }
+  register_created_pipe(state, fds[0], fds[1])?;
   Ok((fds[0], fds[1]))
 }
 
 #[cfg(windows)]
 #[op2]
 #[serde]
-pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+pub fn op_node_create_pipe(state: &mut OpState) -> Result<(i32, i32), FsError> {
   use windows_sys::Win32::Foundation::CloseHandle;
   use windows_sys::Win32::System::Pipes::CreatePipe;
 
@@ -843,6 +870,7 @@ pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
     return Err(ebadf());
   }
 
+  register_created_pipe(state, read_fd, write_fd)?;
   Ok((read_fd, write_fd))
 }
 

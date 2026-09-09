@@ -25,6 +25,10 @@ pub enum FdOwnership {
   /// that it exists for duplicate detection. The entry is removed
   /// when uv_close fires, but no file is dropped.
   UvOwned,
+  /// A raw fd returned by a Deno op specifically for later adoption by a
+  /// libuv wrapper. FdTable does not own this fd; it only records that this
+  /// isolate is allowed to claim it via `PipeWrap::open`/`TCPWrap::open`.
+  Adoptable,
 }
 
 /// Central table tracking all known file descriptors.
@@ -76,12 +80,22 @@ impl FdTable {
     true
   }
 
+  /// Register an fd that may be adopted by a uv wrapper later. Returns false
+  /// if already registered.
+  pub fn register_uv_adoptable(&mut self, fd: i32) -> bool {
+    if self.entries.contains_key(&fd) {
+      return false;
+    }
+    self.entries.insert(fd, FdOwnership::Adoptable);
+    true
+  }
+
   /// Get the File for a TableOwned fd. Returns None for UvOwned or missing.
   pub fn get(&self, fd: i32) -> Option<&Rc<dyn File>> {
     match self.entries.get(&fd) {
       Some(FdOwnership::TableOwned(file)) => Some(file),
       Some(FdOwnership::InheritedExtraStdio(file)) => Some(file),
-      _ => None,
+      Some(FdOwnership::UvOwned | FdOwnership::Adoptable) | None => None,
     }
   }
 
@@ -92,6 +106,7 @@ impl FdTable {
       Some(FdOwnership::TableOwned(file)) => Some(file),
       Some(FdOwnership::InheritedExtraStdio(file)) => Some(file),
       Some(FdOwnership::UvOwned) => None,
+      Some(FdOwnership::Adoptable) => None,
       None => None,
     }
   }
@@ -109,23 +124,32 @@ impl FdTable {
     )
   }
 
+  /// Check if an fd was explicitly registered as adoptable by a uv wrapper.
+  pub fn is_uv_adoptable(&self, fd: i32) -> bool {
+    matches!(self.entries.get(&fd), Some(FdOwnership::Adoptable))
+  }
+
   /// Check whether a libuv stream wrap (`PipeWrap::open`, `TCPWrap::open`)
-  /// may adopt `fd`. Stdio fds (0-2) are pre-registered and may be re-opened;
-  /// inherited extra stdio fds may be adopted (e.g. via `net.Socket({ fd })`)
-  /// and are consumed by `finish_uv_adopt` only once the uv open actually
-  /// claims the fd, so a failed open leaves the fd usable by node:fs. Any
-  /// other tracked fd is a duplicate.
+  /// may adopt `fd`. Stdio fds (0-2) may be re-opened; inherited extra stdio
+  /// fds may be adopted (e.g. via `net.Socket({ fd })`) and are consumed by
+  /// `finish_uv_adopt` only once the uv open actually claims the fd, so a
+  /// failed open leaves the fd usable by node:fs. Fds explicitly registered
+  /// as uv-adoptable by Deno internals may also be adopted. Any other fd is
+  /// rejected.
   ///
-  /// Returns `Some(was_inherited)` if adoption may proceed (pass the flag to
-  /// `finish_uv_adopt` on success), or `None` if the fd is already tracked
-  /// and the caller should reject with `EEXIST`.
-  pub fn begin_uv_adopt(&self, fd: i32) -> Option<bool> {
-    if self.is_inherited_extra_stdio(fd) {
+  /// Unknown non-stdio fds are process-wide rather than isolate-local, so
+  /// callers must reject them unless the current isolate has all permissions.
+  ///
+  /// Returns `Some(replace_registration)` if adoption may proceed (pass the
+  /// flag to `finish_uv_adopt` on success), or `None` if the fd may not be
+  /// adopted and the caller should reject it.
+  pub fn begin_uv_adopt(&self, fd: i32, allow_untracked: bool) -> Option<bool> {
+    if self.is_inherited_extra_stdio(fd) || self.is_uv_adoptable(fd) {
       Some(true)
-    } else if self.contains(fd) && !(0..=2).contains(&fd) {
-      None
-    } else {
+    } else if (0..=2).contains(&fd) || (allow_untracked && !self.contains(fd)) {
       Some(false)
+    } else {
+      None
     }
   }
 
@@ -134,8 +158,8 @@ impl FdTable {
   /// the node:fs dup is released, and its close is deferred until any
   /// `Rc<dyn File>` clone held by an in-flight node:fs stream drops), then
   /// tracks the fd as UvOwned so it can't be re-adopted by another wrap.
-  pub fn finish_uv_adopt(&mut self, fd: i32, was_inherited: bool) {
-    if was_inherited {
+  pub fn finish_uv_adopt(&mut self, fd: i32, replace_registration: bool) {
+    if replace_registration {
       self.remove(fd);
     }
     self.register_uv_owned(fd);
@@ -145,5 +169,49 @@ impl FdTable {
 impl Default for FdTable {
   fn default() -> Self {
     Self::new()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn uv_adopt_rejects_unknown_non_stdio_fds() {
+    let fd_table = FdTable::new();
+
+    assert_eq!(fd_table.begin_uv_adopt(0, false), Some(false));
+    assert_eq!(fd_table.begin_uv_adopt(1, false), Some(false));
+    assert_eq!(fd_table.begin_uv_adopt(2, false), Some(false));
+    assert_eq!(fd_table.begin_uv_adopt(3, false), None);
+    assert_eq!(fd_table.begin_uv_adopt(40, false), None);
+  }
+
+  #[test]
+  fn uv_adopt_rejects_already_uv_owned_fds() {
+    let mut fd_table = FdTable::new();
+    assert!(fd_table.register_uv_owned(40));
+
+    assert_eq!(fd_table.begin_uv_adopt(40, false), None);
+    assert_eq!(fd_table.begin_uv_adopt(40, true), None);
+  }
+
+  #[test]
+  fn uv_adopt_allows_registered_adoptable_fds_once() {
+    let mut fd_table = FdTable::new();
+    assert!(fd_table.register_uv_adoptable(40));
+
+    assert_eq!(fd_table.begin_uv_adopt(40, false), Some(true));
+    fd_table.finish_uv_adopt(40, true);
+    assert_eq!(fd_table.begin_uv_adopt(40, false), None);
+  }
+
+  #[test]
+  fn uv_adopt_allows_untracked_fds_once_when_requested() {
+    let mut fd_table = FdTable::new();
+
+    assert_eq!(fd_table.begin_uv_adopt(40, true), Some(false));
+    fd_table.finish_uv_adopt(40, false);
+    assert_eq!(fd_table.begin_uv_adopt(40, true), None);
   }
 }
