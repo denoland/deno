@@ -196,7 +196,8 @@ const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 class ConnectionsList {
   constructor() {
     this._all = new SafeSet();
-    this._active = new SafeMap(); // socket -> { headersCompleted, startTime, req }
+    // socket -> { requestStarted, headersCompleted, startTime, req }
+    this._active = new SafeMap();
   }
 
   add(socket) {
@@ -208,12 +209,22 @@ class ConnectionsList {
     this._active.delete(socket);
   }
 
-  pushActive(socket) {
+  // An entry is pushed twice for the same connection: once when it is
+  // accepted, so headersTimeout starts ticking against a client that connects
+  // and then says nothing, and again at every message begin. Only the latter
+  // means a request is actually on the wire, which is what distinguishes a
+  // connection that is busy from one that is merely open.
+  pushActive(socket, requestStarted = false) {
     this._active.set(socket, {
+      requestStarted,
       headersCompleted: false,
       startTime: performance.now(),
       req: null,
     });
+  }
+
+  hasRequestInProgress(socket) {
+    return this._active.get(socket)?.requestStarted === true;
   }
 
   popActive(socket) {
@@ -704,7 +715,7 @@ function onParserMessageBegin(server, socket) {
   const connections = server[kConnectionsKey];
   if (connections) {
     connections.popActive(socket);
-    connections.pushActive(socket);
+    connections.pushActive(socket, true);
   }
 }
 
@@ -1619,6 +1630,14 @@ Server.prototype.setTimeout = function setTimeout(msecs, callback) {
   return this;
 };
 
+// Node documents `close()` as closing every connection "which is not sending a
+// request or waiting for a response". Node's implementation does not actually
+// do that for a connection that was accepted and never sent a request - but
+// Node users cannot reach that state, because `close()` stops accepting and
+// such a connection is still sitting in the accept queue. Deno accepts eagerly,
+// so the connection is already tracked by the time `close()` runs and would
+// otherwise keep the server alive indefinitely. We follow the documented
+// contract rather than Node's implementation here; see closeIdleConnections.
 Server.prototype.close = function close(cb) {
   httpServerPreClose(this);
   return FunctionPrototypeCall(net.Server.prototype.close, this, cb);
@@ -1637,11 +1656,20 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
     for (const socket of new SafeSetIterator(connections._all)) {
-      // A socket is idle if it completed a request-response cycle and
-      // currently has no active HTTP response being written. Sockets
-      // that have never finished a response (e.g. still receiving
-      // headers) are not idle.
-      if (!socket._httpMessage && socket._httpMessageDetached) {
+      // Idle means no response is being written and no request is on the way
+      // in: either the connection finished a request-response cycle and is
+      // waiting for the next one, or it was accepted and never sent anything
+      // at all. Sockets still receiving a request are not idle.
+      //
+      // The second case is one Node's own implementation never has to handle,
+      // because Node stops accepting before the connection is handed to the
+      // server. Deno accepts eagerly, so without this such a connection pins
+      // `close()` open forever - see the comment on `Server.prototype.close`.
+      if (
+        !socket._httpMessage &&
+        (socket._httpMessageDetached ||
+          !connections.hasRequestInProgress(socket))
+      ) {
         socket.destroy();
       }
     }
