@@ -128,6 +128,39 @@ const {
 
 const _upgraded = Symbol("_upgraded");
 
+// Lazily resolved entry point for the egress header policy's `forward` ops
+// (see ext/fetch/egress_policy.rs): `undefined` = not yet resolved, `null` =
+// policy forwards nothing (the common case - no per-request work), otherwise
+// the `enterEgressForwardContext` function from 26_fetch.js. Resolved on
+// first server creation, not at module load. The config op is consulted
+// directly so that with no `forward` ops configured - or in an embedder
+// without deno_fetch at all - the fetch module is never evaluated on
+// serve's account.
+//
+// A non-null result also holds back the `rawNoRequest` optimization: a
+// zero-argument handler otherwise leaves the inbound headers unmaterialized,
+// so `forward` would capture nothing and the hop count would depend on the
+// handler's arity rather than on the policy.
+type EgressForwardContextEnter = (reqHeaders: string[]) => unknown;
+let egressForwardContextEnter: EgressForwardContextEnter | null | undefined =
+  undefined;
+
+function getEgressForwardContextEnter(): EgressForwardContextEnter | null {
+  if (egressForwardContextEnter === undefined) {
+    const configOp = core.ops.op_fetch_egress_header_forward_config;
+    const forward = configOp === undefined ? [] : configOp()[0];
+    if (forward.length === 0) {
+      egressForwardContextEnter = null;
+    } else {
+      const { enterEgressForwardContext } = core.loadExtScript(
+        "ext:deno_fetch/26_fetch.js",
+      );
+      egressForwardContextEnter = enterEgressForwardContext;
+    }
+  }
+  return egressForwardContextEnter ?? null;
+}
+
 let legacyAbortWarned = false;
 
 function internalServerError() {
@@ -851,6 +884,24 @@ function mapToCallback(context, callback, onError) {
     );
   };
 
+  // Innermost wrapper: runs after the snapshot-restoring wrappers below, so
+  // the entered context flows into the handler rather than being replaced by
+  // their `restoreSnapshot(context.asyncContext)`.
+  const enterEgressForward = getEgressForwardContextEnter();
+  if (enterEgressForward !== null) {
+    const origMapped = mapped;
+    mapped = function (req, span) {
+      const previousContext = enterEgressForward(
+        op_http_get_request_headers(req),
+      );
+      try {
+        return origMapped(req, span);
+      } finally {
+        core.setAsyncContext(previousContext);
+      }
+    };
+  }
+
   if (otelState.TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
@@ -1087,7 +1138,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
     return finishOrReturnNative(req, span, innerRequest, response);
   }
 
-  return function nativeMapped(req, span) {
+  function nativeMapped(req, span) {
     let innerRequest;
     let response;
     try {
@@ -1109,6 +1160,24 @@ function mapToNativeResponseCallback(context, callback, onError) {
       return finishOrReturnMaybePromise(req, span, innerRequest, response);
     } catch (error) {
       return handleError(req, span, innerRequest, error);
+    }
+  }
+
+  // The native dispatch path also invokes the user handler, so it needs the
+  // same egress-forward capture as mapToCallback - otherwise forwarded
+  // headers would depend on which dispatch path served the request.
+  const enterEgressForward = getEgressForwardContextEnter();
+  if (enterEgressForward === null) {
+    return nativeMapped;
+  }
+  return function egressForwardNativeMapped(req, span) {
+    const previousContext = enterEgressForward(
+      op_http_get_request_headers(req),
+    );
+    try {
+      return nativeMapped(req, span);
+    } finally {
+      core.setAsyncContext(previousContext);
     }
   };
 }
@@ -1473,7 +1542,11 @@ function serveHttpOnListener(
     }
     return nativeCallback(req, undefined);
   };
-  const rawNoRequest = handler.length === 0 && nativeFastPath;
+  // A zero-argument handler skips materializing the inbound request headers,
+  // which the egress policy's `forward` op needs; see
+  // `getEgressForwardContextEnter`.
+  const rawNoRequest = handler.length === 0 && nativeFastPath &&
+    getEgressForwardContextEnter() === null;
   serverContext = new CallbackContext(
     signal,
     op_http_serve(
@@ -1526,7 +1599,11 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
     }
     return nativeCallback(req, undefined);
   };
-  const rawNoRequest = handler.length === 0 && nativeFastPath;
+  // A zero-argument handler skips materializing the inbound request headers,
+  // which the egress policy's `forward` op needs; see
+  // `getEgressForwardContextEnter`.
+  const rawNoRequest = handler.length === 0 && nativeFastPath &&
+    getEgressForwardContextEnter() === null;
   const automaticCompression = op_http_serve_default_compression();
   serverContext = new CallbackContext(
     signal,

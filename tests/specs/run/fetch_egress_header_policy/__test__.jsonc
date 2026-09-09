@@ -1,0 +1,99 @@
+{
+  "tests": {
+    "static_ops": {
+      "args": "run -A static_ops.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"set\":{\"user-agent\":\"enforced/1.0\"},\"remove\":[\"x-strip\"],\"default\":{\"x-def\":\"fallback\"}}"
+      },
+      "output": "static_ops.out"
+    },
+    "forward_append": {
+      "args": "run -A forward_append.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "forward_append.out"
+    },
+    "post_construction_scrub": {
+      "args": "run -A post_construction_scrub.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"authorization\":\"Bearer not-a-real-credential\"}}"
+      },
+      "output": "post_construction_scrub.out"
+    },
+    "legacy_precedence": {
+      "args": "run -A legacy_precedence.ts",
+      "envs": {
+        "CDN_LOOP": "legacy-value",
+        "X_DENO_FETCH_TOKEN": "legacy-token",
+        "DENO_EGRESS_HEADER_POLICY": "{\"set\":{\"cdn-loop\":\"policy-wins\"}}"
+      },
+      "output": "legacy_precedence.out"
+    },
+    "legacy_forward_suppression": {
+      "args": "run -A legacy_forward_suppression.ts",
+      "envs": {
+        "CDN_LOOP": "legacy-value",
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "legacy_forward_suppression.out"
+    },
+    "invalid_policy": {
+      "args": "run -A invalid_policy.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"bogus\": 1}"
+      },
+      "output": "invalid_policy.out"
+    },
+    "invalid_value": {
+      "args": "run -A invalid_value.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"x-a\":\"café\"}}"
+      },
+      "output": "invalid_value.out"
+    },
+    "forward_header_casing": {
+      "args": "run -A forward_header_casing.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "forward_header_casing.out"
+    },
+    "eventsource": {
+      "args": "run -A eventsource.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "eventsource.out"
+    },
+    "zero_arg_handler": {
+      "args": "run -A zero_arg_handler.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "zero_arg_handler.out"
+    },
+    "redirect": {
+      "args": "run -A redirect.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"},\"set\":{\"authorization\":\"Bearer not-a-real-credential\",\"user-agent\":\"enforced/1.0\"}}"
+      },
+      "output": "redirect.out"
+    },
+    "legacy_default_scrub": {
+      "args": "run -A legacy_default_scrub.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"default\":{\"x-deno-fetch-token\":\"policy-fallback\"}}"
+      },
+      "output": "legacy_default_scrub_fallback.out"
+    },
+    "legacy_default_scrub_with_env": {
+      "args": "run -A legacy_default_scrub.ts",
+      "envs": {
+        "X_DENO_FETCH_TOKEN": "operator-token",
+        "DENO_EGRESS_HEADER_POLICY": "{\"default\":{\"x-deno-fetch-token\":\"policy-fallback\"}}"
+      },
+      "output": "legacy_default_scrub_env.out"
+    }
+  }
+}

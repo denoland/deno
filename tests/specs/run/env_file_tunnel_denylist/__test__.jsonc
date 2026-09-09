@@ -3,9 +3,10 @@
     // An `.env` file must not be able to set Deno's own control variables.
     // Without the denylist, `DENO_CONNECTED=1` would force tunnel
     // initialization against the bogus endpoint and the run would fail before
-    // user code executed.
+    // user code executed, and the malformed `DENO_EGRESS_HEADER_POLICY` would
+    // fail every outbound fetch closed.
     "denylisted_vars_ignored": {
-      "args": "run --allow-env --env-file=poison.env main.ts",
+      "args": "run --allow-env --allow-net --env-file=poison.env main.ts",
       "output": "main.out"
     }
   }
