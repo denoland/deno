@@ -317,6 +317,8 @@ impl TestRun {
       let worker_factory = worker_factory.clone();
       let cli_options = cli_options.clone();
       let permission_desc_parser = permission_desc_parser.clone();
+      // Carried into the task rather than unwrapped here: the pipes can be
+      // refused by the OS, and that has to surface as a normal error.
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
@@ -335,6 +337,7 @@ impl TestRun {
       let token = self.token.clone();
 
       spawn_blocking(move || {
+        let worker_sender = worker_sender?;
         // Various test files should not share the same permissions in terms of
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
         // file would have impact on other files, which is undesirable.

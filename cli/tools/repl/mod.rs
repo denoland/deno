@@ -165,7 +165,7 @@ pub async fn run(
   let file_fetcher = factory.file_fetcher()?;
   let compiler_options_resolver = factory.compiler_options_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let (worker, test_event_receiver) = create_single_test_event_channel();
+  let (worker, test_event_receiver) = create_single_test_event_channel()?;
   let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
