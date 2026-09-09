@@ -698,3 +698,253 @@ op_async_arg_error Dispatched
 op_async_arg_error Error"#
   );
 }
+
+// ===========================================================================
+// Lazily materialized `Deno.core.ops` (deno_core_revamp#41)
+// ===========================================================================
+
+#[op2(fast)]
+#[smi]
+fn op_lazy_sync_fast(#[smi] a: i32) -> i32 {
+  a + 1
+}
+
+/// No `fast` attribute, so this op only ever has a slow dispatch path -- the
+/// interceptor must handle both shapes.
+#[op2]
+#[string]
+fn op_lazy_sync_slow(#[string] s: String) -> String {
+  format!("{s}!")
+}
+
+#[op2(async(lazy), fast)]
+#[smi]
+async fn op_lazy_async(#[smi] a: i32) -> i32 {
+  a * 2
+}
+
+deno_core::extension!(
+  lazy_ops_test,
+  ops = [op_lazy_sync_fast, op_lazy_sync_slow, op_lazy_async],
+);
+
+fn lazy_ops_runtime() -> JsRuntime {
+  JsRuntime::new(RuntimeOptions {
+    extensions: vec![lazy_ops_test::init()],
+    ..Default::default()
+  })
+}
+
+/// The property is not there until it is read, and once read it is always the
+/// same function object -- including across a GC, which is why the
+/// materialized function is memoized with a strong handle rather than a weak
+/// one.
+#[test]
+fn lazy_ops_identity_is_stable() {
+  let mut runtime = lazy_ops_runtime();
+  runtime
+    .execute_script(
+      "lazy_ops_identity.js",
+      r#"
+      const ops = Deno.core.ops;
+      const a = ops.op_lazy_sync_fast;
+      const b = ops.op_lazy_sync_fast;
+      if (a !== b) throw new Error("identity not stable across reads");
+      if (typeof a !== "function") throw new Error("not a function");
+      if (a.name !== "op_lazy_sync_fast") {
+        throw new Error("wrong name: " + a.name);
+      }
+
+      // Same for an async op, whose materialization runs `setUpAsyncStub`.
+      const c = ops.op_lazy_async;
+      if (c !== ops.op_lazy_async) {
+        throw new Error("async identity not stable");
+      }
+
+      // Churn the heap so anything held weakly would be collected.
+      for (let i = 0; i < 200_000; i++) {
+        ({ i, pad: [i, i, i] });
+      }
+      if (ops.op_lazy_sync_fast !== a) {
+        throw new Error("identity lost after GC pressure");
+      }
+      if (ops.op_lazy_async !== c) {
+        throw new Error("async identity lost after GC pressure");
+      }
+      "#,
+    )
+    .unwrap();
+}
+
+/// End-to-end: ops that were never bound as properties, only ever reached
+/// through the interceptor, dispatch correctly -- fast sync, slow sync, and
+/// async.
+#[tokio::test]
+async fn lazy_ops_call_through_interceptor() {
+  let mut runtime = lazy_ops_runtime();
+  let promise = runtime
+    .execute_script(
+      "lazy_ops_call.js",
+      r#"
+      const { op_lazy_sync_fast, op_lazy_sync_slow, op_lazy_async } =
+        Deno.core.ops;
+      (async () => {
+        if (op_lazy_sync_fast(41) !== 42) throw new Error("fast sync");
+        // Call it enough times to reach the fast-call path.
+        for (let i = 0; i < 10_000; i++) {
+          if (op_lazy_sync_fast(1) !== 2) throw new Error("fast sync loop");
+        }
+        if (op_lazy_sync_slow("hi") !== "hi!") throw new Error("slow sync");
+        if (await op_lazy_async(21) !== 42) throw new Error("async");
+        // Direct property-access call sites keep working too.
+        if (Deno.core.ops.op_lazy_sync_fast(1) !== 2) {
+          throw new Error("direct call");
+        }
+        return "ok";
+      })()
+      "#,
+    )
+    .unwrap();
+  #[allow(deprecated, reason = "test code")]
+  runtime.resolve_value(promise).await.unwrap();
+}
+
+/// Enumeration semantics, which are the part of this design that had to be
+/// chosen rather than derived. The interceptor carries an enumerator and a
+/// query callback, so the full op set is visible to `Object.keys`, `for..in`,
+/// `in` and `hasOwnProperty` -- and observing it materializes nothing.
+///
+/// `getOwnPropertyDescriptor` is the deliberate exception: it has to produce a
+/// value, so it materializes.
+#[test]
+fn lazy_ops_enumeration_does_not_materialize() {
+  use crate::runtime::bindings::materialized_op_count;
+  let mut runtime = lazy_ops_runtime();
+  let before = materialized_op_count();
+  runtime
+    .execute_script(
+      "lazy_ops_enumerate_only.js",
+      r#"
+      {
+      const ops = Deno.core.ops;
+      const keys = Object.keys(ops);
+      if (!keys.includes("op_lazy_sync_fast")) throw new Error("no keys");
+      for (const k in ops) { if (k === "") throw new Error("bad key"); }
+      if (!("op_lazy_async" in ops)) throw new Error("`in` missed an op");
+      if (!Object.prototype.hasOwnProperty.call(ops, "op_lazy_sync_slow")) {
+        throw new Error("hasOwnProperty missed an op");
+      }
+      }
+      "#,
+    )
+    .unwrap();
+  assert_eq!(
+    materialized_op_count(),
+    before,
+    "enumerating `Deno.core.ops` must not materialize any op function"
+  );
+
+  runtime
+    .execute_script(
+      "lazy_ops_enumeration.js",
+      r#"
+      const ops = Deno.core.ops;
+      function assert(cond, msg) {
+        if (!cond) throw new Error(msg);
+      }
+
+      const keys = Object.keys(ops);
+      assert(keys.includes("op_lazy_sync_fast"), "Object.keys missed an op");
+      assert(keys.includes("op_lazy_async"), "Object.keys missed an async op");
+      assert(keys.length > 3, "Object.keys should list the builtin ops too");
+
+      let seen = false;
+      for (const k in ops) {
+        if (k === "op_lazy_sync_slow") seen = true;
+      }
+      assert(seen, "for..in missed an op");
+
+      assert("op_lazy_sync_fast" in ops, "`in` missed an op");
+      assert(
+        Object.prototype.hasOwnProperty.call(ops, "op_lazy_sync_fast"),
+        "hasOwnProperty missed an op",
+      );
+      assert(!("op_nope_not_an_op" in ops), "`in` invented an op");
+      assert(ops.op_nope_not_an_op === undefined, "get invented an op");
+
+      const f = ops.op_lazy_sync_fast;
+      assert(typeof f === "function", "read after enumeration failed");
+      assert(f === ops.op_lazy_sync_fast, "identity broken after enumeration");
+
+      const desc = Object.getOwnPropertyDescriptor(ops, "op_lazy_async");
+      assert(desc !== undefined, "no descriptor for an op");
+      assert(desc.value === ops.op_lazy_async, "descriptor value mismatch");
+      assert(desc.writable && desc.enumerable && desc.configurable,
+        "op should be a plain writable/enumerable/configurable property");
+      "#,
+    )
+    .unwrap();
+}
+
+/// A real own property shadows the interceptor (`NON_MASKING`), so embedder
+/// or user assignment behaves as it did when ops were data properties.
+#[test]
+fn lazy_ops_assignment_shadows_the_interceptor() {
+  let mut runtime = lazy_ops_runtime();
+  runtime
+    .execute_script(
+      "lazy_ops_shadow.js",
+      r#"
+      const ops = Deno.core.ops;
+      const original = ops.op_lazy_sync_fast;
+      ops.op_lazy_sync_fast = () => "shadowed";
+      if (ops.op_lazy_sync_fast() !== "shadowed") {
+        throw new Error("assignment did not take");
+      }
+      if (ops.op_lazy_sync_fast === original) {
+        throw new Error("assignment did not shadow");
+      }
+      "#,
+    )
+    .unwrap();
+}
+
+/// The `__bootstrap` polyfill shape: a hundred ops destructured off
+/// `core.ops` in one statement, each materialized on the way through, each
+/// callable and each stable.
+#[test]
+fn lazy_ops_bulk_destructuring() {
+  let mut runtime = JsRuntime::new(RuntimeOptions::default());
+  runtime
+    .execute_script(
+      "lazy_ops_bulk.js",
+      r#"
+      const names = Object.keys(Deno.core.ops);
+      if (names.length < 50) {
+        throw new Error("expected the builtin op set, got " + names.length);
+      }
+      const first = {};
+      for (const name of names) {
+        const fn = Deno.core.ops[name];
+        if (typeof fn !== "function") {
+          throw new Error(name + " did not materialize");
+        }
+        first[name] = fn;
+      }
+      for (const name of names) {
+        if (Deno.core.ops[name] !== first[name]) {
+          throw new Error(name + " identity changed");
+        }
+      }
+      // And the subset primitive (the supported way to derive a reduced
+      // surface) sees the same functions.
+      const subset = Deno.core.createOpsSubset(names);
+      for (const name of names) {
+        if (subset[name] !== first[name]) {
+          throw new Error(name + " differs in the subset");
+        }
+      }
+      "#,
+    )
+    .unwrap();
+}
