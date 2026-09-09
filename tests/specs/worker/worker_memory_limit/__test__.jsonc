@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "oom": {
+      "args": "run -A --unstable-worker-options main.ts --memoryMb 8",
+      "output": "oom.out"
+    },
+    "success": {
+      "args": "run -A --unstable-worker-options main.ts --memoryMb 64",
+      "output": "success.out"
+    },
+    "ignored_without_flag": {
+      "args": "run -A main.ts --memoryMb 8",
+      "output": "success.out"
+    }
+  }
+}
