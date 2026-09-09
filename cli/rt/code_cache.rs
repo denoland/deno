@@ -32,10 +32,28 @@ pub struct DenoCompileCodeCacheEntry {
 
 pub struct DenoCompileCodeCache {
   strategy: CodeCacheStrategy,
+  specifier_base: Option<String>,
 }
 
 impl DenoCompileCodeCache {
-  pub fn new(file_path: PathBuf, cache_key: u64) -> Self {
+  pub fn new(
+    file_path: PathBuf,
+    cache_key: u64,
+    embedded_data: Option<&[u8]>,
+    specifier_base: Option<&Url>,
+  ) -> Self {
+    if let Some(embedded_data) = embedded_data {
+      match deserialize_bytes(embedded_data, cache_key) {
+        Ok(data) => {
+          log::debug!("Loaded {} embedded code cache entries", data.len());
+          return Self::subsequent_run(data, specifier_base);
+        }
+        Err(err) => {
+          log::debug!("Failed to deserialize embedded code cache: {:#}", err);
+        }
+      }
+    }
+
     // attempt to deserialize the cache data
     match deserialize(&file_path, cache_key) {
       Ok(data) => {
@@ -44,14 +62,7 @@ impl DenoCompileCodeCache {
           data.len(),
           file_path.display()
         );
-        Self {
-          strategy: CodeCacheStrategy::SubsequentRun(
-            SubsequentRunCodeCacheStrategy {
-              is_finished: AtomicFlag::lowered(),
-              data: Mutex::new(data),
-            },
-          ),
-        }
+        Self::subsequent_run(data, specifier_base)
       }
       Err(err) => {
         log::debug!(
@@ -59,19 +70,52 @@ impl DenoCompileCodeCache {
           file_path.display(),
           err
         );
-        Self {
-          strategy: CodeCacheStrategy::FirstRun(FirstRunCodeCacheStrategy {
-            cache_key,
-            file_path,
-            is_finished: AtomicFlag::lowered(),
-            data: Mutex::new(FirstRunCodeCacheData {
-              cache: HashMap::new(),
-              add_count: 0,
-            }),
-          }),
-        }
+        Self::first_run(file_path, cache_key, specifier_base)
       }
     }
+  }
+
+  fn first_run(
+    file_path: PathBuf,
+    cache_key: u64,
+    specifier_base: Option<&Url>,
+  ) -> Self {
+    Self {
+      strategy: CodeCacheStrategy::FirstRun(FirstRunCodeCacheStrategy {
+        cache_key,
+        file_path,
+        is_finished: AtomicFlag::lowered(),
+        data: Mutex::new(FirstRunCodeCacheData {
+          cache: HashMap::new(),
+          add_count: 0,
+        }),
+      }),
+      specifier_base: specifier_base.map(|url| url.as_str().to_string()),
+    }
+  }
+
+  fn subsequent_run(
+    data: HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
+    specifier_base: Option<&Url>,
+  ) -> Self {
+    Self {
+      strategy: CodeCacheStrategy::SubsequentRun(
+        SubsequentRunCodeCacheStrategy {
+          is_finished: AtomicFlag::lowered(),
+          data: Mutex::new(data),
+        },
+      ),
+      specifier_base: specifier_base.map(|url| url.as_str().to_string()),
+    }
+  }
+
+  fn specifier_key(&self, specifier: &Url) -> String {
+    self
+      .specifier_base
+      .as_deref()
+      .and_then(|base| specifier.as_str().strip_prefix(base))
+      .map(|relative| format!("deno-compile-internal:///{}", relative))
+      .unwrap_or_else(|| specifier.to_string())
   }
 
   pub fn for_deno_core(self: Arc<Self>) -> Arc<dyn CodeCache> {
@@ -111,7 +155,11 @@ impl CodeCache for DenoCompileCodeCache {
         if strategy.is_finished.is_raised() {
           return None;
         }
-        strategy.take_from_cache(specifier, code_cache_type, source_hash)
+        strategy.take_from_cache(
+          &self.specifier_key(specifier),
+          code_cache_type,
+          source_hash,
+        )
       }
     }
   }
@@ -129,10 +177,11 @@ impl CodeCache for DenoCompileCodeCache {
           return;
         }
 
+        let specifier = self.specifier_key(&specifier);
         let data_to_serialize = {
           let mut data = strategy.data.lock();
           data.cache.insert(
-            (specifier.to_string(), code_cache_type),
+            (specifier, code_cache_type),
             DenoCompileCodeCacheEntry {
               source_hash,
               data: bytes.to_vec(),
@@ -211,7 +260,7 @@ struct SubsequentRunCodeCacheStrategy {
 impl SubsequentRunCodeCacheStrategy {
   fn take_from_cache(
     &self,
-    specifier: &Url,
+    specifier: &str,
     code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>> {
@@ -259,22 +308,31 @@ fn serialize_with_writer<T: Write>(
   cache_key: u64,
   cache: &HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>,
 ) -> Result<(), AnyError> {
+  // The external cache did not need stable ordering, but embedded cache bytes
+  // become part of the compiled executable. Sort them so identical inputs do
+  // not produce different executables because of HashMap randomization.
+  let mut entries = cache.iter().collect::<Vec<_>>();
+  entries.sort_unstable_by(
+    |((specifier_a, type_a), _), ((specifier_b, type_b), _)| {
+      specifier_a.cmp(specifier_b).then_with(|| {
+        code_cache_type_byte(type_a).cmp(&code_cache_type_byte(type_b))
+      })
+    },
+  );
+
   // header
   writer.write_all(&cache_key.to_le_bytes())?;
   writer.write_all(&(cache.len() as u32).to_le_bytes())?;
   // lengths of each entry
-  for ((specifier, _), entry) in cache {
+  for ((specifier, _), entry) in &entries {
     let len: u64 =
       entry.data.len() as u64 + specifier.len() as u64 + 1 + 4 + 8 + 8;
     writer.write_all(&len.to_le_bytes())?;
   }
   // entries
-  for ((specifier, code_cache_type), entry) in cache {
+  for ((specifier, code_cache_type), entry) in entries {
     writer.write_all(&entry.data)?;
-    writer.write_all(&[match code_cache_type {
-      CodeCacheType::EsModule => 0,
-      CodeCacheType::Script => 1,
-    }])?;
+    writer.write_all(&[code_cache_type_byte(code_cache_type)])?;
     writer.write_all(specifier.as_bytes())?;
     writer.write_all(&(specifier.len() as u32).to_le_bytes())?;
     writer.write_all(&entry.source_hash.to_le_bytes())?;
@@ -289,6 +347,13 @@ fn serialize_with_writer<T: Write>(
   Ok(())
 }
 
+fn code_cache_type_byte(code_cache_type: &CodeCacheType) -> u8 {
+  match code_cache_type {
+    CodeCacheType::EsModule => 0,
+    CodeCacheType::Script => 1,
+  }
+}
+
 fn deserialize(
   file_path: &Path,
   expected_cache_key: u64,
@@ -296,6 +361,13 @@ fn deserialize(
   let cache_file = std::fs::File::open(file_path)?;
   let mut reader = BufReader::new(cache_file);
   deserialize_with_reader(&mut reader, expected_cache_key)
+}
+
+fn deserialize_bytes(
+  bytes: &[u8],
+  expected_cache_key: u64,
+) -> Result<HashMap<CodeCacheKey, DenoCompileCodeCacheEntry>, AnyError> {
+  deserialize_with_reader(&mut BufReader::new(bytes), expected_cache_key)
 }
 
 fn deserialize_with_reader<T: Read>(
@@ -445,6 +517,117 @@ mod test {
   }
 
   #[test]
+  fn embedded_code_cache() {
+    let cache_key = 1234;
+    let url = Url::parse("https://deno.land/embedded.js").unwrap();
+    let cache = HashMap::from([(
+      (url.to_string(), CodeCacheType::EsModule),
+      DenoCompileCodeCacheEntry {
+        source_hash: 42,
+        data: vec![1, 2, 3],
+      },
+    )]);
+    let mut buffer = Vec::new();
+    serialize_with_writer(&mut BufWriter::new(&mut buffer), cache_key, &cache)
+      .unwrap();
+
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("unused-cache.bin").to_path_buf();
+    let code_cache = DenoCompileCodeCache::new(
+      file_path.clone(),
+      cache_key,
+      Some(&buffer),
+      None,
+    );
+
+    assert_eq!(
+      code_cache.get_sync(&url, CodeCacheType::EsModule, 42),
+      Some(vec![1, 2, 3])
+    );
+    assert!(!file_path.exists());
+  }
+
+  #[test]
+  fn embedded_code_cache_is_independent_of_executable_name() {
+    let cache_key = 1234;
+    let generation_base =
+      Url::parse("file:///tmp/deno-compile-code-cache-generator/").unwrap();
+    let final_base =
+      Url::parse("file:///tmp/deno-compile-production-binary/").unwrap();
+    let generation_url = generation_base.join("main.js").unwrap();
+    let final_url = final_base.join("main.js").unwrap();
+    let temp_dir = TempDir::new();
+    let generated_path =
+      temp_dir.path().join("generated-cache.bin").to_path_buf();
+
+    let generator = DenoCompileCodeCache::new(
+      generated_path.clone(),
+      cache_key,
+      None,
+      Some(&generation_base),
+    );
+    assert_eq!(
+      generator.get_sync(&generation_url, CodeCacheType::EsModule, 42),
+      None
+    );
+    generator.set_sync(generation_url, CodeCacheType::EsModule, 42, &[1, 2, 3]);
+
+    let bytes = std::fs::read(generated_path).unwrap();
+    let embedded = DenoCompileCodeCache::new(
+      temp_dir.path().join("unused-cache.bin").to_path_buf(),
+      cache_key,
+      Some(&bytes),
+      Some(&final_base),
+    );
+    assert_eq!(
+      embedded.get_sync(&final_url, CodeCacheType::EsModule, 42),
+      Some(vec![1, 2, 3])
+    );
+  }
+
+  #[test]
+  fn serialization_is_deterministic() {
+    let entry = |index: u8| {
+      (
+        (format!("file:///{}.js", index), CodeCacheType::EsModule),
+        DenoCompileCodeCacheEntry {
+          source_hash: index as u64,
+          data: vec![index],
+        },
+      )
+    };
+    let forward = (0..8).map(entry).collect::<HashMap<_, _>>();
+    let reverse = (0..8).rev().map(entry).collect::<HashMap<_, _>>();
+    let mut forward_bytes = Vec::new();
+    let mut reverse_bytes = Vec::new();
+
+    serialize_with_writer(
+      &mut BufWriter::new(&mut forward_bytes),
+      1234,
+      &forward,
+    )
+    .unwrap();
+    serialize_with_writer(
+      &mut BufWriter::new(&mut reverse_bytes),
+      1234,
+      &reverse,
+    )
+    .unwrap();
+
+    assert_eq!(forward_bytes, reverse_bytes);
+    let positions = (0..8)
+      .map(|index| {
+        let specifier = format!("file:///{}.js", index);
+        forward_bytes
+          .windows(specifier.len())
+          .position(|window| window == specifier.as_bytes())
+          .unwrap()
+      })
+      .collect::<Vec<_>>();
+    assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+  }
+
+  #[test]
   fn serialize_deserialize_corrupt() {
     let buffer = "corrupttestingtestingtesting".as_bytes().to_vec();
     let err = deserialize_with_reader(&mut BufReader::new(&buffer[..]), 1234)
@@ -460,7 +643,8 @@ mod test {
     let url2 = Url::parse("https://deno.land/example2.js").unwrap();
     // first run
     {
-      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);
+      let code_cache =
+        DenoCompileCodeCache::new(file_path.clone(), 1234, None, None);
       assert!(
         code_cache
           .get_sync(&url1, CodeCacheType::EsModule, 0)
@@ -481,7 +665,8 @@ mod test {
     }
     // second run
     {
-      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);
+      let code_cache =
+        DenoCompileCodeCache::new(file_path.clone(), 1234, None, None);
       assert!(code_cache.enabled());
       let result1 = code_cache
         .get_sync(&url1, CodeCacheType::EsModule, 0)
@@ -497,7 +682,8 @@ mod test {
 
     // new cache key first run
     {
-      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 54321);
+      let code_cache =
+        DenoCompileCodeCache::new(file_path.clone(), 54321, None, None);
       assert!(
         code_cache
           .get_sync(&url1, CodeCacheType::EsModule, 0)
@@ -513,7 +699,8 @@ mod test {
     }
     // new cache key second run
     {
-      let code_cache = DenoCompileCodeCache::new(file_path.clone(), 54321);
+      let code_cache =
+        DenoCompileCodeCache::new(file_path.clone(), 54321, None, None);
       let result1 = code_cache
         .get_sync(&url1, CodeCacheType::EsModule, 0)
         .unwrap();

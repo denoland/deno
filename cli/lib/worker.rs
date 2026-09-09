@@ -997,6 +997,24 @@ impl LibMainWorker {
     Ok(())
   }
 
+  /// Compile and instantiate the standalone startup graph (preload/require
+  /// modules plus the statically reachable main graph) without evaluating user
+  /// code. `deno compile --include-code-cache` uses this in a temporary
+  /// executable to ask V8 for cache data without running the application.
+  pub async fn generate_code_cache(&mut self) -> Result<(), CoreError> {
+    for preload_module_url in self.preload_modules.iter() {
+      self.worker.preload_side_module(preload_module_url).await?;
+    }
+    for require_module_url in self.require_modules.iter() {
+      self.worker.preload_side_module(require_module_url).await?;
+    }
+    self.worker.preload_main_module(&self.main_module).await?;
+    // Module compilation queues code-cache callbacks on the module map. Drive
+    // the event loop once so every callback reaches the cache collector.
+    self.worker.run_event_loop(false).await?;
+    Ok(())
+  }
+
   /// The "load phase": run any preload/require modules, then load and
   /// first-evaluate the main module and fire the `load` event. This is
   /// everything that happens before the steady-state event loop begins.
