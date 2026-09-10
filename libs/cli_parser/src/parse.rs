@@ -187,9 +187,16 @@ fn parse_args(
         continue;
       }
 
-      result.trailing.push(arg.clone());
-      i += 1;
-      continue;
+      if cmd_def.trailing_var_arg {
+        result.trailing.push(arg.clone());
+        i += 1;
+        continue;
+      }
+
+      return Err(CliError::new(
+        CliErrorKind::UnexpectedPositional,
+        format!("unexpected argument '{arg}'"),
+      ));
     }
 
     // After `--`, everything is trailing
