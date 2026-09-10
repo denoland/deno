@@ -1,0 +1,7 @@
+{
+  "name": "invalid-alias-test",
+  "version": "1.0.0",
+  "dependencies": {
+    "../outside": "file:./localpkg"
+  }
+}
