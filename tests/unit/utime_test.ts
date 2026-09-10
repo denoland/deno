@@ -338,3 +338,71 @@ Deno.test(
     }, Deno.errors.NotCapable);
   },
 );
+
+// utime does not follow a terminal symlink: the permission check is performed
+// no-follow, so a symlink at an allowed path must not be usable to change the
+// timestamps of a file it points to. The op opens the path with O_NOFOLLOW and
+// fails with FilesystemLoop (ELOOP) on a symlink target, leaving the target's
+// timestamps untouched.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function utimeSyncDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    Deno.writeFileSync(target, new Uint8Array([1, 2, 3]));
+    const before = Deno.lstatSync(target).mtime!;
+    Deno.symlinkSync(target, link);
+
+    assertThrows(
+      () => Deno.utimeSync(link, 1000, 1000),
+      Deno.errors.FilesystemLoop,
+    );
+    assertEquals(Deno.lstatSync(target).mtime!.getTime(), before.getTime());
+  },
+);
+
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function utimeDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    await Deno.writeFile(target, new Uint8Array([1, 2, 3]));
+    const before = Deno.lstatSync(target).mtime!;
+    await Deno.symlink(target, link);
+
+    await assertRejects(
+      () => Deno.utime(link, 1000, 1000),
+      Deno.errors.FilesystemLoop,
+    );
+    assertEquals(Deno.lstatSync(target).mtime!.getTime(), before.getTime());
+  },
+);
+
+// O_NOFOLLOW only protects the final path component. A regular file reached
+// through a symlinked ancestor directory can still have its timestamps set.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function utimeSyncFollowsIntermediateSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const realDir = dir + "/real";
+    Deno.mkdirSync(realDir);
+    const file = realDir + "/data.txt";
+    Deno.writeFileSync(file, new Uint8Array([1, 2, 3]));
+    const linkDir = dir + "/linkdir";
+    Deno.symlinkSync(realDir, linkDir);
+
+    Deno.utimeSync(linkDir + "/data.txt", 1000, 1000);
+    assertEquals(Deno.statSync(file).mtime!.getTime(), 1000 * 1000);
+  },
+);
