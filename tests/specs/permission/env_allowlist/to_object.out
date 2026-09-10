@@ -1,0 +1,4 @@
+TERM present: true
+LANG present: true
+MY_APP_SECRET present: false
+APP_TOKEN present: false

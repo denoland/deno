@@ -1,0 +1,17 @@
+{
+  // A global `--deny-env` neutralizes the default allowlist, but internal
+  // color/terminal detection must still not throw (it reads via a
+  // permission-free op). See ext/node/polyfills/internal/util/colorize.mjs and
+  // internal/tty.js.
+  "args": "run --deny-env main.ts",
+  "envs": {
+    "FORCE_COLOR": "1",
+    "TERM": "xterm-256color",
+    "SOME_SECRET": "shhh",
+    // Neutralize any ambient NO_COLOR / NODE_DISABLE_COLORS so the
+    // FORCE_COLOR deactivation warning is deterministic across environments.
+    "NO_COLOR": "",
+    "NODE_DISABLE_COLORS": ""
+  },
+  "output": "main.out"
+}
