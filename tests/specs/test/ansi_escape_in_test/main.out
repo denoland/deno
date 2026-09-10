@@ -2,6 +2,9 @@ Check [WILDCARD]main.ts
 running 1 test from ./main.ts
 ansi escape filtering ...
 ------- output -------
+c1 csi stripped
+c1 osc stripped
+c0 controls stripped
 [WILDCARD]red text[WILDCARD]
 [WILDCARD]bold green[WILDCARD]
 plain output
