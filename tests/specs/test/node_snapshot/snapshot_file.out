@@ -1,0 +1,17 @@
+exports[`multiple snapshots 1`] = `
+{
+  "a": 1,
+  "b": [
+    2,
+    3
+  ]
+}
+`;
+
+exports[`multiple snapshots 2`] = `
+"hello"
+`;
+
+exports[`suite of snapshot tests > snapshot test 1`] = `
+5
+`;
