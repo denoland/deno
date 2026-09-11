@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  // point npm at an unreachable registry so an actual attempt to install
+  // the uncached `@denotest/esm-basic` dependency fails the task; this
+  // pins the assertion on the implicit install not running at all, rather
+  // than on incidental output text.
+  "envs": { "NPM_CONFIG_REGISTRY": "http://localhost:1/" },
+  "args": "task run-cached",
+  "output": "task.out",
+  "exitCode": 0
+}
