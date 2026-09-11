@@ -1467,6 +1467,120 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile",
+  async fn() {
+    // A realistic profiling target keeps itself alive (here via a "message"
+    // listener) so the profile control round-trip completes.
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.on("message", () => {});
+      let x = 0;
+      for (let i = 0; i < 1e6; i++) x += i;
+      parentPort.postMessage(x);
+      `,
+      { eval: true },
+    );
+    await once(worker, "online");
+
+    const handle = await worker.startCpuProfile();
+    // `stop()` resolves with the profile as a JSON string, matching Node.js.
+    const raw = await handle.stop();
+    assertEquals(typeof raw, "string");
+    const profile = JSON.parse(raw);
+
+    assert(Array.isArray(profile.nodes), "profile has nodes array");
+    assert(Array.isArray(profile.samples), "profile has samples array");
+    assert(Array.isArray(profile.timeDeltas), "profile has timeDeltas array");
+    assertEquals(typeof profile.startTime, "number");
+    assertEquals(typeof profile.endTime, "number");
+
+    // Calling stop() again returns the same (already-resolved) promise.
+    const again = await handle.stop();
+    assertEquals(again, raw);
+
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile keeps worker alive",
+  async fn() {
+    // The worker registers no "message" listener and only a short-lived timer,
+    // so it would idle-terminate before stop() is called. An active CPU profile
+    // must keep it alive until stop() resolves.
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      setTimeout(() => {}, 100);
+      parentPort.postMessage("ready");
+      `,
+      { eval: true },
+    );
+    await once(worker, "online");
+
+    const handle = await worker.startCpuProfile();
+    // Wait past the worker's timer so it would normally idle-terminate here.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const profile = JSON.parse(await handle.stop());
+    assert(Array.isArray(profile.nodes), "profile has nodes array");
+
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] Worker.startCpuProfile rejects in-flight on exit",
+  async fn() {
+    const worker = new workerThreads.Worker("setInterval(() => {}, 1000);", {
+      eval: true,
+    });
+    await once(worker, "online");
+
+    // Terminate synchronously after starting the request, before the worker
+    // can reply: the in-flight promise must reject rather than hang.
+    const pending = worker.startCpuProfile();
+    await worker.terminate();
+    await assertRejects(
+      () => pending,
+      Error,
+      "Worker instance not running",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile after terminate rejects",
+  async fn() {
+    const worker = new workerThreads.Worker("/*noop*/", { eval: true });
+    await once(worker, "online");
+    await worker.terminate();
+
+    await assertRejects(
+      () => worker.startCpuProfile(),
+      Error,
+      "Worker instance not running",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile validates options",
+  async fn() {
+    const worker = new workerThreads.Worker("/*noop*/", { eval: true });
+    await once(worker, "online");
+
+    await assertRejects(
+      () => worker.startCpuProfile({ sampleInterval: -1 }),
+      RangeError,
+    );
+
+    await worker.terminate();
+  },
+});
+
 // Placed last: creating a Worker bumps the process-global threadId counter,
 // which the "Worker threadId" test above asserts absolute values for.
 Deno.test("[node/worker_threads] postMessage of non-serializable value throws", async () => {
