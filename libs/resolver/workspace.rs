@@ -1375,12 +1375,13 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     };
     let resolve_error = match resolve_result {
       Ok(mut resolved_specifier) => {
-        // Collapse redundant path segments (e.g. `//`) introduced by
-        // non-normalized specifiers like `.//a.js`. Without this, a cyclic
-        // import graph keeps producing distinct specifiers that accumulate
-        // slashes on every cycle and never dedupe, eventually exceeding the
-        // OS file name length limit.
-        collapse_redundant_file_specifier_segments(&mut resolved_specifier);
+        // Canonicalize the resolved `file:` specifier before it is fed to the
+        // sloppy-import probe below (which does filesystem lookups and can
+        // derive new specifiers from it). Collapsing redundant path segments
+        // (e.g. `//` from `.//a.js`) also stops a cyclic import graph from
+        // accumulating slashes on every cycle and never deduping, eventually
+        // exceeding the OS file name length limit.
+        normalize_resolved_file_specifier(&mut resolved_specifier);
         let mut used_compiler_options_root_dirs = false;
         let mut sloppy_reason = None;
         if let Some((probed_specifier, probed_sloppy_reason)) = self
@@ -1815,6 +1816,51 @@ fn collapse_redundant_file_specifier_segments(specifier: &mut Url) {
   *specifier = collapsed_specifier;
 }
 
+/// Canonicalizes a resolved `file:` specifier so that specifiers pointing at the
+/// same file produce byte-identical URLs. Module identity and config-derived
+/// prefix matching (package.json dep folders, workspace member import map
+/// scopes) are string comparisons, so a specifier that differs only in
+/// redundant path separators or drive-letter casing must be normalized before
+/// it becomes a module URL / referrer. Idempotent, so it is safe to apply at
+/// more than one resolution layer.
+pub(crate) fn normalize_resolved_file_specifier(specifier: &mut Url) {
+  if specifier.scheme() != "file" {
+    return;
+  }
+  // Uppercase the drive letter before collapsing so the collapse round-trip
+  // (which goes through a Windows `PathBuf`) operates on the canonical form.
+  if cfg!(windows) {
+    normalize_windows_drive_letter_casing(specifier);
+  }
+  collapse_redundant_file_specifier_segments(specifier);
+}
+
+/// Uppercases a lowercased Windows drive letter in a `file:` URL
+/// (`file:///d:/foo` becomes `file:///D:/foo`).
+///
+/// This must only be applied when running on Windows: on other operating
+/// systems a path like `/d:/foo` is a regular directory named `d:` whose
+/// casing is significant.
+fn normalize_windows_drive_letter_casing(url: &mut Url) {
+  if url.scheme() != "file" {
+    return;
+  }
+  let path = url.path();
+  let bytes = path.as_bytes();
+  if bytes.len() >= 3
+    && bytes[0] == b'/'
+    && bytes[1].is_ascii_lowercase()
+    && bytes[2] == b':'
+    && (bytes.len() == 3 || bytes[3] == b'/')
+  {
+    let mut new_path = String::with_capacity(path.len());
+    new_path.push('/');
+    new_path.push(bytes[1].to_ascii_uppercase() as char);
+    new_path.push_str(&path[2..]);
+    url.set_path(&new_path);
+  }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolverImportMap<'a> {
   #[serde(borrow)]
@@ -2200,6 +2246,53 @@ mod test {
       collapse("file:///C:/a//b.js?foo=1#bar"),
       "file:///C:/a/b.js?foo=1#bar"
     );
+  }
+
+  #[test]
+  fn test_normalize_windows_drive_letter_casing() {
+    fn normalize(input: &str) -> String {
+      let mut url = Url::parse(input).unwrap();
+      normalize_windows_drive_letter_casing(&mut url);
+      url.to_string()
+    }
+
+    // lowercased drive letters are uppercased
+    assert_eq!(normalize("file:///d:/foo/bar.ts"), "file:///D:/foo/bar.ts");
+    assert_eq!(normalize("file:///c:"), "file:///C:");
+    assert_eq!(normalize("file:///c:/"), "file:///C:/");
+    // the query string and fragment survive
+    assert_eq!(
+      normalize("file:///d:/a.ts?foo=1#bar"),
+      "file:///D:/a.ts?foo=1#bar"
+    );
+    // an already uppercased drive letter is left as is
+    assert_eq!(normalize("file:///D:/foo/bar.ts"), "file:///D:/foo/bar.ts");
+    // not drive letters
+    assert_eq!(normalize("file:///dir/foo.ts"), "file:///dir/foo.ts");
+    assert_eq!(normalize("file:///dd:/foo.ts"), "file:///dd:/foo.ts");
+    assert_eq!(normalize("file:///d:foo.ts"), "file:///d:foo.ts");
+    assert_eq!(normalize("file:///"), "file:///");
+    // non file urls are left as is
+    assert_eq!(
+      normalize("https://example.com/d:/foo"),
+      "https://example.com/d:/foo"
+    );
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn normalize_resolved_file_specifier_combines_both_windows() {
+    fn normalize(url: &str) -> String {
+      let mut specifier = Url::parse(url).unwrap();
+      normalize_resolved_file_specifier(&mut specifier);
+      specifier.to_string()
+    }
+
+    // Both the lowercased drive letter and the redundant separators are fixed
+    // in a single pass on Windows.
+    assert_eq!(normalize("file:///d:/a//b.js"), "file:///D:/a/b.js");
+    // Idempotent: an already-canonical specifier is returned unchanged.
+    assert_eq!(normalize("file:///D:/a/b.js"), "file:///D:/a/b.js");
   }
 
   #[test]
