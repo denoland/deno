@@ -427,6 +427,10 @@ impl<
     self.in_npm_pkg_checker.in_npm_package(specifier)
   }
 
+  pub fn pkg_json_resolver(&self) -> &PackageJsonResolverRc<TSys> {
+    &self.pkg_json_resolver
+  }
+
   #[inline(always)]
   pub fn is_builtin_node_module(&self, specifier: &str) -> bool {
     self

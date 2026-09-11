@@ -31,6 +31,7 @@ use url::Url;
 use crate::DenoResolveError;
 use crate::DenoResolverSys;
 use crate::RawDenoResolverRc;
+use crate::WorkspaceResolverRc;
 use crate::cjs::CjsTracker;
 use crate::deno_json::JsxImportSourceConfigResolver;
 use crate::npm;
@@ -270,6 +271,10 @@ impl<
       warned_pkgs: Default::default(),
       on_warning,
     }
+  }
+
+  pub fn workspace_resolver(&self) -> &WorkspaceResolverRc<TSys> {
+    self.resolver.workspace_resolver()
   }
 
   pub fn resolve_with_graph(
