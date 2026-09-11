@@ -13,7 +13,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::RwLock;
-use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -51,7 +50,6 @@ use super::client::Client;
 use super::config::ConfigWatchedFileType;
 use super::documents::Document;
 use super::documents::DocumentModule;
-use super::documents::DocumentModules;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -367,102 +365,6 @@ impl<'a> From<&'a crate::tsc::Position> for lsp::Position {
       character: pos.character as u32,
     }
   }
-}
-
-fn get_diagnostic_message(diagnostic: &crate::tsc::Diagnostic) -> String {
-  if let Some(message) = diagnostic.message_text.clone() {
-    message
-  } else if let Some(message_chain) = diagnostic.message_chain.clone() {
-    message_chain.format_message(0)
-  } else {
-    "[missing message]".to_string()
-  }
-}
-
-fn to_lsp_range(
-  start: &crate::tsc::Position,
-  end: &crate::tsc::Position,
-) -> lsp::Range {
-  lsp::Range {
-    start: start.into(),
-    end: end.into(),
-  }
-}
-
-fn to_lsp_related_information(
-  related_information: &Option<Vec<crate::tsc::Diagnostic>>,
-  module: &DocumentModule,
-  document_modules: &DocumentModules,
-) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
-  related_information.as_ref().map(|related| {
-    related
-      .iter()
-      .filter_map(|ri| {
-        if let (Some(file_name), Some(start), Some(end)) =
-          (&ri.file_name, &ri.start, &ri.end)
-        {
-          let uri = resolve_url(file_name)
-            .ok()
-            .and_then(|s| {
-              document_modules.module_for_specifier(
-                &s,
-                module.scope.as_deref(),
-                Some(&module.compiler_options_key),
-              )
-            })
-            .map(|m| m.uri.as_ref().clone())
-            .unwrap_or_else(|| Uri::from_str("unknown:").unwrap());
-          Some(lsp::DiagnosticRelatedInformation {
-            location: lsp::Location {
-              uri,
-              range: to_lsp_range(start, end),
-            },
-            message: get_diagnostic_message(ri),
-          })
-        } else {
-          None
-        }
-      })
-      .collect()
-  })
-}
-
-pub fn ts_json_to_diagnostics(
-  diagnostics: Vec<crate::tsc::Diagnostic>,
-  module: &DocumentModule,
-  document_modules: &DocumentModules,
-) -> Vec<lsp::Diagnostic> {
-  diagnostics
-    .iter()
-    .filter_map(|d| {
-      if let (Some(start), Some(end)) = (&d.start, &d.end) {
-        Some(lsp::Diagnostic {
-          range: to_lsp_range(start, end),
-          severity: Some((&d.category).into()),
-          code: Some(lsp::NumberOrString::Number(d.code as i32)),
-          code_description: None,
-          source: Some(DiagnosticSource::Ts.as_lsp_source().to_string()),
-          message: get_diagnostic_message(d),
-          related_information: to_lsp_related_information(
-            &d.related_information,
-            module,
-            document_modules,
-          ),
-          tags: match d.code {
-            // These are codes that indicate the variable is unused.
-            2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
-            | 7028 => Some(vec![lsp::DiagnosticTag::UNNECESSARY]),
-            // These are codes that indicated the variable is deprecated.
-            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::DEPRECATED]),
-            _ => None,
-          },
-          data: None,
-        })
-      } else {
-        None
-      }
-    })
-    .collect()
 }
 
 /// Generates lint diagnostics for a module, caching them on the module
@@ -2216,14 +2118,12 @@ mod tests {
     (
       temp_dir,
       StateSnapshot {
-        project_version: 0,
         document_modules,
         config: Arc::new(config),
         compiler_options_resolver,
         linter_resolver,
         resolver,
         cache: Arc::new(cache),
-        client_needs_file_uris_for_virtual_documents: false,
       },
     )
   }

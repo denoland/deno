@@ -15,7 +15,6 @@ use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::CompilerOptionsType;
 use deno_resolver::deno_json::JsxImportSourceConfig;
-use deno_resolver::deno_json::TsConfigFile;
 use deno_resolver::deno_json::get_base_compiler_options_for_emit;
 
 use crate::lsp::config::Config;
@@ -28,13 +27,9 @@ use crate::util::fs::collect_specifiers;
 
 #[derive(Debug, Clone)]
 pub struct LspCompilerOptionsData {
-  pub workspace_dir_or_source_url: Option<Arc<Url>>,
   pub compiler_options: Arc<CompilerOptions>,
-  pub compiler_options_types: Arc<Vec<(Url, Vec<String>)>>,
   pub skip_lib_check: bool,
   pub jsx_import_source_config: Option<Arc<JsxImportSourceConfig>>,
-  pub ts_config_files: Option<(Arc<Url>, Vec<TsConfigFile>)>,
-  pub ts_config_roots: Arc<Vec<Url>>,
   watched_files: HashSet<Arc<Url>>,
 }
 
@@ -89,7 +84,7 @@ impl LspCompilerOptionsResolver {
     previous_roots_cache: &HashMap<FilePatterns, Arc<Vec<Url>>>,
   ) -> Self {
     let mut ts_config_roots_cache = HashMap::new();
-    let ts_config_roots = inner
+    let _ts_config_roots = inner
       .ts_config_file_patterns()
       .filter_map(|(key, file_patterns)| {
         if let Some(roots) = previous_roots_cache.get(&file_patterns) {
@@ -115,15 +110,10 @@ impl LspCompilerOptionsResolver {
       .collect::<BTreeMap<_, _>>();
     let data = inner
       .entries()
-      .map(|(k, d, f)| {
-        let ts_config_roots =
-          ts_config_roots.get(&k).cloned().unwrap_or_default();
+      .map(|(k, d, _f)| {
         (
           k,
           LspCompilerOptionsData {
-            workspace_dir_or_source_url: d
-              .workspace_dir_or_source_url()
-              .cloned(),
             compiler_options: d
               .compiler_options_for_lib(TsTypeLib::DenoWindow)
               .inspect_err(|err| {
@@ -139,7 +129,6 @@ impl LspCompilerOptionsResolver {
                   d.source_kind,
                 ))
               }),
-            compiler_options_types: d.compiler_options_types().clone(),
             skip_lib_check: d.skip_lib_check(),
             jsx_import_source_config: d
               .jsx_import_source_config()
@@ -149,8 +138,6 @@ impl LspCompilerOptionsResolver {
               .ok()
               .flatten()
               .cloned(),
-            ts_config_files: f.map(|(r, f)| (r.clone(), f.clone())),
-            ts_config_roots,
             watched_files: d
               .sources
               .iter()
@@ -197,12 +184,6 @@ impl LspCompilerOptionsResolver {
     key: &CompilerOptionsKey,
   ) -> Option<&LspCompilerOptionsData> {
     self.data.get(key)
-  }
-
-  pub fn entries(
-    &self,
-  ) -> impl Iterator<Item = (&CompilerOptionsKey, &LspCompilerOptionsData)> {
-    self.data.iter()
   }
 
   pub fn is_watched_file(&self, specifier: &Url) -> bool {
