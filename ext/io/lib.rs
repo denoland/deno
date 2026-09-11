@@ -1528,12 +1528,11 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
         &file_info.BasicInformation.ChangeTime,
       ));
 
-      if file_info.BasicInformation.FileAttributes
-        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
-        != 0
-      {
-        fsstat.is_symlink = true;
-      }
+      // note: `is_symlink` is intentionally not set here. Not every reparse
+      // point is a symlink (ex. app execution aliases, cloud file
+      // placeholders, WOF compressed files) and `FsStat::from_std` already
+      // reports the ones that are, by checking the reparse tag instead of
+      // only the attribute.
 
       if file_info.BasicInformation.FileAttributes
         & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY
