@@ -1216,8 +1216,8 @@ fn eval_double_dash_before_code() {
 
 #[test]
 fn upgrade_double_dash_rejects_extra_positional() {
-  let err = parse(&TEST_ROOT, &svec!["deno", "upgrade", "--", "v1", "v2"])
-    .unwrap_err();
+  let err =
+    parse(&TEST_ROOT, &svec!["deno", "upgrade", "--", "v1", "v2"]).unwrap_err();
   assert!(matches!(err.kind, CliErrorKind::UnexpectedPositional));
 }
 
