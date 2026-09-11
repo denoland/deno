@@ -204,6 +204,32 @@ impl IpcJsonStreamResource {
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_with_optional_fd(&mut write_half, msg, raw_fd).await
   }
+
+  /// Try to write as much of `msg` as the kernel will accept synchronously,
+  /// without going through Tokio's async readiness machinery. Returns the
+  /// number of bytes written, which may be 0 (lock contended, kernel buffer
+  /// full, or a platform without `try_write` support) or a short count. The
+  /// caller must write any remaining bytes (`msg[n..]`) via the async path;
+  /// because the sync and async writes never overlap, no bytes are
+  /// duplicated regardless of payload size.
+  ///
+  /// This is used to avoid losing IPC messages when the user calls
+  /// `process.send(...)` immediately followed by `process.exit(...)`: with
+  /// only the async path, the write future is created but never polled
+  /// before the runtime terminates, and the message is dropped. A
+  /// non-blocking kernel write (which almost always accepts the whole
+  /// message for typical IPC payloads, since socket buffers are tens of
+  /// KiB) puts the bytes in the kernel buffer synchronously, so the parent
+  /// receives them even if the child terminates the moment it returns.
+  pub fn try_write_msg_bytes(self: &Rc<Self>, msg: &[u8]) -> usize {
+    let Some(write_half) = RcRef::map(self, |r| &r.write_half).try_borrow_mut()
+    else {
+      // Another writer holds the lock — fall back to async to preserve
+      // ordering.
+      return 0;
+    };
+    write_half.try_write(msg).unwrap_or(0)
+  }
 }
 
 // Initial capacity of the buffered reader and the JSON backing buffer.
@@ -468,6 +494,15 @@ impl IpcAdvancedStreamResource {
   ) -> Result<(), io::Error> {
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_with_optional_fd(&mut write_half, msg, raw_fd).await
+  }
+
+  /// See [`IpcJsonStreamResource::try_write_msg_bytes`].
+  pub fn try_write_msg_bytes(self: &Rc<Self>, msg: &[u8]) -> usize {
+    let Some(write_half) = RcRef::map(self, |r| &r.write_half).try_borrow_mut()
+    else {
+      return 0;
+    };
+    write_half.try_write(msg).unwrap_or(0)
   }
 }
 
