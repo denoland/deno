@@ -883,6 +883,14 @@ fn run_double_dash_trailing() {
 }
 
 #[test]
+fn run_double_dash_before_script() {
+  let r =
+    parse(&TEST_ROOT, &svec!["deno", "run", "--", "-echo.ts", "arg1"]).unwrap();
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["arg1"]);
+}
+
+#[test]
 fn global_flags_before_subcommand() {
   let r = parse(
     &TEST_ROOT,
@@ -1196,6 +1204,24 @@ fn eval_print() {
 }
 
 #[test]
+fn eval_double_dash_before_code() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "eval", "--", "-1; console.log(0)", "arg1"],
+  )
+  .unwrap();
+  assert_eq!(r.get_one("code_arg"), Some("-1; console.log(0)"));
+  assert_eq!(r.trailing, vec!["arg1"]);
+}
+
+#[test]
+fn upgrade_double_dash_rejects_extra_positional() {
+  let err =
+    parse(&TEST_ROOT, &svec!["deno", "upgrade", "--", "v1", "v2"]).unwrap_err();
+  assert!(matches!(err.kind, CliErrorKind::UnexpectedPositional));
+}
+
+#[test]
 fn unknown_flag_error() {
   let err = parse(
     &TEST_ROOT,
@@ -1240,6 +1266,18 @@ fn default_subcommand_with_flags() {
   assert_eq!(r.subcommand.as_deref(), None);
   assert!(r.get_bool("allow-all"));
   assert_eq!(r.get_one("script_arg"), Some("script.ts"));
+}
+
+#[test]
+fn default_subcommand_double_dash_before_script() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "--", "-echo.ts", "--", "--debug"],
+  )
+  .unwrap();
+  assert_eq!(r.subcommand.as_deref(), None);
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["--", "--debug"]);
 }
 
 #[test]

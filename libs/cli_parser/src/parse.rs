@@ -119,6 +119,8 @@ fn parse_args(
   let mut i = 0;
   let mut positional_index = 0;
   let mut trailing_mode = false;
+  let mut positional_only = false;
+  let mut positional_started = false;
   let mut found_subcommand = skip_subcommand.is_none();
   let mut passthrough_from: Option<usize> = None;
   // Per-positional trailing: when set, ALL remaining args (including flags)
@@ -161,6 +163,42 @@ fn parse_args(
       continue;
     }
 
+    // After `--` before the first positional, consume positional values
+    // without interpreting leading hyphens as flags. Once the positional
+    // values are complete, the command's trailing arguments receive the rest.
+    if positional_only {
+      if let Some(pos_def) = positional_defs.get(positional_index) {
+        positional_started = true;
+        apply_value_with_delimiter(result, pos_def, arg)?;
+        i += 1;
+
+        match pos_def.num_args {
+          NumArgs::ZeroOrMore | NumArgs::OneOrMore => {}
+          _ => positional_index += 1,
+        }
+
+        if cmd_def.trailing_var_arg && positional_index >= positional_defs.len()
+        {
+          while i < args.len() {
+            result.trailing.push(args[i].clone());
+            i += 1;
+          }
+        }
+        continue;
+      }
+
+      if cmd_def.trailing_var_arg {
+        result.trailing.push(arg.clone());
+        i += 1;
+        continue;
+      }
+
+      return Err(CliError::new(
+        CliErrorKind::UnexpectedPositional,
+        format!("unexpected argument '{arg}'"),
+      ));
+    }
+
     // After `--`, everything is trailing
     if trailing_mode {
       result.trailing.push(arg.clone());
@@ -169,6 +207,12 @@ fn parse_args(
     }
 
     if arg == "--" {
+      if !positional_started && !positional_defs.is_empty() {
+        positional_only = true;
+        i += 1;
+        continue;
+      }
+
       // Check if the next positional has `trailing: true` - if so,
       // args after `--` go into that positional, not result.trailing.
       if let Some(next_pos) = positional_defs.get(positional_index)
@@ -213,6 +257,7 @@ fn parse_args(
     } else {
       // Positional argument
       if let Some(pos_def) = positional_defs.get(positional_index) {
+        positional_started = true;
         apply_value_with_delimiter(result, pos_def, arg)?;
 
         // If this positional has trailing: true, absorb everything
