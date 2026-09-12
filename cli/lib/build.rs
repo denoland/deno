@@ -17,6 +17,11 @@ fn main() {
     "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",
     &commit_hash[..7]
   );
+
+  // `version.rs` reads `DENO_CANARY` via `option_env!` to decide the release
+  // channel; track it so toggling the var (eg. CI canary builds) rebuilds this
+  // crate instead of reusing a cached build with the wrong channel.
+  println!("cargo:rerun-if-env-changed=DENO_CANARY");
 }
 
 fn git_commit_hash() -> String {
