@@ -6,12 +6,14 @@ import {
   connectQuic,
   webtransportAccept,
   webtransportConnect,
+  webtransportResetReason,
 } from "ext:deno_net/03_quic.js";
 const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 const {
   getReadableStreamResourceBacking,
+  transferResourceStreamOwnership,
   getWritableStreamResourceBacking,
   ReadableStream,
   readableStreamForRid,
@@ -519,27 +521,72 @@ async function upgradeWebTransport(conn) {
 }
 
 function readableStream(stream) {
-  return readableStreamForRid(
-    getReadableStreamResourceBacking(stream).rid,
-    false, // input stream already has cleanup
-    (...args) =>
-      ReflectConstruct(
-        WebTransportReceiveStream,
-        ArrayPrototypeConcat(args, [illegalConstructorKey, stream]),
-      ),
-  );
+  const backing = getReadableStreamResourceBacking(stream);
+  const onClose = transferResourceStreamOwnership(stream);
+  try {
+    return readableStreamForRid(
+      backing.rid,
+      true,
+      (...args) =>
+        ReflectConstruct(
+          WebTransportReceiveStream,
+          ArrayPrototypeConcat(args, [illegalConstructorKey, stream]),
+        ),
+      undefined,
+      onClose,
+    );
+  } catch (error) {
+    core.tryClose(backing.rid);
+    onClose?.();
+    throw error;
+  }
 }
 
 function writableStream(stream) {
-  return writableStreamForRid(
-    getWritableStreamResourceBacking(stream).rid,
-    false, // input stream already has cleanup
-    (...args) =>
-      ReflectConstruct(
-        WebTransportSendStream,
-        ArrayPrototypeConcat(args, [illegalConstructorKey, stream]),
-      ),
-  );
+  const backing = getWritableStreamResourceBacking(stream);
+  const onClose = transferResourceStreamOwnership(stream);
+  try {
+    return writableStreamForRid(
+      backing.rid,
+      true,
+      (...args) =>
+        ReflectConstruct(
+          WebTransportSendStream,
+          ArrayPrototypeConcat(args, [illegalConstructorKey, stream]),
+        ),
+      {
+        __proto__: null,
+        onShutdown: async () => {
+          const writer = stream.getWriter();
+          try {
+            await writer.close();
+          } finally {
+            writer.releaseLock();
+          }
+        },
+        onAbort: async (reason) => {
+          let code = 0n;
+          try {
+            code = getWebTransportErrorCode(reason) ?? 0n;
+          } catch {
+            // Non-WebTransportError reasons map to zero.
+          }
+
+          const writer = stream.getWriter();
+          try {
+            return await writer.abort(webtransportResetReason(BigInt(code)));
+          } finally {
+            writer.releaseLock();
+          }
+        },
+        onClose,
+      },
+    );
+  } catch (error) {
+    core.tryClose(backing.rid);
+    onClose?.();
+    throw error;
+  }
 }
 
 class WebTransportBidirectionalStream {
@@ -988,6 +1035,8 @@ class WebTransportSendGroup {
 webidl.configureInterface(WebTransportSendGroup);
 const WebTransportSendGroupPrototype = WebTransportSendGroup.prototype;
 
+let getWebTransportErrorCode;
+
 class WebTransportError extends DOMException {
   #source;
   #streamErrorCode;
@@ -1014,6 +1063,10 @@ class WebTransportError extends DOMException {
   get streamErrorCode() {
     webidl.assertBranded(this, WebTransportErrorPrototype);
     return this.#streamErrorCode;
+  }
+
+  static {
+    getWebTransportErrorCode = (error) => error.#streamErrorCode;
   }
 }
 webidl.configureInterface(WebTransportError);
