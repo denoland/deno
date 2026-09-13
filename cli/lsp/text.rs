@@ -59,6 +59,24 @@ impl LineIndex {
     }
   }
 
+  /// Given a 0-indexed line and a UTF-8 byte column within that line,
+  /// returns the corresponding LSP position (UTF-16 code units). Useful for
+  /// translating positions from APIs like `serde_json::Error`, which report
+  /// columns as UTF-8 byte offsets rather than UTF-16 code units.
+  pub fn position_utf16_from_utf8_line_col(
+    &self,
+    line: u32,
+    utf8_col: u32,
+  ) -> Option<lsp::Position> {
+    let lc = self
+      .inner
+      .utf16_position_from_utf8_line_col(line, utf8_col)?;
+    Some(lsp::Position {
+      line: lc.line_index as u32,
+      character: lc.column_index as u32,
+    })
+  }
+
   pub fn line_length_utf16(&self, line: u32) -> TextSize {
     self.inner.line_length_utf16(line)
   }
