@@ -3709,6 +3709,370 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "[node/http] unread request body does not block the next keep-alive request",
+  async () => {
+    const rejectedBody = "x".repeat(1024 * 1024);
+    const {
+      promise: serverDone,
+      resolve: resolveServer,
+      reject: rejectServer,
+    } = Promise.withResolvers<void>();
+    // The request can be destroyed during timeout cleanup after the server has
+    // already rejected the test, so keep that rejection observed.
+    serverDone.catch(() => {});
+    let firstSocket: Socket | undefined;
+    const server = http.createServer((req, res) => {
+      req.on("error", () => {});
+      res.on("error", () => {});
+      try {
+        if (req.url === "/reject") {
+          firstSocket = req.socket;
+          res.statusCode = 404;
+          res.end("rejected");
+        } else {
+          assertEquals(req.url, "/next");
+          assert(req.socket === firstSocket);
+          res.end("next");
+          resolveServer();
+        }
+      } catch (error) {
+        rejectServer(error);
+        res.destroy();
+      }
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, resolve);
+    });
+    const port = (server.address() as AddressInfo).port;
+    const agent = new http.Agent({ keepAlive: true });
+    let first: ReturnType<typeof http.request> | undefined;
+    let second: ReturnType<typeof http.request> | undefined;
+    const work = (async () => {
+      first = http.request({
+        agent,
+        host: "127.0.0.1",
+        port,
+        path: "/reject",
+        method: "POST",
+        headers: { "Content-Length": rejectedBody.length },
+      });
+      const firstResponsePromise = once(first, "response") as Promise<
+        [IncomingMessage]
+      >;
+      first.on("error", () => {});
+      first.end(rejectedBody);
+      const [firstResponse] = await firstResponsePromise;
+      assertEquals(firstResponse.statusCode, 404);
+      assertEquals(await text(firstResponse), "rejected");
+
+      second = http.request({
+        agent,
+        host: "127.0.0.1",
+        port,
+        path: "/next",
+      });
+      const secondResponsePromise = once(second, "response") as Promise<
+        [IncomingMessage]
+      >;
+      second.on("error", () => {});
+      second.end();
+      const [secondResponse] = await secondResponsePromise;
+      assertEquals(secondResponse.statusCode, 200);
+      assertEquals(await text(secondResponse), "next");
+      await serverDone;
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("keep-alive request timed out")),
+        3000,
+      );
+    });
+    try {
+      await Promise.race([work, timeout]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      first?.destroy();
+      second?.destroy();
+      agent.destroy();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] consumed request body survives pause and resume",
+  async () => {
+    const bodyPrefix = "prefix-".repeat(1024);
+    const bodyRemainder = "remainder-".repeat(4096);
+    const expected = bodyPrefix + bodyRemainder;
+    const expectedBytes = Buffer.byteLength(expected);
+    const clientResponseReceived = Promise.withResolvers<void>();
+    const serverResumed = Promise.withResolvers<void>();
+    const serverDone = Promise.withResolvers<void>();
+    // Cleanup may reject a server-side gate after the timeout has won the race.
+    serverDone.promise.catch(() => {});
+    serverResumed.promise.catch(() => {});
+    const failServer = (error: unknown) => {
+      serverDone.reject(error);
+      serverResumed.reject(error);
+    };
+    let bytesAtPause = 0;
+    let endCount = 0;
+    let clientRequest: ReturnType<typeof http.request> | undefined;
+    const server = http.createServer((req, res) => {
+      const chunks: Uint8Array[] = [];
+      let paused = false;
+      req.on("error", () => {});
+      res.on("error", () => {});
+      req.on("data", (chunk: Uint8Array) => {
+        try {
+          chunks.push(chunk);
+          if (!paused) {
+            paused = true;
+            bytesAtPause += chunk.length;
+            assert(bytesAtPause > 0);
+            assert(bytesAtPause < expectedBytes);
+            req.pause();
+            void clientResponseReceived.promise.then(() => {
+              req.resume();
+              serverResumed.resolve();
+            }).catch(failServer);
+            res.end("ok");
+          }
+        } catch (error) {
+          failServer(error);
+          req.destroy();
+          res.destroy();
+        }
+      });
+      req.on("end", () => {
+        try {
+          endCount++;
+          assertEquals(
+            new TextDecoder().decode(Buffer.concat(chunks)),
+            expected,
+          );
+          assertEquals(endCount, 1);
+          assertEquals(bytesAtPause > 0, true);
+          assertEquals(bytesAtPause < expectedBytes, true);
+          serverDone.resolve();
+        } catch (error) {
+          failServer(error);
+          req.destroy();
+          res.destroy();
+        }
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, resolve);
+    });
+    const port = (server.address() as AddressInfo).port;
+    const work = (async () => {
+      clientRequest = http.request({
+        host: "127.0.0.1",
+        port,
+        method: "POST",
+        headers: { "Content-Length": expectedBytes },
+      });
+      const responsePromise = once(clientRequest, "response") as Promise<
+        [IncomingMessage]
+      >;
+      clientRequest.on("error", () => {});
+      clientRequest.write(bodyPrefix);
+      const [response] = await responsePromise;
+      assertEquals(response.statusCode, 200);
+      clientResponseReceived.resolve();
+      await serverResumed.promise;
+      clientRequest.end(bodyRemainder);
+      assertEquals(await text(response), "ok");
+      await serverDone.promise;
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("request body timed out")),
+        3000,
+      );
+    });
+    try {
+      await Promise.race([work, timeout]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      clientRequest?.destroy();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] large consumed request survives pause and resume",
+  async () => {
+    const body = Buffer.alloc(1_000_000, "x");
+    const received: string[] = [];
+    const chunks: Uint8Array[] = [];
+    const responseDone = Promise.withResolvers<void>();
+    const bodyDone = Promise.withResolvers<void>();
+    const resumeGate = Promise.withResolvers<void>();
+    // Cleanup may reject a gate after the timeout has won the race.
+    responseDone.promise.catch(() => {});
+    bodyDone.promise.catch(() => {});
+    resumeGate.promise.catch(() => {});
+    let firstSocket: Socket | undefined;
+    let firstData = false;
+    let paused = false;
+    let resumed = false;
+    let bytesAtPause = 0;
+    let endCount = 0;
+
+    const fail = (error: unknown) => {
+      responseDone.reject(error);
+      bodyDone.reject(error);
+      resumeGate.reject(error);
+    };
+    const server = http.createServer((req, res) => {
+      req.on("error", () => {});
+      res.on("error", () => {});
+      received.push(req.url!);
+      if (req.url === "/pause") {
+        firstSocket = req.socket;
+        req.on("data", (chunk: Uint8Array) => {
+          try {
+            chunks.push(chunk);
+            if (!firstData) {
+              firstData = true;
+              bytesAtPause = Buffer.concat(chunks).length;
+              assert(bytesAtPause > 0);
+              assert(bytesAtPause < body.length);
+              paused = true;
+              req.pause();
+              void resumeGate.promise.then(() => {
+                req.resume();
+                resumed = true;
+              }).catch(fail);
+              res.writeHead(404, { "Content-Length": "2" });
+              res.end("OK");
+            }
+          } catch (error) {
+            fail(error);
+            req.destroy();
+            res.destroy();
+          }
+        });
+        req.on("end", () => {
+          try {
+            endCount++;
+            const actual = Buffer.concat(chunks);
+            assertEquals(actual.length, body.length);
+            assert(actual.equals(body));
+            bodyDone.resolve();
+          } catch (error) {
+            fail(error);
+            req.destroy();
+            res.destroy();
+          }
+        });
+      } else {
+        try {
+          assertEquals(req.url, "/next");
+          assert(req.socket === firstSocket);
+          res.writeHead(200, { "Content-Length": "2" });
+          res.end("OK");
+        } catch (error) {
+          fail(error);
+          res.destroy();
+        }
+      }
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, resolve);
+    });
+
+    const port = (server.address() as AddressInfo).port;
+    const socket = net.createConnection(port, "127.0.0.1");
+    const statuses: number[] = [];
+    const responseBodies: string[] = [];
+    let responseBuffer = Buffer.alloc(0);
+    socket.on("error", fail);
+    socket.on("data", (chunk: Uint8Array) => {
+      try {
+        responseBuffer = Buffer.concat([responseBuffer, Buffer.from(chunk)]);
+        while (true) {
+          const headerEnd = responseBuffer.indexOf("\r\n\r\n");
+          if (headerEnd < 0) return;
+          const header = responseBuffer.subarray(0, headerEnd).toString(
+            "ascii",
+          );
+          const status = /^HTTP\/1\.1 (\d+) /.exec(header);
+          const contentLength = /\r\nContent-Length: (\d+)/i.exec(header);
+          if (status === null || contentLength === null) return;
+          const length = Number(contentLength[1]);
+          const bodyStart = headerEnd + 4;
+          if (responseBuffer.length < bodyStart + length) return;
+          statuses.push(Number(status[1]));
+          responseBodies.push(
+            responseBuffer.subarray(bodyStart, bodyStart + length).toString(),
+          );
+          responseBuffer = responseBuffer.subarray(bodyStart + length);
+          if (statuses.length === 1) {
+            resumeGate.resolve();
+            socket.write(
+              "GET /next HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            );
+          } else {
+            responseDone.resolve();
+          }
+        }
+      } catch (error) {
+        fail(error);
+      }
+    });
+
+    const work = (async () => {
+      await once(socket, "connect");
+      socket.write(
+        Buffer.concat([
+          Buffer.from(
+            `POST /pause HTTP/1.1\r\nHost: localhost\r\nContent-Length: ${body.length}\r\n\r\n`,
+          ),
+          body,
+        ]),
+      );
+      await Promise.all([responseDone.promise, bodyDone.promise]);
+      assertEquals(received, ["/pause", "/next"]);
+      assertEquals(statuses, [404, 200]);
+      assertEquals(responseBodies, ["OK", "OK"]);
+      assertEquals(paused, true);
+      assertEquals(resumed, true);
+      assertEquals(endCount, 1);
+      assert(bytesAtPause > 0);
+      assert(bytesAtPause < body.length);
+    })();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("large request body timed out")),
+        3000,
+      );
+    });
+    try {
+      await Promise.race([work, timeout]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      socket.destroy();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
+
 // https://github.com/denoland/deno/issues/33567
 Deno.test(
   "[node/http] cancelling Readable.toWeb(req) does not destroy the socket",

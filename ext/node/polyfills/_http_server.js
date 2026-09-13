@@ -1254,7 +1254,11 @@ function resOnFinish(req, res, socket, state, server) {
 
   ArrayPrototypeShift(state.incoming);
 
-  if (!req._consuming && !req._readableState?.resumeScheduled) {
+  if (
+    !req._consuming &&
+    !req.readableDidRead &&
+    !req._readableState?.resumeScheduled
+  ) {
     req._dump();
   }
 
