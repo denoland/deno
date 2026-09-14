@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { randomFillSync, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  generatePrime,
+  generatePrimeSync,
+  randomFillSync,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
 import {
   assert,
@@ -54,4 +60,31 @@ Deno.test("[node/crypto.timingSafeEqual] RangeError on Buffer with different byt
   const b = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 212, 213, 0]);
 
   assertThrows(() => timingSafeEqual(a, b), RangeError);
+});
+
+Deno.test("[node/crypto.generatePrimeSync] size below 2 throws instead of aborting", () => {
+  // `num_bigint_dig` panics for `bit_size < 2`; with `panic = "abort"` that
+  // killed the whole process before this guard existed.
+  assertThrows(
+    () => generatePrimeSync(1),
+    Error,
+    "bignum routines::bits too small",
+  );
+});
+
+Deno.test("[node/crypto.generatePrime] size below 2 calls back with an error", async () => {
+  // Node reports this through the callback rather than throwing.
+  let threw = false;
+  const err = await new Promise<Error | null>((resolve) => {
+    try {
+      generatePrime(1, (e) => resolve(e));
+    } catch {
+      threw = true;
+      resolve(null);
+    }
+  });
+
+  assertEquals(threw, false);
+  assert(err instanceof Error);
+  assertEquals(err.message, "error:01800076:bignum routines::bits too small");
 });

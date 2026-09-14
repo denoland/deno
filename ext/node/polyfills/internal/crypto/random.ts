@@ -189,6 +189,19 @@ function generatePrime(
     options = {};
   }
   validateFunction(callback, "callback");
+  // Node reports a too-small bit count through the callback, not by throwing.
+  // Deno would hand the value to `num_bigint_dig`, which `panic!`s for
+  // `bit_size < 2`; with `panic = "abort"` that killed the whole process.
+  if (size < 2) {
+    callback?.(
+      new NodeError(
+        "ERR_OSSL_BN_BITS_TOO_SMALL",
+        "error:01800076:bignum routines::bits too small",
+      ),
+      null as unknown as ArrayBuffer,
+    );
+    return;
+  }
   const {
     bigint,
     safe,
@@ -212,6 +225,16 @@ function generatePrimeSync(
   size: number,
   options: any = { __proto__: null },
 ): ArrayBuffer | bigint {
+  validateInt32(size, "size", 1);
+  // `validateInt32` above only enforces >= 1, but `num_bigint_dig` panics for
+  // `bit_size < 2`; with `panic = "abort"` that killed the whole process.
+  // Node throws a catchable error here, so match it.
+  if (size < 2) {
+    throw new NodeError(
+      "ERR_OSSL_BN_BITS_TOO_SMALL",
+      "error:01800076:bignum routines::bits too small",
+    );
+  }
   const {
     bigint,
     safe,
