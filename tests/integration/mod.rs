@@ -47,6 +47,11 @@ mod jupyter;
 mod jupyter_client;
 #[path = "lsp_tests.rs"]
 mod lsp;
+// TODO(#36836): the napi tests build the test_napi crate, whose
+// libuv-sys-lite dependency has no pregenerated bindings for
+// windows-aarch64 and fails to compile there (bindgen on the
+// windows-11-arm runners produces unusable bindings).
+#[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
 #[path = "napi_tests.rs"]
 mod napi;
 #[path = "npm_tests.rs"]
