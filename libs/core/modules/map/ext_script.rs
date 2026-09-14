@@ -161,6 +161,10 @@ impl ModuleMap {
   /// instances each get their own copy. The duplicate `ModuleSource`s are
   /// deduplicated by `new_module_with_pending`'s `get_id` check at register
   /// time.
+  ///
+  /// The entry only has to survive until the module is registered — at that
+  /// point `create_module_info` drops it, so the source text isn't retained
+  /// for the life of the process.
   pub(crate) fn take_lazy_esm_source(
     &self,
     specifier: &str,

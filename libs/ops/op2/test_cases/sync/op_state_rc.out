@@ -98,7 +98,7 @@ const fn op_state_rc() -> ::deno_core::_ops::OpDecl {
                     .value() as *const deno_core::_ops::OpCtx)
             };
             let result = {
-                let arg0 = opctx.state.clone();
+                let arg0 = opctx.state().clone();
                 Self::call(arg0)
             };
             result as _
@@ -123,7 +123,7 @@ const fn op_state_rc() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
+            let opstate = opctx.state();
             let result = {
                 let arg0 = opstate.clone();
                 Self::call(arg0)
