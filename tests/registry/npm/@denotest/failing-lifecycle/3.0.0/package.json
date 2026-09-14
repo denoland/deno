@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/failing-lifecycle",
+  "version": "3.0.0",
+  "scripts": {
+    "postinstall": "echo deliberate failure && exit 1"
+  }
+}
