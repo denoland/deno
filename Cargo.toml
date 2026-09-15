@@ -83,7 +83,11 @@ members = [
 ]
 # tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
 # feature, which is incompatible with the "session" feature used by the rest of the workspace.
-exclude = ["tests/util/std/hash/_wasm", "tests/sqlite_extension"]
+exclude = [
+  "tests/util/std/hash/_wasm",
+  "tests/sqlite_extension",
+  "patches/libuv-sys-lite",
+]
 
 [workspace.package]
 authors = ["the Deno authors"]
@@ -636,3 +640,11 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# TODO(#36836): remove once libuv-sys-lite ships pregenerated
+# windows-aarch64 bindings. The vendored copy in patches/ is the published
+# 1.48.3 plus bindings_windows_aarch64.rs; without them the crate runs
+# bindgen at build time on windows-aarch64, and libclang on the
+# windows-11-arm CI runners generates unusable (opaque) bindings.
+[patch.crates-io]
+libuv-sys-lite = { path = "./patches/libuv-sys-lite" }

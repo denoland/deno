@@ -50,6 +50,8 @@ export async function checkCopyright() {
     // rust
     "*.rs",
     ":!:ops/optimizer_tests/**",
+    // vendored third-party crates
+    ":!:patches/**",
 
     // c
     "*.c",
