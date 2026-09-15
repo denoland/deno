@@ -40,6 +40,8 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
+use crate::tools::coverage::cover_files;
+use crate::tools::coverage::reporter::LcovCoverageReporter;
 use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
@@ -171,6 +173,8 @@ pub struct TestRun {
   /// `--env-file` paths inherited from the `test` task in deno.json. Resolved
   /// once at run construction so `get_args` doesn't depend on the config tree.
   test_task_env_files: Vec<PathBuf>,
+  /// Kept alive until the run has been reported, then removed automatically.
+  coverage_dir: Option<Arc<tempfile::TempDir>>,
 }
 
 impl TestRun {
@@ -187,6 +191,16 @@ impl TestRun {
 
     let test_task_env_files = collect_test_task_env_files(&queue, config_tree);
 
+    let coverage_dir =
+      (params.kind == lsp_custom::TestRunKind::Coverage).then(|| {
+        Arc::new(
+          tempfile::Builder::new()
+            .prefix("deno-lsp-coverage-")
+            .tempdir()
+            .expect("failed to create temporary coverage directory"),
+        )
+      });
+
     Self {
       id: params.id,
       kind: params.kind.clone(),
@@ -196,6 +210,7 @@ impl TestRun {
       token: CancellationToken::new(),
       workspace_settings,
       test_task_env_files,
+      coverage_dir,
     }
   }
 
@@ -270,7 +285,7 @@ impl TestRun {
         flags.log_level,
       );
     }
-    let factory = CliFactory::from_flags(flags);
+    let factory = CliFactory::from_flags(flags.clone());
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
     let main_graph_container = factory.main_module_graph_container().await?;
@@ -520,6 +535,15 @@ impl TestRun {
       join_result??;
     }
 
+    if let Some(coverage_dir) = &self.coverage_dir
+      && let Err(err) = self.report_coverage(flags, coverage_dir.path(), client)
+    {
+      // Coverage is supplementary test-run information. Keep the test result
+      // intact if a report cannot be produced (for example, no executable
+      // source was loaded by a selected test).
+      lsp_log!("Failed to generate test coverage: {err}");
+    }
+
     result??;
 
     Ok(())
@@ -561,6 +585,12 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    if let Some(coverage_dir) = &self.coverage_dir {
+      args.push(Cow::Owned(format!(
+        "--coverage={}",
+        coverage_dir.path().display()
+      )));
+    }
     // Inherit `--env-file` paths from the `test` task in deno.json when the
     // user hasn't already supplied one via `deno.testing.args`. Without this,
     // running tests from VSCode wouldn't see env vars that `deno task test`
@@ -586,6 +616,84 @@ impl TestRun {
     }
     args
   }
+
+  fn report_coverage(
+    &self,
+    flags: Arc<crate::args::Flags>,
+    coverage_dir: &std::path::Path,
+    client: &Client,
+  ) -> Result<(), AnyError> {
+    let lcov_path = coverage_dir.join("lcov.info");
+    let reporter = LcovCoverageReporter::new();
+    cover_files(
+      flags,
+      vec![coverage_dir.to_string_lossy().into_owned()],
+      vec![],
+      vec![],
+      vec![],
+      Some(lcov_path.to_string_lossy().into_owned()),
+      None,
+      &[&reporter],
+    )?;
+
+    let coverage = parse_lcov(&std::fs::read_to_string(lcov_path)?)?;
+    client.send_test_notification(TestingNotification::Progress(
+      lsp_custom::TestRunProgressParams {
+        id: self.id,
+        message: lsp_custom::TestRunProgressMessage::Coverage { coverage },
+      },
+    ));
+    Ok(())
+  }
+}
+
+/// Converts LCOV's one-based `DA` line records to the zero-based lines used
+/// by the LSP testing protocol.
+fn parse_lcov(input: &str) -> Result<Vec<lsp_custom::TestCoverage>, AnyError> {
+  let mut coverage = Vec::new();
+  let mut path = None;
+  let mut covered_lines = Vec::new();
+  let mut uncovered_lines = Vec::new();
+
+  let mut finish_record = |path: &mut Option<String>,
+                           covered_lines: &mut Vec<u32>,
+                           uncovered_lines: &mut Vec<u32>|
+   -> Result<(), AnyError> {
+    let Some(path) = path.take() else {
+      return Ok(());
+    };
+    let url = ModuleSpecifier::from_file_path(&path)
+      .map_err(|_| anyhow!("Invalid coverage source path: {path}"))?;
+    coverage.push(lsp_custom::TestCoverage {
+      text_document: lsp::TextDocumentIdentifier {
+        uri: url_to_uri(&url)?,
+      },
+      covered_lines: std::mem::take(covered_lines),
+      uncovered_lines: std::mem::take(uncovered_lines),
+    });
+    Ok(())
+  };
+
+  for line in input.lines() {
+    if let Some(path_value) = line.strip_prefix("SF:") {
+      path = Some(path_value.to_string());
+    } else if let Some(data) = line.strip_prefix("DA:") {
+      let Some((line_number, count)) = data.split_once(',') else {
+        continue;
+      };
+      let line_number: u32 = line_number.parse()?;
+      let count: u64 = count.parse()?;
+      if count == 0 {
+        uncovered_lines.push(line_number - 1);
+      } else {
+        covered_lines.push(line_number - 1);
+      }
+    } else if line == "end_of_record" {
+      finish_record(&mut path, &mut covered_lines, &mut uncovered_lines)?;
+    }
+  }
+  finish_record(&mut path, &mut covered_lines, &mut uncovered_lines)?;
+  Ok(coverage)
 }
 
 /// Walks each unique scope reached by the queued specifiers and harvests
@@ -1070,6 +1178,16 @@ mod tests {
 
   use super::*;
   use crate::lsp::testing::collectors::tests::new_range;
+
+  #[test]
+  fn test_parse_lcov() {
+    let coverage =
+      parse_lcov("SF:/coverage/a.ts\nDA:1,2\nDA:3,0\nend_of_record\n").unwrap();
+
+    assert_eq!(coverage.len(), 1);
+    assert_eq!(coverage[0].covered_lines, vec![0]);
+    assert_eq!(coverage[0].uncovered_lines, vec![2]);
+  }
 
   #[test]
   fn test_as_queue_and_filters() {
