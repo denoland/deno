@@ -449,7 +449,7 @@ memmap2 = "0.9"
 
 # napi
 libloading = "0.7"
-libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
+libuv-sys-lite = { version = "=1.48.4", features = ["dyn-symbols"] }
 napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
 # geometry
