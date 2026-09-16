@@ -764,7 +764,7 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
       format_js_error(e, initial_cwd.as_ref())
     }
-    None => format!("{error:?}"),
+    None => format!("{error:#}"),
   };
 
   // If this looks like a workspace/npm resolution failure and a
