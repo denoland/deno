@@ -1950,7 +1950,7 @@ Module.prototype.load = function (filename) {
         fileUrl = url.pathToFileURL(this.filename).href;
       }
       const context = {
-        format: "commonjs",
+        format: getLoadHookFormat(this.filename),
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
       };
@@ -2216,6 +2216,24 @@ function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
   module._compile(content, filename, format);
+}
+
+function getLoadHookFormat(filename) {
+  if (StringPrototypeEndsWith(filename, ".json")) return "json";
+  if (
+    StringPrototypeEndsWith(filename, ".mjs") ||
+    StringPrototypeEndsWith(filename, ".mts")
+  ) {
+    return "module";
+  }
+  if (
+    StringPrototypeEndsWith(filename, ".cjs") ||
+    StringPrototypeEndsWith(filename, ".cts")
+  ) {
+    return "commonjs";
+  }
+  if (StringPrototypeEndsWith(filename, ".wasm")) return "wasm";
+  return op_require_is_maybe_cjs(filename) ? "commonjs" : "module";
 }
 
 function loadCjs(module, filename) {

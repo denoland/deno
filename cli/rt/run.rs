@@ -32,6 +32,7 @@ use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::loader::as_deno_resolver_requested_module_type;
 use deno_lib::loader::loaded_module_source_to_module_source_code;
+use deno_lib::loader::module_format_from_requested_type;
 use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
@@ -910,9 +911,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
         original_specifier.as_str(),
         &options.requested_module_type,
       );
-      let receiver = self
-        .hook_registry
-        .push_load(original_specifier.to_string(), import_attributes);
+      let receiver = self.hook_registry.push_load(
+        original_specifier.to_string(),
+        module_format_from_requested_type(&options.requested_module_type),
+        import_attributes,
+      );
       let this = self.clone();
       let specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.cloned();

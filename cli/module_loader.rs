@@ -47,6 +47,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::WalkOptions;
 use deno_lib::loader::as_deno_resolver_requested_module_type;
 use deno_lib::loader::loaded_module_source_to_module_source_code;
+use deno_lib::loader::module_format_from_requested_type;
 use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
@@ -1469,7 +1470,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       );
       let receiver = self.0.hook_registry.push_load(
         specifier.to_string(),
-        hook_load_format(&options.requested_module_type),
+        module_format_from_requested_type(&options.requested_module_type),
         import_attributes,
       );
       return deno_core::ModuleLoadResponse::Async(
@@ -1997,18 +1998,6 @@ fn hook_load_import_attributes(
       .or_insert_with(|| ty.to_string());
   }
   attrs
-}
-
-fn hook_load_format(
-  requested_module_type: &deno_core::RequestedModuleType,
-) -> String {
-  match requested_module_type {
-    deno_core::RequestedModuleType::Json => "json".to_string(),
-    deno_core::RequestedModuleType::Text => "text".to_string(),
-    deno_core::RequestedModuleType::Bytes => "bytes".to_string(),
-    deno_core::RequestedModuleType::Other(kind) => kind.clone(),
-    deno_core::RequestedModuleType::None => "module".to_string(),
-  }
 }
 
 /// Pick the `ModuleType` for source returned by a `module.registerHooks()`
