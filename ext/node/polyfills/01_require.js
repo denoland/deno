@@ -874,7 +874,7 @@ function _startEsmLoadLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
-      const [id, fileUrl, rawAttributes] = req;
+      const [id, fileUrl, format, rawAttributes] = req;
       const importAttributes = { __proto__: null };
       if (rawAttributes !== null && typeof rawAttributes === "object") {
         for (const key in rawAttributes) {
@@ -882,7 +882,7 @@ function _startEsmLoadLoop() {
         }
       }
       const context = {
-        format: undefined,
+        format,
         conditions: ["node", "import", "module-sync", "node-addons"],
         importAttributes,
       };
@@ -1950,7 +1950,7 @@ Module.prototype.load = function (filename) {
         fileUrl = url.pathToFileURL(this.filename).href;
       }
       const context = {
-        format: undefined,
+        format: "commonjs",
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
       };

@@ -1467,10 +1467,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         specifier.as_str(),
         &options.requested_module_type,
       );
-      let receiver = self
-        .0
-        .hook_registry
-        .push_load(specifier.to_string(), import_attributes);
+      let receiver = self.0.hook_registry.push_load(
+        specifier.to_string(),
+        hook_load_format(&options.requested_module_type),
+        import_attributes,
+      );
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let hook_result = match receiver.await {
@@ -1996,6 +1997,18 @@ fn hook_load_import_attributes(
       .or_insert_with(|| ty.to_string());
   }
   attrs
+}
+
+fn hook_load_format(
+  requested_module_type: &deno_core::RequestedModuleType,
+) -> String {
+  match requested_module_type {
+    deno_core::RequestedModuleType::Json => "json".to_string(),
+    deno_core::RequestedModuleType::Text => "text".to_string(),
+    deno_core::RequestedModuleType::Bytes => "bytes".to_string(),
+    deno_core::RequestedModuleType::Other(kind) => kind.clone(),
+    deno_core::RequestedModuleType::None => "module".to_string(),
+  }
 }
 
 /// Pick the `ModuleType` for source returned by a `module.registerHooks()`
