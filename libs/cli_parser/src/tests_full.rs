@@ -9713,6 +9713,72 @@ fn eval_double_dash_stripped() {
 }
 
 #[test]
+fn double_dash_before_entrypoint() {
+  // A `--` before the first positional makes the entrypoint literal
+  // (it may start with a hyphen) instead of starting trailing args.
+  let flags = flags_from_vec(svec!["deno", "run", "--", "-x.ts", "a"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Run(RunFlags::new_default("-x.ts".to_string()))
+  );
+  assert_eq!(flags.argv, svec!["a"]);
+
+  // Bare form without the `run` subcommand.
+  let flags = flags_from_vec(svec!["deno", "--", "-x.ts", "a"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Run(RunFlags {
+      bare: true,
+      ..RunFlags::new_default("-x.ts".to_string())
+    })
+  );
+  assert_eq!(flags.argv, svec!["a"]);
+
+  let flags = flags_from_vec(svec!["deno", "eval", "--", "-1"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Eval(e) if e.code == "-1")
+  );
+
+  let flags =
+    flags_from_vec(svec!["deno", "task", "--", "build", "hello"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Task(t) if t.task.as_deref() == Some("build"))
+  );
+  assert_eq!(flags.argv, svec!["hello"]);
+
+  // test/bench mirror clap's `.last(true)`: args after `--` are script
+  // args, never files — even when no files were given before the `--`.
+  let flags = flags_from_vec(svec!["deno", "test", "--", "arg1"]).unwrap();
+  assert!(
+    matches!(&flags.subcommand, DenoSubcommand::Test(t) if t.files.include.is_empty())
+  );
+  assert_eq!(flags.argv, svec!["arg1"]);
+
+  // create's package is only recognized before the `--` (clap `.last(true)`
+  // took everything after it as package args), so this stays an error.
+  assert!(flags_from_vec(svec!["deno", "create", "--", "npm:vite"]).is_err());
+
+  // `--` before the first positional of init still routes everything into
+  // its trailing positional and strips a second `--` (unchanged behavior).
+  let flags = flags_from_vec(svec![
+    "deno", "init", "--npm", "--", "vite", "--", "--serve"
+  ])
+  .unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Init(InitFlags {
+      package: Some("npm:vite".to_string()),
+      package_args: svec!["--serve"],
+      dir: None,
+      lib: false,
+      serve: false,
+      empty: false,
+      yes: false,
+    })
+  );
+}
+
+#[test]
 fn serve_compile_keep_double_dash() {
   // serve/compile use clap's trailing_var_arg (like run), so they keep `--`.
   let flags =
