@@ -254,6 +254,29 @@ fn pkg_folder_node_modules_root(folder: &Path) -> Option<&Path> {
   }
 }
 
+/// Embeds the enclosing `node_modules` directory of a canonical npm package
+/// folder. That directory contains the canonical package folder plus sibling
+/// symlinks to its direct dependencies, so node-module resolution at runtime
+/// can follow the symlink chain (e.g. the NAPI-RS platform-specific sibling
+/// package). `embedded_roots` accumulates the canonicalized roots added so
+/// far, both to dedup and so callers can later check whether a path landed
+/// in the VFS.
+fn add_pkg_node_modules_root(
+  builder: &mut VfsBuilder,
+  embedded_roots: &mut HashSet<PathBuf>,
+  pkg_folder: &Path,
+) -> Result<(), AnyError> {
+  let root = pkg_folder_node_modules_root(pkg_folder).unwrap_or(pkg_folder);
+  let canonical_root = crate::util::fs::canonicalize_path(root)
+    .with_context(|| format!("Canonicalizing '{}'", root.display()))?;
+  if embedded_roots.insert(canonical_root) {
+    builder.add_dir_recursive(root).with_context(|| {
+      format!("Embedding npm package at '{}'", root.display())
+    })?;
+  }
+  Ok(())
+}
+
 pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(data) = std::fs::read(exe_path) else {
     return false;
@@ -702,7 +725,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .as_valid_serialized_for_system(&self.npm_system_info);
             if !snapshot.as_serialized().packages.is_empty() {
               self
-                .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
+                .fill_npm_vfs(
+                  &mut vfs,
+                  Some(&snapshot),
+                  // Deliberately narrower than the snapshot-pruning condition
+                  // above: unstable lazy caching opts into install-time
+                  // laziness and shouldn't silently change which files from
+                  // a local node_modules directory land in the binary.
+                  compile_flags.exclude_unused_npm,
+                  &progress_bar,
+                )
                 .context("Building npm vfs.")?;
               Some(snapshot)
             } else {
@@ -713,7 +745,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           }
         }
         CliNpmResolver::Byonm(_) => {
-          self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
+          if compile_flags.exclude_unused_npm {
+            // deno doesn't own a BYONM tree, so it can't safely prune it —
+            // package managers lay these out differently (hoisting, virtual
+            // stores) and removing entries could break their symlink chains.
+            log::warn!(
+              "{} --exclude-unused-npm has no effect on a user-managed (BYONM) node_modules directory.",
+              crate::colors::yellow("Warning")
+            );
+          }
+          self.fill_npm_vfs(&mut vfs, None, false, &progress_bar)?;
           None
         }
       }
@@ -1361,26 +1402,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         let progress =
           progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         progress.set_total_size(needed_ids.len() as u64);
-        // Dedup the set of `<deno-cache>/<id>/node_modules/` directories we
-        // add: a single id's node_modules dir contains the canonical package
-        // folder plus sibling symlinks to its direct deps. Going one level up
-        // from the canonical folder picks both up so node-module resolution at
-        // runtime can follow the symlink chain (e.g. the NAPI-RS
-        // platform-specific sibling package).
-        let mut embedded_roots: std::collections::HashSet<PathBuf> =
-          std::collections::HashSet::new();
+        let mut embedded_roots: HashSet<PathBuf> = HashSet::new();
         let mut done: u64 = 0;
         for id in &needed_ids {
           if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(id)
             && folder.exists()
           {
-            let root_to_add =
-              pkg_folder_node_modules_root(&folder).unwrap_or(folder.as_path());
-            if embedded_roots.insert(root_to_add.to_path_buf()) {
-              builder.add_dir_recursive(root_to_add).with_context(|| {
-                format!("Embedding npm package at '{}'", root_to_add.display())
-              })?;
-            }
+            add_pkg_node_modules_root(builder, &mut embedded_roots, &folder)?;
           }
           done += 1;
           progress.set_position(done);
@@ -1388,7 +1416,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         Ok(Some(snapshot))
       }
       CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(builder, None, progress_bar)?;
+        self.fill_npm_vfs(builder, None, false, progress_bar)?;
         Ok(None)
       }
     }
@@ -1398,6 +1426,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     builder: &mut VfsBuilder,
     snapshot: Option<&ValidSerializedNpmResolutionSnapshot>,
+    prune_local_node_modules: bool,
     progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
@@ -1413,9 +1442,94 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
-          let _progress =
-            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
-          builder.add_dir_recursive(node_modules_path)?;
+          if prune_local_node_modules {
+            // --exclude-unused-npm with a local node_modules directory:
+            // embed only the (already graph-pruned) snapshot's packages
+            // instead of the whole directory.
+            let snapshot = snapshot.expect(
+              "managed npm resolver always provides a snapshot when pruning",
+            );
+            let mut packages =
+              snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
+            packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+            let current_system = NpmSystemInfo::default();
+            let progress = progress_bar
+              .update_with_prompt(ProgressMessagePrompt::Compile, "");
+            progress.set_total_size(packages.len() as u64);
+            let mut embedded_roots: HashSet<PathBuf> = HashSet::new();
+            let mut packages_done: u64 = 0;
+            for package in &packages {
+              let folder =
+                npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
+              if folder.exists() {
+                add_pkg_node_modules_root(
+                  builder,
+                  &mut embedded_roots,
+                  &folder,
+                )?;
+              } else if !package.system.matches_system(&current_system) {
+                log::warn!(
+                  "{} Ignoring 'npm:{}' because it was not present on the current system.",
+                  crate::colors::yellow("Warning"),
+                  package.id
+                );
+              } else {
+                // Without pruning this tree would go in wholesale and a
+                // missing folder would fail the embed; keep that a hard
+                // error rather than silently shipping a binary that fails
+                // at runtime.
+                bail!(
+                  "Failed embedding 'npm:{}' because its folder is missing from the node_modules directory. Try running `deno install`.",
+                  package.id
+                );
+              }
+              packages_done += 1;
+              progress.set_position(packages_done);
+            }
+            drop(progress);
+            // Node's walk-up resolution can also hit the hoisted fallback
+            // entries the installer creates: `<root>/node_modules/<name>`
+            // symlinks for top-level packages and
+            // `<root>/node_modules/.deno/node_modules/<name>` for the rest.
+            // Packages that require undeclared dependencies (e.g. unlisted
+            // peer deps) only resolve through those, so embed the entry for
+            // every package kept above — each is a single symlink into an
+            // already-embedded store folder. When the installer linked a
+            // different version of a name than the one the graph kept, the
+            // entry points at a pruned folder; skip it so that folder's
+            // tree doesn't ride back in.
+            let deno_fallback_dir =
+              node_modules_path.join(".deno").join("node_modules");
+            let mut seen_names: HashSet<&str> = HashSet::new();
+            for package in &packages {
+              let name = package.id.nv.name.as_str();
+              if !seen_names.insert(name) {
+                continue;
+              }
+              for dir in [node_modules_path, deno_fallback_dir.as_path()] {
+                let link = dir.join(name);
+                let Ok(canonical_target) =
+                  crate::util::fs::canonicalize_path(&link)
+                else {
+                  continue; // no fallback entry for this package here
+                };
+                if pkg_folder_node_modules_root(&canonical_target)
+                  .is_some_and(|root| embedded_roots.contains(root))
+                {
+                  builder.add_symlink(&link).with_context(|| {
+                    format!(
+                      "Embedding npm fallback symlink at '{}'",
+                      link.display()
+                    )
+                  })?;
+                }
+              }
+            }
+          } else {
+            let _progress = progress_bar
+              .update_with_prompt(ProgressMessagePrompt::Compile, "");
+            builder.add_dir_recursive(node_modules_path)?;
+          }
           Ok(())
         } else {
           let snapshot = snapshot.unwrap();
