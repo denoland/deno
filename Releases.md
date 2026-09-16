@@ -42,10 +42,6 @@ https://github.com/denoland/deno_install
 - fix(permissions): parse unix: net rules as POSIX paths (#36785)
 - fix(process): clear supplementary groups before changing identity (#36433)
 - fix(sqlite): refuse symlink database paths (#36357)
-- fix(tests): update check_node_builtin_modules output for @types/node 26.4.0
-  (#36711)
-- fix(tests): update check_node_builtin_modules output for new @types/node
-  (#36848)
 - fix(transpile): don't report diagnostics from bundled assets in declaration
   emit (#36716)
 - fix(web): avoid flushing compression streams on every write (#36744)
