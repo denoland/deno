@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 pub(crate) mod bindings;
+pub(crate) mod buffer_pool;
 pub(crate) mod exception_state;
 pub mod host_defined_options;
 mod jsrealm;
