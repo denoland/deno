@@ -31,5 +31,8 @@ try {
   // Deno may reject requiring an ES module after the hook observes it.
 }
 assert.strictEqual((await import("./format-esm.mjs")).default, "esm");
-assert.deepStrictEqual([...new Set(seen)].sort(), ["commonjs", "json", "module"]);
+assert.deepStrictEqual(
+  [...new Set(seen)].sort(),
+  ["commonjs", "json", "module"],
+);
 console.log("load hook format works");
