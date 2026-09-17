@@ -328,6 +328,13 @@ pub enum DesktopEvent {
     alt: bool,
     meta: bool,
     repeat: bool,
+    is_composing: bool,
+  },
+  #[serde(rename_all = "camelCase")]
+  CompositionEvent {
+    window_id: u32,
+    r#type: String,
+    data: String,
   },
   #[serde(rename_all = "camelCase")]
   BindCall {
@@ -571,6 +578,18 @@ pub trait DesktopApi: Send + Sync + 'static {
     x: i32,
     y: i32,
     menu: Vec<MenuItem>,
+  );
+  /// Raw/winit: allow or deny IME (off by default). WebView / CEF: no-op.
+  fn set_ime_allowed(&self, window_id: u32, allowed: bool);
+  /// Raw/winit: logical top-left client rect for the IME candidate window.
+  /// WebView / CEF: no-op.
+  fn set_ime_cursor_area(
+    &self,
+    window_id: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
   );
 
   /// Best-effort fetch of the OS-level window/display handles for the
@@ -1017,6 +1036,18 @@ impl BrowserWindow {
     #[serde] menu: Vec<MenuItem>,
   ) {
     self.api.show_context_menu(self.window_id, x, y, menu);
+  }
+
+  #[fast]
+  fn set_ime_allowed(&self, allowed: bool) {
+    self.api.set_ime_allowed(self.window_id, allowed);
+  }
+
+  #[fast]
+  fn set_ime_cursor_area(&self, x: f64, y: f64, width: f64, height: f64) {
+    self
+      .api
+      .set_ime_cursor_area(self.window_id, x, y, width, height);
   }
 
   fn get_native_window(
@@ -2343,6 +2374,7 @@ mod tests {
       alt: false,
       meta: true,
       repeat: false,
+      is_composing: true,
     })
     .unwrap();
     // `type` (a Rust keyword, written `r#type`) must serialize as
@@ -2352,6 +2384,21 @@ mod tests {
     assert_eq!(v["windowId"], 1);
     assert_eq!(v["shift"], true);
     assert_eq!(v["meta"], true);
+    assert_eq!(v["isComposing"], true);
+  }
+
+  #[test]
+  fn composition_event_camelcases_and_keeps_type() {
+    let v = serde_json::to_value(DesktopEvent::CompositionEvent {
+      window_id: 1,
+      r#type: "compositionupdate".to_string(),
+      data: "あ".to_string(),
+    })
+    .unwrap();
+    assert_eq!(v["type"], "compositionupdate");
+    assert_eq!(v["kind"], "compositionEvent");
+    assert_eq!(v["windowId"], 1);
+    assert_eq!(v["data"], "あ");
   }
 
   #[test]
@@ -2491,8 +2538,17 @@ mod tests {
         alt: false,
         meta: false,
         repeat: false,
+        is_composing: false,
       }),
       "keyboardEvent"
+    );
+    assert_eq!(
+      kind_of(DesktopEvent::CompositionEvent {
+        window_id: 0,
+        r#type: "".into(),
+        data: "".into(),
+      }),
+      "compositionEvent"
     );
     assert_eq!(
       kind_of(DesktopEvent::BindCall {
