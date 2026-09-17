@@ -1,0 +1,28 @@
+{
+  "spans": [],
+  "logs": [
+    {
+      "timeUnixNano": "[WILDCARD]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "{\"getEntryValue\":\"value1\",\"getEntryMetadata\":\"meta1\",\"getEntryMissing\":null,\"getAllEntries\":[[\"key1\",\"value1\",\"meta1\"],[\"key2\",\"value2\",null]],\"copyIsolated\":true,\"setOriginalUnchanged\":true,\"setNewHasKey3\":\"value3\",\"removeOriginalUnchanged\":true,\"removeNewMissingKey1\":true,\"removeEntriesLen\":0,\"clearedLen\":0,\"clearOriginalUnchanged\":2,\"injected\":\"key1=value1;meta1,key2=value2\"}\n"
+      },
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": "",
+      "eventName": ""
+    }
+  ],
+  "metrics": []
+}
