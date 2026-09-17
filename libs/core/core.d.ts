@@ -61,8 +61,23 @@ export namespace core {
   /**
    * List of all registered ops, in the form of a map that maps op
    * name to function.
+   *
+   * This object is canonical and must not be mutated: the captured
+   * `__bootstrap` view that residual ext scripts are evaluated against holds
+   * it by reference, and enumerating or copying it is O(total ops) per realm.
+   * To expose a reduced ops surface to user code, build a separate object
+   * with {@linkcode createOpsSubset} instead of deleting entries here.
    */
   const ops: Record<string, (...args: unknown[]) => any>;
+
+  /**
+   * Build a new null-prototype object containing only the named ops, without
+   * enumerating or mutating {@linkcode ops}. Names that don't resolve to an
+   * op are skipped, so a superset may be passed.
+   */
+  function createOpsSubset(
+    names: readonly string[],
+  ): Record<string, (...args: unknown[]) => any>;
 
   /**
    * Retrieve a list of all open resources, in the form of a map that maps

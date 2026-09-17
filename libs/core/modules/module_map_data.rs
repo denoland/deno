@@ -230,7 +230,8 @@ pub(crate) struct ModuleMapData {
     Rc<RefCell<HashMap<ModuleName, ModuleName>>>,
   /// Set of scripts currently being loaded (for circular dep detection).
   pub(crate) lazy_script_loading: Rc<RefCell<HashSet<ModuleName>>>,
-  /// Snapshot-time `__bootstrap` view (frozen clone of `core.ops` etc.)
+  /// Snapshot-time `__bootstrap` view (a shallow clone of `core`, holding the
+  /// live `core.ops` object by reference)
   /// registered from JS via `op_set_captured_bootstrap`. `load_ext_script`
   /// temporarily installs this on `globalThis.__bootstrap` for the duration
   /// of each script evaluation if `__bootstrap` isn't already on the global
