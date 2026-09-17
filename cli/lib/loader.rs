@@ -25,6 +25,18 @@ pub fn module_type_from_media_and_requested_type(
   }
 }
 
+pub fn module_format_from_requested_type(
+  requested_module_type: &RequestedModuleType,
+) -> String {
+  match requested_module_type {
+    RequestedModuleType::Json => "json".to_string(),
+    RequestedModuleType::Text => "text".to_string(),
+    RequestedModuleType::Bytes => "bytes".to_string(),
+    RequestedModuleType::Other(kind) => kind.to_string(),
+    RequestedModuleType::None => "module".to_string(),
+  }
+}
+
 pub fn loaded_module_source_to_module_source_code(
   loaded_module_source: LoadedModuleSource,
 ) -> ModuleSourceCode {
