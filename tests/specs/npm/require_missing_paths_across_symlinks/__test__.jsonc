@@ -1,0 +1,44 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": ""
+    },
+    {
+      "args": "run main.js",
+      "output": "main.out"
+    },
+    {
+      // Registry link aliases do not grant access to their outside targets.
+      "args": "run --allow-read=node_modules/outside-link main.js",
+      "output": "main.out"
+    },
+    {
+      "args": "run --allow-read=outside,removed main_with_read.js",
+      "output": "main.out"
+    },
+    {
+      "if": "unix",
+      "args": "compile --output compiled --include node_modules main_compiled.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "commandName": "./compiled",
+      "args": [],
+      "output": "main.out"
+    },
+    {
+      "if": "windows",
+      "args": "compile --output compiled.exe --include node_modules main_compiled.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "commandName": "./compiled.exe",
+      "args": [],
+      "output": "main.out"
+    }
+  ]
+}
