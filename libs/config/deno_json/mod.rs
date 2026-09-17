@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::num::NonZeroU16;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -958,6 +959,18 @@ struct SerializedDesktopMacOSConfig {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct SerializedDesktopInitialWindowConfig {
+  pub width: Option<NonZeroU16>,
+  pub height: Option<NonZeroU16>,
+  pub frameless: Option<bool>,
+  pub no_activate: Option<bool>,
+  pub transparent_titlebar: Option<bool>,
+  pub transparent: Option<bool>,
+  pub show_on_first_load: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedDesktopConfig {
   pub app: Option<SerializedDesktopAppConfig>,
@@ -967,6 +980,8 @@ struct SerializedDesktopConfig {
   #[serde(rename = "errorReporting")]
   pub error_reporting: Option<SerializedDesktopErrorReportingConfig>,
   pub macos: Option<SerializedDesktopMacOSConfig>,
+  #[serde(rename = "initialWindow")]
+  pub initial_window: Option<SerializedDesktopInitialWindowConfig>,
 }
 
 impl SerializedDesktopConfig {
@@ -1018,6 +1033,15 @@ impl SerializedDesktopConfig {
         .map(|e| DesktopErrorReportingConfig { url: e.url }),
       macos: self.macos.map(|m| DesktopMacOSConfig {
         codesign_identity: m.codesign_identity,
+      }),
+      initial_window: self.initial_window.map(|w| DesktopInitialWindowConfig {
+        width: w.width.map(NonZeroU16::get).unwrap_or(800),
+        height: w.height.map(NonZeroU16::get).unwrap_or(600),
+        frameless: w.frameless.unwrap_or(false),
+        no_activate: w.no_activate.unwrap_or(false),
+        transparent_titlebar: w.transparent_titlebar.unwrap_or(false),
+        transparent: w.transparent.unwrap_or(false),
+        show_on_first_load: w.show_on_first_load.unwrap_or(true),
       }),
     }
   }
@@ -1074,6 +1098,17 @@ pub struct DesktopMacOSConfig {
   pub codesign_identity: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DesktopInitialWindowConfig {
+  pub width: u16,
+  pub height: u16,
+  pub frameless: bool,
+  pub no_activate: bool,
+  pub transparent_titlebar: bool,
+  pub transparent: bool,
+  pub show_on_first_load: bool,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DesktopConfig {
   pub app: Option<DesktopAppConfig>,
@@ -1082,6 +1117,7 @@ pub struct DesktopConfig {
   pub release: Option<DesktopReleaseConfig>,
   pub error_reporting: Option<DesktopErrorReportingConfig>,
   pub macos: Option<DesktopMacOSConfig>,
+  pub initial_window: Option<DesktopInitialWindowConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -3866,6 +3902,51 @@ mod tests {
         expected
       );
     }
+  }
+
+  #[test]
+  fn desktop_initial_window_config() {
+    let config = ConfigFile::new(
+      r#"{
+        "desktop": {
+          "initialWindow": {
+            "width": 320,
+            "height": 220,
+            "frameless": true,
+            "noActivate": true,
+            "transparentTitlebar": true,
+            "transparent": true,
+            "showOnFirstLoad": false
+          }
+        }
+      }"#,
+      root_url().join("deno.json").unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+      config.to_desktop_config().unwrap().initial_window,
+      Some(DesktopInitialWindowConfig {
+        width: 320,
+        height: 220,
+        frameless: true,
+        no_activate: true,
+        transparent_titlebar: true,
+        transparent: true,
+        show_on_first_load: false,
+      }),
+    );
+  }
+
+  #[test]
+  fn desktop_initial_window_rejects_zero_dimensions() {
+    let config = ConfigFile::new(
+      r#"{ "desktop": { "initialWindow": { "width": 0 } } }"#,
+      root_url().join("deno.json").unwrap(),
+    )
+    .unwrap();
+
+    assert!(config.to_desktop_config().is_err());
   }
 
   #[test]
