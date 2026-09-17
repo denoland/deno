@@ -213,12 +213,12 @@ impl WefDesktopApi {
         );
       })
       .on_close_requested(move |ev| {
-        closed_windows.lock().unwrap().insert(ev.window_id);
-        open_windows_on_close.lock().unwrap().remove(&ev.window_id);
-        let _ = close_tx.try_send(
-          deno_runtime::ops::desktop::DesktopEvent::CloseRequested {
-            window_id: ev.window_id,
-          },
+        handle_close_requested(
+          ev.window_id,
+          &closed_windows,
+          &open_windows_on_close,
+          &close_tx,
+          |id| laufey::Window::from_id(id).close(),
         );
         // Since laufey 0.7.0 a registered close-requested handler *defers*
         // the close: the window stays open until `Window::close()` is called.
@@ -257,6 +257,40 @@ impl WefDesktopApi {
     self.open_windows.lock().unwrap().insert(id);
     id
   }
+}
+
+/// Handle a window's close-requested event: record the window as gone, notify
+/// JS, and complete the close.
+///
+/// Split out of `setup_window_events` so all three effects can be asserted in a
+/// unit test without a laufey backend — `close_window` is the seam the test
+/// substitutes for `laufey::Window::close`.
+fn handle_close_requested(
+  window_id: u32,
+  closed_windows: &Mutex<HashSet<u32>>,
+  open_windows: &Mutex<HashSet<u32>>,
+  event_tx: &deno_runtime::ops::desktop::DesktopEventTx,
+  close_window: impl FnOnce(u32),
+) {
+  closed_windows.lock().unwrap().insert(window_id);
+  open_windows.lock().unwrap().remove(&window_id);
+  // Notification only — nothing on the JS side can veto the close, so a failed
+  // send (event loop gone) must not stop us completing it below.
+  let _ = event_tx.try_send(
+    deno_runtime::ops::desktop::DesktopEvent::CloseRequested { window_id },
+  );
+  // Complete the close ourselves. As of laufey's API 31 defer contract,
+  // *registering* a close-requested handler holds the window open — the backend
+  // stops closing it on its own and waits for a `close()` that only we can
+  // make. The bookkeeping above already records the window as gone, so
+  // completing it here is what keeps that true.
+  //
+  // On backends predating API 31 the window is already closed by the time this
+  // runs and `close()` is an inert no-op: every in-tree backend resolves the
+  // window id through a map/handle lookup that now misses. So this is correct
+  // against both the currently pinned laufey and any newer one — without it,
+  // bumping the pin silently makes every window's close button do nothing.
+  close_window(window_id);
 }
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
@@ -2056,16 +2090,78 @@ async fn run_desktop(
 
 #[cfg(test)]
 mod tests {
+  use std::collections::HashSet;
   use std::ffi::OsString;
+  use std::sync::Mutex;
 
+  use deno_runtime::ops::desktop::DesktopEvent;
   use deno_runtime::ops::desktop::PermissionState;
+  use deno_runtime::ops::desktop::create_desktop_event_channel;
 
   use super::desktop_menu_item_to_laufey_menu_item;
   use super::desktop_value_to_laufey_value;
   use super::extract_fork_script_path;
+  use super::handle_close_requested;
   use super::laufey_value_to_desktop_value;
   use super::map_permission_status;
   use super::should_show_native_error_dialog;
+
+  // --- handle_close_requested ---
+  //
+  // laufey's API 31 defer contract: registering a close-requested handler stops
+  // the backend from closing the window on its own, so the runtime has to
+  // complete the close itself. Dropping that call leaves every window's close
+  // button dead, which no other test in the tree would catch.
+
+  fn close_requested_effects(
+    open_ids: &[u32],
+    window_id: u32,
+    keep_receiver: bool,
+  ) -> (HashSet<u32>, HashSet<u32>, Vec<u32>, Option<DesktopEvent>) {
+    let (tx, rx) = create_desktop_event_channel();
+    let closed = Mutex::new(HashSet::new());
+    let open = Mutex::new(open_ids.iter().copied().collect::<HashSet<u32>>());
+    let completed = Mutex::new(Vec::new());
+
+    let rx = if keep_receiver { Some(rx) } else { None };
+    handle_close_requested(window_id, &closed, &open, &tx.0, |id| {
+      completed.lock().unwrap().push(id)
+    });
+
+    let event = rx.and_then(|rx| rx.0.try_lock().unwrap().try_recv().ok());
+    (
+      closed.into_inner().unwrap(),
+      open.into_inner().unwrap(),
+      completed.into_inner().unwrap(),
+      event,
+    )
+  }
+
+  #[test]
+  fn close_requested_records_notifies_and_completes_the_close() {
+    let (closed, open, completed, event) =
+      close_requested_effects(&[7, 9], 7, true);
+
+    assert!(closed.contains(&7), "window recorded as closed");
+    assert!(!open.contains(&7), "window dropped from the open set");
+    assert!(open.contains(&9), "other windows untouched");
+    // The close is completed through the seam — without this the window would
+    // sit there open on any laufey >= API 31.
+    assert_eq!(completed, vec![7]);
+    assert!(matches!(
+      event,
+      Some(DesktopEvent::CloseRequested { window_id: 7 })
+    ));
+  }
+
+  #[test]
+  fn close_is_completed_even_when_the_event_channel_is_gone() {
+    // The JS side can't veto a close, so a dead event channel (receiver
+    // dropped during shutdown) must not leave the window open.
+    let (_closed, _open, completed, _event) =
+      close_requested_effects(&[3], 3, false);
+    assert_eq!(completed, vec![3]);
+  }
 
   // --- should_show_native_error_dialog ---
   //
