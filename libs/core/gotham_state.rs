@@ -6,11 +6,58 @@
 use std::any::Any;
 use std::any::TypeId;
 use std::any::type_name;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
+use std::hash::Hasher;
+
+/// A pass-through hasher for [`TypeId`] keys.
+///
+/// `TypeId`'s own `Hash` impl feeds already well-distributed bits (the low 64
+/// bits of a 128-bit compiler-generated hash) straight into the hasher, so
+/// there is nothing left to mix: hashing them again only costs cycles. This
+/// hasher therefore forwards those bits verbatim.
+///
+/// Only the integer entry points a `TypeId` can plausibly use are specialized;
+/// `write` keeps a cheap byte fold as a correctness backstop in case a future
+/// standard library hashes `TypeId` some other way. It must never panic, and
+/// it must stay deterministic for a given byte sequence.
+#[derive(Default)]
+pub struct TypeIdHasher(u64);
+
+impl Hasher for TypeIdHasher {
+  #[inline(always)]
+  fn write_u64(&mut self, i: u64) {
+    self.0 = i;
+  }
+
+  #[inline(always)]
+  fn write_u128(&mut self, i: u128) {
+    // Fold the two halves together; either half alone is a valid hash of a
+    // `TypeId`, but xor keeps both in play.
+    self.0 = (i as u64) ^ ((i >> 64) as u64);
+  }
+
+  #[inline(always)]
+  fn finish(&self) -> u64 {
+    self.0
+  }
+
+  #[inline]
+  fn write(&mut self, bytes: &[u8]) {
+    // FxHash-style fold. Not expected to be reached with a `TypeId` key.
+    const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+    for &b in bytes {
+      self.0 = (self.0.rotate_left(5) ^ b as u64).wrapping_mul(SEED);
+    }
+  }
+}
+
+type TypeIdMap =
+  HashMap<TypeId, Box<dyn Any>, BuildHasherDefault<TypeIdHasher>>;
 
 #[derive(Default)]
 pub struct GothamState {
-  data: BTreeMap<TypeId, Box<dyn Any>>,
+  data: TypeIdMap,
 }
 
 impl GothamState {
@@ -172,6 +219,29 @@ mod tests {
     assert_eq!(state.take::<Alias1>(), "alias2");
     assert!(state.try_take::<Alias1>().is_none());
     assert!(state.try_take::<Alias2>().is_none());
+  }
+
+  #[test]
+  fn many_types() {
+    // Guards against a degenerate hasher: a large number of distinct types
+    // must all round-trip, and each must return its own value.
+    struct T<const N: usize>(usize);
+
+    macro_rules! put_and_check {
+      ($($n:literal),*) => {
+        let mut state = GothamState::default();
+        $(
+          state.put(T::<$n>($n));
+        )*
+        $(
+          assert_eq!(state.borrow::<T<$n>>().0, $n);
+        )*
+      };
+    }
+    put_and_check!(
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+      21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+    );
   }
 
   #[test]
