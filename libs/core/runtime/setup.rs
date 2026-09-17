@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::Once;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -221,24 +222,29 @@ fn v8_init(
   v8::V8::initialize();
 }
 
+/// Refuses snapshot creation once V8 was first initialized in non-snapshotting
+/// mode; see the assert message for why. Snapshot-then-runtime (warmup, test
+/// runners) stays allowed, as the process simply keeps the deterministic flags.
+fn check_snapshot_mode(
+  first_init_is_snapshot: &OnceLock<bool>,
+  snapshot: bool,
+) {
+  let first_is_snapshot = *first_init_is_snapshot.get_or_init(|| snapshot);
+  assert!(
+    first_is_snapshot || !snapshot,
+    "Cannot create a snapshot after V8 was initialized in non-snapshotting mode: the deterministic snapshot flags (--predictable --random-seed) must be set before the first V8 initialization, so this snapshot would be non-deterministic."
+  );
+}
+
 pub fn init_v8(
   v8_platform: Option<v8::SharedRef<v8::Platform>>,
   snapshot: bool,
   expose_natives: bool,
 ) {
   static DENO_INIT: Once = Once::new();
-  static DENO_SNAPSHOT: AtomicBool = AtomicBool::new(false);
-  static DENO_SNAPSHOT_SET: AtomicBool = AtomicBool::new(false);
+  static FIRST_INIT_IS_SNAPSHOT: OnceLock<bool> = OnceLock::new();
 
-  if DENO_SNAPSHOT_SET.load(Ordering::SeqCst) {
-    let current = DENO_SNAPSHOT.load(Ordering::SeqCst);
-    assert_eq!(
-      current, snapshot,
-      "V8 may only be initialized once in either snapshotting or non-snapshotting mode. Either snapshotting or non-snapshotting mode may be used in a single process, not both."
-    );
-    DENO_SNAPSHOT_SET.store(true, Ordering::SeqCst);
-    DENO_SNAPSHOT.store(snapshot, Ordering::SeqCst);
-  }
+  check_snapshot_mode(&FIRST_INIT_IS_SNAPSHOT, snapshot);
 
   DENO_INIT.call_once(move || v8_init(v8_platform, snapshot, expose_natives));
 }
@@ -304,4 +310,28 @@ pub fn create_isolate(
   );
 
   isolate
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn allowed_orders() {
+    // (first, second) — every order except runtime → snapshot is allowed.
+    for (first, second) in [(false, false), (true, true), (true, false)] {
+      let lock = OnceLock::new();
+      check_snapshot_mode(&lock, first);
+      check_snapshot_mode(&lock, second);
+      assert_eq!(*lock.get().unwrap(), first, "first init decides the mode");
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "Cannot create a snapshot")]
+  fn snapshot_after_runtime_init_panics() {
+    let lock = OnceLock::new();
+    check_snapshot_mode(&lock, false);
+    check_snapshot_mode(&lock, true);
+  }
 }
