@@ -836,7 +836,44 @@ impl Resource for SendStreamResource {
     })
   }
 
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let mut stream = RcRef::map(self, |r| &r.stream).borrow_mut().await;
+      stream
+        .finish()
+        .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))?;
+      Ok(())
+    })
+  }
+
   fn close(self: Rc<Self>) {}
+}
+
+#[op2(async(lazy), fast)]
+pub(crate) async fn op_quic_send_stream_reset(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[bigint] stream_error_code: u64,
+  webtransport: bool,
+) -> Result<(), JsErrorBox> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<SendStreamResource>(rid)
+    .map_err(JsErrorBox::from_err)?;
+  let mut stream = RcRef::map(resource, |r| &r.stream).borrow_mut().await;
+  let error_code = if webtransport {
+    0x52e4a40fa8dbu64
+      .saturating_add(stream_error_code)
+      .saturating_add(stream_error_code / 0x1e)
+  } else {
+    0
+  };
+  let error_code = quinn::VarInt::from_u64(error_code)
+    .map_err(|e| JsErrorBox::from_err(std::io::Error::other(e)))?;
+  stream
+    .reset(error_code)
+    .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))
 }
 
 struct RecvStreamResource {
