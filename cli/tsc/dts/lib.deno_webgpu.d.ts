@@ -2,7 +2,6 @@
 
 // deno-lint-ignore-file no-explicit-any no-empty-interface
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 /** @category GPU */

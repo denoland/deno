@@ -2,7 +2,6 @@
 
 // deno-lint-ignore-file no-var
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 /** The global {@linkcode CacheStorage} instance, providing access to the named
