@@ -158,3 +158,22 @@ Deno.test("outer", () => {
   assert_contains!(combined, "Nested Deno.test() calls are not supported",);
   assert_contains!(combined, "Use t.step()");
 }
+
+#[test]
+fn test_failure_does_not_print_rust_backtrace() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "failing_test.ts",
+    "Deno.test(\"fails\", () => { throw new Error(\"boom\"); });",
+  );
+
+  let output = context
+    .new_command()
+    .env("RUST_BACKTRACE", "1")
+    .args("test --no-check failing_test.ts")
+    .run();
+
+  output.assert_exit_code(1);
+  assert_not_contains!(output.combined_output(), "Stack backtrace:");
+}
