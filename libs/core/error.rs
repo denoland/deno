@@ -1923,8 +1923,6 @@ pub mod callsite_fns {
       .map(|s| serde_v8::to_utf8(s, scope).starts_with("wasm://"))
       .unwrap_or(false);
 
-    let info = v8::Array::new(scope, 3);
-
     // if the types are right, apply the source map (unless wasm), otherwise just take them as is
     if !is_wasm
       && let Some((mapped_file_name, mapped_line_number, mapped_column_number)) =
@@ -1939,9 +1937,14 @@ pub mod callsite_fns {
         convert::Number(mapped_line_number).to_v8(scope);
       let Ok(mapped_column_number) =
         convert::Number(mapped_column_number).to_v8(scope);
-      info.set_index(scope, 0, mapped_file_name.into());
-      info.set_index(scope, 1, mapped_line_number);
-      info.set_index(scope, 2, mapped_column_number);
+      let info = v8::Array::new_with_elements(
+        scope,
+        &[
+          mapped_file_name.into(),
+          mapped_line_number,
+          mapped_column_number,
+        ],
+      );
       callsite.set_private(scope, key, info.into());
       Some(SourceMappedCallsiteInfo::Value {
         file_name: mapped_file_name.into(),
@@ -1954,9 +1957,10 @@ pub mod callsite_fns {
         line_number.unwrap_or_else(|| v8::undefined(scope).into());
       let column_number =
         column_number.unwrap_or_else(|| v8::undefined(scope).into());
-      info.set_index(scope, 0, file_name);
-      info.set_index(scope, 1, line_number);
-      info.set_index(scope, 2, column_number);
+      let info = v8::Array::new_with_elements(
+        scope,
+        &[file_name, line_number, column_number],
+      );
       callsite.set_private(scope, key, info.into());
       Some(SourceMappedCallsiteInfo::Ref(info))
     }
