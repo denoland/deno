@@ -192,6 +192,7 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
+pub use crate::runtime::ensure_uv_loop;
 pub use crate::runtime::host_defined_options::HOST_DEFINED_OPTIONS_KEY_INDEX;
 pub use crate::runtime::host_defined_options::HOST_DEFINED_OPTIONS_KIND_INDEX;
 pub use crate::runtime::host_defined_options::create_host_defined_options_with_kind;

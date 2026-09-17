@@ -1612,6 +1612,13 @@ pub fn op_get_extras_binding_object<'s, 'i>(
 #[op2(fast)]
 pub fn op_immediate_check(scope: &mut v8::PinScope, make_ref: bool) {
   let context_state = JsRealm::state_from_scope(scope);
+  if make_ref && context_state.immediate_check_handle.borrow().is_none() {
+    // Refed immediates keep the event loop alive via the uv idle handle,
+    // so this is one of the triggers that forces the lazy uv loop into
+    // existence. Unrefing without a loop is a no-op.
+    let op_state = JsRuntime::op_state_from(scope);
+    crate::ensure_uv_loop(&mut op_state.borrow_mut());
+  }
   if let Some(handle) = context_state.immediate_check_handle.borrow().as_ref() {
     if make_ref {
       handle.make_ref();

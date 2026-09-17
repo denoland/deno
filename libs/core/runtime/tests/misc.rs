@@ -2192,3 +2192,58 @@ fn foreground_tasks_delivered_without_tokio_handle() {
     runtime.resolve_value(promise).await.unwrap();
   });
 }
+
+#[tokio::test]
+async fn uv_loop_is_created_lazily() {
+  let mut runtime = JsRuntime::new(Default::default());
+  assert!(
+    runtime.existing_uv_loop_ptr().is_none(),
+    "a fresh runtime must not allocate a uv loop"
+  );
+  runtime
+    .execute_script("lazy_uv.js", "globalThis.x = 1 + 1;")
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  assert!(
+    runtime.existing_uv_loop_ptr().is_none(),
+    "plain JS must not bring the uv loop into existence"
+  );
+
+  // Asking for the loop creates it, registers it with the event loop and
+  // parks the owning `Box` in `OpState` where ext code looks for it.
+  let loop_ptr = runtime.uv_loop_ptr().expect("loop should be created");
+  assert_eq!(runtime.existing_uv_loop_ptr(), Some(loop_ptr));
+  assert_eq!(
+    runtime.uv_loop_ptr(),
+    Some(loop_ptr),
+    "the loop is created exactly once"
+  );
+  {
+    let op_state = runtime.op_state();
+    let op_state = op_state.borrow();
+    let uv_loop = op_state.borrow::<Box<crate::uv_compat::UvLoop>>();
+    assert_eq!(
+      &**uv_loop as *const crate::uv_compat::UvLoop as *mut _,
+      loop_ptr
+    );
+  }
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
+#[tokio::test]
+async fn refed_immediate_creates_uv_loop() {
+  // Refed immediates keep the event loop alive through the uv idle handle,
+  // so refing one has to force the lazy loop into existence.
+  let mut runtime = JsRuntime::new(Default::default());
+  runtime
+    .execute_script("immediate_uv.js", "Deno.core.immediateRefCount(true);")
+    .unwrap();
+  assert!(
+    runtime.existing_uv_loop_ptr().is_some(),
+    "a refed immediate must create the uv loop"
+  );
+  runtime
+    .execute_script("immediate_uv.js", "Deno.core.immediateRefCount(false);")
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}

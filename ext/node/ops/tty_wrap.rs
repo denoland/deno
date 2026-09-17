@@ -17,7 +17,6 @@ use deno_core::uv_compat::UV_ENOTSUP;
 use deno_core::uv_compat::UV_EPIPE;
 use deno_core::uv_compat::uv_guess_handle;
 use deno_core::uv_compat::uv_handle_type;
-use deno_core::uv_compat::uv_loop_t;
 use deno_core::uv_compat::uv_tty_get_winsize;
 use deno_core::uv_compat::uv_tty_init;
 use deno_core::uv_compat::uv_tty_mode_t;
@@ -101,11 +100,10 @@ impl TTY {
     fd: i32,
     op_state: &mut deno_core::OpState,
   ) -> (Self, i32) {
-    // todo: this should really not be a Box<uv_loop_t> because of uniqueness guarantees.
-    // instead it should be a custom wrapper around a raw pointer
-    // right now this is most likely ub
-    let loop_ = &**op_state.borrow::<Box<uv_loop_t>>() as *const uv_loop_t
-      as *mut uv_loop_t;
+    // The uv loop is created lazily, so this is one of the sites that
+    // brings it into existence.
+    let loop_ =
+      deno_core::ensure_uv_loop(op_state).expect("uv loop unavailable");
 
     let tty = OwnedPtr::from_box(Box::<uv_tty_t>::new_uninit());
 
