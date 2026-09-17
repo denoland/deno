@@ -589,6 +589,14 @@ pub trait DesktopApi: Send + Sync + 'static {
     deno_error::JsErrorBox,
   >;
 
+  /// Run `f` on the backend UI thread and block until it returns.
+  ///
+  /// Used when a desktop op must touch AppKit-only state from the Deno
+  /// runtime thread (e.g. wgpu surface creation via `raw-window-metal`).
+  /// The laufey implementation hops through `post_ui_task` on Apple and
+  /// runs `f` inline elsewhere (and on Apple when already on main).
+  fn run_on_ui_thread(&self, f: Box<dyn FnOnce() + Send>);
+
   fn open_devtools(&self, window_id: u32, renderer: bool, deno: bool);
 
   fn execute_js(
@@ -725,6 +733,43 @@ struct BrowserWindow {
   /// case and only hide it; the surface keeps the window alive until JS
   /// releases the BrowserWindow (cppgc) and with it the surface.
   surface_taken: std::cell::Cell<bool>,
+}
+
+/// Create a wgpu surface via [`DesktopApi::run_on_ui_thread`].
+///
+/// Needed on macOS where `raw-window-metal` asserts main-thread `NSView`
+/// access. Handles are fetched inside the closure so `RawWindowHandle`
+/// (`!Send`) never crosses threads. The OS window must outlive the surface
+/// (see `get_native_window` / `surface_taken`).
+fn create_wgpu_surface_for_window(
+  api: &Arc<dyn DesktopApi>,
+  instance: &deno_webgpu::Instance,
+  window_id: u32,
+) -> Result<deno_webgpu::wgpu_core::id::SurfaceId, String> {
+  let (tx, rx) = std::sync::mpsc::sync_channel(1);
+  // `'static` closure: both are `Arc` (refcount bump only).
+  let instance = instance.clone();
+  let api_for_task = api.clone();
+  api.run_on_ui_thread(Box::new(move || {
+    let result = (|| {
+      let (win_handle, display_handle) = api_for_task
+        .get_raw_window_handle(window_id)
+        .map_err(|e| e.to_string())?;
+      // SAFETY: handles stay valid for the surface lifetime; close is
+      // suppressed once a surface is taken (see get_native_window).
+      unsafe {
+        instance.instance_create_surface(
+          Some(display_handle),
+          win_handle,
+          None,
+        )
+      }
+      .map_err(|e| e.to_string())
+    })();
+    let _ = tx.send(result);
+  }));
+  rx.recv()
+    .map_err(|_| "UI thread dropped the create task".to_string())?
 }
 
 // SAFETY: we're sure this can be GCed
@@ -1036,27 +1081,18 @@ impl BrowserWindow {
     let api = self.api.clone();
     let window_id = self.window_id;
 
-    // Hoisted out of the `surface.try_get` closure so the
-    // `get_raw_window_handle` failure path can bubble before we ever
-    // touch wgpu (and can't unwind across the laufey C ABI).
-    let (win_handle, display_handle) = api.get_raw_window_handle(window_id)?;
-
     let result = self.surface.try_get(scope, move |_| {
-      // SAFETY: The raw handles are valid for the lifetime of the OS window.
-      // `BrowserWindow.close()` is suppressed (downgraded to hide) once a
-      // surface has been taken (`surface_taken`), and the OS window outlives
-      // both the cached `SameObject<UnsafeWindowSurface>` and the
-      // BrowserWindow itself, so the handles remain valid for the surface's
-      // lifetime.
-      let surface_id = unsafe {
-        instance
-          .instance_create_surface(Some(display_handle), win_handle, None)
-          .map_err(|e| {
+      // Surface create goes through `run_on_ui_thread` (macOS Metal needs
+      // main-thread NSView access). `present()` can stay off-main once the
+      // layer exists.
+      let surface_id =
+        create_wgpu_surface_for_window(&api, &instance, window_id).map_err(
+          |e| {
             deno_error::JsErrorBox::generic(format!(
               "failed to create wgpu surface: {e}"
             ))
-          })?
-      };
+          },
+        )?;
       let (width, height) = api.get_window_size(window_id);
       Ok::<_, deno_error::JsErrorBox>(deno_canvas::byow::UnsafeWindowSurface {
         data: std::rc::Rc::new(RefCell::new(
