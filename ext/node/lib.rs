@@ -168,6 +168,9 @@ fn op_node_load_env_file(
     if key.is_empty() {
       return;
     }
+    if deno_os::is_reserved_internal_env_var(key) {
+      return;
+    }
 
     let value = if let Some(null_pos) = value.find('\0') {
       &value[..null_pos]
