@@ -5,6 +5,7 @@ use test_util::eprintln;
 use test_util::test;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
 use util::assert_not_contains;
 use util::testdata_path;
 
@@ -1019,6 +1020,122 @@ Embedded Files
     temp_dir.join(if cfg!(windows) { "bin.exe" } else { "bin" });
   let output = context.new_command().name(binary_path).run();
   output.assert_matches_text("4\n");
+}
+
+#[test]
+fn compile_byonm_skips_symlinked_node_modules_roots() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let project_dir = temp_dir.path().join("project");
+  project_dir.join("main.ts").write("console.log('ok');");
+  project_dir
+    .join("package.json")
+    .write(r#"{ "name": "compile-byonm-test", "private": true }"#);
+
+  const TOP_LEVEL_SENTINEL: &[u8] = b"top-level-linked-node-modules-sentinel";
+  const NESTED_SENTINEL: &[u8] = b"nested-linked-node-modules-sentinel";
+  const INTERMEDIATE_SENTINEL: &[u8] =
+    b"linked-intermediate-node-modules-sentinel";
+  const REAL_SENTINEL: &[u8] = b"real-node-modules-sentinel";
+  #[cfg(windows)]
+  const JUNCTION_SENTINEL: &[u8] = b"junction-node-modules-sentinel";
+
+  let top_level_target = temp_dir.path().join("top_level_target");
+  top_level_target
+    .join("sentinel.txt")
+    .write(TOP_LEVEL_SENTINEL);
+  temp_dir.symlink_dir(&top_level_target, project_dir.join("node_modules"));
+
+  let nested_target = temp_dir.path().join("nested_target");
+  nested_target.join("sentinel.txt").write(NESTED_SENTINEL);
+  temp_dir.symlink_dir(
+    &nested_target,
+    project_dir.join("packages/nested/node_modules"),
+  );
+
+  let intermediate_target = temp_dir.path().join("intermediate_target");
+  intermediate_target
+    .join("node_modules/sentinel.txt")
+    .write(INTERMEDIATE_SENTINEL);
+  temp_dir
+    .symlink_dir(&intermediate_target, project_dir.join("packages/linked"));
+
+  #[cfg(windows)]
+  {
+    let junction_target = temp_dir.path().join("junction_target");
+    junction_target
+      .join("sentinel.txt")
+      .write(JUNCTION_SENTINEL);
+    let junction_path = project_dir.join("packages/junction/node_modules");
+    junction_path.parent().unwrap().create_dir_all();
+    junction::create(&junction_target, &junction_path).unwrap();
+  }
+
+  project_dir
+    .join("packages/real/node_modules/pkg/sentinel.txt")
+    .write(REAL_SENTINEL);
+
+  let binary_path = project_dir.join(if cfg!(windows) {
+    "compiled.exe"
+  } else {
+    "compiled"
+  });
+  let output = context
+    .new_command()
+    .current_dir(&project_dir)
+    .args("compile --output compiled main.ts")
+    .run();
+  output.assert_exit_code(0);
+  assert_contains!(
+    output.combined_output(),
+    "Warning Skipping linked node_modules directory during automatic workspace discovery."
+  );
+  assert_contains!(
+    output.combined_output(),
+    &format!(
+      "    Path: {}",
+      project_dir.canonicalize().join("node_modules")
+    )
+  );
+
+  let binary = binary_path.read_to_bytes_if_exists().unwrap();
+  assert!(
+    binary
+      .windows(REAL_SENTINEL.len())
+      .any(|window| window == REAL_SENTINEL),
+    "real node_modules root was not embedded"
+  );
+  assert!(
+    !binary
+      .windows(TOP_LEVEL_SENTINEL.len())
+      .any(|window| window == TOP_LEVEL_SENTINEL),
+    "top-level linked node_modules root was embedded"
+  );
+  assert!(
+    !binary
+      .windows(NESTED_SENTINEL.len())
+      .any(|window| window == NESTED_SENTINEL),
+    "nested linked node_modules root was embedded"
+  );
+  assert!(
+    !binary
+      .windows(INTERMEDIATE_SENTINEL.len())
+      .any(|window| window == INTERMEDIATE_SENTINEL),
+    "linked intermediate directory was traversed"
+  );
+  #[cfg(windows)]
+  assert!(
+    !binary
+      .windows(JUNCTION_SENTINEL.len())
+      .any(|window| window == JUNCTION_SENTINEL),
+    "junction node_modules root was embedded"
+  );
+
+  context
+    .new_command()
+    .name(binary_path)
+    .run()
+    .assert_matches_text("ok\n");
 }
 
 #[test]
