@@ -3308,15 +3308,28 @@ function readableStreamPipeTo(
   // ready promise churn, sink dispatch and reaction) is dead weight.
   // Chunks are enqueued straight into the transform's readable controller
   // via transformStreamDefaultControllerEnqueue, which keeps the
-  // transform's own backpressure and error bookkeeping; pacing comes from
-  // the transform's backpressure signal instead of the writer ready
-  // promise. Any state change (close/abort/error on either side)
-  // permanently disables the route and falls back to the generic writer
-  // path, which surfaces the proper rejection.
+  // transform's own backpressure and error bookkeeping. Because the
+  // writable's queue is skipped, the writable-side pacing the generic loop
+  // gets from the writer ready promise is reproduced with a slot count: a
+  // writable accepts `highWaterMark` writes before applying backpressure,
+  // and each write frees its slot when its transform completes. A
+  // transform with backpressure (the initial state of every
+  // TransformStream) completes its queued writes when the backpressure
+  // next clears, and the sink write algorithm performs those transforms
+  // without a backpressure re-check, so a bypass write occupies a slot
+  // exactly when backpressure holds after its enqueue, and every occupied
+  // slot is freed on the next clear. Without this the pump would stall on
+  // the transform's initial backpressure before ever reading from the
+  // source, deadlocking the pipe until the destination readable is
+  // consumed (#36790). Any state change (close/abort/error on either
+  // side) permanently disables the route and falls back to the generic
+  // writer path, which surfaces the proper rejection.
   const bypassTS = dest[_identityBypassTS];
   let bypassActive = bypassTS !== undefined &&
     dest[_state] === "writable" &&
     bypassTS[_readable][_state] === "readable";
+  const bypassWritableHWM = bypassActive ? dest[_controller][_strategyHWM] : 0;
+  let bypassPendingWrites = 0;
   /** @type {Deferred<void>} */
   const promise = new Deferred();
   /** @type {() => void} */
@@ -3377,6 +3390,13 @@ function readableStreamPipeTo(
     if (bypassActive) {
       try {
         transformStreamDefaultControllerEnqueue(bypassTS[_controller], chunk);
+        if (bypassTS[_backpressure] === true) {
+          // Backpressure holds after the enqueue, so the next transform
+          // would block behind the backpressure change promise: this write
+          // keeps occupying a writable-side slot until the backpressure
+          // clears (see the pacing comment above).
+          bypassPendingWrites++;
+        }
         return;
       } catch {
         // The transform errored or its readable side can no longer accept
@@ -3428,13 +3448,15 @@ function readableStreamPipeTo(
           writableStreamCloseQueuedOrInFlight(dest) === false &&
           readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
         ) {
-          if (bypassTS[_backpressure] === true) {
-            // Pace on the transform's own backpressure flag; resume when the
-            // next readable-side pull clears it. Rejection (transform errored)
-            // is left to the shutdown handlers.
+          if (bypassPendingWrites >= bypassWritableHWM) {
+            // Every writable-side slot is occupied by a write whose
+            // transform is blocked behind the transform's backpressure;
+            // resume when the next readable-side pull clears it (which
+            // frees the slots). Rejection (transform errored) is left to
+            // the shutdown handlers.
             uponPromise(
               bypassTS[_backpressureChangePromise].promise,
-              pump,
+              onBypassBackpressureCleared,
               noopHandler,
             );
             break;
@@ -3458,6 +3480,14 @@ function readableStreamPipeTo(
       readableStreamDefaultReaderRead(reader, readRequest);
     } while (syncAdvance);
     pumping = false;
+  }
+
+  function onBypassBackpressureCleared() {
+    // The backpressure clear completes every transform queued behind it
+    // (the sink write algorithm performs them without a backpressure
+    // re-check), freeing all occupied writable-side slots at once.
+    bypassPendingWrites = 0;
+    pump();
   }
 
   isOrBecomesErrored(

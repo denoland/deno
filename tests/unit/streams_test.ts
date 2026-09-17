@@ -1310,3 +1310,36 @@ Deno.test(
     worker.terminate();
   },
 );
+
+// Writing to a TransformStream whose readable side is piped through a second
+// identity TransformStream must resolve without anyone consuming the piped
+// output: the pipe loop paces on the destination writable's desired size
+// (high water mark 1), so it pulls from the source and releases the source
+// transform's initial backpressure
+// (https://github.com/denoland/deno/issues/36790).
+Deno.test(async function pipeThroughWriteResolvesBeforeOutputConsumed() {
+  const a = new TransformStream();
+  const b = new TransformStream();
+  a.readable.pipeThrough(b);
+
+  const writer = a.writable.getWriter();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("write() did not resolve")),
+      1000,
+    );
+  });
+  try {
+    await Promise.race([writer.write(1), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  // The chunk is buffered in the pipe and flows through once the output is
+  // consumed.
+  const reader = b.readable.getReader();
+  assertEquals(await reader.read(), { value: 1, done: false });
+  await writer.close();
+  assertEquals(await reader.read(), { value: undefined, done: true });
+});
