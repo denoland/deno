@@ -47,6 +47,20 @@ async fn loop_init_and_close() {
   }
 }
 
+#[cfg(unix)]
+#[test]
+fn loop_liveness_expires_before_post_drop_poll_cleanup() {
+  let mut uninit = Box::<uv_loop_t>::new_uninit();
+  let liveness = unsafe {
+    assert_ok(uv_loop_init(uninit.as_mut_ptr().cast()));
+    uv_loop_liveness(uninit.as_mut_ptr().cast())
+  };
+  assert!(uv_loop_operation_guard(&liveness).is_some());
+  let uv_loop = Box::into_raw(uninit).cast::<uv_loop_t>();
+  unsafe { drop(Box::from_raw(uv_loop)) };
+  assert!(uv_loop_operation_guard(&liveness).is_none());
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn uv_now_returns_nonzero_after_delay() {
   run_test(async |_runtime, uv_loop| {
