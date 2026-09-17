@@ -641,6 +641,8 @@ To work around this, you can use a package.json and install the dependencies via
   /// in the published package tarball. We silently skip them.
   #[error("Unsupported local dependency: {specifier}")]
   LocalDependency { specifier: String },
+  #[error(transparent)]
+  InvalidPackageName(#[from] deno_package_json::InvalidNpmPackageNameError),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -1006,6 +1008,15 @@ impl NpmPackageVersionInfo {
       match parse_dep_entry_inner(key_value, kind) {
         Ok(entry) => Ok(Some(entry)),
         Err(NpmDependencyEntryErrorSource::LocalDependency { .. }) => Ok(None),
+        Err(NpmDependencyEntryErrorSource::InvalidPackageName(err)) => {
+          log::warn!(
+            "Ignoring invalid npm dependency name {:?} in {:?}@{}.",
+            err.name,
+            parent_nv.0,
+            parent_nv.1,
+          );
+          Ok(None)
+        }
         Err(source) => Err(Box::new(NpmDependencyEntryError {
           parent_nv: PackageNv {
             name: parent_nv.0.into(),
@@ -1083,6 +1094,7 @@ fn parse_dep_entry_name_and_raw_version<'a>(
   key: &'a str,
   value: &'a str,
 ) -> Result<(&'a str, &'a str), NpmDependencyEntryErrorSource> {
+  deno_package_json::validate_npm_package_name(key)?;
   let (name, version_req) =
     if let Some(package_and_version) = value.strip_prefix("npm:") {
       if let Some((name, version)) = package_and_version.rsplit_once('@') {
@@ -1113,6 +1125,7 @@ fn parse_dep_entry_name_and_raw_version<'a>(
       specifier: version_req.to_string(),
     })
   } else {
+    deno_package_json::validate_npm_package_name(name)?;
     Ok((name, version_req))
   }
 }
@@ -2415,6 +2428,25 @@ mod test {
   }
 
   #[test]
+  fn test_parse_dep_entry_rejects_invalid_package_names() {
+    for (key, value) in [
+      ("alias", "npm:../package@1"),
+      ("alias", "npm:package/name@1"),
+      ("alias", "npm:package\\name@1"),
+      ("alias", "npm:C:\\package@1"),
+      ("alias", "npm:@scope/../package@1"),
+      ("../alias", "npm:package@1"),
+    ] {
+      let err = parse_dep_entry_name_and_raw_version(key, value)
+        .expect_err(&format!("{key}: {value}"));
+      assert!(
+        matches!(err, NpmDependencyEntryErrorSource::InvalidPackageName(_)),
+        "{key}: {value}: {err}",
+      );
+    }
+  }
+
+  #[test]
   fn test_parse_dep_entry_name_and_raw_version_error() {
     let err = parse_dep_entry_name_and_raw_version(
       &StackString::from("test"),
@@ -2487,6 +2519,21 @@ mod test {
       assert_eq!(entries.len(), 1);
       assert_eq!(entries[0].bare_specifier.as_str(), "a");
     }
+  }
+
+  #[test]
+  fn invalid_dep_names_as_entries_are_skipped() {
+    let deps = NpmPackageVersionInfo {
+      dependencies: HashMap::from([
+        ("a".into(), "^1.0.0".into()),
+        ("../invalid-key".into(), "^1.0.0".into()),
+        ("invalid-target".into(), "npm:../target@1".into()),
+      ]),
+      ..Default::default()
+    };
+    let entries = deps.dependencies_as_entries("pkg-name").unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].bare_specifier.as_str(), "a");
   }
 
   #[test]
