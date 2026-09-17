@@ -1,0 +1,9 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/thing"
+  ],
+  "tasks": {
+    "run-bin": "thing-bin"
+  }
+}

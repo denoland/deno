@@ -64,8 +64,13 @@ use crate::lifecycle_scripts::is_running_lifecycle_script;
 use crate::local::InitializingGuard;
 use crate::local::LocalNpmInstallSys;
 use crate::local::LocalNpmPackageInstallerOptions;
+use crate::local::LocalSetupCache;
 use crate::local::SyncResolutionWithFsError;
+use crate::local::WorkspaceBinPackage;
+use crate::local::add_workspace_bin_entries;
+use crate::local::calculate_packages_hash;
 use crate::local::join_package_name;
+use crate::local::resolve_workspace_bin_packages;
 use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
@@ -397,13 +402,39 @@ impl<
       &self.system_info,
     );
 
+    // Declared before `bin_entries` below so it outlives the borrows it hands
+    // out to it.
+    let workspace_bin_packages =
+      resolve_workspace_bin_packages(&self.npm_install_deps_provider);
+
     // 1. If clean install, remove stale packages
-    if self.clean_on_install {
-      cleanup_hoisted_packages(
-        sys.as_ref(),
-        &self.root_node_modules_path,
-        &layout,
+    let mut setup_cache = self.clean_on_install.then(|| {
+      LocalSetupCache::load(
+        self.sys.clone(),
+        deno_marker_dir.join(".hoisted-setup-cache.bin"),
+      )
+    });
+    if let Some(setup_cache) = &mut setup_cache {
+      let top_level_names = layout
+        .top_level
+        .keys()
+        .map(|name| name.to_string())
+        .collect::<BTreeSet<_>>();
+      let packages_hash = calculate_packages_hash(
+        &package_partitions,
+        &top_level_names,
+        &workspace_bin_packages,
       );
+      // Same gate as the isolated linker: the cleanup clears and relinks the
+      // whole root `.bin`, so it's only worth doing when something changed.
+      if setup_cache.packages_changed(packages_hash) {
+        cleanup_hoisted_packages(
+          sys.as_ref(),
+          &self.root_node_modules_path,
+          &layout,
+        );
+      }
+      setup_cache.set_clean_packages_hash(packages_hash);
     }
 
     // 2. Clone all packages from cache into their hoisted positions
@@ -553,10 +584,18 @@ impl<
 
     // 5. Set up bin entries
     {
-      let bin_entries = match Rc::try_unwrap(bin_entries) {
+      let mut bin_entries = match Rc::try_unwrap(bin_entries) {
         Ok(bin_entries) => bin_entries.into_inner(),
         Err(_) => panic!("Should have sole ref to rc."),
       };
+      // Workspace members that declare a `bin` get a root `.bin` entry too, so
+      // `deno task` and any tooling that looks in `node_modules/.bin` can run
+      // them (#36313). Added last so snapshot packages win a name collision.
+      add_workspace_bin_entries(
+        &mut bin_entries,
+        &workspace_bin_packages,
+        self.clean_on_install,
+      );
       bin_entries.finish(
         snapshot,
         &bin_node_modules_dir_path,
@@ -607,6 +646,11 @@ impl<
         .iter()
         .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
         .collect();
+      let workspace_bin_pkgs_by_nv: HashMap<&PackageNv, &WorkspaceBinPackage> =
+        workspace_bin_packages
+          .iter()
+          .map(|pkg| (&pkg.nv, pkg))
+          .collect();
       for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
         // The workspace root's `node_modules` is already fully set up above.
         // (Comparing paths here is unreliable: `root_node_modules_path` is
@@ -670,6 +714,7 @@ impl<
                   // hoisted location but points at the member's own alias link.
                   bin_deps.push(crate::local::MemberBinDep {
                     package,
+                    extra: None,
                     read_path: target_path.clone(),
                     link_path: member_node_modules.join(alias.as_str()),
                   });
@@ -680,6 +725,16 @@ impl<
                 let Some(target_dir) = workspace_member_dirs.get(nv) else {
                   continue;
                 };
+                // a sibling member's executables land in this member's
+                // `.bin` too (#36313)
+                if let Some(bin_pkg) = workspace_bin_pkgs_by_nv.get(nv) {
+                  bin_deps.push(crate::local::MemberBinDep {
+                    package: &bin_pkg.package,
+                    extra: Some(&bin_pkg.extra),
+                    read_path: bin_pkg.package_path.clone(),
+                    link_path: member_node_modules.join(alias.as_str()),
+                  });
+                }
                 (alias, target_dir.to_path_buf())
               }
             };
@@ -804,6 +859,10 @@ impl<
         })
         .await
         .map_err(SyncResolutionWithFsError::LifecycleScripts)?
+    }
+
+    if let Some(setup_cache) = &setup_cache {
+      setup_cache.save();
     }
 
     drop(single_process_lock);
@@ -1090,6 +1149,11 @@ fn cleanup_hoisted_packages(
       remove_unexpected_package(sys, &path, &name_str, &expected_names);
     }
   }
+
+  // The loop above skips dot-prefixed directories, so the root `.bin` needs
+  // clearing separately for entries of packages (and workspace members) that
+  // are no longer part of the install.
+  crate::local::clear_bin_dir(sys, root_node_modules_path);
 }
 
 #[async_trait(?Send)]
