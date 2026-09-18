@@ -54,6 +54,7 @@ pub use deno_core::v8;
 use deno_permissions::PermissionCheckError;
 pub use denort_helper::DenoRtNativeAddonLoader;
 pub use denort_helper::DenoRtNativeAddonLoaderRc;
+pub use denort_helper::NativeAddonSibling;
 #[cfg(unix)]
 use libloading::os::unix::*;
 #[cfg(windows)]
