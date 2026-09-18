@@ -117,7 +117,7 @@ pub async fn kernel(
 
   let repl_thread = std::thread::spawn(move || {
     let fut = async move {
-      let (worker, test_event_receiver) = create_single_test_event_channel();
+      let (worker, test_event_receiver) = create_single_test_event_channel()?;
       let TestEventWorkerSender {
         sender: test_event_sender,
         stdout,
@@ -194,7 +194,7 @@ pub async fn kernel(
   )
   .unwrap();
 
-  let (worker2, _) = create_single_test_event_channel();
+  let (worker2, _) = create_single_test_event_channel()?;
   let TestEventWorkerSender {
     sender: _test_sender2,
     stdout: stdout2,
