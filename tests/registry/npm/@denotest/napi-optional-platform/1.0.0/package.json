@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/napi-optional-platform",
+  "version": "1.0.0",
+  "main": "index.js",
+  "publishDate": "2020-01-01T00:00:00.000Z",
+  "optionalDependencies": {
+    "@denotest/napi-optional-platform-linux-x64": "1.0.0",
+    "@denotest/napi-optional-platform-android-arm64": "1.0.0"
+  }
+}
