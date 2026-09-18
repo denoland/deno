@@ -296,7 +296,7 @@ pub enum CreateWorkerError {
 #[op2(stack_trace)]
 fn op_create_worker(
   state: &mut OpState,
-  #[scoped] args: CreateWorkerArgs,
+  #[scoped] mut args: CreateWorkerArgs,
   #[serde] maybe_worker_metadata: Option<JsMessageData>,
 ) -> Result<WorkerId, CreateWorkerError> {
   let specifier = args.specifier.clone();
@@ -319,6 +319,15 @@ fn op_create_worker(
       UNSTABLE_FEATURE_NAME,
       "Worker.deno.permissions",
     );
+  }
+
+  if args.resource_limits.is_some()
+    && !matches!(worker_type, WorkerThreadType::Node)
+    && !state
+      .borrow::<Arc<crate::FeatureChecker>>()
+      .check(UNSTABLE_FEATURE_NAME)
+  {
+    args.resource_limits = None;
   }
 
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
