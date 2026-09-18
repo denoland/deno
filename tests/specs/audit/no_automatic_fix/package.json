@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@denotest/using-vuln1-patched": "1.0.0",
+    "@denotest/with-vuln1": "1.0.0"
+  }
+}

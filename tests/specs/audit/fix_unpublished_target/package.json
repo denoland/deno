@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/with-vuln4": "1.0.0"
+  }
+}
