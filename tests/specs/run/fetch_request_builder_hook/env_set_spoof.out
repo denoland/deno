@@ -1,0 +1,2 @@
+x-deno-fetch-token: test-fetch-token-123
+cdn-loop: us-east-1.example.deno-cluster.net
