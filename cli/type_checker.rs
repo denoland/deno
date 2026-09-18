@@ -170,7 +170,34 @@ impl TypeChecker {
     root_names: Vec<(ModuleSpecifier, MediaType)>,
     lib: TsTypeLib,
   ) -> Result<EmitDeclarationsResult, CheckError> {
+    if root_names.is_empty() {
+      return Ok(EmitDeclarationsResult {
+        diagnostics: Diagnostics::default(),
+        emitted_files: BTreeMap::new(),
+      });
+    }
+
     let first_specifier = &root_names[0].0;
+    // A single TSC program has one compiler-options object. Callers that need
+    // to emit roots from multiple Deno scopes must split them first.
+    let (first_scope, _) = self
+      .compiler_options_resolver
+      .entry_for_specifier(first_specifier);
+    for (specifier, _) in root_names.iter().skip(1) {
+      let (scope, _) = self
+        .compiler_options_resolver
+        .entry_for_specifier(specifier);
+      if scope != first_scope {
+        return Err(
+          CheckErrorKind::Other(JsErrorBox::generic(format!(
+            "Cannot emit declarations for roots with different compiler option scopes: '{}' uses scope '{}' but '{}' uses scope '{}'.",
+            first_specifier, first_scope, specifier, scope,
+          )))
+          .into(),
+        );
+      }
+    }
+
     let compiler_options_data = self
       .compiler_options_resolver
       .for_specifier(first_specifier);
