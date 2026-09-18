@@ -35,7 +35,9 @@ http.workspace = true
 http-body-util.workspace = true
 log.workspace = true
 num-bigint.workspace = true
-rand.workspace = true
+# denokv_sqlite takes its versionstamp RNG as a rand 0.8 `RngCore` trait
+# object, so this crate cannot move to rand 0.9 until that crate does.
+rand = "=0.8.5"
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
