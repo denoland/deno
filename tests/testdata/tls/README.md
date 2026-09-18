@@ -56,6 +56,43 @@ For testing purposes we need following files:
 - `localhost_ecc.crt`
 - `localhost_ecc.key`
 
+## X.509v1 certificates
+
+webpki (and therefore rustls) rejects X.509v1 certificates at parse time, so
+`ext/node`'s TLS client builds and verifies those chains itself. These two
+fixtures cover both outcomes of that path.
+
+Note that OpenSSL 3.x always adds Subject Key Identifier and Authority Key
+Identifier extensions when signing, which forces a v3 certificate. Use LibreSSL
+(`/usr/bin/openssl` on macOS) or OpenSSL 1.x to regenerate these.
+
+`localhost_v1.crt` is a genuine v1 leaf signed by `RootCA`:
+
+```shell
+openssl req -new -nodes -newkey rsa:2048 -keyout localhost_v1.key -out localhost_v1.csr -subj "/C=US/ST=YourState/L=YourCity/O=Example-Certificates/CN=localhost"
+openssl x509 -req -sha256 -days 36135 -in localhost_v1.csr -CA RootCA.pem -CAkey RootCA.key -set_serial 0x5a1101 -out localhost_v1.crt
+```
+
+`localhost_v1_forged.crt` names `RootCA` as its issuer but was signed by an
+impostor key, so it is only rejected if the chain's signatures are actually
+verified rather than its issuer/subject names merely matched. The impostor CA is
+throwaway and deliberately not checked in:
+
+```shell
+openssl req -x509 -nodes -new -sha256 -days 36135 -newkey rsa:2048 -keyout impostor.key -out impostor.pem -subj "/C=US/CN=Example-Root-CA"
+openssl req -new -nodes -newkey rsa:2048 -keyout localhost_v1_forged.key -out forged.csr -subj "/C=US/ST=YourState/L=YourCity/O=Example-Certificates/CN=localhost"
+openssl x509 -req -sha256 -days 36135 -in forged.csr -CA impostor.pem -CAkey impostor.key -set_serial 0x5a1102 -out localhost_v1_forged.crt
+```
+
+`localhost_v1_via_non_ca.crt` is signed by `localhost.crt`, an ordinary server
+certificate with `basicConstraints: CA:FALSE`. It verifies cryptographically but
+must not build a trusted chain through that non-CA certificate:
+
+```shell
+openssl req -new -nodes -newkey rsa:2048 -keyout localhost_v1_via_non_ca.key -out via_non_ca.csr -subj "/C=US/ST=YourState/L=YourCity/O=Example-Certificates/CN=localhost"
+openssl x509 -req -sha256 -days 36135 -in via_non_ca.csr -CA localhost.crt -CAkey localhost.key -set_serial 0x5a1103 -out localhost_v1_via_non_ca.crt
+```
+
 ## PKCS#12 (PFX) bundles
 
 Bundles wrapping `localhost.crt` + `localhost.key`, with the MAC computed using
