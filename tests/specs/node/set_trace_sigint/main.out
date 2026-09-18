@@ -1,0 +1,4 @@
+signal: SIGINT
+code: [WILDLINE]
+banner: ok
+trace: ok
