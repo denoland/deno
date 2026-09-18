@@ -4443,3 +4443,202 @@ Deno.test(async function subtleMlDsaNonEmptyContextRejected() {
   );
   assertEquals(verified, false);
 });
+
+// RSA/ECDSA sign+verify route mainstream (algorithm, curve, hash, salt)
+// combinations to aws-lc and the rest to RustCrypto. The tests below pin
+// the fallback boundary: fallback-path inputs must keep working as before.
+
+// PSS salt lengths other than the digest length are outside the aws-lc
+// fast path (it hardcodes salt length == digest length).
+Deno.test(async function subtleRsaPssNonDigestSaltLengthRoundtrip() {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSA-PSS",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const data = new Uint8Array([1, 2, 3, 4]);
+  for (const saltLength of [0, 20]) {
+    const alg = { name: "RSA-PSS", saltLength };
+    const signature = await crypto.subtle.sign(
+      alg,
+      keyPair.privateKey,
+      data,
+    );
+    assert(
+      await crypto.subtle.verify(alg, keyPair.publicKey, signature, data),
+    );
+  }
+  // A signature made with one salt length must not verify with another.
+  const sig32 = await crypto.subtle.sign(
+    { name: "RSA-PSS", saltLength: 32 },
+    keyPair.privateKey,
+    data,
+  );
+  assertEquals(
+    await crypto.subtle.verify(
+      { name: "RSA-PSS", saltLength: 20 },
+      keyPair.publicKey,
+      sig32,
+      data,
+    ),
+    false,
+  );
+});
+
+// RSA keys below 2048 bits are outside the aws-lc fast path.
+Deno.test(async function subtleRsa1024BitKeyRoundtrip() {
+  for (const name of ["RSASSA-PKCS1-v1_5", "RSA-PSS"]) {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name,
+        modulusLength: 1024,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    );
+    const data = new Uint8Array([5, 6, 7, 8]);
+    const alg = { name, saltLength: 32 };
+    const signature = await crypto.subtle.sign(alg, keyPair.privateKey, data);
+    assert(
+      await crypto.subtle.verify(alg, keyPair.publicKey, signature, data),
+    );
+    // Tampered signature must return false, not throw.
+    const tampered = new Uint8Array(signature);
+    tampered[0] ^= 0xff;
+    assertEquals(
+      await crypto.subtle.verify(alg, keyPair.publicKey, tampered, data),
+      false,
+    );
+  }
+});
+
+// Curve/hash pairs other than P-256+SHA-256, P-384+SHA-384 and
+// P-521+SHA-512 are outside the aws-lc fast path.
+Deno.test(async function subtleEcdsaMixedCurveHashRoundtrip() {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const data = new Uint8Array([9, 10, 11, 12]);
+  const alg = { name: "ECDSA", hash: "SHA-384" };
+  const signature = await crypto.subtle.sign(alg, keyPair.privateKey, data);
+  assert(await crypto.subtle.verify(alg, keyPair.publicKey, signature, data));
+});
+
+// Invalid signatures on the aws-lc path must return false, not throw,
+// including wrong-length signatures.
+Deno.test(async function subtleEcdsaTamperedSignatureReturnsFalse() {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const data = new Uint8Array([13, 14, 15, 16]);
+  const alg = { name: "ECDSA", hash: "SHA-256" };
+  const signature = await crypto.subtle.sign(alg, keyPair.privateKey, data);
+  assert(await crypto.subtle.verify(alg, keyPair.publicKey, signature, data));
+  const tampered = new Uint8Array(signature);
+  tampered[0] ^= 0xff;
+  assertEquals(
+    await crypto.subtle.verify(alg, keyPair.publicKey, tampered, data),
+    false,
+  );
+  assertEquals(
+    await crypto.subtle.verify(
+      alg,
+      keyPair.publicKey,
+      new Uint8Array(signature).slice(0, 63),
+      data,
+    ),
+    false,
+  );
+});
+
+// Fixtures for the modulus-range boundary of the aws-lc fast path
+// (2048-8192 bits). See ext/crypto/testdata/README.md for how they were
+// generated; the signatures are RSASSA-PKCS1-v1_5 SHA-256 over the
+// payload below.
+const oversizedRsaPayload = new TextEncoder().encode(
+  "deno ext/crypto sign/verify fixture",
+);
+
+// 8192 bits is the top of the fast-path range. The RustCrypto fallback
+// cannot use imported public keys above 4096 bits (rsa crate cap), so
+// this passing also proves the fast path is reachable end to end.
+Deno.test(
+  { permissions: { read: true } },
+  async function subtleRsa8192BitImportedKeyVerifies() {
+    const spki = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa8192_spki.der",
+    );
+    const signature = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa8192_sig_sha256.bin",
+    );
+    const key = await crypto.subtle.importKey(
+      "spki",
+      spki,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    assert(
+      await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        signature,
+        oversizedRsaPayload,
+      ),
+    );
+    const tampered = new Uint8Array(signature);
+    tampered[0] ^= 0xff;
+    assertEquals(
+      await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        tampered,
+        oversizedRsaPayload,
+      ),
+      false,
+    );
+  },
+);
+
+// Above 8192 bits the fast path must decline and leave the key to the
+// RustCrypto fallback, whose public-key parser rejects moduli over 4096
+// bits with an error. Pinned so a fast-path gate regression (aws-lc
+// fails its range check at verify time) cannot silently turn this into
+// a `false` result for a structurally valid signature.
+Deno.test(
+  { permissions: { read: true } },
+  async function subtleRsaOversizedKeyKeepsFallbackBehavior() {
+    const spki = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa9216_spki.der",
+    );
+    const signature = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa9216_sig_sha256.bin",
+    );
+    const key = await crypto.subtle.importKey(
+      "spki",
+      spki,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    await assertRejects(async () => {
+      await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        signature,
+        oversizedRsaPayload,
+      );
+    });
+  },
+);
