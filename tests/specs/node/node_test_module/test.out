@@ -144,6 +144,8 @@ error: "custom error"
 
 unfinished test with uncaughtException => ./test.js:466:1
 error: Promise resolution is still pending but the event loop has already resolved.
+A promise was awaited that can never settle: no remaining async work (timer, I/O, worker, etc.) can resolve it.
+Note: `--trace-leaks` cannot help here because nothing was leaked; there is no pending operation left that could resolve the promise.
 
 unfinished test with unhandledRejection => ./test.js:474:1
 error: Error: bar
