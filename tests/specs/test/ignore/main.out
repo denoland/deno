@@ -1,5 +1,5 @@
 Check [WILDCARD]main.ts
-running 10 tests from ./main.ts
+running 13 tests from ./main.ts
 test 0 ... ignored ([WILDCARD])
 test 1 ... ignored ([WILDCARD])
 test 2 ... ignored ([WILDCARD])
@@ -10,6 +10,8 @@ test 6 ... ignored ([WILDCARD])
 test 7 ... ignored ([WILDCARD])
 test 8 ... ignored ([WILDCARD])
 test 9 ... ignored ([WILDCARD])
+test 10 ... ignored ([WILDCARD])
+test 11 ... ignored ([WILDCARD])
+test 12 ... ignored ([WILDCARD])
 
-ok | 0 passed | 0 failed | 10 ignored ([WILDCARD])
-
+ok | 0 passed | 0 failed | 13 ignored ([WILDCARD])
