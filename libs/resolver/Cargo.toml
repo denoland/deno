@@ -29,6 +29,7 @@ sync = [
 anyhow.workspace = true
 async-once-cell.workspace = true
 async-trait.workspace = true
+base64.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
 chrono.workspace = true
@@ -63,6 +64,7 @@ phf = { workspace = true, features = ["macros"] }
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sourcemap.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 twox-hash.workspace = true
