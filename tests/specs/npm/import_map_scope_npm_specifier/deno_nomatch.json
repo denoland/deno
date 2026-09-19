@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@denotest/different-nested-dep": "npm:@denotest/different-nested-dep@1.0.0"
+  },
+  "scopes": {
+    "npm:@denotest/different-nested-dep@9.9.9": {
+      "@denotest/different-nested-dep-child": "npm:@denotest/different-nested-dep-child@2.0.0"
+    }
+  }
+}
