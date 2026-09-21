@@ -757,6 +757,25 @@ fn unrecognized_subcommand_error(err: &deno_cli_parser::CliError) -> AnyError {
   AnyError::msg(format!("{err}\n"))
 }
 
+fn format_error_without_backtrace(error: &AnyError) -> String {
+  let mut error_string = format!("{error:?}");
+  if error.backtrace().status() == std::backtrace::BacktraceStatus::Captured {
+    let mut backtrace = error.backtrace().to_string();
+    if backtrace.starts_with("stack backtrace:") {
+      backtrace.replace_range(0..1, "S");
+    } else {
+      backtrace.insert_str(0, "Stack backtrace:\n");
+    }
+    backtrace.truncate(backtrace.trim_end().len());
+
+    let suffix = format!("\n\n{backtrace}");
+    if error_string.ends_with(&suffix) {
+      error_string.truncate(error_string.len() - suffix.len());
+    }
+  }
+  error_string
+}
+
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
   let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
@@ -764,7 +783,7 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
         .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
       format_js_error(e, initial_cwd.as_ref())
     }
-    None => format!("{error:#}"),
+    None => format_error_without_backtrace(&error),
   };
 
   // If this looks like a workspace/npm resolution failure and a
