@@ -1,0 +1,13 @@
+running 1 test from ./test.js
+Async Test Suite ...
+  should handle async operations ... ok ([WILDLINE])
+  Nested Async Suite ...
+    should handle nested async operations ... ok ([WILDLINE])
+    Even More Nested Async Suite ...
+      should handle deeply nested async operations ... ok ([WILDLINE])
+    Even More Nested Async Suite ... ok ([WILDLINE])
+  Nested Async Suite ... ok ([WILDLINE])
+  should have the correct number of assertions after async tests ... ok ([WILDLINE])
+Async Test Suite ... ok ([WILDLINE])
+
+ok | 1 passed (5 steps) | 0 failed ([WILDLINE])
