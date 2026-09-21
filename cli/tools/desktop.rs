@@ -424,10 +424,8 @@ async fn compile_desktop(
 
   let self_extracting = desktop_entrypoint_file.is_some();
   // `desktop_entrypoint_file` (a NamedTempFile) keeps the file alive while
-  // `compile_binary` reads it. It is explicitly closed right after compilation
-  // (see below) rather than on drop: the long-running `run_desktop_hmr` wait
-  // exits on Ctrl-C without running destructors, so a drop-only guard would
-  // leak the entrypoint for the whole dev session.
+  // `compile_binary` reads it. Framework HMR also executes this source copy so
+  // package resolution uses the project's package.json and node_modules.
 
   // No explicit icon, but a framework was detected — try to use its
   // favicon (e.g. `public/favicon.ico`, `app/icon.png`) as the app icon
@@ -538,19 +536,24 @@ async fn compile_desktop(
   )
   .await?;
 
-  // The temp entrypoint is embedded in the compiled dylib's VFS now; nothing
-  // downstream reads it from disk. Remove it deterministically here so the
-  // long-running HMR session (which exits on Ctrl-C without running the
-  // drop guard) can't leave it behind in the project root.
-  if let Some(entrypoint_file) = desktop_entrypoint_file {
-    let _ = entrypoint_file.close();
-  }
+  let framework_hmr_entrypoint = desktop_entrypoint_file
+    .as_ref()
+    .filter(|_| {
+      desktop_flags.hmr
+        && detected_framework
+          .as_ref()
+          .is_some_and(|framework| framework.hmr_entrypoint_code().is_some())
+    })
+    .map(|entrypoint_file| entrypoint_file.path().to_path_buf());
 
   if desktop_flags.hmr || inspector_requested {
     let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
     run_desktop_hmr(
-      &output_path,
-      &detection_cwd,
+      DesktopHmrPaths {
+        dylib: &output_path,
+        source_dir: &detection_cwd,
+        framework_entrypoint: framework_hmr_entrypoint.as_deref(),
+      },
       detected_framework.as_ref(),
       backend,
       laufey_resolver,
@@ -640,6 +643,10 @@ async fn compile_desktop(
         final_path.display().to_string()
       }
     );
+  }
+
+  if let Some(entrypoint_file) = desktop_entrypoint_file {
+    let _ = entrypoint_file.close();
   }
 
   Ok(())
@@ -1251,9 +1258,14 @@ async fn spawn_framework_dev_server(
 /// `child_process.fork()` works because forked workers use
 /// `override_main_module` to run the target script instead of the
 /// embedded entrypoint.
+struct DesktopHmrPaths<'a> {
+  dylib: &'a Path,
+  source_dir: &'a Path,
+  framework_entrypoint: Option<&'a Path>,
+}
+
 async fn run_desktop_hmr(
-  dylib_path: &Path,
-  source_dir: &Path,
+  paths: DesktopHmrPaths<'_>,
   framework: Option<&super::framework::FrameworkDetection>,
   backend: &str,
   laufey_resolver: &LaufeyBackendResolver,
@@ -1263,10 +1275,10 @@ async fn run_desktop_hmr(
   let laufey_backend = laufey_resolver
     .find_binary(backend, LAUFEY_NATIVE_TARGET)
     .await?;
-  let dylib_abs = crate::util::fs::canonicalize_path(dylib_path)
-    .unwrap_or(dylib_path.to_path_buf());
-  let source_abs = crate::util::fs::canonicalize_path(source_dir)
-    .unwrap_or(source_dir.to_path_buf());
+  let dylib_abs = crate::util::fs::canonicalize_path(paths.dylib)
+    .unwrap_or(paths.dylib.to_path_buf());
+  let source_abs = crate::util::fs::canonicalize_path(paths.source_dir)
+    .unwrap_or(paths.source_dir.to_path_buf());
 
   // In HMR/inspector mode we launch the prebuilt laufey.app, so a user
   // `--icon` (or framework-detected favicon) would otherwise be ignored
@@ -1354,6 +1366,9 @@ async fn run_desktop_hmr(
     && framework.is_some_and(|f| f.hmr_entrypoint_code().is_some());
   if in_runtime_dev {
     cmd.env("DENO_DESKTOP_FRAMEWORK_DEV", "1");
+    if let Some(entrypoint) = paths.framework_entrypoint {
+      cmd.env("DENO_DESKTOP_FRAMEWORK_ENTRYPOINT", entrypoint);
+    }
   }
 
   let _dev_server_child = if desktop_flags.hmr
