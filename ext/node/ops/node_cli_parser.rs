@@ -109,12 +109,17 @@ pub fn op_node_translate_cli_args(
   script_in_npm_package: bool,
   wrap_eval: bool,
 ) -> Result<TranslatedArgs, CliParserError> {
-  // If no args, return early with run -A -
+  // If no args, return early with run -A --ext=cjs -
   // `-` tells Deno to read from stdin, matching Node.js behavior where
-  // `node` with no args reads and executes piped stdin.
+  // `node` with no args reads and executes piped stdin as CommonJS.
   if args.is_empty() {
     return Ok(TranslatedArgs {
-      deno_args: vec!["run".to_string(), "-A".to_string(), "-".to_string()],
+      deno_args: vec![
+        "run".to_string(),
+        "-A".to_string(),
+        "--ext=cjs".to_string(),
+        "-".to_string(),
+      ],
       node_options: vec![],
       ca_stores: None,
       use_openssl_ca: false,
