@@ -175,5 +175,8 @@ fn test_failure_does_not_print_rust_backtrace() {
     .run();
 
   output.assert_exit_code(1);
-  assert_not_contains!(output.combined_output(), "Stack backtrace:");
+  let combined = output.combined_output();
+  assert_contains!(combined, "error: Test failed");
+  assert_contains!(combined, "Error: boom");
+  assert_not_contains!(combined, "Stack backtrace:");
 }
