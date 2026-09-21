@@ -3321,13 +3321,19 @@ function readableStreamPipeTo(
   // slot is freed on the next clear. Without this the pump would stall on
   // the transform's initial backpressure before ever reading from the
   // source, deadlocking the pipe until the destination readable is
-  // consumed (#36790). Any state change (close/abort/error on either
-  // side) permanently disables the route and falls back to the generic
-  // writer path, which surfaces the proper rejection.
+  // consumed (#36790). A custom writable size algorithm also disables the
+  // route at setup: the slot count tracks chunks (size 1 each) and cannot
+  // reproduce the strategy's size accounting, so only the default count-1
+  // algorithm (compared by identity, like
+  // writableStreamDefaultControllerGetChunkSize does) takes the bypass.
+  // Any state change (close/abort/error on either side) permanently
+  // disables the route and falls back to the generic writer path, which
+  // surfaces the proper rejection.
   const bypassTS = dest[_identityBypassTS];
   let bypassActive = bypassTS !== undefined &&
     dest[_state] === "writable" &&
-    bypassTS[_readable][_state] === "readable";
+    bypassTS[_readable][_state] === "readable" &&
+    dest[_controller][_strategySizeAlgorithm] === defaultSizeAlgorithm;
   const bypassWritableHWM = bypassActive ? dest[_controller][_strategyHWM] : 0;
   let bypassPendingWrites = 0;
   /** @type {Deferred<void>} */

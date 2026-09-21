@@ -1336,10 +1336,68 @@ Deno.test(async function pipeThroughWriteResolvesBeforeOutputConsumed() {
     clearTimeout(timer);
   }
 
-  // The chunk is buffered in the pipe and flows through once the output is
-  // consumed.
+  // The single writable-side slot is now occupied by the buffered chunk, so
+  // backpressure must kick in: a second write does not resolve until the
+  // reader consumes the first chunk.
+  let secondWriteResolved = false;
+  const secondWrite = writer.write(2).then(() => {
+    secondWriteResolved = true;
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  assertEquals(secondWriteResolved, false);
+
   const reader = b.readable.getReader();
   assertEquals(await reader.read(), { value: 1, done: false });
+  // Reading the buffered chunk alone does not clear the transform's
+  // backpressure (the desired size stays 0); the next read pends against the
+  // empty queue, which pulls and releases the second write.
+  const secondRead = reader.read();
+  await secondWrite;
+  assertEquals(secondWriteResolved, true);
+  assertEquals(await secondRead, { value: 2, done: false });
+
   await writer.close();
+  assertEquals(await reader.read(), { value: undefined, done: true });
+});
+
+// With a custom writable size algorithm the identity pipeThrough bypass does
+// not apply (its slot count tracks chunks, not strategy sizes), so the
+// generic pipeTo loop paces on the strategy's actual chunk sizes.
+Deno.test(async function pipeThroughCustomSizeAlgorithmPacesOnChunkSize() {
+  const a = new TransformStream();
+  const b = new TransformStream(undefined, {
+    highWaterMark: 4,
+    size: (chunk: number) => chunk,
+  });
+  a.readable.pipeThrough(b);
+
+  const writer = a.writable.getWriter();
+  // Sizes 1 + 2 + 3 = 6 fill the destination writable's queue past its high
+  // water mark of 4, so a fourth write must not resolve until queued writes
+  // complete — and each write's transform completes only when the readable
+  // side (high water mark 0) is pulled.
+  await writer.write(1);
+  await writer.write(2);
+  await writer.write(3);
+  let fourthWriteResolved = false;
+  const fourthWrite = writer.write(4).then(() => {
+    fourthWriteResolved = true;
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  assertEquals(fourthWriteResolved, false);
+
+  const reader = b.readable.getReader();
+  // Each read pulls exactly one parked write through the transform (the
+  // enqueue re-establishes backpressure for the next one). Once sizes 1 + 2
+  // complete, the writable queue holds only 3 — below the high water mark —
+  // so the pipe reads from the source again and the fourth write resolves.
+  assertEquals(await reader.read(), { value: 1, done: false });
+  assertEquals(await reader.read(), { value: 2, done: false });
+  await fourthWrite;
+  assertEquals(fourthWriteResolved, true);
+
+  await writer.close();
+  assertEquals(await reader.read(), { value: 3, done: false });
+  assertEquals(await reader.read(), { value: 4, done: false });
   assertEquals(await reader.read(), { value: undefined, done: true });
 });
