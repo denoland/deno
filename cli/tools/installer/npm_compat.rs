@@ -23,6 +23,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_npmrc::ResolvedNpmRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::Version;
 use deno_semver::VersionReq;
@@ -31,6 +32,15 @@ use flate2::read::GzDecoder;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClient;
 use crate::npm::CliNpmResolver;
+
+/// The `@types/node` version installed for projects that don't bring their own.
+///
+/// Pinned, and kept equal to the version `cli/tsc/dts/node` is generated from
+/// (`tools/update_types_node.ts` reads this constant), so a project type-checks
+/// the same way whether it uses the downloaded typings or the built-in ones,
+/// and so a `@types/node` release doesn't silently change anyone's diagnostics.
+/// Bump both by running `./tools/update_types_node.ts` after editing this.
+pub const TYPES_NODE_VERSION: &str = "24.2.0";
 
 /// Installed JSR package info for reporting.
 pub struct InstalledJsrPackage {
@@ -285,6 +295,7 @@ pub async fn setup_npm_compat(
   graph_specifiers: &[String],
   local_wasm_modules: &[(Url, String)],
   npm_resolver: &CliNpmResolver,
+  npmrc: &ResolvedNpmRc,
   resolved_compiler_options: Option<&Value>,
   manage_root_tsconfig: bool,
   type_check_remote: bool,
@@ -444,8 +455,13 @@ pub async fn setup_npm_compat(
 
   // Ensure @types/node is available so Node globals (timers, node: builtins,
   // Buffer, URLPattern, ...) resolve under stock tooling.
-  let node_types =
-    ensure_types_node(project_root, http_client, use_global_cache_layout).await;
+  let node_types = ensure_types_node(
+    project_root,
+    http_client,
+    npmrc,
+    use_global_cache_layout,
+  )
+  .await;
   if let Some(undici_types_dir) = &node_types.undici_types_dir {
     member_paths.insert(
       "undici-types".to_string(),
@@ -548,6 +564,7 @@ fn resolve_bare_against_import_map(
 async fn ensure_types_node(
   project_root: &Path,
   http_client: &HttpClient,
+  npmrc: &ResolvedNpmRc,
   use_global_cache_layout: bool,
 ) -> NodeTypesSetup {
   // Reuse an @types/node the project already installed under node_modules.
@@ -569,15 +586,24 @@ async fn ensure_types_node(
   let type_root = "./npm-compat/@types".to_string();
   let node_dir = modules_dir.join("@types/node");
   let undici_types_dir = modules_dir.join("undici-types");
-  if is_materialized_package(&node_dir) {
+  // Only reuse a copy at the pinned version: one left behind by an earlier
+  // Deno (back when this followed the registry's `latest`) would otherwise keep
+  // being type-checked against forever.
+  if is_materialized_package_at_version(&node_dir, TYPES_NODE_VERSION) {
     return NodeTypesSetup {
       type_root: Some(type_root),
       undici_types_dir: is_materialized_package(&undici_types_dir)
         .then_some(undici_types_dir),
     };
   }
-  match download_npm_package(&modules_dir, "@types/node", None, http_client)
-    .await
+  match download_npm_package(
+    &modules_dir,
+    "@types/node",
+    Some(TYPES_NODE_VERSION),
+    http_client,
+    npmrc,
+  )
+  .await
   {
     Ok(Some((_version, deps))) => {
       if let Some(req) = deps.get("undici-types").and_then(|v| v.as_str()) {
@@ -586,6 +612,7 @@ async fn ensure_types_node(
           "undici-types",
           Some(req),
           http_client,
+          npmrc,
         )
         .await;
       }
@@ -610,10 +637,13 @@ async fn download_npm_package(
   pkg: &str,
   req: Option<&str>,
   http_client: &HttpClient,
+  npmrc: &ResolvedNpmRc,
 ) -> Result<Option<(String, serde_json::Map<String, Value>)>, AnyError> {
-  let meta_url =
-    format!("https://registry.npmjs.org/{}", pkg.replace('/', "%2f"));
-  let bytes = match http_client.download(Url::parse(&meta_url)?).await {
+  // Go through the registry the project configured (`.npmrc`,
+  // `NPM_CONFIG_REGISTRY`) rather than hardcoding npmjs.org, so a private
+  // registry, a mirror or an offline setup is honored here too.
+  let meta_url = deno_npm_cache::get_package_url(npmrc, pkg);
+  let bytes = match http_client.download(meta_url).await {
     Ok(b) => b,
     Err(e) => {
       log::debug!("Failed to fetch metadata for {pkg}: {e}");
@@ -642,7 +672,7 @@ async fn download_npm_package(
   };
   let tb = http_client.download(Url::parse(tarball)?).await?;
   let dest = modules_dir.join(pkg);
-  if let Err(e) = extract_tarball_gz_atomic(&tb, &dest) {
+  if let Err(e) = extract_tarball_gz_atomic(&tb, &dest, Some(&version)) {
     log::debug!("Failed to extract {pkg}: {e}");
     return Ok(None);
   }
@@ -985,7 +1015,7 @@ async fn install_jsr_packages(
       }
     };
 
-    if let Err(e) = extract_tarball_gz_atomic(&tarball_bytes, &pkg_dir) {
+    if let Err(e) = extract_tarball_gz_atomic(&tarball_bytes, &pkg_dir, None) {
       log::debug!("Failed to extract {registry_name}: {e}");
       continue;
     }
@@ -1014,6 +1044,28 @@ async fn install_jsr_packages(
 /// `package.json`; this marker relies on that invariant.
 fn is_materialized_package(dir: &Path) -> bool {
   dir.join("package.json").exists()
+}
+
+/// Whether an existing `dest` tree can stand in for the one being extracted:
+/// complete, and at the version we asked for when we pinned one.
+fn published_copy_is_current(
+  dest: &Path,
+  expected_version: Option<&str>,
+) -> bool {
+  match expected_version {
+    Some(version) => is_materialized_package_at_version(dest, version),
+    None => is_materialized_package(dest),
+  }
+}
+
+fn is_materialized_package_at_version(dir: &Path, version: &str) -> bool {
+  let Ok(contents) = std::fs::read_to_string(dir.join("package.json")) else {
+    return false;
+  };
+  let Ok(manifest) = serde_json::from_str::<Value>(&contents) else {
+    return false;
+  };
+  manifest.get("version").and_then(|v| v.as_str()) == Some(version)
 }
 
 fn cleanup_stale_staging_dirs(
@@ -1052,6 +1104,7 @@ fn cleanup_stale_staging_dirs(
 fn extract_tarball_gz_atomic(
   gz_bytes: &[u8],
   dest: &Path,
+  expected_version: Option<&str>,
 ) -> Result<(), AnyError> {
   let parent = dest.parent().ok_or_else(|| {
     anyhow!("Invalid extract destination: {}", dest.display())
@@ -1098,23 +1151,25 @@ fn extract_tarball_gz_atomic(
       // `dest` is in the way. On Windows a rename onto *any* existing directory
       // fails; on Unix only onto a non-empty one - so this is the normal path
       // for a lost race, not just an error path.
-      if is_materialized_package(dest) {
+      if published_copy_is_current(dest, expected_version) {
         // Another process published a complete copy first. Its tree is as good
         // as ours, so keep it and drop the staging dir.
         let _ = std::fs::remove_dir_all(&tmp_dir);
         return Ok(());
       }
-      // `dest` is stale: half-extracted by a killed process, or written
-      // non-atomically by an older Deno. Clearing it is what heals a cache that
-      // is already poisoned - otherwise every later run skips the download and
-      // keeps type checking against an incomplete tree.
+      // `dest` is stale: half-extracted by a killed process, written
+      // non-atomically by an older Deno, or a complete copy of a version we no
+      // longer want (an older pin, or whatever `latest` was when Deno still
+      // followed it). Clearing it is what heals a cache that is already
+      // poisoned - otherwise every later run skips the download and keeps type
+      // checking against the wrong tree.
       let _ = std::fs::remove_dir_all(dest);
       match std::fs::rename(&tmp_dir, dest) {
         Ok(()) => Ok(()),
         Err(e) => {
           let _ = std::fs::remove_dir_all(&tmp_dir);
           // A third process may have published `dest` in between.
-          if is_materialized_package(dest) {
+          if published_copy_is_current(dest, expected_version) {
             return Ok(());
           }
           Err(anyhow!(
@@ -1803,7 +1858,7 @@ mod tests {
       ("index.d.ts", "declare const x: number;"),
     ]);
 
-    extract_tarball_gz_atomic(&gz, &dest).unwrap();
+    extract_tarball_gz_atomic(&gz, &dest, None).unwrap();
 
     assert!(is_materialized_package(&dest));
     assert_eq!(
@@ -1834,7 +1889,7 @@ mod tests {
       ("package.json", r#"{"name":"@types/node"}"#),
       ("index.d.ts", "fresh"),
     ]);
-    extract_tarball_gz_atomic(&gz, &dest).unwrap();
+    extract_tarball_gz_atomic(&gz, &dest, None).unwrap();
 
     assert!(is_materialized_package(&dest));
     assert_eq!(
@@ -1858,7 +1913,7 @@ mod tests {
       ("index.d.ts", "loser"),
     ]);
     // Losing the race is not an error, and must not clobber the winner.
-    extract_tarball_gz_atomic(&gz, &dest).unwrap();
+    extract_tarball_gz_atomic(&gz, &dest, None).unwrap();
 
     assert_eq!(
       std::fs::read_to_string(dest.join("index.d.ts")).unwrap(),
@@ -1870,6 +1925,63 @@ mod tests {
       .filter(|n| n.starts_with('.') && n.contains(".tmp-"))
       .collect::<Vec<_>>();
     assert!(leftovers.is_empty(), "leftover staging dirs: {leftovers:?}");
+  }
+
+  #[test]
+  fn test_extract_tarball_gz_atomic_replaces_other_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("node");
+    // A complete copy of a version we no longer want: what an older Deno left
+    // behind when this followed the registry's `latest` instead of a pin.
+    std::fs::create_dir_all(&dest).unwrap();
+    std::fs::write(
+      dest.join("package.json"),
+      r#"{"name":"@types/node","version":"26.6.2"}"#,
+    )
+    .unwrap();
+    std::fs::write(dest.join("index.d.ts"), "stale").unwrap();
+
+    let gz = make_tarball_gz(&[
+      (
+        "package.json",
+        r#"{"name":"@types/node","version":"24.2.0"}"#,
+      ),
+      ("index.d.ts", "pinned"),
+    ]);
+    extract_tarball_gz_atomic(&gz, &dest, Some("24.2.0")).unwrap();
+
+    assert_eq!(
+      std::fs::read_to_string(dest.join("index.d.ts")).unwrap(),
+      "pinned"
+    );
+  }
+
+  #[test]
+  fn test_extract_tarball_gz_atomic_keeps_same_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("node");
+    // A concurrent process published the version we wanted; keep its tree.
+    std::fs::create_dir_all(&dest).unwrap();
+    std::fs::write(
+      dest.join("package.json"),
+      r#"{"name":"@types/node","version":"24.2.0"}"#,
+    )
+    .unwrap();
+    std::fs::write(dest.join("index.d.ts"), "winner").unwrap();
+
+    let gz = make_tarball_gz(&[
+      (
+        "package.json",
+        r#"{"name":"@types/node","version":"24.2.0"}"#,
+      ),
+      ("index.d.ts", "loser"),
+    ]);
+    extract_tarball_gz_atomic(&gz, &dest, Some("24.2.0")).unwrap();
+
+    assert_eq!(
+      std::fs::read_to_string(dest.join("index.d.ts")).unwrap(),
+      "winner"
+    );
   }
 
   #[test]

@@ -466,6 +466,7 @@ pub async fn sync_types_command(
     &graph_specifiers,
     &local_wasm_modules,
     &npm_resolver,
+    factory.npmrc()?,
     resolved_compiler_options.as_ref(),
     manage_root_tsconfig,
     type_check_remote,
