@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "relative_url_without_location": {
+      "args": "run --quiet --unstable-canvas2d main.js",
+      "output": "main.out"
+    }
+  }
+}

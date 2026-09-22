@@ -140,6 +140,7 @@ async function runSingleTestInner(
       "run",
       "-A",
       "--unstable-webgpu",
+      "--unstable-canvas2d",
       "--unstable-net",
       "--v8-flags=--expose-gc",
     ];
@@ -224,6 +225,57 @@ function getShim(test: string): string {
 
   shim.push("globalThis.window = globalThis;");
 
+  // Minimal document so testharness picks the window env + document.fonts.
+  // parent stops window traversal; load is dispatched in generateBundle.
+  if (
+    test.includes("/html/canvas/") || test.includes("/css/css-font-loading/")
+  ) {
+    shim.push(`
+      globalThis.parent = globalThis;
+      if (globalThis.document === undefined) {
+        // fonts + documentElement.lang (for ctx.lang = "inherit").
+        const documentElementLang = { value: "" };
+        globalThis.document = {
+          fonts: Deno.fonts,
+          documentElement: {
+            getAttribute(name) {
+              return name === "lang" ? documentElementLang.value : null;
+            },
+            setAttribute(name, value) {
+              if (name === "lang") documentElementLang.value = String(value);
+            },
+          },
+          // testharness meta timeout probe.
+          getElementsByTagName: () => [],
+        };
+        // Resolve lang "inherit" from documentElement at measure/draw time.
+        const proto = OffscreenCanvasRenderingContext2D.prototype;
+        const wrapLang = (methodName) => {
+          const orig = proto[methodName];
+          proto[methodName] = function (...args) {
+            if (this.lang !== "inherit") {
+              return orig.apply(this, args);
+            }
+            const docLang = globalThis.document?.documentElement
+              ?.getAttribute?.("lang");
+            if (!docLang) {
+              return orig.apply(this, args);
+            }
+            this.lang = docLang;
+            try {
+              return orig.apply(this, args);
+            } finally {
+              this.lang = "inherit";
+            }
+          };
+        };
+        wrapLang("measureText");
+        wrapLang("fillText");
+        wrapLang("strokeText");
+      }
+    `);
+  }
+
   if (test.includes("streams/transferable")) {
     shim.push(`
       {
@@ -291,7 +343,22 @@ async function generateBundle(location: URL): Promise<string> {
     }
   }
 
-  return scriptContents.map(([url, contents]) => `
+  // Deno needs registerLocalFonts; prelude can await, evalContext cannot.
+  let prelude = "";
+  if (
+    location.pathname.includes("/html/canvas/") ||
+    location.pathname.includes("/css/css-font-loading/")
+  ) {
+    prelude = "await Deno.registerLocalFonts?.();";
+
+    // Window env waits for load before finishing.
+    scriptContents.push([
+      new URL("#load", location).href,
+      "globalThis.dispatchEvent(new Event('load'));",
+    ]);
+  }
+
+  return prelude + scriptContents.map(([url, contents]) => `
 (function() {
   const [_,err] = Deno[Deno.internal].core.evalContext(${
     JSON.stringify(contents)
