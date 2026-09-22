@@ -3328,7 +3328,10 @@ function readableStreamPipeTo(
   // writableStreamDefaultControllerGetChunkSize does) takes the bypass.
   // Any state change (close/abort/error on either side) permanently
   // disables the route and falls back to the generic writer path, which
-  // surfaces the proper rejection.
+  // surfaces the proper rejection, and shutdown first moves chunks the
+  // bypass buffered ahead of the consumer back into writable-side writes so
+  // they are delivered before the destination is aborted (see
+  // moveBypassBufferToWritable).
   const bypassTS = dest[_identityBypassTS];
   let bypassActive = bypassTS !== undefined &&
     dest[_state] === "writable" &&
@@ -3556,6 +3559,33 @@ function readableStreamPipeTo(
 
   return promise.promise;
 
+  /**
+   * Bypass chunks the destination readable has not pulled yet sit in its
+   * controller queue rather than in the writable's queue, where the generic
+   * path would have parked them as pending writes. Shutdown must treat them
+   * as pending writes as well: the spec waits for every written chunk to
+   * finish before aborting or erroring the destination, whereas erroring the
+   * readable would discard its queue. Move them back into writable-side
+   * writes (in order; the queue is not observable, the identity transform
+   * exposes no controller) so waitForWritesToFinish covers them, and let
+   * the generic path handle whatever the pump reads afterwards.
+   */
+  function moveBypassBufferToWritable() {
+    if (bypassActive === false) {
+      return;
+    }
+    bypassActive = false;
+    bypassPendingWrites = 0;
+    const readableController = bypassTS[_readable][_controller];
+    while (readableController[_queue].size > 0) {
+      currentWrite = writableStreamDefaultWriterWrite(
+        writer,
+        dequeueValue(readableController),
+      );
+      setPromiseIsHandledToTrue(currentWrite);
+    }
+  }
+
   /** @returns {Promise<void>} */
   function waitForWritesToFinish() {
     const oldCurrentWrite = currentWrite;
@@ -3616,6 +3646,7 @@ function readableStreamPipeTo(
       dest[_state] === "writable" &&
       writableStreamCloseQueuedOrInFlight(dest) === false
     ) {
+      moveBypassBufferToWritable();
       uponFulfillment(waitForWritesToFinish(), doTheRest);
     } else {
       doTheRest();
@@ -3635,6 +3666,7 @@ function readableStreamPipeTo(
       dest[_state] === "writable" &&
       writableStreamCloseQueuedOrInFlight(dest) === false
     ) {
+      moveBypassBufferToWritable();
       uponFulfillment(
         waitForWritesToFinish(),
         () => finalize(isError, error),

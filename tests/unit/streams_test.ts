@@ -1401,3 +1401,37 @@ Deno.test(async function pipeThroughCustomSizeAlgorithmPacesOnChunkSize() {
   assertEquals(await reader.read(), { value: 4, done: false });
   assertEquals(await reader.read(), { value: undefined, done: true });
 });
+
+// Chunks the identity pipeThrough bypass has buffered ahead of the consumer
+// must survive the pipe shutting down: like the generic pipeTo loop, which
+// waits for every pending write before aborting the destination, the pipe
+// delivers them and only then errors the destination readable.
+Deno.test(async function pipeThroughBufferedChunksDeliveredBeforeSourceError() {
+  let controller!: ReadableStreamDefaultController<number>;
+  let pulled = 0;
+  const source = new ReadableStream<number>({
+    start(c) {
+      controller = c;
+    },
+    pull(c) {
+      c.enqueue(pulled++);
+    },
+  }, { highWaterMark: 0 });
+  const output = source.pipeThrough(
+    new TransformStream<number, number>(undefined, { highWaterMark: 4 }),
+  );
+
+  // Let the pipe fill the destination's four writable-side slots, then
+  // error the source while nothing has been consumed yet.
+  await new Promise((r) => setTimeout(r, 20));
+  assertEquals(pulled, 4);
+  const error = new Error("source failed");
+  controller.error(error);
+  await new Promise((r) => setTimeout(r, 20));
+
+  const reader = output.getReader();
+  for (let i = 0; i < 4; i++) {
+    assertEquals(await reader.read(), { value: i, done: false });
+  }
+  await assertRejects(() => reader.read(), Error, "source failed");
+});
