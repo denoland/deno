@@ -378,3 +378,51 @@ Deno.test("[node/net] Socket.remoteFamily returns string", async () => {
   });
   await deferred.promise;
 });
+
+Deno.test("[node/net] listen on :: with ipv6Only: false accepts IPv4 connections", async () => {
+  const server = net.createServer((socket) => socket.end("ok"));
+  const listening = Promise.withResolvers<void>();
+  server.once("error", listening.reject);
+  server.listen({ host: "::", port: 0, ipv6Only: false }, listening.resolve);
+  await listening.promise;
+  const { port } = server.address() as net.AddressInfo;
+
+  try {
+    for (const host of ["127.0.0.1", "::1"]) {
+      const received = Promise.withResolvers<string>();
+      const client = net.connect({ host, port });
+      let data = "";
+      client.setEncoding("utf8");
+      client.on("data", (chunk) => data += chunk);
+      client.on("end", () => received.resolve(data));
+      client.on("error", received.reject);
+      assertEquals(await received.promise, "ok", `connect via ${host}`);
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+Deno.test("[node/net] listen on :: with ipv6Only: true leaves the IPv4 port free", async () => {
+  const listen = (server: net.Server, options: net.ListenOptions) => {
+    const listening = Promise.withResolvers<void>();
+    server.once("error", listening.reject);
+    server.listen(options, listening.resolve);
+    return listening.promise;
+  };
+  const server6 = net.createServer();
+  const server4 = net.createServer();
+  await listen(server6, { host: "::", port: 0, ipv6Only: true });
+  const { port } = server6.address() as net.AddressInfo;
+
+  try {
+    // Binding the same port on IPv4 only works if the IPv6 socket
+    // has IPV6_V6ONLY set.
+    await listen(server4, { host: "0.0.0.0", port });
+  } finally {
+    await new Promise((resolve) => server6.close(resolve));
+    if (server4.listening) {
+      await new Promise((resolve) => server4.close(resolve));
+    }
+  }
+});
