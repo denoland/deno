@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "posix_unix_socket_flag": {
+      "args": "run --allow-net=unix:/var/run/docker.sock main.ts",
+      "output": "main.out"
+    }
+  }
+}

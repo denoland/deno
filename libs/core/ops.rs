@@ -280,11 +280,13 @@ pub struct OpCtxs {
 ///
 /// Declarations that already live in static memory (deno_core's `BUILTIN_OPS`,
 /// an extension's method tables, and any extension whose op table is
-/// `Cow::Borrowed`) are borrowed rather than copied into the realm. The owned
-/// variant covers the cases where a declaration genuinely cannot be static:
-/// extension middleware (`Extension::middleware`) rewrites decls at startup,
-/// `extension!` builds its op table with `Cow::Owned` at runtime, and method
-/// constructors get their name patched from the enclosing `OpMethodDecl`.
+/// `Cow::Borrowed` — which `extension!` emits for every extension, generic or
+/// not, a generic one getting one static table per monomorphization) are
+/// borrowed rather than copied into the realm. The owned variant covers the
+/// cases where a declaration genuinely cannot be static: extension middleware
+/// (`Extension::middleware`) rewrites decls at startup, `ops_fn` appends to
+/// the table, and method constructors get their name patched from the
+/// enclosing `OpMethodDecl`.
 pub enum OpDeclStorage {
   Static(&'static [OpDecl]),
   Owned(Vec<OpDecl>),
