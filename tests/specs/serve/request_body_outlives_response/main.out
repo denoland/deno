@@ -1,0 +1,9 @@
+facet1 status: 201
+facet1: response body drained, 12 bytes read
+facet2 status: 201
+facet2 pipe: done, 12 bytes read
+facet3 status: 200 body: ok
+facet3 pipe: done, 12 bytes read
+facet4 status: 201
+facet4: shutdown completed
+PASS

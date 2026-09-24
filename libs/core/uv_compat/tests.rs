@@ -2023,6 +2023,28 @@ fn get_errno() -> i32 {
 }
 
 #[cfg(unix)]
+fn assert_fd_closed(fd: i32) {
+  unsafe {
+    set_errno(0);
+    assert_eq!(libc::fcntl(fd, libc::F_GETFD), -1);
+  }
+  assert_eq!(get_errno(), libc::EBADF);
+}
+
+#[cfg(unix)]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "uv_compat tests require real Unix socket paths"
+)]
+fn pipe_test_socket_path(name: &str) -> std::path::PathBuf {
+  static NEXT_ID: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+  let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  std::env::temp_dir()
+    .join(format!("deno-uv-{name}-{}-{id}.sock", std::process::id()))
+}
+
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_init_sets_fields() {
   run_test(async |_runtime, uv_loop| {
@@ -3060,6 +3082,7 @@ async fn pipe_open_not_active_until_read_start() {
     // Create an OS pipe pair.
     let mut pipe_fds = [0i32; 2];
     assert_eq!(unsafe { libc::pipe(pipe_fds.as_mut_ptr()) }, 0);
+    let read_fd = pipe_fds[0];
     let write_fd = pipe_fds[1];
     let _write_guard = FdGuard(write_fd);
 
@@ -3133,6 +3156,144 @@ async fn pipe_open_not_active_until_read_start() {
       uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
     }
     tick(runtime).await;
+    assert_fd_closed(read_fd);
+  })
+  .await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_listener_transfers_raw_fd_ownership() {
+  run_test(async |runtime, uv_loop| {
+    let socket_path = pipe_test_socket_path("pipe-owner");
+    let socket_path = socket_path.to_string_lossy().into_owned();
+    let mut pipe = new_pipe(false);
+
+    unsafe {
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut pipe, 0));
+      assert_ok(pipe::uv_pipe_bind(&mut pipe, &socket_path));
+    }
+    let fd = pipe.fd().expect("bound pipe should have a descriptor");
+    assert_eq!(pipe.internal_fd, Some(fd));
+
+    unsafe {
+      assert_ok(pipe::uv_pipe_listen(&mut pipe, 128, None));
+    }
+    assert!(
+      pipe.internal_fd.is_none(),
+      "the raw owner must be cleared after listener adoption"
+    );
+    assert!(pipe.internal_listener.is_some());
+    assert_eq!(pipe.fd(), Some(fd));
+
+    unsafe {
+      uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+    assert_fd_closed(fd);
+  })
+  .await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_accept_keeps_only_the_tokio_fd_owner() {
+  use std::os::unix::io::AsRawFd;
+
+  run_test(async |runtime, uv_loop| {
+    let (accepted, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+    accepted.set_nonblocking(true).unwrap();
+    let accepted = tokio::net::UnixStream::from_std(accepted).unwrap();
+    let fd = accepted.as_raw_fd();
+
+    let mut server = new_pipe(false);
+    let mut client = new_pipe(false);
+    unsafe {
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut server, 0));
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut client, 0));
+    }
+    server.internal_backlog.push_back(accepted);
+
+    unsafe {
+      assert_ok(pipe::uv_pipe_accept(&mut server, &mut client));
+    }
+    assert!(
+      client.internal_fd.is_none(),
+      "an accepted Tokio stream must be the sole descriptor owner"
+    );
+    assert!(client.internal_stream.is_some());
+    assert_eq!(client.fd(), Some(fd));
+
+    unsafe {
+      uv_close(&mut client as *mut uv_pipe_t as *mut uv_handle_t, None);
+      uv_close(&mut server as *mut uv_pipe_t as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+    assert_fd_closed(fd);
+    drop(peer);
+  })
+  .await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_bound_connect_transfers_raw_fd_ownership() {
+  run_test(async |runtime, uv_loop| {
+    let server_path = pipe_test_socket_path("pipe-connect-server");
+    let client_path = pipe_test_socket_path("pipe-connect-client");
+    let listener = tokio::net::UnixListener::bind(&server_path).unwrap();
+    let server_path = server_path.to_string_lossy().into_owned();
+    let client_path = client_path.to_string_lossy().into_owned();
+
+    let mut pipe = new_pipe(false);
+    let mut req = new_connect();
+    unsafe {
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut pipe, 0));
+      assert_ok(pipe::uv_pipe_bind(&mut pipe, &client_path));
+    }
+    let fd = pipe.fd().expect("bound pipe should have a descriptor");
+
+    unsafe {
+      assert_ok(pipe::uv_pipe_connect(
+        &mut req,
+        &mut pipe,
+        &server_path,
+        None,
+      ));
+    }
+    assert!(
+      pipe.internal_fd.is_none(),
+      "the connect future must take ownership of the bound descriptor"
+    );
+    assert_eq!(pipe.fd(), Some(fd));
+
+    for _ in 0..10 {
+      tick(runtime).await;
+      if pipe.internal_stream.is_some() {
+        break;
+      }
+      tokio::task::yield_now().await;
+    }
+
+    assert!(
+      pipe.internal_fd.is_none(),
+      "a connected Tokio stream must be the sole descriptor owner"
+    );
+    assert!(pipe.internal_stream.is_some());
+    assert_eq!(pipe.fd(), Some(fd));
+
+    unsafe {
+      uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+    assert_fd_closed(fd);
+
+    drop(listener);
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "clean up the real Unix socket created by Tokio"
+    )]
+    let _ = std::fs::remove_file(server_path);
   })
   .await;
 }

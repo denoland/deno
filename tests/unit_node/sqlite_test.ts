@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
   assertStrictEquals,
+  assertStringIncludes,
   assertThrows,
 } from "@std/assert";
 import * as nodeAssert from "node:assert";
@@ -87,6 +88,111 @@ Deno.test(
     db.close();
   },
 );
+
+Deno.test({
+  permissions: {
+    read: true,
+    write: true,
+    run: [Deno.execPath()],
+  },
+  name: "[node/sqlite] DatabaseSync does not follow symlink database paths",
+  async fn() {
+    const dir = Deno.makeTempDirSync({ prefix: "node_sqlite_symlink" });
+    try {
+      const allowedDir = `${dir}/allowed`;
+      const outsideDir = `${dir}/outside`;
+      const runner = `${allowedDir}/runner.ts`;
+      Deno.mkdirSync(allowedDir);
+      Deno.mkdirSync(outsideDir);
+      Deno.writeTextFileSync(
+        runner,
+        `import { DatabaseSync } from "node:sqlite";
+const db = new DatabaseSync(Deno.args[1], {
+  readOnly: Deno.args[0] === "read",
+});
+db.close();
+`,
+      );
+
+      const openDatabase = (
+        mode: "read" | "write",
+        path: string,
+      ) =>
+        new Deno.Command(Deno.execPath(), {
+          clearEnv: true,
+          args: [
+            "run",
+            "--quiet",
+            `--allow-read=${allowedDir}`,
+            `--deny-read=${allowedDir}/directory-link/denied`,
+            ...(mode === "write"
+              ? [
+                `--allow-write=${allowedDir}`,
+                `--deny-write=${allowedDir}/directory-link/denied`,
+              ]
+              : []),
+            runner,
+            mode,
+            path,
+          ],
+          stdout: "piped",
+          stderr: "piped",
+        }).output();
+      const assertRefused = async (
+        mode: "read" | "write",
+        path: string,
+      ) => {
+        const result = await openDatabase(mode, path);
+        assertEquals(
+          result.code,
+          1,
+          new TextDecoder().decode(result.stderr),
+        );
+        assertStringIncludes(
+          new TextDecoder().decode(result.stderr),
+          "unable to open database file",
+        );
+      };
+
+      const regularPath = `${allowedDir}/regular.db`;
+      const regularResult = await openDatabase("write", regularPath);
+      assertEquals(
+        regularResult.code,
+        0,
+        new TextDecoder().decode(regularResult.stderr),
+      );
+      assert(Deno.statSync(regularPath).isFile);
+
+      const writeTarget = `${outsideDir}/write-target.db`;
+      const writeLink = `${allowedDir}/write-link.db`;
+      Deno.symlinkSync(writeTarget, writeLink, { type: "file" });
+      await assertRefused("write", writeLink);
+      assertThrows(
+        () => Deno.statSync(writeTarget),
+        Deno.errors.NotFound,
+      );
+
+      const directoryLink = `${allowedDir}/directory-link`;
+      const nestedTarget = `${outsideDir}/nested-target.db`;
+      Deno.symlinkSync(outsideDir, directoryLink, { type: "dir" });
+      await assertRefused("write", `${directoryLink}/nested-target.db`);
+      assertThrows(
+        () => Deno.statSync(nestedTarget),
+        Deno.errors.NotFound,
+      );
+
+      const readTarget = `${outsideDir}/read-target.db`;
+      const readTargetDb = new DatabaseSync(readTarget);
+      readTargetDb.exec("CREATE TABLE data(value TEXT)");
+      readTargetDb.close();
+      const readLink = `${allowedDir}/read-link.db`;
+      Deno.symlinkSync(readTarget, readLink, { type: "file" });
+      await assertRefused("read", readLink);
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  },
+});
 
 Deno.test("[node/sqlite] StatementSync bind bigints", () => {
   const db = new DatabaseSync(":memory:");
@@ -735,6 +841,21 @@ Deno.test("[node/sqlite] calling StatementSync and Session methods after connect
 
   assertThrows(() => sess.changeset(), Error, errMessageClosed);
   assertThrows(() => sess.patchset(), Error, errMessageClosed);
+});
+
+Deno.test("[node/sqlite] Session stays closed after connection reopens", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(value INTEGER)");
+  const session = db.createSession();
+  db.exec("INSERT INTO data VALUES (1)");
+
+  db.close();
+  db.open();
+
+  const errMessage = "session is not open";
+  assertThrows(() => session.changeset(), Error, errMessage);
+  assertThrows(() => session.patchset(), Error, errMessage);
+  assertThrows(() => session.close(), Error, errMessage);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/30144

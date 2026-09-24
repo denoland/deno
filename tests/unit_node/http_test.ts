@@ -1612,6 +1612,68 @@ Deno.test("[node/http] IncomingMessage override", () => {
   });
 });
 
+Deno.test("[node/http] IncomingMessage header maps handle built-in names", async () => {
+  const hostname = "127.0.0.1";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      try {
+        const headers = req.headers as Record<string, string | string[]>;
+        const headersDistinct = req.headersDistinct as Record<string, string[]>;
+        const trailers = req.trailers as Record<string, string | string[]>;
+        const trailersDistinct = req.trailersDistinct as Record<
+          string,
+          string[]
+        >;
+        assertEquals(Object.getPrototypeOf(req.headers), Object.prototype);
+        assertEquals(headers["constructor"], "request");
+        assertEquals(Object.getPrototypeOf(req.headersDistinct), null);
+        assertEquals(headersDistinct["constructor"], ["request"]);
+        assertEquals(Object.getPrototypeOf(req.trailers), Object.prototype);
+        assertEquals(trailers["constructor"], "trailer");
+        assertEquals(Object.getPrototypeOf(req.trailersDistinct), null);
+        assertEquals(trailersDistinct["constructor"], ["trailer"]);
+        res.end("ok");
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+
+  try {
+    server.listen(0, hostname);
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+    const conn = await Deno.connect({ hostname, port });
+    try {
+      await conn.write(
+        new TextEncoder().encode(
+          [
+            "POST / HTTP/1.1",
+            "Host: localhost",
+            "Transfer-Encoding: chunked",
+            "constructor: request",
+            "",
+            "0",
+            "constructor: trailer",
+            "",
+            "",
+          ].join("\r\n"),
+        ),
+      );
+      await promise;
+    } finally {
+      conn.close();
+    }
+  } finally {
+    server.close();
+  }
+});
+
 Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   const req = new http.IncomingMessage(new net.Socket());
   const res = new http.ServerResponse(req);
@@ -3865,6 +3927,138 @@ Deno.test(
       await promise;
       assertEquals(seenUrl, expected);
     }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target normalizes the authority",
+  async () => {
+    // The target goes through the URL parser, like Node's, so the authority
+    // comes out normalized: the host lowercased and an IPv6 address bracketed
+    // exactly once. A protocol-relative path must stay a path - resolving it
+    // as a URL would retarget the request at another authority.
+    for (
+      const { hostname, path, expected } of [
+        {
+          hostname: "EXAMPLE.COM",
+          path: "/foo",
+          expected: "http://example.com:8080/foo",
+        },
+        {
+          hostname: "::1",
+          path: "/foo",
+          expected: "http://[::1]:8080/foo",
+        },
+        {
+          hostname: "[::1]",
+          path: "/foo",
+          expected: "http://[::1]:8080/foo",
+        },
+        {
+          hostname: "example.com",
+          path: "//evil.example/x",
+          expected: "http://example.com:8080//evil.example/x",
+        },
+      ]
+    ) {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let seenUrl: string | undefined;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const proxy = http.createServer((req, res) => {
+        seenUrl = req.url;
+        res.end("via-proxy");
+      });
+      proxy.listen(0, () => {
+        const proxyPort = (proxy.address() as AddressInfo).port;
+        const req = http.request({
+          hostname,
+          port: 8080,
+          path,
+          agent: new http.Agent({
+            proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+          } as ProxyAgentLike),
+        }, (res) => {
+          res.resume();
+          res.on("end", () => {
+            proxy.close();
+            resolve();
+          });
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      await promise;
+      assertEquals(seenUrl, expected);
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target cannot retarget the authority",
+  () => {
+    // The --allow-net check upstream only validated the requested host and
+    // port. An absolute `path` naming a different authority - or a different
+    // port, or embedding credentials - would slip a request past that check
+    // once the proxy forwards it. Reject it in ClientRequest, failing closed
+    // like a denied direct connection, before any bytes reach the proxy.
+    for (
+      const path of [
+        "http://evil.example/x",
+        "http://example.com:9999/x", // same host, but an unchecked port
+        "http://user:pass@example.com:8080/x", // userinfo for the checked one
+      ]
+    ) {
+      const err = assertThrows(
+        () =>
+          http.request({
+            hostname: "example.com",
+            port: 8080,
+            path,
+            agent: new http.Agent({
+              // Never dialed: the rewrite throws before connecting.
+              proxyEnv: { HTTP_PROXY: "http://127.0.0.1:1" },
+            } as ProxyAgentLike),
+          }),
+        Error,
+        "Invalid URL",
+      );
+      assertEquals((err as { code?: string }).code, "ERR_INVALID_URL");
+    }
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target matching the authority is honored",
+  async () => {
+    // The authority matches the checked target, so the absolute-form path is
+    // a legitimate request target and is forwarded to the proxy as given.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    let seenUrl: string | undefined;
+    const proxy = http.createServer((req, res) => {
+      seenUrl = req.url;
+      res.end("via-proxy");
+    });
+    proxy.listen(0, () => {
+      const proxyPort = (proxy.address() as AddressInfo).port;
+      const req = http.request({
+        hostname: "example.com",
+        port: 8080,
+        path: "http://example.com:8080/foo",
+        agent: new http.Agent({
+          proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+        } as ProxyAgentLike),
+      }, (res) => {
+        res.resume();
+        res.on("end", () => {
+          proxy.close();
+          resolve();
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+    assertEquals(seenUrl, "http://example.com:8080/foo");
   },
 );
 

@@ -78,8 +78,11 @@ impl JsrFetchResolver {
       let version_resolver = self
         .jsr_version_resolver
         .get_for_package(&req.name, &package_info);
-      let version =
-        version_resolver.resolve_version(req, Vec::new().into_iter());
+      let version = version_resolver.resolve_version(
+        req,
+        Vec::new().into_iter(),
+        &Default::default(),
+      );
       let version = if let Ok(version) = version {
         version.version.clone()
       } else {
@@ -92,7 +95,7 @@ impl JsrFetchResolver {
           .jsr_version_resolver
           .get_for_package(&req.name, &package_info);
         version_resolver
-          .resolve_version(req, Vec::new().into_iter())?
+          .resolve_version(req, Vec::new().into_iter(), &Default::default())?
           .version
           .clone()
       };

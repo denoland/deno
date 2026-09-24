@@ -5,7 +5,7 @@
       "if": "unix",
       "args": "run --check --allow-net main.ts",
       "envs": {
-        "DENO_SERVE_ADDRESS": "tcp:0.0.0.0:12345",
+        "DENO_SERVE_ADDRESS": "tcp:0.0.0.0:0",
         "DENO_AUTO_SERVE": "1"
       },
       "output": "main_not_win.out"

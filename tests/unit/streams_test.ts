@@ -578,6 +578,102 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
   assertEquals(result, new Uint8Array([1]));
 });
 
+function concatChunks(chunks: Uint8Array[]) {
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+async function pipeChunks(
+  stream: CompressionStream | DecompressionStream,
+  chunks: Uint8Array<ArrayBuffer>[],
+) {
+  const writer = stream.writable.getWriter();
+  const output = Array.fromAsync(stream.readable.values());
+
+  for (const chunk of chunks) {
+    await writer.write(chunk);
+  }
+  await writer.close();
+
+  return concatChunks(await output);
+}
+
+function compressChunks(format: CompressionFormat, chunks: string[]) {
+  const encoder = new TextEncoder();
+  return pipeChunks(
+    new CompressionStream(format),
+    chunks.map((chunk) => encoder.encode(chunk)),
+  );
+}
+
+function decompress(
+  format: CompressionFormat,
+  input: Uint8Array<ArrayBuffer>,
+) {
+  return pipeChunks(new DecompressionStream(format), [input]);
+}
+
+const compressionFormats: CompressionFormat[] = [
+  "deflate",
+  "deflate-raw",
+  "gzip",
+  "brotli",
+];
+
+Deno.test(async function compressionStreamOutputIsIndependentOfChunking() {
+  const text = "hello world hello world";
+  for (const format of compressionFormats) {
+    const singleChunk = await compressChunks(format, [text]);
+    const multipleChunks = await compressChunks(format, [
+      "hello world ",
+      "hello world",
+    ]);
+
+    assertEquals(multipleChunks, singleChunk, format);
+    assertEquals(
+      new TextDecoder().decode(await decompress(format, multipleChunks)),
+      text,
+      format,
+    );
+  }
+});
+
+Deno.test(async function compressionStreamDoesNotFlushOnEveryWrite() {
+  // 384 writes; a flush per write emits an empty block each time and stops
+  // matches from crossing chunk boundaries, which inflated the output of this
+  // input from ~80 bytes to ~3 KiB.
+  const text = "hello world ".repeat(512);
+  const chunked = [];
+  for (let i = 0; i < text.length; i += 16) {
+    chunked.push(text.slice(i, i + 16));
+  }
+
+  for (const format of compressionFormats) {
+    const singleChunk = await compressChunks(format, [text]);
+    const manyChunks = await compressChunks(format, chunked);
+
+    assertEquals(
+      new TextDecoder().decode(await decompress(format, manyChunks)),
+      text,
+      format,
+    );
+    // The deflate-based formats are not byte-identical across chunkings the
+    // way brotli is, because miniz_oxide compresses whatever lookahead it has
+    // instead of waiting for a full match window, but the cost must stay in
+    // the noise rather than scaling with the number of writes.
+    assert(
+      manyChunks.length < singleChunk.length * 2,
+      `${format}: ${manyChunks.length} bytes chunked vs ${singleChunk.length} bytes in one write`,
+    );
+  }
+});
+
 Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
   const cs = new CompressionStream("brotli");
   const ds = new DecompressionStream("brotli");

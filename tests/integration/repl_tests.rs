@@ -63,6 +63,12 @@ fn pty_regex_literal_with_quote() {
   // https://github.com/denoland/deno/issues/24963
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let re = /[']/;");
+    // Wait for the statement to be evaluated before typing the next one.
+    // Rustyline is built without `buffer-redux`, so bytes it has already read
+    // into the buffer of the current `readline()` call are discarded when that
+    // call returns. Typing ahead can leave the next line stuck in that buffer
+    // and it will never reach the REPL.
+    console.expect("undefined");
     console.write_line("re.test(\"'\")");
     console.expect("true");
   });

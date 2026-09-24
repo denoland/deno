@@ -8,6 +8,7 @@ use std::ffi::CString;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::path::Path;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::ptr::null;
 use std::rc::Rc;
@@ -33,6 +34,7 @@ use rusqlite::limits::Limit;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
+use super::session::InnerSessionPtr;
 use super::session::SessionOptions;
 use super::sql_tag_store::SQLTagStore;
 use super::statement::InnerStatementPtr;
@@ -45,6 +47,80 @@ const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 const MAX_SAFE_JS_INTEGER: i64 = 9_007_199_254_740_991;
 
 const NUM_LIMITS: usize = 11;
+
+fn resolve_sqlite_system_path_alias(path: &Path) -> PathBuf {
+  // SQLITE_OPEN_NOFOLLOW rejects symlinks in every path component. macOS
+  // exposes its temporary directories through root-owned aliases, so resolve
+  // only those fixed system prefixes and leave every user-controlled path
+  // component visible to SQLite.
+  #[cfg(target_os = "macos")]
+  if let Some(path) = path.to_str() {
+    for (uri_prefix, prefix) in [
+      ("file:///var", Path::new("/var")),
+      ("file:///tmp", Path::new("/tmp")),
+    ] {
+      let Some(suffix) = path.strip_prefix(uri_prefix) else {
+        continue;
+      };
+      if !matches!(
+        suffix.as_bytes().first(),
+        None | Some(b'/') | Some(b'?') | Some(b'#')
+      ) {
+        continue;
+      }
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "node:sqlite operates on the real file system"
+      )]
+      if let Ok(prefix) = std::fs::canonicalize(prefix) {
+        return PathBuf::from(format!("file://{}{}", prefix.display(), suffix));
+      }
+    }
+  }
+  #[cfg(target_os = "macos")]
+  for prefix in [Path::new("/var"), Path::new("/tmp")] {
+    if let Ok(suffix) = path.strip_prefix(prefix) {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "node:sqlite operates on the real file system"
+      )]
+      if let Ok(prefix) = std::fs::canonicalize(prefix) {
+        return prefix.join(suffix);
+      }
+    }
+  }
+  path.to_path_buf()
+}
+
+/// SQLite does not enforce `SQLITE_OPEN_NOFOLLOW` on Windows (its
+/// `winFullPathname` never resolves reparse points), so reject symlinks and
+/// junctions in every path component manually before opening.
+#[cfg(windows)]
+fn refuse_reparse_point_components(path: &Path) -> Result<(), rusqlite::Error> {
+  let mut current = PathBuf::new();
+  for component in path.components() {
+    current.push(component);
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "node:sqlite operates on the real file system"
+    )]
+    match std::fs::symlink_metadata(&current) {
+      Ok(metadata) if metadata.file_type().is_symlink() => {
+        return Err(rusqlite::Error::SqliteFailure(
+          rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+          Some(format!(
+            "unable to open database file: \"{}\" is a symlink",
+            current.display()
+          )),
+        ));
+      }
+      Ok(_) => {}
+      // Missing components are created (or rejected) by SQLite itself.
+      Err(_) => break,
+    }
+  }
+  Ok(())
+}
 
 /// Static mapping of JavaScript property names to SQLite limits.
 /// Order matches SQLite limit constant values (0-10).
@@ -572,6 +648,7 @@ impl<'a> ApplyChangesetOptions<'a> {
 pub struct DatabaseSync {
   pub conn: Rc<RefCell<Option<rusqlite::Connection>>>,
   statements: Rc<RefCell<Vec<InnerStatementPtr>>>,
+  sessions: Rc<RefCell<Vec<InnerSessionPtr>>>,
   options: DatabaseSyncOptions,
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
@@ -748,11 +825,15 @@ fn open_db(
       Some("node:sqlite"),
     )?
     .into_path();
+  let location = resolve_sqlite_system_path_alias(&location);
+  #[cfg(windows)]
+  refuse_reparse_point_components(&location)?;
 
   if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(
-      location,
-      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+      &location,
+      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+        | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
     )?;
     if disable_attach {
       assert!(set_db_config(
@@ -784,7 +865,10 @@ fn open_db(
     return Ok((conn, disable_attach));
   }
 
-  let conn = rusqlite::Connection::open(location)?;
+  let conn = rusqlite::Connection::open_with_flags(
+    &location,
+    rusqlite::OpenFlags::default() | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+  )?;
   conn.busy_timeout(std::time::Duration::from_millis(options.timeout))?;
 
   if options.allow_extension {
@@ -873,6 +957,7 @@ impl DatabaseSync {
     Ok(DatabaseSync {
       conn: Rc::new(RefCell::new(db)),
       statements: Rc::new(RefCell::new(Vec::new())),
+      sessions: Rc::new(RefCell::new(Vec::new())),
       location,
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
@@ -945,6 +1030,18 @@ impl DatabaseSync {
           stmt.set(None);
         }
       };
+    }
+
+    // Delete all sessions while their database connection is still valid.
+    for session in self.sessions.borrow_mut().drain(..) {
+      if let Some(ptr) = session.take() {
+        // SAFETY: `ptr` is a valid session handle associated with the open
+        // connection. Taking it first prevents stale Session objects from
+        // deleting or using it after the connection is reopened.
+        unsafe {
+          libsqlite3_sys::sqlite3session_delete(ptr);
+        }
+      }
     }
 
     {
@@ -1605,10 +1702,13 @@ impl DatabaseSync {
       return Err(SqliteError::SessionCreateFailed);
     }
 
+    let session = Rc::new(Cell::new(Some(raw_session)));
+    self.sessions.borrow_mut().push(Rc::clone(&session));
+
     Ok(Session {
-      inner: raw_session,
-      freed: Cell::new(false),
+      inner: session,
       db: self.conn.clone(),
+      sessions: Rc::clone(&self.sessions),
     })
   }
 

@@ -31,7 +31,7 @@ use crate::modules::ModuleName;
 use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::script_origin;
 use crate::ops::ExternalOpsTracker;
-use crate::ops::OpCtx;
+use crate::ops::OpCtxs;
 use crate::reactor::DefaultReactor;
 use crate::stats::RuntimeActivityTraces;
 use crate::tasks::V8TaskSpawnerFactory;
@@ -101,7 +101,7 @@ pub struct ContextState {
   pub(crate) pending_ops: Rc<OpDriverImpl>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
-  pub(crate) op_ctxs: Box<[OpCtx]>,
+  pub(crate) op_ctxs: OpCtxs,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
   /// Snapshots built against V8 14.9+ bake the *slow* version of each op
@@ -169,6 +169,13 @@ pub struct ContextState {
   /// registered (e.g. during snapshotting).
   pub(crate) immediate_check_handle:
     RefCell<Option<crate::uv_compat::ImmediateCheckHandle>>,
+  /// Wakeup for the next pending libuv (N-API) timer deadline. Unlike JS
+  /// timers, native `uv_timer_t` handles have no other mechanism to re-poll
+  /// the event loop at their deadline, so we arm this sleep from
+  /// `uv_compat`'s `next_timeout` each tick. `uv_timer_wake_deadline` caches
+  /// the currently-armed absolute deadline so we only re-arm when it changes.
+  pub(crate) uv_timer_wake: UserTimer<DefaultReactor>,
+  pub(crate) uv_timer_wake_deadline: Cell<Option<u64>>,
 }
 
 impl ContextState {
@@ -187,7 +194,7 @@ impl ContextState {
   pub(crate) fn new(
     op_driver: Rc<OpDriverImpl>,
     isolate_ptr: v8::UnsafeRawIsolatePtr,
-    op_ctxs: Box<[OpCtx]>,
+    op_ctxs: OpCtxs,
     op_method_decls: Vec<OpMethodDecl>,
     methods_ctx_offset: usize,
     external_ops_tracker: ExternalOpsTracker,
@@ -225,6 +232,8 @@ impl ContextState {
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
       immediate_check_handle: RefCell::new(None),
+      uv_timer_wake: Default::default(),
+      uv_timer_wake_deadline: Cell::new(None),
     }
   }
 }

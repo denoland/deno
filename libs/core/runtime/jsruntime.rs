@@ -787,8 +787,8 @@ impl JsRuntime {
   pub fn op_metadata(&self, name: &str) -> Option<OpMetadata> {
     let state = &self.inner.main_realm.0.context_state;
     state.op_ctxs.iter().find_map(|ctx| {
-      if ctx.decl.name == name {
-        Some(ctx.decl.metadata)
+      if ctx.decl().name == name {
+        Some(ctx.decl().metadata)
       } else {
         None
       }
@@ -909,7 +909,7 @@ impl JsRuntime {
     let op_driver = Rc::new(OpDriverImpl::default());
     let op_metrics_factory_fn = options.op_metrics_factory_fn.take();
 
-    let (mut op_ctxs, methods_ctx_offset) = extension_set::create_op_ctxs(
+    let (op_ctxs, methods_ctx_offset) = extension_set::create_op_ctxs(
       op_decls,
       &mut op_method_decls,
       op_metrics_factory_fn,
@@ -1001,9 +1001,7 @@ impl JsRuntime {
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
-    for op_ctx in op_ctxs.iter_mut() {
-      op_ctx.isolate = isolate_ptr;
-    }
+    op_ctxs.set_isolate(isolate_ptr);
 
     op_state.borrow_mut().put(isolate_ptr);
 
@@ -1997,7 +1995,7 @@ impl JsRuntime {
   /// Returns the runtime's op names, ordered by OpId.
   pub fn op_names(&self) -> Vec<&'static str> {
     let state = &self.inner.main_realm.0.context_state;
-    state.op_ctxs.iter().map(|o| o.decl.name).collect()
+    state.op_ctxs.iter().map(|o| o.decl().name).collect()
   }
 
   /// Executes traditional, non-ECMAScript-module JavaScript code, This code executes in
@@ -2652,6 +2650,37 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
+    // Arm a wakeup for the next pending libuv (N-API) timer deadline. The uv
+    // timer phase (Phase 1) fires expired timers at the top of each tick, but
+    // nothing else re-polls the event loop *at* a timer's deadline. A native
+    // `uv_timer_t` that is the only pending work would therefore never fire
+    // until some unrelated event happened to wake the loop. Mirror libuv's
+    // `uv__next_timeout`: schedule a sleep for the earliest deadline and let it
+    // re-poll us. Only re-arm when the earliest deadline changes to avoid
+    // recreating the timer on every tick. See #36454.
+    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      match unsafe { (*uv_inner_ptr).next_timeout() } {
+        Some((deadline, delay)) => {
+          if context_state.uv_timer_wake_deadline.get() != Some(deadline) {
+            context_state.uv_timer_wake.schedule(delay);
+            context_state.uv_timer_wake_deadline.set(Some(deadline));
+          }
+          // Keep this task's waker registered with the sleep. If the deadline
+          // has already elapsed, re-poll immediately so Phase 1 fires it on the
+          // next tick rather than waiting for another wakeup.
+          if context_state.uv_timer_wake.poll_ready(cx).is_ready() {
+            self.inner.state.waker.wake();
+          }
+        }
+        None => {
+          if context_state.uv_timer_wake_deadline.get().is_some() {
+            context_state.uv_timer_wake.clear();
+            context_state.uv_timer_wake_deadline.set(None);
+          }
+        }
+      }
+    }
+
     // Re-wake logic for next iteration
     #[allow(
       clippy::suspicious_else_formatting,
@@ -2933,7 +2962,13 @@ impl JsRuntimeForSnapshot {
       let mut data_store = SnapshotStoreDataStore::default();
       let module_map_data = {
         let module_map = realm.0.module_map();
-        module_map.serialize_for_snapshotting(&mut data_store)
+        // Modules already instantiated in the snapshot don't need their import
+        // edges persisted; nothing reads them after rehydration.
+        let instantiated = {
+          jsrealm::context_scope!(scope, realm, self.v8_isolate());
+          module_map.instantiated_flags(scope)
+        };
+        module_map.serialize_for_snapshotting(&mut data_store, &instantiated)
       };
       let function_templates_data = {
         let function_templates = realm.0.function_templates();
