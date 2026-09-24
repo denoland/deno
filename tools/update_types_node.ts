@@ -19,8 +19,10 @@ import {
   VariableDeclaration,
 } from "jsr:@ts-morph/ts-morph@27.0.2";
 
-const typesNodeVersion = "24.2.0";
 const rootDir = $.path(import.meta.url).parentOrThrow().parentOrThrow();
+// Single source of truth: the same pin `deno check` installs for projects that
+// don't bring their own @types/node.
+const typesNodeVersion = readPinnedTypesNodeVersion();
 const dtsDir = rootDir.join("cli/tsc/dts/");
 const nodeTypesDir = dtsDir.join("node");
 const undiciTypesDir = nodeTypesDir.join("undici");
@@ -525,4 +527,15 @@ function isKnownModuleSpecifier(text: string) {
     default:
       return text.startsWith("node:");
   }
+}
+
+function readPinnedTypesNodeVersion(): string {
+  const path = rootDir.join("cli/tools/installer/npm_compat.rs");
+  const match = /TYPES_NODE_VERSION: &str = "([^"]+)"/.exec(
+    path.readTextSync(),
+  );
+  if (match == null) {
+    throw new Error(`Could not find TYPES_NODE_VERSION in ${path}`);
+  }
+  return match[1];
 }

@@ -883,6 +883,25 @@ fn run_double_dash_trailing() {
 }
 
 #[test]
+fn run_double_dash_before_script() {
+  let r =
+    parse(&TEST_ROOT, &svec!["deno", "run", "--", "-echo.ts", "arg1"]).unwrap();
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["arg1"]);
+}
+
+#[test]
+fn run_double_dash_before_script_keeps_second_separator() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "run", "--", "-echo.ts", "--", "--flag"],
+  )
+  .unwrap();
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["--", "--flag"]);
+}
+
+#[test]
 fn global_flags_before_subcommand() {
   let r = parse(
     &TEST_ROOT,
@@ -1196,6 +1215,48 @@ fn eval_print() {
 }
 
 #[test]
+fn eval_double_dash_before_code() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "eval", "--", "-1; console.log(0)", "arg1"],
+  )
+  .unwrap();
+  assert_eq!(r.get_one("code_arg"), Some("-1; console.log(0)"));
+  assert_eq!(r.trailing, vec!["arg1"]);
+}
+
+#[test]
+fn eval_double_dash_before_code_keeps_second_separator() {
+  // Only the first `--` is special (mirrors clap): it was consumed to make
+  // the positional literal, so a later `--` is forwarded as-is even though
+  // eval strips the separator in `deno eval code -- a`.
+  let r =
+    parse(&TEST_ROOT, &svec!["deno", "eval", "--", "code", "--", "a"]).unwrap();
+  assert_eq!(r.get_one("code_arg"), Some("code"));
+  assert_eq!(r.trailing, vec!["--", "a"]);
+}
+
+#[test]
+fn upgrade_double_dash_stays_trailing() {
+  // Commands without trailing var args don't enter positional-only mode:
+  // `--` still starts (unused) trailing args, as before.
+  let r =
+    parse(&TEST_ROOT, &svec!["deno", "upgrade", "--", "v1", "v2"]).unwrap();
+  assert_eq!(r.get_one("version-or-hash-or-channel"), None);
+  assert_eq!(r.trailing, vec!["v1", "v2"]);
+}
+
+#[test]
+fn test_double_dash_stays_trailing() {
+  // Commands with a multi-value positional (test/bench) mirror clap's
+  // `.last(true)`: args after `--` are script args, not files.
+  let r =
+    parse(&TEST_ROOT, &svec!["deno", "test", "--", "arg1", "--flag"]).unwrap();
+  assert_eq!(r.get_many("files"), None);
+  assert_eq!(r.trailing, vec!["arg1", "--flag"]);
+}
+
+#[test]
 fn unknown_flag_error() {
   let err = parse(
     &TEST_ROOT,
@@ -1240,6 +1301,18 @@ fn default_subcommand_with_flags() {
   assert_eq!(r.subcommand.as_deref(), None);
   assert!(r.get_bool("allow-all"));
   assert_eq!(r.get_one("script_arg"), Some("script.ts"));
+}
+
+#[test]
+fn default_subcommand_double_dash_before_script() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec!["deno", "--", "-echo.ts", "--", "--debug"],
+  )
+  .unwrap();
+  assert_eq!(r.subcommand.as_deref(), None);
+  assert_eq!(r.get_one("script_arg"), Some("-echo.ts"));
+  assert_eq!(r.trailing, vec!["--", "--debug"]);
 }
 
 #[test]
