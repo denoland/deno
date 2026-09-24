@@ -479,7 +479,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
       let prototype = tmpl.prototype_template(scope);
       for method in method_ctxs.iter() {
         // Skip async methods, we are going to register them later.
-        if method.decl.is_async {
+        if method.decl().is_async {
           continue;
         }
 
@@ -506,7 +506,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
           v8::ConstructorBehavior::Throw,
           will_snapshot,
         );
-        let method_key = name_key(scope, &method.decl);
+        let method_key = name_key(scope, method.decl());
 
         tmpl.set(method_key, op_fn.into());
       }
@@ -518,7 +518,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
       let prototype = tmpl.prototype_template(scope);
       // Register async methods at the end since we need to create the template instance.
       for method in method_ctxs.iter() {
-        if method.decl.is_async {
+        if method.decl().is_async {
           op_ctx_template_or_accessor(
             &accessor_store,
             set_up_async_stub_fn,
@@ -560,7 +560,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
       for method in static_method_ctxs.iter() {
         let method_fn =
           op_ctx_plain_function(scope, method, v8::ConstructorBehavior::Throw);
-        let method_key = name_key(scope, &method.decl);
+        let method_key = name_key(scope, method.decl());
 
         op_fn.set(scope, method_key.into(), method_fn.into());
       }
@@ -575,17 +575,17 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
     let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
-    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
+    let mut op_fn = if will_snapshot && !op_ctx.decl().constructable {
       op_ctx_plain_function(scope, op_ctx, constructor_behavior)
     } else {
       op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
     };
-    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+    let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
     // this call will generate an optimized function that binds to the provided
     // op, while keeping track of promises and error remapping.
-    if op_ctx.decl.is_async {
+    if op_ctx.decl().is_async {
       let result = set_up_async_stub_fn
         .call(scope, undefined.into(), &[key.into(), op_fn.into()])
         .unwrap();
@@ -656,15 +656,15 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
     let method_ctxs = &op_ctxs[index..index + decl.methods.len()];
     for method in method_ctxs {
       let needs_upgrade =
-        method_needs_fast_call_upgrade(method) && !method.decl.is_accessor();
+        method_needs_fast_call_upgrade(method) && !method.decl().is_accessor();
       if !needs_upgrade {
         continue;
       }
       let Some(prototype) = prototype else { continue };
       let method_fn =
         op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
-      let method_key = name_key(scope, &method.decl);
-      if method.decl.is_async {
+      let method_key = name_key(scope, method.decl());
+      if method.decl().is_async {
         // `setUpAsyncStub` installs the wrapped fn on `class_fn.prototype`
         // when given the class as the third argument.
         let Some(class_fn) = class_fn else { continue };
@@ -687,7 +687,7 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       let Some(class_fn) = class_fn else { continue };
       let method_fn =
         op_ctx_function(scope, method, v8::ConstructorBehavior::Throw, false);
-      let method_key = name_key(scope, &method.decl);
+      let method_key = name_key(scope, method.decl());
       class_fn.set(scope, method_key.into(), method_fn.into());
     }
     index += decl.static_methods.len();
@@ -700,9 +700,9 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 
     let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
     let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
-    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+    let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
 
-    if op_ctx.decl.is_async {
+    if op_ctx.decl().is_async {
       let result = set_up_async_stub_fn
         .call(scope, undefined.into(), &[key.into(), op_fn.into()])
         .unwrap();
@@ -787,18 +787,18 @@ pub(crate) fn ensure_fast_ops_upgraded(scope: &mut v8::PinScope) {
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
-  if op_ctx.decl.constructable {
+  if op_ctx.decl().constructable {
     return false;
   }
   if op_ctx.metrics_enabled() {
-    op_ctx.decl.fast_fn_with_metrics.is_some()
+    op_ctx.decl().fast_fn_with_metrics.is_some()
   } else {
-    op_ctx.decl.fast_fn.is_some()
+    op_ctx.decl().fast_fn.is_some()
   }
 }
 
 fn op_ctx_constructor_behavior(op_ctx: &OpCtx) -> v8::ConstructorBehavior {
-  if op_ctx.decl.constructable {
+  if op_ctx.decl().constructable {
     v8::ConstructorBehavior::Allow
   } else {
     v8::ConstructorBehavior::Throw
@@ -814,15 +814,15 @@ fn op_ctx_template_or_accessor<'s, 'i>(
   op_ctx: &OpCtx,
   will_snapshot: bool,
 ) {
-  if !op_ctx.decl.is_accessor() {
+  if !op_ctx.decl().is_accessor() {
     let op_fn = op_ctx_template(
       scope,
       op_ctx,
       v8::ConstructorBehavior::Throw,
       will_snapshot,
     );
-    let method_key = name_key(scope, &op_ctx.decl);
-    if op_ctx.decl.is_async {
+    let method_key = name_key(scope, op_ctx.decl());
+    if op_ctx.decl().is_async {
       let undefined = v8::undefined(scope);
       let op_fn = op_fn.get_function(scope).unwrap();
 
@@ -848,13 +848,13 @@ fn op_ctx_template_or_accessor<'s, 'i>(
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
 
   if let Some((named_getter, named_setter)) =
-    accessor_store.get(op_ctx.decl.name)
+    accessor_store.get(op_ctx.decl().name)
   {
     let getter_fn = if let Some(getter) = named_getter {
       let getter_raw = if getter.metrics_enabled() {
-        getter.decl.slow_fn_with_metrics
+        getter.decl().slow_fn_with_metrics
       } else {
-        getter.decl.slow_fn
+        getter.decl().slow_fn
       };
 
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
@@ -862,7 +862,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
         .constructor_behavior(v8::ConstructorBehavior::Throw)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
-      let method_name = format!("get {}", op_ctx.decl.name_fast);
+      let method_name = format!("get {}", op_ctx.decl().name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
 
@@ -873,9 +873,9 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
     let setter_fn = if let Some(setter) = named_setter {
       let setter_raw = if setter.metrics_enabled() {
-        setter.decl.slow_fn_with_metrics
+        setter.decl().slow_fn_with_metrics
       } else {
-        setter.decl.slow_fn
+        setter.decl().slow_fn
       };
 
       let tmpl = v8::FunctionTemplate::builder_raw(setter_raw)
@@ -884,7 +884,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
         .length(1)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
-      let method_name = format!("set {}", op_ctx.decl.name_fast);
+      let method_name = format!("set {}", op_ctx.decl().name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
 
@@ -893,7 +893,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
       None
     };
 
-    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+    let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
     tmpl.set_accessor_property(
       key.into(),
       getter_fn,
@@ -911,11 +911,11 @@ fn op_ctx_function_or_accessor<'s, 'i>(
   constructor: v8::Local<'s, v8::Function>,
   op_ctx: &OpCtx,
 ) {
-  if !op_ctx.decl.is_accessor() {
+  if !op_ctx.decl().is_accessor() {
     let op_fn =
       op_ctx_plain_function(scope, op_ctx, v8::ConstructorBehavior::Throw);
-    let method_key = name_key(scope, &op_ctx.decl);
-    if op_ctx.decl.is_async {
+    let method_key = name_key(scope, op_ctx.decl());
+    if op_ctx.decl().is_async {
       let undefined = v8::undefined(scope);
       let _result = set_up_async_stub_fn
         .call(
@@ -934,7 +934,7 @@ fn op_ctx_function_or_accessor<'s, 'i>(
   }
 
   if let Some((named_getter, named_setter)) =
-    accessor_store.get(op_ctx.decl.name)
+    accessor_store.get(op_ctx.decl().name)
   {
     let should_define = if let Some(getter) = named_getter {
       std::ptr::eq(*getter, op_ctx)
@@ -954,7 +954,7 @@ fn op_ctx_function_or_accessor<'s, 'i>(
         v8::ConstructorBehavior::Throw,
         0,
       );
-      let method_name = format!("get {}", op_ctx.decl.name_fast);
+      let method_name = format!("get {}", op_ctx.decl().name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
 
@@ -970,7 +970,7 @@ fn op_ctx_function_or_accessor<'s, 'i>(
         v8::ConstructorBehavior::Throw,
         1,
       );
-      let method_name = format!("set {}", op_ctx.decl.name_fast);
+      let method_name = format!("set {}", op_ctx.decl().name_fast);
       let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
       op_fn.set_name(method_name);
 
@@ -979,7 +979,7 @@ fn op_ctx_function_or_accessor<'s, 'i>(
       v8::undefined(scope).into()
     };
 
-    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+    let key = op_ctx.decl().name_fast.v8_string(scope).unwrap();
     let mut desc =
       v8::PropertyDescriptor::new_from_get_set(getter_fn, setter_fn);
     desc.set_enumerable(true);
@@ -998,21 +998,21 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
 
   let slow_fn = if op_ctx.metrics_enabled() {
-    op_ctx.decl.slow_fn_with_metrics
+    op_ctx.decl().slow_fn_with_metrics
   } else {
-    op_ctx.decl.slow_fn
+    op_ctx.decl().slow_fn
   };
 
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
     v8::FunctionTemplate::builder_raw(slow_fn)
       .data(external.into())
       .constructor_behavior(constructor_behaviour)
-      .side_effect_type(if op_ctx.decl.no_side_effects {
+      .side_effect_type(if op_ctx.decl().no_side_effects {
         v8::SideEffectType::HasNoSideEffect
       } else {
         v8::SideEffectType::HasSideEffect
       })
-      .length(op_ctx.decl.arg_count as i32);
+      .length(op_ctx.decl().arg_count as i32);
 
   // V8 14.9 wraps every fast-call overload in a Managed<CFunctionWithSignature>
   // whose external pointer is a process-local ManagedPtrDestructor allocation.
@@ -1024,7 +1024,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // snapshot deserialization.
   let template = if let Some(overloads) = op_ctx.fast_fn_overloads.as_ref()
     && !will_snapshot
-    && !op_ctx.decl.constructable
+    && !op_ctx.decl().constructable
   {
     // SAFETY: V8 150.x stores the raw `CFunction` pointers from `overloads`
     // directly in the `FunctionTemplateInfo`, so `build_fast` requires a
@@ -1038,7 +1038,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   } else {
     builder.build(scope)
   };
-  template.set_class_name(op_ctx.decl.name_fast.v8_string(scope).unwrap());
+  template.set_class_name(op_ctx.decl().name_fast.v8_string(scope).unwrap());
 
   template
 }
@@ -1049,7 +1049,7 @@ fn op_ctx_function<'s, 'i>(
   constructor_behaviour: v8::ConstructorBehavior,
   will_snapshot: bool,
 ) -> v8::Local<'s, v8::Function> {
-  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+  let v8name = op_ctx.decl().name_fast.v8_string(scope).unwrap();
   let template =
     op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
@@ -1066,7 +1066,7 @@ fn op_ctx_plain_function<'s, 'i>(
     scope,
     op_ctx,
     constructor_behaviour,
-    op_ctx.decl.arg_count as i32,
+    op_ctx.decl().arg_count as i32,
   )
 }
 
@@ -1079,15 +1079,15 @@ fn op_ctx_plain_function_with_length<'s, 'i>(
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
   let slow_fn = if op_ctx.metrics_enabled() {
-    op_ctx.decl.slow_fn_with_metrics
+    op_ctx.decl().slow_fn_with_metrics
   } else {
-    op_ctx.decl.slow_fn
+    op_ctx.decl().slow_fn
   };
 
   let v8fn = v8::Function::builder_raw(slow_fn)
     .data(external.into())
     .constructor_behavior(constructor_behaviour)
-    .side_effect_type(if op_ctx.decl.no_side_effects {
+    .side_effect_type(if op_ctx.decl().no_side_effects {
       v8::SideEffectType::HasNoSideEffect
     } else {
       v8::SideEffectType::HasSideEffect
@@ -1095,7 +1095,7 @@ fn op_ctx_plain_function_with_length<'s, 'i>(
     .length(length)
     .build(scope)
     .unwrap();
-  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+  let v8name = op_ctx.decl().name_fast.v8_string(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }
@@ -1108,13 +1108,14 @@ fn create_accessor_store(method_ctxs: &[OpCtx]) -> AccessorStore<'_> {
 
   for method in method_ctxs.iter() {
     // Populate all setters first.
-    if method.decl.accessor_type == AccessorType::Setter {
-      let key = method.decl.name_fast;
+    if method.decl().accessor_type == AccessorType::Setter {
+      let key = method.decl().name_fast;
 
       let key_str = key.to_string();
       // There must be a getter for each setter.
       let getter = method_ctxs.iter().find(|m| {
-        m.decl.name == key_str && m.decl.accessor_type == AccessorType::Getter
+        m.decl().name == key_str
+          && m.decl().accessor_type == AccessorType::Getter
       });
 
       store.insert(key.to_string(), (getter, Some(method)));
@@ -1123,8 +1124,8 @@ fn create_accessor_store(method_ctxs: &[OpCtx]) -> AccessorStore<'_> {
 
   // Populate getters without setters.
   for method in method_ctxs.iter() {
-    if method.decl.accessor_type == AccessorType::Getter {
-      let key = method.decl.name_fast.to_string();
+    if method.decl().accessor_type == AccessorType::Getter {
+      let key = method.decl().name_fast.to_string();
 
       store.entry(key).or_insert((Some(method), None));
     }
@@ -1863,8 +1864,8 @@ pub fn create_exports_for_ops_virtual_module<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let op_fn = get(scope, ops_obj, op_ctx.decl.name_fast, "op");
-    exports.push((op_ctx.decl.name_fast, op_fn));
+    let op_fn = get(scope, ops_obj, op_ctx.decl().name_fast, "op");
+    exports.push((op_ctx.decl().name_fast, op_fn));
   }
 
   exports

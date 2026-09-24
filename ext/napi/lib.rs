@@ -70,6 +70,17 @@ pub mod function;
 mod pe;
 mod value;
 
+/// Render the source (underlying OS error) of a `libloading::Error` as a
+/// `": <error>"` suffix, or an empty string when there is no source. libloading
+/// does not include the OS error in its own `Display`.
+fn fmt_lib_load_source(err: &libloading::Error) -> String {
+  use std::error::Error;
+  match err.source() {
+    Some(source) => format!(": {source}"),
+    None => String::new(),
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NApiError {
   #[class(type)]
@@ -79,8 +90,15 @@ pub enum NApiError {
   #[error(transparent)]
   DenoRtLoad(#[from] denort_helper::LoadError),
   #[class(type)]
-  #[error(transparent)]
-  LibLoading(#[from] libloading::Error),
+  // libloading's `Display` for a failed load is opaque (e.g. just
+  // `LoadLibraryExW failed` on Windows). Surface the underlying OS error via
+  // `source` and the resolved path so the failure is actionable. See
+  // denoland/deno#36622.
+  #[error("{source}{}\n  path: {}", fmt_lib_load_source(source), path.display())]
+  LibraryLoad {
+    source: libloading::Error,
+    path: PathBuf,
+  },
   #[class(type)]
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
@@ -1033,7 +1051,16 @@ fn op_napi_open<'scope>(
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
-  let library = unsafe { Library::open(Some(real_path.as_ref()), flags) }?;
+  let library = match unsafe { Library::open(Some(real_path.as_ref()), flags) }
+  {
+    Ok(library) => library,
+    Err(err) => {
+      return Err(NApiError::LibraryLoad {
+        source: err,
+        path: real_path.to_path_buf(),
+      });
+    }
+  };
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
@@ -1056,7 +1083,10 @@ fn op_napi_open<'scope>(
         {
           return Err(NApiError::UnsupportedNodeBinaryAddon(path.into_owned()));
         }
-        return Err(err.into());
+        return Err(NApiError::LibraryLoad {
+          source: err,
+          path: real_path.to_path_buf(),
+        });
       }
     };
 

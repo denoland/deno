@@ -199,22 +199,44 @@ function countAttributes(attributes?: Attributes): number {
   return attributes ? ObjectKeys(attributes).length : 0;
 }
 
+const currentSnapshot = getAsyncContext;
+const restoreSnapshot = setAsyncContext;
+
 interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
 
+// A `unique symbol` type requires a direct `Symbol.for()` call, which is what
+// makes `SpanSnapshot` below narrowable. This runs during bootstrap, before any
+// user code, so reaching for the global here is safe.
+// deno-lint-ignore deno-internal/prefer-primordials
+const DID_NOT_ENTER: unique symbol = Symbol.for(
+  "Deno.telemetry.didNotEnterSpan",
+);
+
+/**
+ * The result of {@linkcode enterSpan}: either the async context snapshot taken
+ * before entering, or `DID_NOT_ENTER` if no context was entered. `undefined` is
+ * a valid snapshot (it means "no ambient context"), so the two cases cannot be
+ * told apart by truthiness, so always hand this to {@linkcode exitSpan}.
+ */
+type SpanSnapshot = AsyncContextSnapshot | typeof DID_NOT_ENTER;
+
 function enterSpan(
   span: Span,
   context?: Context,
-): AsyncContextSnapshot | undefined {
-  if (!span.isRecording()) return undefined;
+): SpanSnapshot {
+  if (!span.isRecording()) return DID_NOT_ENTER;
+  const snapshot = currentSnapshot();
   context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
     .setValue(SPAN_KEY, span);
-  return CURRENT.enter(context);
+  CURRENT.enter(context);
+  return snapshot;
 }
 
-const currentSnapshot = getAsyncContext;
-const restoreSnapshot = setAsyncContext;
+function exitSpan(snapshot: SpanSnapshot) {
+  if (snapshot !== DID_NOT_ENTER) restoreSnapshot(snapshot);
+}
 
 function isDate(value: unknown): value is Date {
   return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
@@ -1927,7 +1949,9 @@ function bootstrap(
 internals.__telemetry = {
   builtinTracer,
   ContextManager,
+  DID_NOT_ENTER,
   enterSpan,
+  exitSpan,
   get PROPAGATORS() {
     return PROPAGATORS;
   },
@@ -1969,6 +1993,7 @@ function wrappedBootstrap(config: Parameters<typeof bootstrap>[0]) {
 return {
   otelState,
   enterSpan,
+  exitSpan,
   currentSnapshot,
   restoreSnapshot,
   SPAN_KEY,

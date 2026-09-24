@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, loadTestLibrary } from "./common.js";
+import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const uv = loadTestLibrary();
 
@@ -68,17 +68,32 @@ Deno.test({
 // layer, the same layer driving Node-compat timers on top of tokio. This
 // is what unblocks addons like @sentry/profiling-node, which uses a
 // repeating uv_timer for periodic measurement ticks.
+//
+// The callback must also fire *near* its 5ms deadline. The event loop has to
+// arm a wakeup for the next uv timer deadline; without it, the timer only
+// fires when some unrelated event happens to wake the loop, which regressed
+// this to a ~30s delay (see #36454). Assert a generous upper bound that is
+// still far below that stalled behavior so a regression fails loudly instead
+// of merely running slowly.
 Deno.test({
   name: "napi uv timer callback fires",
   fn: async () => {
     let called = false;
+    const start = performance.now();
     await new Promise((resolve) => {
       uv.test_uv_timer_fires(() => {
         called = true;
         resolve();
       });
     });
+    const elapsed = performance.now() - start;
     assertEquals(called, true);
+    assert(
+      elapsed < 5000,
+      `uv timer fired after ${
+        elapsed.toFixed(0)
+      }ms, expected it near its 5ms deadline`,
+    );
   },
 });
 

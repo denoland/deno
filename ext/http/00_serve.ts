@@ -62,6 +62,7 @@ const {
   StringPrototypeIncludes,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
   Symbol,
   SymbolAsyncDispose,
   TypeError,
@@ -101,6 +102,7 @@ const { AbortController } = core.loadExtScript(
 );
 const {
   getReadableStreamResourceBacking,
+  isReadableStreamDisturbed,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
@@ -186,7 +188,20 @@ class InnerRequest {
 
   close(success = true) {
     if (this.#streamRid !== undefined) {
-      core.tryClose(this.#streamRid);
+      // Closing the response must not yank the request body out from under a
+      // reader that is still consuming it in the background (e.g. the handler
+      // responded before `req.body` finished piping). If a reader is attached
+      // or reading has begun, the stream itself owns the resource (autoClose)
+      // and will close it on end-of-stream or cancel. Only force-close here when
+      // nothing is reading it, so an untouched body doesn't leak.
+      const stream = this.#body?.streamOrStatic;
+      const beingRead = ObjectPrototypeIsPrototypeOf(
+        ReadableStreamPrototype,
+        stream,
+      ) && (stream.locked || isReadableStreamDisturbed(stream));
+      if (!beingRead) {
+        core.tryClose(this.#streamRid);
+      }
       this.#streamRid = undefined;
     }
     // The completion signal fires only if someone cares
@@ -344,9 +359,13 @@ class InnerRequest {
     }
     this.#streamRid = op_http_read_request_body(this.#external);
     this.#body = new InnerBody(
+      // `autoClose: true` so the stream closes its own resource when it reaches
+      // end-of-stream, is cancelled, or errors -- this keeps a background reader
+      // that outlives the response working, since `InnerRequest.close()` no
+      // longer force-closes a body that is still being read.
       readableStreamForRid(
         this.#streamRid,
-        false,
+        true,
         undefined,
         (controller, error) => {
           if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
@@ -842,7 +861,11 @@ function mapToCallback(context, callback, onError) {
       const reqHeaders = op_http_get_request_headers(req);
       const headers: [key: string, value: string][] = [];
       for (let i = 0; i < reqHeaders.length; i += 2) {
-        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+        // HTTP/1 header names arrive as sent; propagators expect lowercase.
+        ArrayPrototypePush(headers, [
+          StringPrototypeToLowerCase(reqHeaders[i]),
+          reqHeaders[i + 1],
+        ]);
       }
       let activeContext = ContextManager.active();
       for (const propagator of new SafeArrayIterator(otelState.PROPAGATORS)) {

@@ -20,11 +20,11 @@ use deno_core::OpState;
 use deno_core::ToV8;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
-use deno_core::serde_json;
 use deno_core::v8;
 
 /// Thread-safe intermediate value type for crossing the WEF ↔ Deno boundary.
 /// Converts directly to V8 values without going through serde.
+#[derive(Debug, Clone, PartialEq)]
 pub enum DesktopValue {
   Null,
   Bool(bool),
@@ -75,6 +75,202 @@ impl<'a> ToV8<'a> for DesktopValue {
       }
     })
   }
+}
+
+// Serde support so `DesktopValue` can ride inside `#[serde]` op payloads
+// (`DesktopEvent::BindCall` args, `op_desktop_resolve_bind_call` results).
+// Unlike `serde_json::Value`, `Binary` maps to serde bytes, which serde_v8
+// materializes as a `Uint8Array` — this is what lets binding arguments and
+// return values carry binary data (see denoland/deno#36498).
+//
+// The view type is not preserved. serde_v8 routes every `ArrayBufferView`
+// and `ArrayBuffer` to `visit_byte_buf`, so a `Float64Array`, `Int32Array`,
+// `DataView` or bare `ArrayBuffer` arrives on the other side as raw bytes
+// (a `Uint8Array` going out, an `ArrayBuffer` in the renderer's own glue).
+// Callers that need the original view must carry the type themselves. This
+// is lossy, but only relative to a transport that never worked: before
+// #36498 any of these was a hard `invalid type: byte array` error.
+impl serde::Serialize for DesktopValue {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    use serde::ser::SerializeMap;
+    use serde::ser::SerializeSeq;
+    match self {
+      DesktopValue::Null => serializer.serialize_unit(),
+      DesktopValue::Bool(b) => serializer.serialize_bool(*b),
+      DesktopValue::Int(i) => serializer.serialize_i32(*i),
+      DesktopValue::Double(d) => serializer.serialize_f64(*d),
+      DesktopValue::String(s) => serializer.serialize_str(s),
+      DesktopValue::List(l) => {
+        let mut seq = serializer.serialize_seq(Some(l.len()))?;
+        for v in l {
+          seq.serialize_element(v)?;
+        }
+        seq.end()
+      }
+      DesktopValue::Dict(d) => {
+        let mut map = serializer.serialize_map(Some(d.len()))?;
+        for (k, v) in d {
+          map.serialize_entry(k, v)?;
+        }
+        map.end()
+      }
+      DesktopValue::Binary(b) => serializer.serialize_bytes(b),
+    }
+  }
+}
+
+impl<'de> serde::Deserialize<'de> for DesktopValue {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    struct ValueVisitor {
+      depth: usize,
+    }
+
+    /// Threads the current nesting depth through nested values, which a
+    /// bare `Deserialize` impl has nowhere to carry.
+    struct ValueSeed {
+      depth: usize,
+    }
+
+    impl<'de> serde::de::DeserializeSeed<'de> for ValueSeed {
+      type Value = DesktopValue;
+
+      fn deserialize<D>(self, deserializer: D) -> Result<DesktopValue, D::Error>
+      where
+        D: serde::Deserializer<'de>,
+      {
+        deserializer.deserialize_any(ValueVisitor { depth: self.depth })
+      }
+    }
+
+    impl<'de> serde::de::Visitor<'de> for ValueVisitor {
+      type Value = DesktopValue;
+
+      fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a JSON-compatible value or binary data")
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Bool(v))
+      }
+
+      fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+        Ok(match i32::try_from(v) {
+          Ok(i) => DesktopValue::Int(i),
+          Err(_) => DesktopValue::Double(v as f64),
+        })
+      }
+
+      fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(match i32::try_from(v) {
+          Ok(i) => DesktopValue::Int(i),
+          Err(_) => DesktopValue::Double(v as f64),
+        })
+      }
+
+      fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Double(v))
+      }
+
+      fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> {
+        Ok(DesktopValue::String(v.to_owned()))
+      }
+
+      fn visit_string<E>(self, v: String) -> Result<Self::Value, E> {
+        Ok(DesktopValue::String(v))
+      }
+
+      fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Binary(v.to_vec()))
+      }
+
+      fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Binary(v))
+      }
+
+      fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Null)
+      }
+
+      fn visit_none<E>(self) -> Result<Self::Value, E> {
+        Ok(DesktopValue::Null)
+      }
+
+      fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+      where
+        D: serde::Deserializer<'de>,
+      {
+        use serde::de::DeserializeSeed;
+        ValueSeed { depth: self.depth }.deserialize(deserializer)
+      }
+
+      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+      where
+        A: serde::de::SeqAccess<'de>,
+      {
+        let depth = self.depth.checked_add(1).filter(|d| *d <= MAX_DEPTH);
+        let Some(depth) = depth else {
+          return Err(nesting_too_deep());
+        };
+        let mut list = Vec::new();
+        while let Some(v) = seq.next_element_seed(ValueSeed { depth })? {
+          list.push(v);
+        }
+        Ok(DesktopValue::List(list))
+      }
+
+      fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+      where
+        A: serde::de::MapAccess<'de>,
+      {
+        let depth = self.depth.checked_add(1).filter(|d| *d <= MAX_DEPTH);
+        let Some(depth) = depth else {
+          return Err(nesting_too_deep());
+        };
+        let mut dict = Vec::new();
+        while let Some(k) = map.next_key::<String>()? {
+          dict.push((k, map.next_value_seed(ValueSeed { depth })?));
+        }
+        Ok(DesktopValue::Dict(dict))
+      }
+    }
+
+    deserializer.deserialize_any(ValueVisitor { depth: 0 })
+  }
+}
+
+/// Nesting depth accepted anywhere a `DesktopValue` is built from data the
+/// runtime didn't produce itself.
+///
+/// Every conversion in and out of `DesktopValue` recurses once per level, so
+/// without a bound a deeply nested value walks the runtime thread off the end
+/// of its stack instead of surfacing an error to the caller. Matches
+/// `serde_json`'s own recursion limit.
+///
+/// Two paths have to honour it, in opposite directions:
+///
+/// - JS → Rust, enforced by the `Deserialize` impl below. A self-referential
+///   value returned from a binding handler (`const o = {}; o.self = o; return
+///   o`) is the realistic source.
+/// - renderer → Rust, enforced by `laufey_value_to_desktop_value` in
+///   `cli/rt_desktop`, which converts renderer-supplied binding *arguments*
+///   before the deserializer is ever involved. A `laufey::Value` can't be
+///   cyclic — something upstream would have had to resolve the cycle to build
+///   it — but its depth is still whatever the renderer sent.
+///
+/// Bounding both entry points is what makes `DesktopValue::to_v8` safe: it
+/// recurses too, and only ever walks a value that arrived through one of them.
+pub const MAX_DEPTH: usize = 128;
+
+fn nesting_too_deep<E: serde::de::Error>() -> E {
+  serde::de::Error::custom(format!(
+    "binding value nested deeper than {MAX_DEPTH} levels (cyclic?)"
+  ))
 }
 
 /// Wraps a `Result<DesktopValue, DesktopValue>` from `execute_js`.
@@ -137,7 +333,7 @@ pub enum DesktopEvent {
   BindCall {
     window_id: u32,
     name: String,
-    args: serde_json::Value,
+    args: Vec<DesktopValue>,
     call_id: u32,
   },
   #[serde(rename_all = "camelCase")]
@@ -272,12 +468,12 @@ pub fn create_desktop_event_channel()
 /// A pending call from the webview to a bound Deno function.
 pub struct PendingBindCall {
   pub name: String,
-  pub args: serde_json::Value,
-  pub response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  pub args: Vec<DesktopValue>,
+  pub response: tokio::sync::oneshot::Sender<Result<DesktopValue, String>>,
 }
 
 type PendingBindResponsesMap =
-  HashMap<u32, tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>>;
+  HashMap<u32, tokio::sync::oneshot::Sender<Result<DesktopValue, String>>>;
 
 #[derive(Clone)]
 pub struct PendingBindResponses(
@@ -302,7 +498,7 @@ static BIND_CALL_COUNTER: AtomicU32 = AtomicU32::new(1);
 /// Returns the call_id to embed in the `DesktopEvent::BindCall`.
 pub fn register_bind_call(
   responses: &PendingBindResponses,
-  response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  response: tokio::sync::oneshot::Sender<Result<DesktopValue, String>>,
 ) -> u32 {
   let call_id = BIND_CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
   responses.0.lock().unwrap().insert(call_id, response);
@@ -418,6 +614,14 @@ pub trait DesktopApi: Send + Sync + 'static {
     message: &str,
     default_value: &str,
   ) -> Option<String>;
+
+  /// Read the system clipboard's plain-text content. Returns `None` if the
+  /// clipboard is empty, holds no text, or the backend has no clipboard
+  /// support.
+  fn read_clipboard_text(&self) -> Option<String>;
+  /// Replace the system clipboard's content with `text`. An empty string
+  /// clears the clipboard.
+  fn write_clipboard_text(&self, text: &str);
 
   /// Set a short text badge on the app's dock / taskbar icon. An empty
   /// string clears the badge.
@@ -897,6 +1101,15 @@ pub enum MenuItem {
     id: Option<String>,
     accelerator: Option<String>,
     enabled: bool,
+    /// Checkmark next to the item. All platforms.
+    #[serde(default)]
+    checked: bool,
+    /// PNG-encoded image bytes shown next to the label. macOS and
+    /// Windows only.
+    #[serde(with = "serde_bytes", default)]
+    icon: Option<Vec<u8>>,
+    /// Tooltip shown on hover. macOS only.
+    tooltip: Option<String>,
   },
   Submenu {
     label: String,
@@ -1100,8 +1313,16 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
       .extension()
       .unwrap_or_default()
       .to_string_lossy();
-    let sentinel = s.dylib_path.with_extension(format!("{}.update-ok", ext));
-    let _ = std::fs::write(&sentinel, b"ok");
+    // The sentinel only has meaning while a freshly-applied update's
+    // `.backup` exists (backup-without-sentinel on next boot → rollback).
+    // Writing it unconditionally put a stray file inside the app bundle's
+    // `Contents/MacOS/` on every first launch, which invalidates the
+    // bundle's code signature and even blocks re-signing (#36418).
+    let backup = s.dylib_path.with_extension(format!("{}.backup", ext));
+    if backup.exists() {
+      let sentinel = s.dylib_path.with_extension(format!("{}.update-ok", ext));
+      let _ = std::fs::write(&sentinel, b"ok");
+    }
   }
 }
 
@@ -1109,7 +1330,7 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
 fn op_desktop_resolve_bind_call(
   state: &mut OpState,
   #[smi] call_id: u32,
-  #[serde] result: serde_json::Value,
+  #[serde] result: DesktopValue,
 ) {
   if let Some(responses) = state.try_borrow::<PendingBindResponses>()
     && let Some(tx) = responses.0.lock().unwrap().remove(&call_id)
@@ -1153,6 +1374,103 @@ fn op_desktop_alert(
   if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
     api.alert(title, message);
   }
+}
+
+/// True while an error dialog is on screen. Single-flight at the native
+/// boundary: this op sits on `core.ops` and survives `removeImportedOps()`,
+/// so it is reachable by any code in the runtime, not only the error handler
+/// that respects its own `_exiting` flag. Without a guard here, a loop
+/// calling it directly would park an unbounded number of pool threads, each
+/// in a modal dialog nobody may ever dismiss.
+static ERROR_DIALOG_SHOWING: std::sync::atomic::AtomicBool =
+  std::sync::atomic::AtomicBool::new(false);
+
+/// Clears [`ERROR_DIALOG_SHOWING`] on every exit path, including a panic
+/// inside `DesktopApi::alert` — a plain `store` after the call would leave
+/// the flag stuck at `true` for the rest of the process, suppressing every
+/// later error dialog.
+struct ErrorDialogGuard;
+
+impl Drop for ErrorDialogGuard {
+  fn drop(&mut self) {
+    ERROR_DIALOG_SHOWING.store(false, std::sync::atomic::Ordering::SeqCst);
+  }
+}
+
+/// How long to wait for the error dialog before exiting anyway.
+///
+/// The wait is what holds the process open long enough for the dialog to be
+/// read, but it must not be unbounded: when the dialog can't be seen or
+/// clicked (hidden window, no display, a CI runner) nothing would ever
+/// resolve it, and an unhandled rejection would leave the process up for
+/// good. The message reaches stderr before the dialog is ever requested, so
+/// timing out loses nothing except the click.
+const ERROR_DIALOG_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_secs(60);
+
+/// Non-blocking variant of `op_desktop_alert` for runtime error reporting.
+///
+/// `DesktopApi::alert` blocks its calling thread until the dialog is
+/// dismissed. Calling it straight from the `error`/`unhandledrejection`
+/// handlers parked the JS thread, freezing the whole runtime — timers,
+/// servers, signal handlers — until someone clicked the dialog, and forever
+/// if nobody could (hidden window, headless child; #36393). SIGTERM was
+/// ignored too, since its handler is JS on the parked thread.
+///
+/// Running the dialog on the blocking pool and awaiting it keeps the event
+/// loop running while it is up. The returned promise is load-bearing: it is
+/// what holds the process open until the dialog is dismissed. The JS caller
+/// `preventDefault()`s the event and exits once this resolves — a
+/// fire-and-forget op would instead let the runtime tear down the instant
+/// the handler returned, cutting the dialog off before it appeared.
+///
+/// Thread-safety: `DesktopApi::alert` may be called from any thread. In a
+/// packaged desktop app the Deno runtime already runs on its own
+/// `deno-desktop-runtime` thread (`run_on_runtime_thread` in
+/// `cli/rt_desktop`), never the laufey UI thread, so every existing
+/// `op_desktop_alert` call is already an off-UI-thread call; the backend
+/// marshals the dialog onto the UI thread and blocks the caller until it is
+/// dismissed (the core dump in #36393 shows exactly that — JS thread parked
+/// in `ShowDialog`, GTK thread in `gtk_dialog_run`). The pool thread used
+/// here is in the same position the JS thread was, not a new kind of caller.
+#[op2]
+async fn op_desktop_alert_async(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+  #[string] title: String,
+  #[string] message: String,
+) {
+  use std::sync::atomic::Ordering;
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    // No backend wired up (snapshot build or non-desktop runtime). There is
+    // no dialog to wait for, so resolve immediately and let the caller get
+    // on with exiting.
+    return;
+  };
+  if ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst) {
+    // A dialog is already up. The message has already reached stderr, so
+    // dropping this one loses nothing — and resolving rather than queueing
+    // keeps a caller in a loop from parking a thread per call.
+    return;
+  }
+  let dialog = deno_core::unsync::spawn_blocking(move || {
+    let _guard = ErrorDialogGuard;
+    api.alert(&title, &message);
+  });
+  // Three ways out, all of which must let the caller exit: dismissed, the
+  // backend panicked (join error), or nobody could click it.
+  //
+  // The timeout bounds the *wait*, not the dialog. A `spawn_blocking` task
+  // can't be cancelled, so on timeout the pool thread stays inside
+  // `api.alert` until it returns — which in that case is never — and
+  // `ErrorDialogGuard` therefore never drops, leaving
+  // `ERROR_DIALOG_SHOWING` set for the rest of the process. That is the
+  // safe direction: it means no later caller can park a second thread. The
+  // caller exits either way, which is the point.
+  let _ = tokio::time::timeout(ERROR_DIALOG_TIMEOUT, dialog).await;
 }
 
 struct ErrorReportConfig {
@@ -1325,6 +1643,129 @@ fn op_desktop_prompt(
       api.prompt("", message, default_value.as_deref().unwrap_or(""))
     }
     None => None,
+  }
+}
+
+/// How long to wait on a clipboard call before giving up.
+///
+/// On X11 and Wayland there is no central clipboard store: the call is
+/// serviced by whichever application owns the selection, and
+/// `gtk_clipboard_wait_for_text` has no timeout of its own. The blocking pool
+/// these calls run on is shared and bounded, so an unbounded wait turns one
+/// unresponsive peer into starvation for every other blocking task in the
+/// runtime. Short enough not to strand a caller, long enough that a merely
+/// slow owner still succeeds.
+const CLIPBOARD_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_secs(5);
+
+/// Read the clipboard's text off the JS thread.
+///
+/// `DesktopApi::read_clipboard_text` is synchronous, and on X11/Wayland the
+/// clipboard has no central store: the read is serviced by whichever
+/// application currently owns the selection, and `gtk_clipboard_wait_for_text`
+/// has no timeout. An unresponsive owner therefore blocks the caller for as
+/// long as it likes. Running that on the JS thread would freeze the entire
+/// runtime — timers, servers, signal handlers — which is the same failure
+/// mode as the error dialog in #36393, and the `Promise` this op returns to
+/// `navigator.clipboard.readText()` would have made it look impossible.
+///
+/// Thread-safety: in a packaged desktop app the runtime already runs on its
+/// own `deno-desktop-runtime` thread (`run_on_runtime_thread` in
+/// `cli/rt_desktop`), never the laufey UI thread, so the existing call was
+/// already an off-UI-thread one that the backend marshals; the pool thread
+/// used here is in the same position, not a new kind of caller.
+#[op2]
+#[string]
+async fn op_desktop_read_clipboard_text(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> Result<Option<String>, deno_error::JsErrorBox> {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    return Ok(None);
+  };
+  // The runtime's bounded blocking pool, not a fresh thread per call:
+  // `readText()` is an ordinary API an app may poll on an interval, and
+  // nothing here rate-limits it.
+  //
+  // The pool being bounded is also why the timeout matters. A read is
+  // serviced by whichever app owns the selection and can block for as long
+  // as that app likes, and a `spawn_blocking` task can't be cancelled — so
+  // without a bound on the wait, enough hung reads would occupy pool threads
+  // permanently and starve every other blocking task in the runtime, not
+  // just the caller. Timing out doesn't reclaim the thread, but it stops the
+  // caller adding more of them behind an unbounded await.
+  //
+  // A join error (a backend that panics mid-read) yields `None` too, rather
+  // than leaving the caller's promise pending forever.
+  let read =
+    deno_core::unsync::spawn_blocking(move || api.read_clipboard_text());
+  // Reject rather than resolve on either failure. Resolving would hand back
+  // `""`, which is exactly what a genuinely empty clipboard returns, so a
+  // caller could not tell "nothing was copied" from "the owning app is
+  // wedged" — and `if (await navigator.clipboard.readText())` would quietly
+  // take the empty branch. The spec rejects here too.
+  //
+  // The two failures get different messages: a panic inside the backend has
+  // nothing to do with a timeout or with another application, and pointing
+  // someone at their window manager for it would be an actively wrong
+  // diagnosis.
+  match tokio::time::timeout(CLIPBOARD_TIMEOUT, read).await {
+    Ok(Ok(text)) => Ok(text),
+    Ok(Err(_join)) => Err(clipboard_failed("read")),
+    Err(_elapsed) => Err(clipboard_unavailable("read")),
+  }
+}
+
+/// The error a clipboard op rejects with when the backend call itself failed
+/// — i.e. it panicked, so the blocking task's join returned an error. Kept
+/// distinct from [`clipboard_unavailable`]: nothing timed out and no other
+/// application was involved.
+fn clipboard_failed(op: &str) -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::generic(format!("clipboard {op} failed"))
+}
+
+/// The error a clipboard op rejects with when the call didn't finish in time.
+///
+/// Names the unresponsive-owner case specifically: on X11/Wayland the call is
+/// serviced by whichever application owns the selection, and that being stuck
+/// is the one thing a user can actually act on. Only for the timeout — see
+/// [`clipboard_failed`] for a backend that failed outright.
+fn clipboard_unavailable(op: &str) -> deno_error::JsErrorBox {
+  deno_error::JsErrorBox::generic(format!(
+    "clipboard {op} did not complete within {}s - the application that owns \
+     the clipboard may be unresponsive",
+    CLIPBOARD_TIMEOUT.as_secs()
+  ))
+}
+
+/// Write the clipboard's text off the JS thread. Blocking semantics — and the
+/// reason for going through the blocking pool — as
+/// `op_desktop_read_clipboard_text`.
+#[op2]
+async fn op_desktop_write_clipboard_text(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+  #[string] text: String,
+) -> Result<(), deno_error::JsErrorBox> {
+  let api = {
+    let s = state.borrow();
+    s.try_borrow::<Arc<dyn DesktopApi>>().cloned()
+  };
+  let Some(api) = api else {
+    return Ok(());
+  };
+  let write = deno_core::unsync::spawn_blocking(move || {
+    api.write_clipboard_text(&text);
+  });
+  // `writeText()`'s whole contract is that resolution means the write
+  // happened, so discarding the timeout here would make an app report
+  // "Copied!" in precisely the case the timeout exists to catch.
+  match tokio::time::timeout(CLIPBOARD_TIMEOUT, write).await {
+    Ok(Ok(())) => Ok(()),
+    Ok(Err(_join)) => Err(clipboard_failed("write")),
+    Err(_elapsed) => Err(clipboard_unavailable("write")),
   }
 }
 
@@ -1754,8 +2195,11 @@ deno_core::extension!(
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
     op_desktop_alert,
+    op_desktop_alert_async,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_read_clipboard_text,
+    op_desktop_write_clipboard_text,
     op_desktop_send_error_report,
     op_desktop_request_notification_permission,
     op_desktop_query_notification_permission,
@@ -1770,6 +2214,8 @@ mod tests {
 
   use super::BrowserWindow;
   use super::DesktopEvent;
+  use super::DesktopValue;
+  use super::MenuItem;
   use super::PendingBindResponses;
   use super::PermissionState;
   use super::Tray;
@@ -1818,6 +2264,53 @@ mod tests {
           "native method must not collide with the public {name} wrapper"
         );
       }
+    }
+  }
+
+  #[test]
+  fn menu_item_wire_shape_new_fields_are_optional() {
+    // Pre-existing callers only pass label/enabled (+ optional id and
+    // accelerator); checked/icon/tooltip must default rather than error.
+    let item: MenuItem = serde_json::from_value(json!({
+      "item": { "label": "Save", "enabled": true }
+    }))
+    .unwrap();
+    match item {
+      MenuItem::Item {
+        checked,
+        icon,
+        tooltip,
+        ..
+      } => {
+        assert!(!checked);
+        assert!(icon.is_none());
+        assert!(tooltip.is_none());
+      }
+      _ => panic!("expected Item"),
+    }
+
+    let item: MenuItem = serde_json::from_value(json!({
+      "item": {
+        "label": "Mute",
+        "enabled": true,
+        "checked": true,
+        "icon": [0x89, 0x50, 0x4E, 0x47],
+        "tooltip": "Silence notifications",
+      }
+    }))
+    .unwrap();
+    match item {
+      MenuItem::Item {
+        checked,
+        icon,
+        tooltip,
+        ..
+      } => {
+        assert!(checked);
+        assert_eq!(icon.as_deref(), Some(&[0x89u8, 0x50, 0x4E, 0x47][..]));
+        assert_eq!(tooltip.as_deref(), Some("Silence notifications"));
+      }
+      _ => panic!("expected Item"),
     }
   }
 
@@ -2005,7 +2498,7 @@ mod tests {
       kind_of(DesktopEvent::BindCall {
         window_id: 0,
         name: "".into(),
-        args: serde_json::Value::Null,
+        args: vec![],
         call_id: 0,
       }),
       "bindCall"
@@ -2143,14 +2636,17 @@ mod tests {
   // --- BindCall.args round-trip ---
 
   #[test]
-  fn bind_call_args_passes_through_arbitrary_json() {
-    // BindCall carries a serde_json::Value as `args`. We must serialize
+  fn bind_call_args_passes_through_arbitrary_values() {
+    // BindCall carries `Vec<DesktopValue>` as `args`. We must serialize
     // it transparently (not nested under "args.value" or with a Some()
     // wrapper) so the renderer sees exactly what was passed.
     let ev = DesktopEvent::BindCall {
       window_id: 1,
       name: "greet".into(),
-      args: json!([{"name": "ada", "n": 42}]),
+      args: vec![DesktopValue::Dict(vec![
+        ("name".into(), DesktopValue::String("ada".into())),
+        ("n".into(), DesktopValue::Int(42)),
+      ])],
       call_id: 7,
     };
     let v = serde_json::to_value(&ev).unwrap();
@@ -2158,6 +2654,170 @@ mod tests {
     assert_eq!(v["args"][0]["n"], 42);
     assert_eq!(v["callId"], 7);
     assert_eq!(v["windowId"], 1);
+  }
+
+  #[test]
+  fn desktop_value_binary_serializes_as_bytes() {
+    // `Binary` must reach serde as `serialize_bytes` — serde_v8 turns that
+    // into a `Uint8Array` on the JS side, which is what lets bindings carry
+    // binary data (denoland/deno#36498). serde_cbor-style formats would show
+    // this directly; through serde_json, serialize_bytes lands as an array
+    // of numbers rather than an error or an objectified map.
+    let j =
+      serde_json::to_value(DesktopValue::Binary(vec![1, 2, 3, 255])).unwrap();
+    assert_eq!(j, json!([1, 2, 3, 255]));
+  }
+
+  #[test]
+  fn desktop_value_json_roundtrip_and_binary_deserialize() {
+    // Non-binary values keep plain JSON semantics in both directions.
+    let v = DesktopValue::Dict(vec![
+      ("ok".into(), DesktopValue::Bool(true)),
+      ("n".into(), DesktopValue::Int(42)),
+      ("f".into(), DesktopValue::Double(1.5)),
+      (
+        "list".into(),
+        DesktopValue::List(vec![
+          DesktopValue::Null,
+          DesktopValue::String("hi".into()),
+        ]),
+      ),
+    ]);
+    let j = serde_json::to_value(&v).unwrap();
+    assert_eq!(
+      j,
+      json!({"ok": true, "n": 42, "f": 1.5, "list": [null, "hi"]})
+    );
+    let back: DesktopValue = serde_json::from_value(j).unwrap();
+    assert_eq!(back, v);
+
+    // Integers outside i32 degrade to Double (laufey's Int is i32-wide).
+    let big: DesktopValue =
+      serde_json::from_value(json!(5_000_000_000_i64)).unwrap();
+    assert_eq!(big, DesktopValue::Double(5_000_000_000.0));
+
+    // A deserializer that produces bytes (serde_v8 for Uint8Array /
+    // ArrayBuffer views) must map to Binary, not error like
+    // serde_json::Value's visitor did (denoland/deno#36498).
+    struct Bytes(Vec<u8>);
+    impl<'de> serde::Deserializer<'de> for Bytes {
+      type Error = serde_json::Error;
+      fn deserialize_any<V: serde::de::Visitor<'de>>(
+        self,
+        visitor: V,
+      ) -> Result<V::Value, Self::Error> {
+        visitor.visit_byte_buf(self.0)
+      }
+      serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct enum identifier ignored_any
+      }
+    }
+    let bin: DesktopValue =
+      serde::Deserialize::deserialize(Bytes(vec![9, 8, 7])).unwrap();
+    assert_eq!(bin, DesktopValue::Binary(vec![9, 8, 7]));
+  }
+
+  #[test]
+  fn desktop_value_rejects_nesting_past_the_depth_limit() {
+    // The visitor recurses per level, so an unbounded value — a cyclic
+    // object returned from a binding handler is the realistic source —
+    // would run the runtime thread out of stack. It must surface an error
+    // to the caller instead.
+    //
+    // Built as a `Value` rather than parsed from text: serde_json's own
+    // parser has a recursion limit that would fire first and mask the
+    // guard under test. `from_value` applies no limit of its own.
+    fn nest_lists(depth: usize) -> serde_json::Value {
+      let mut v = json!(1);
+      for _ in 0..depth {
+        v = serde_json::Value::Array(vec![v]);
+      }
+      v
+    }
+
+    let err =
+      serde_json::from_value::<DesktopValue>(nest_lists(super::MAX_DEPTH + 1))
+        .unwrap_err();
+    assert!(
+      err.to_string().contains("nested deeper than"),
+      "expected the depth guard to reject, got: {err}"
+    );
+
+    // Nesting within the limit still deserializes, so the guard isn't
+    // simply rejecting anything structured.
+    serde_json::from_value::<DesktopValue>(nest_lists(super::MAX_DEPTH))
+      .expect("nesting within the limit must still deserialize");
+  }
+
+  #[test]
+  fn desktop_value_depth_limit_counts_maps_too() {
+    // `visit_map` carries its own guard; a value nested through objects
+    // rather than arrays must be bounded the same way.
+    let mut v = json!(1);
+    for _ in 0..super::MAX_DEPTH + 1 {
+      let mut obj = serde_json::Map::new();
+      obj.insert("a".to_string(), v);
+      v = serde_json::Value::Object(obj);
+    }
+    let err = serde_json::from_value::<DesktopValue>(v).unwrap_err();
+    assert!(
+      err.to_string().contains("nested deeper than"),
+      "expected the depth guard to reject, got: {err}"
+    );
+  }
+
+  // --- error dialog single-flight ---
+
+  #[test]
+  fn error_dialog_flag_is_single_flight_and_panic_safe() {
+    use std::sync::atomic::Ordering;
+
+    use super::ERROR_DIALOG_SHOWING;
+    use super::ErrorDialogGuard;
+
+    // One test, not two: `ERROR_DIALOG_SHOWING` is a process-global static
+    // and cargo runs tests on parallel threads within one binary, so two
+    // tests asserting on exact `swap` results would interleave and flake.
+    // Anything else added here has to join this test rather than sit
+    // alongside it.
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
+
+    // First caller takes the slot; everyone arriving while it's held is
+    // turned away rather than parking another thread in a modal dialog.
+    assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+    assert!(ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+
+    // Dropping the guard frees the slot for the next error.
+    {
+      let _guard = ErrorDialogGuard;
+    }
+    assert!(
+      !ERROR_DIALOG_SHOWING.load(Ordering::SeqCst),
+      "the guard must clear the flag on the normal path"
+    );
+
+    // And it clears it while unwinding too. A plain `store` after the call
+    // would leave the flag stuck at `true` if `DesktopApi::alert` panicked,
+    // suppressing every later error dialog for the life of the process.
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
+    let panicked = std::panic::catch_unwind(|| {
+      let _guard = ErrorDialogGuard;
+      assert!(!ERROR_DIALOG_SHOWING.swap(true, Ordering::SeqCst));
+      panic!("backend blew up mid-dialog");
+    });
+    assert!(
+      panicked.is_err(),
+      "the panic must propagate, not be swallowed"
+    );
+    assert!(
+      !ERROR_DIALOG_SHOWING.load(Ordering::SeqCst),
+      "the flag must be clear again so later errors can still show a dialog"
+    );
+
+    ERROR_DIALOG_SHOWING.store(false, Ordering::SeqCst);
   }
 
   // --- permission_state_to_web_string ---
@@ -2331,7 +2991,7 @@ mod tests {
   // unit test, but the bug surface is the map manipulation, not the
   // tiny op2 wrapper.
 
-  fn resolve(responses: &PendingBindResponses, id: u32, v: serde_json::Value) {
+  fn resolve(responses: &PendingBindResponses, id: u32, v: DesktopValue) {
     if let Some(tx) = responses.0.lock().unwrap().remove(&id) {
       let _ = tx.send(Ok(v));
     }
@@ -2348,11 +3008,23 @@ mod tests {
     let responses = PendingBindResponses::new();
     let (tx, rx) = tokio::sync::oneshot::channel();
     let id = register_bind_call(&responses, tx);
-    // The renderer resolves with a JSON value.
-    resolve(&responses, id, serde_json::json!({"ok": true, "n": 42}));
+    // The runtime resolves with a DesktopValue.
+    resolve(
+      &responses,
+      id,
+      DesktopValue::Dict(vec![
+        ("ok".into(), DesktopValue::Bool(true)),
+        ("n".into(), DesktopValue::Int(42)),
+      ]),
+    );
     let v = rx.await.expect("oneshot recv").expect("Ok variant");
-    assert_eq!(v["ok"], true);
-    assert_eq!(v["n"], 42);
+    assert_eq!(
+      v,
+      DesktopValue::Dict(vec![
+        ("ok".into(), DesktopValue::Bool(true)),
+        ("n".into(), DesktopValue::Int(42)),
+      ])
+    );
     // After resolve, the map entry is gone.
     assert!(
       responses.0.lock().unwrap().is_empty(),
@@ -2398,7 +3070,7 @@ mod tests {
     let responses = PendingBindResponses::new();
     // No entry registered — resolve with a random id must not panic
     // and must not affect any state.
-    resolve(&responses, 999_999, serde_json::Value::Null);
+    resolve(&responses, 999_999, DesktopValue::Null);
     reject(&responses, 999_999, "x".to_string());
     assert!(responses.0.lock().unwrap().is_empty());
   }
@@ -2412,10 +3084,10 @@ mod tests {
     // .unwrap() that would crash the runtime.
     let responses = PendingBindResponses::new();
     let (tx, rx) =
-      tokio::sync::oneshot::channel::<Result<serde_json::Value, String>>();
+      tokio::sync::oneshot::channel::<Result<DesktopValue, String>>();
     let id = register_bind_call(&responses, tx);
     drop(rx);
-    resolve(&responses, id, serde_json::Value::Null);
+    resolve(&responses, id, DesktopValue::Null);
     // If we reach this line without panicking, the test passes.
   }
 

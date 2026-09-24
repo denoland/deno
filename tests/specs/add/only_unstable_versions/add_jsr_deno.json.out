@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/unstable": "jsr:@denotest/unstable@1.0.0-beta.2"
+  }
+}

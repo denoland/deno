@@ -105,14 +105,22 @@ impl<'a, Sys: FsRead + FsMetadata> GitIgnoreTree<'a, Sys> {
     let parent = dir_path.parent().and_then(|parent| {
       self.get_resolved_git_ignore_inner(parent, Some(dir_path))
     });
+    let gitignore_path = dir_path.join(".gitignore");
     let current = self
       .sys
-      .fs_read_to_string_lossy(dir_path.join(".gitignore"))
+      .fs_read_to_string_lossy(&gitignore_path)
       .ok()
       .and_then(|text| {
         let mut builder = ignore::gitignore::GitignoreBuilder::new(dir_path);
-        for line in text.lines() {
-          builder.add_line(None, line).ok()?;
+        for (line_index, line) in text.lines().enumerate() {
+          if let Err(err) = builder.add_line(None, line) {
+            log::warn!(
+              "Warning: skipping invalid .gitignore pattern at {}:{}: {}",
+              gitignore_path.display(),
+              line_index + 1,
+              err,
+            );
+          }
         }
         // override the gitignore contents to include these paths
         for path in &self.include_paths {
@@ -176,5 +184,52 @@ mod test {
     run_test("/sub_dir/sub_dir/ignore.txt", true);
     run_test("/sub_dir/ignore.txt", false);
     run_test("/ignore.txt", false);
+  }
+
+  #[test]
+  fn git_ignore_tree_keeps_valid_patterns_after_parse_error() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/").unwrap();
+    sys
+      .fs_write("/.gitignore", "before.txt\n[\nafter.txt")
+      .unwrap();
+    let mut ignore_tree = GitIgnoreTree::new(&sys, Vec::new());
+
+    for path in ["/before.txt", "/after.txt"] {
+      let path = PathBuf::from(path);
+      let gitignore =
+        ignore_tree.get_resolved_git_ignore_for_file(&path).unwrap();
+      assert!(
+        gitignore.is_ignored(&path, false),
+        "Path: {}",
+        path.display()
+      );
+    }
+  }
+
+  #[test]
+  fn git_ignore_tree_keeps_parent_and_valid_child_patterns() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sub_dir").unwrap();
+    sys.fs_write("/.gitignore", "parent.txt").unwrap();
+    sys
+      .fs_write("/sub_dir/.gitignore", "before.txt\n[\nafter.txt")
+      .unwrap();
+    let mut ignore_tree = GitIgnoreTree::new(&sys, Vec::new());
+
+    for path in [
+      "/sub_dir/parent.txt",
+      "/sub_dir/before.txt",
+      "/sub_dir/after.txt",
+    ] {
+      let path = PathBuf::from(path);
+      let gitignore =
+        ignore_tree.get_resolved_git_ignore_for_file(&path).unwrap();
+      assert!(
+        gitignore.is_ignored(&path, false),
+        "Path: {}",
+        path.display()
+      );
+    }
   }
 }

@@ -26,6 +26,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePush,
   FunctionPrototypeCall,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
   StringPrototypeCharCodeAt,
@@ -136,7 +137,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "headersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kHeadersDistinct]) {
-      this[kHeadersDistinct] = {};
+      this[kHeadersDistinct] = ObjectCreate(null);
 
       const src = this.rawHeaders;
       const dst = this[kHeadersDistinct];
@@ -176,7 +177,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "trailersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kTrailersDistinct]) {
-      this[kTrailersDistinct] = {};
+      this[kTrailersDistinct] = ObjectCreate(null);
 
       const src = this.rawTrailers;
       const dst = this[kTrailersDistinct];
@@ -202,7 +203,7 @@ IncomingMessage.prototype.setTimeout = function setTimeout(msecs, callback) {
 
 // The parser pushes body data directly via push(). We just need to
 // unpause the underlying socket so data flows.
-IncomingMessage.prototype._read = function _read(_n) {
+IncomingMessage.prototype._read = function _read() {
   if (!this._consuming) {
     this._readableState.readingMore = false;
     this._consuming = true;

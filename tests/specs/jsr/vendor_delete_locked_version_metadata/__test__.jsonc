@@ -13,7 +13,7 @@
     // remove the version metadata file
     "args": [
       "eval",
-      "Deno.removeSync('vendor/http_127.0.0.1_4250/@denotest/add/1.0.0_meta.json', { recursive: true })"
+      "Deno.removeSync('vendor/http_127.0.0.1_port_4250/@denotest/add/1.0.0_meta.json', { recursive: true })"
     ],
     "output": ""
   }, {

@@ -15,8 +15,6 @@ use std::ops::BitOr;
 use std::ops::BitXor;
 use std::ops::Not;
 
-use arrayref::array_refs;
-use arrayref::mut_array_refs;
 use wide::u8x16;
 
 use crate::fast_registry_json::pick;
@@ -191,7 +189,7 @@ impl<T> Simd8x64<T> {
 impl Simd8x64<u8> {
   #[inline(always)]
   pub fn store(&self, buf: &mut [u8; 64]) {
-    let (a, b, c, d) = mut_array_refs![buf, 16, 16, 16, 16];
+    let [a, b, c, d] = bytemuck::must_cast_mut::<_, [[u8; 16]; 4]>(buf);
     self.chunks[0].store(a);
     self.chunks[1].store(b);
     self.chunks[2].store(c);
@@ -200,7 +198,7 @@ impl Simd8x64<u8> {
 
   #[inline(always)]
   pub fn load(buf: &[u8; 64]) -> Self {
-    let (a, b, c, d) = array_refs![buf, 16, 16, 16, 16];
+    let [a, b, c, d] = bytemuck::must_cast_ref::<_, [[u8; 16]; 4]>(buf);
     Self {
       chunks: [a.into(), b.into(), c.into(), d.into()],
     }

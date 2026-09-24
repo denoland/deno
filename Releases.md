@@ -6,6 +6,154 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.9.7 / 2026.09.16
+
+- fix(audit): honor configured CA stores (#36728)
+- fix(cache): make HTTP authority paths unambiguous (#36356)
+- fix(cli): accept all valid sys permission descriptors (#36753)
+- fix(cli): don't duplicate passthrough args for deno deploy/sandbox (#36722)
+- fix(cli): generate valid bash completions (#36736)
+- fix(cli): preserve double dash before the entrypoint (#36835)
+- fix(cli): restore optional-value semantics for deno bundle --sourcemap
+  (#36723)
+- fix(completions): keep the dash on short flags in zsh completions (#36720)
+- fix(desktop): complete deferred window close and fix NAPI symbol export on
+  Linux (#36718)
+- fix(ext/http): extract traceparent from Deno.serve regardless of header name
+  case (#36840)
+- fix(ext/node): allow repeated child process signals (#36644)
+- fix(ext/node): check resolved IP against net deny list in tcp_wrap bind
+  (#36482)
+- fix(ext/node): don't panic on prime sizes below 2 bits (#36400)
+- fix(ext/node): improve node:dns error codes and lookupService/setLocalAddress
+  compat (#36552)
+- fix(ext/node): normalize resourceUsage maxRSS on macOS (#36784)
+- fix(install): validate lockfile tarball registry paths (#36473)
+- fix(lsp): resolve the newest prerelease of jsr packages that have no stable
+  release (#36655)
+- fix(net): check permissions for multicast membership (#36529)
+- fix(node): align IncomingMessage header map prototypes (#36438)
+- fix(node): preserve AsyncLocalStorage exit context (#36464)
+- fix(npm): correct the pnpm lockfile import against real-world lockfiles
+  (#36727)
+- fix(npm): validate lockfile tarball origins (#36430)
+- fix(permissions): fold unix socket paths for case-insensitive filesystems
+  (#36553)
+- fix(permissions): parse unix: net rules as POSIX paths (#36785)
+- fix(process): clear supplementary groups before changing identity (#36433)
+- fix(sqlite): refuse symlink database paths (#36357)
+- fix(transpile): don't report diagnostics from bundled assets in declaration
+  emit (#36716)
+- fix(web): avoid flushing compression streams on every write (#36744)
+- fix: add missing property desktop.app.identifier (#36774)
+- fix: hash source contents for V8 code cache (#36743)
+- fix: point JSON schema $id values at the maintained GitHub raw endpoint
+  (#36747)
+- fix: toplevel fetch/cron leak its spans (#36757)
+- fix: validate --ignore-scripts package selectors (#36742)
+- perf(core): drop dead module-graph retention (#36683)
+- perf(core): make extension op tables const in static memory (#36696)
+- perf(core): split OpCtx into shared OpCommonCtx + borrowed op declarations
+  (#36693)
+- perf(ext/node): Buffer hex paths via native Uint8Array toHex/setFromHex
+  (#36531)
+
+### 2.9.6 / 2026.08.27
+
+- feat(compressible): add support for 'text/x-component' content type (#36450)
+- feat(desktop): clipboard api (#35750)
+- feat(desktop): support checked, icon, and tooltip on menu items (#36649)
+- fix(bundle): isolate esbuild downloads from workspace registries (#36467)
+- fix(cache): combine duplicate headers for Vary matching (#36476)
+- fix(cli_parser): remove orphaned sync-types parser
+- fix(core): cap adaptive buffer initial allocations (#36432)
+- fix(core): make Unix pipe fd ownership explicit (#36353)
+- fix(core): make user timer waker state thread-safe (#36495)
+- fix(coverage): compare a range against a line in V8's units (#36613)
+- fix(crypto): preserve RSA-OAEP label bytes (#36441)
+- fix(desktop): keep dots in the app name when resolving the runtime library
+  (#36006)
+- fix(desktop): keep the macOS bundle signature valid unless an update is
+  applied (#36574)
+- fix(desktop): never block the JS thread on the error-report dialog (#36575)
+- fix(desktop): propagate deno.json version and license into packaged installers
+  (#36577)
+- fix(desktop): run Vite-based HMR dev servers inside the desktop runtime
+  (#36488)
+- fix(desktop): transport binding args and results as DesktopValue so Uint8Array
+  survives (#36573)
+- fix(ext/fetch): enforce permissions for proxy transports (#36217)
+- fix(ext/fetch): only retry transport errors on pooled connections (#36415)
+- fix(ext/fetch): raise default HTTP/2 SETTINGS_MAX_HEADER_LIST_SIZE to 256KB
+  (#36558)
+- fix(ext/http): keep request body readable after response is sent (#36629)
+- fix(ext/http): route invalid async responses to onError (#36437)
+- fix(ext/napi): don't invoke napi_wrap finalizer twice at teardown (#36556)
+- fix(ext/napi): run JS-calling finalizers safely, NULL string result, and
+  Float16Array (#36572)
+- fix(ext/napi): surface OS error and path on addon load failure (#36630)
+- fix(ext/napi): track pending finalizers by identity (#36551)
+- fix(ext/napi): wake the event loop at the next uv_timer deadline (#36559)
+- fix(ext/net): skip unsupported DNS records in ANY queries (#36650)
+- fix(ext/node): accept string ports in dns.lookupService (#36546)
+- fix(ext/node): build the proxied request target with the URL parser (#36557)
+- fix(ext/node): do not resume client TLS sessions unless requested (#36592)
+- fix(ext/node): fix perf_hooks detail.req.url proxied path duplication (#36407)
+- fix(ext/node): handle readv short reads (#36211)
+- fix(ext/node): require sys permission for inspector.open (#36465)
+- fix(ext/node_sqlite): invalidate sessions on database close (#36633)
+- fix(ext/tls): avoid panic for mismatched client certificate and key (#36457)
+- fix(ext/web): clean up abort handlers when listeners are removed (#36226)
+- fix(ext/web): close transfer MessagePort when a transferred readable is
+  cancelled (#36270)
+- fix(ext/web): snapshot SharedArrayBuffer input in TextDecoder.decode()
+  (#36611)
+- fix(fetch): require an initial multipart boundary (#36470)
+- fix(ffi): validate struct return buffers (#36373)
+- fix(fmt): honor .editorconfig when formatting from stdin (#36267)
+- fix(fs): require write permission for creating opens (#36497)
+- fix(fs): use a private FsFile constructor token (#36439)
+- fix(glob): retain valid gitignore rules after parse errors (#36478)
+- fix(http): preserve keep-alive after reading request body (#36690)
+- fix(http): truncate streaming responses to content length (#36496)
+- fix(lsp): restrict registry completion endpoint schemes (#36477)
+- fix(node): check reads during require resolution (#36461)
+- fix(node): match domain uncaught exception handling (#36475)
+- fix(node): preserve v8 deserializer view offsets (#36460)
+- fix(node): validate Brotli encoder operations (#36530)
+- fix(node): validate raw outgoing HTTP headers (#36471)
+- fix(node/crypto): preserve binary key export passphrases (#36443)
+- fix(node_crypto): apply RFC 7748 scalar decoding for X448 (#36466)
+- fix(node_crypto): size cipher updates by byte length (#36459)
+- fix(node_shim): preserve explicit argument delimiters (#36435)
+- fix(npm): flatten single-resolution peers when building package ids (#36608)
+- fix(npm): match peer fallbacks when checking peer resolution cache (#36607)
+- fix(npm): remove arrayref dependency (#36653)
+- fix(npm): resolve bare npm specifier when latest is too new for min dependency
+  age (#36619)
+- fix(npm): use cached abbreviated metadata under --cached-only (#36526)
+- fix(npm): validate tar paths before extraction (#36468)
+- fix(os): serialize process environment updates (#36074)
+- fix(permissions): check resolved IP against import deny list (#36486)
+- fix(process): reject NULs in Windows arguments (#36436)
+- fix(process): validate whitespace-only loader environment values (#36431)
+- fix(publish): authenticate the package existence check so private packages
+  work (#36656)
+- fix(publish): memoize publish order depth (#36215)
+- fix(publish): reject invalid JSR package names (#36474)
+- fix(repl): skip regex literals when validating input (#36375)
+- fix(runtime): unregister dropped signal resources (#36213)
+- fix(web): keep MessagePort resource identifiers private (#36440)
+- fix: bugs in primordials related to `ObjectCreate` and
+  `ObjectDefineProperties` (#36541)
+- fix: prevent threadpool starvation with concurrent file locks (#32789)
+- perf(core): grow the op driver's future arena on demand (#36678)
+- perf(core): uncontended-borrow fast path for AsyncRefCell (#36679)
+- perf(core): use index-based `SafeArrayIterator` in primordials (#36543)
+- perf(core): zero-copy snapshot rehydration, drop bincode (#36680)
+- perf(ext/web): apply the base64url op design to standard base64 (#36422)
+- perf(ext/websocket): shrink the op_ws_create future (#36681)
+
 ### 2.9.5 / 2026.08.06
 
 - feat(add): `--unscoped` flag to alias packages by their unscoped name (#36319)

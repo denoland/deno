@@ -6633,6 +6633,42 @@ fn lsp_jsr_lockfile() {
 }
 
 #[test(timeout = 300)]
+fn lsp_jsr_prerelease_only_package() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "tags": []
+        }
+      }
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import { doThing } from "jsr:@denotest/unstable";
+        console.log(doThing());
+      "#,
+    },
+  }));
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
+  // a wildcard requirement resolves to the newest pre-release when the
+  // package has no stable release, so this resolves and typechecks
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_jsr_auto_import_completion() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17408,7 +17444,19 @@ fn lsp_node_modules_dir() {
     "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
-  let diagnostics = cache(&mut client);
+  // The npm package requirements are registered with the resolver lazily, when
+  // a document module is created. That can happen concurrently on the tsc
+  // thread, in which case the requirements are recorded before they've actually
+  // been resolved and the diagnostics for this request can still see the
+  // package as not installed. Caching again rebuilds the resolver, so retry a
+  // few times before giving up.
+  let mut diagnostics = cache(&mut client);
+  for _ in 0..5 {
+    if diagnostics.all().is_empty() {
+      break;
+    }
+    diagnostics = cache(&mut client);
+  }
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
   // the declaration should be found in the node_modules directory
@@ -17497,12 +17545,12 @@ fn lsp_vendor_dir() {
   assert!(
     temp_dir
       .path()
-      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .join("vendor/http_localhost_port_4545/subdir/mod1.ts")
       .exists()
   );
   let remote_file_path = temp_dir
     .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts");
+    .join("vendor/http_localhost_port_4545/subdir/mod1.ts");
   let remote_file_uri = remote_file_path.uri_file();
 
   // the declaration should be found in the vendor directory
@@ -17903,7 +17951,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
@@ -17915,7 +17963,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
@@ -17954,7 +18002,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_port_4545/subdir/mod2.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -17966,7 +18014,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_port_4545/subdir/mod2.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18006,7 +18054,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_port_4545/subdir/mod3.js").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18018,7 +18066,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_port_4545/subdir/mod3.js").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
@@ -18281,7 +18329,7 @@ fn lsp_vendor_dir_workspace_folder_added() {
     .assert_exit_code(0);
   let vendored_file = temp_dir
     .path()
-    .join("project/vendor/http_localhost_4545/subdir/mod1.ts");
+    .join("project/vendor/http_localhost_port_4545/subdir/mod1.ts");
   assert!(vendored_file.exists());
   let vendored_file_uri = vendored_file.uri_file();
 
@@ -19353,7 +19401,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 45 },
         },
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },
@@ -19365,7 +19413,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
       }])
     } else {
       json!([{
-        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_port_4545/subdir/mod1.ts").unwrap()).unwrap(),
         "targetRange": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 17, "character": 0 },

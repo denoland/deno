@@ -9,6 +9,7 @@ import {
   createSecretKey,
   createSign,
   createVerify,
+  diffieHellman,
   generateKeyPair,
   generateKeyPairSync,
   KeyObject,
@@ -43,11 +44,91 @@ const generateKeyPairAsync = promisify(
 
 const testDir = new URL(".", import.meta.url);
 
+function x448PrivateKey(raw: Buffer): KeyObject {
+  const pkcs8 = Buffer.concat([
+    Buffer.from("3046020100300506032b656f043a0438", "hex"),
+    raw,
+  ]);
+  return createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
+}
+
+function x448PublicKey(raw: Buffer): KeyObject {
+  const spki = Buffer.concat([
+    Buffer.from("3042300506032b656f033900", "hex"),
+    raw,
+  ]);
+  return createPublicKey({ key: spki, format: "der", type: "spki" });
+}
+
+function x448RawPublicKey(key: KeyObject): Buffer {
+  const spki = Buffer.from(key.export({ format: "der", type: "spki" }));
+  return spki.subarray(-56);
+}
+
 const pemBuffer = Buffer.from(
   await Deno.readTextFile(
     new URL("../testdata/x509.pem", import.meta.url),
   ),
 );
+
+Deno.test("X448 imported private key derives RFC 7748 values", () => {
+  const privateKey = x448PrivateKey(Buffer.from(
+    "27a4354608f3bdd38f1f5af305f3e0682efe4e25808249d8fcb55927f6a9f446b8dc1d0a2c3b8cb133a5673b59a6d55ce754ec0c9a555401",
+    "hex",
+  ));
+  assertEquals(
+    x448RawPublicKey(createPublicKey(privateKey)).toString("hex"),
+    "145d083ea7a6379dbb32dcbd8aff4c206ea5d069b75e96c6dd2a3e38f441471ac97adca641fdad66685a96f32b7c3e064635fab3cc89234e",
+  );
+
+  const rfcPrivateKey = x448PrivateKey(Buffer.from(
+    "3d262fddf9ec8e88495266fea19a34d28882acef045104d0d1aae121700a779c984c24f8cdd78fbff44943eba368f54b29259a4f1c600ad3",
+    "hex",
+  ));
+  const rfcPublicKey = x448PublicKey(Buffer.from(
+    "06fce640fa3487bfda5f6cf2d5263f8aad88334cbd07437f020f08f9814dc031ddbdc38c19c6da2583fa5429db94ada18aa7a7fb4ef8a086",
+    "hex",
+  ));
+  assertEquals(
+    diffieHellman({
+      privateKey: rfcPrivateKey,
+      publicKey: rfcPublicKey,
+    }).toString("hex"),
+    "ce3e4ff95a60dc6697da1db1d85e6afbdf79b50a2412d7546d5f239fe14fbaadeb445fc66a01b0779d98223961111e21766282f73dd96b6f",
+  );
+});
+
+Deno.test("X448 generated peers derive the same secret", () => {
+  const alice = generateKeyPairSync("x448");
+  const bob = generateKeyPairSync("x448");
+  const aliceSecret = diffieHellman({
+    privateKey: alice.privateKey,
+    publicKey: bob.publicKey,
+  });
+  const bobSecret = diffieHellman({
+    privateKey: bob.privateKey,
+    publicKey: alice.publicKey,
+  });
+  assertEquals(aliceSecret, bobSecret);
+});
+
+Deno.test("X448 rejects low-order public keys", () => {
+  const privateKey = x448PrivateKey(Buffer.alloc(56, 42));
+  const pMinusOne = Buffer.alloc(56, 0xff);
+  pMinusOne[0] = 0xfe;
+  pMinusOne[28] = 0xfe;
+
+  for (
+    const rawPublicKey of [
+      Buffer.alloc(56),
+      Buffer.from([1, ...Buffer.alloc(55)]),
+      pMinusOne,
+    ]
+  ) {
+    const publicKey = x448PublicKey(rawPublicKey);
+    assertThrows(() => diffieHellman({ privateKey, publicKey }));
+  }
+});
 
 Deno.test({
   name: "create secret key",

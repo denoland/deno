@@ -5,8 +5,6 @@ use std::any::type_name;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use serde::Deserialize;
-use serde::Serialize;
 pub use v8::cppgc::GarbageCollected;
 pub use v8::cppgc::GcCell;
 
@@ -273,9 +271,29 @@ pub struct FunctionTemplateData {
   store: BTreeMap<String, v8::Global<v8::FunctionTemplate>>,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct FunctionTemplateSnapshotData {
   store_handles: Vec<(String, u32)>,
+}
+
+impl FunctionTemplateSnapshotData {
+  pub(crate) fn encode(&self, e: &mut crate::snapshot_format::Encoder) {
+    e.seq(self.store_handles.iter(), |e, (k, v)| {
+      e.str(k);
+      e.u32(*v);
+    });
+  }
+
+  pub(crate) fn decode(
+    d: &mut crate::snapshot_format::Decoder,
+  ) -> crate::snapshot_format::SnapshotResult<Self> {
+    Ok(Self {
+      // These keys are `std::any::type_name` strings used as `BTreeMap<String,
+      // _>` keys; there are only a few dozen of them, so an owned copy here is
+      // not worth changing the map's key type for.
+      store_handles: d.seq(|d| Ok((d.str()?.0.to_owned(), d.u32()?)))?,
+    })
+  }
 }
 
 impl FunctionTemplateData {

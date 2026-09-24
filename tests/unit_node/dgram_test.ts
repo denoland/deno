@@ -274,6 +274,75 @@ socket.on("error", (err) => {
   }
 });
 
+Deno.test("[node/dgram] addMembership checks group permission", {
+  permissions: { write: true, run: true, net: true },
+}, async () => {
+  const reservation = Deno.listenDatagram({
+    hostname: "0.0.0.0",
+    port: 0,
+    transport: "udp",
+  });
+  assert(reservation.addr.transport === "udp");
+  const port = reservation.addr.port;
+  reservation.close();
+
+  const tempFile = Deno.makeTempFileSync({ suffix: ".ts" });
+  Deno.writeTextFileSync(
+    tempFile,
+    `import dgram from "node:dgram";
+const socket = dgram.createSocket({ type: "udp4", reuseAddr: true });
+socket.bind(${port}, "0.0.0.0", () => {
+  try {
+    socket.addMembership("224.0.0.114");
+    console.log("JOINED");
+    socket.dropMembership("224.0.0.114");
+  } catch (error) {
+    console.log("ADD_ERROR:" + (error.code ?? error.name));
+  } finally {
+    socket.close();
+  }
+});
+`,
+  );
+
+  const run = async (allowNet: string) => {
+    const { success, stdout, stderr } = await new Deno.Command(
+      Deno.execPath(),
+      {
+        args: ["run", "--no-prompt", allowNet, tempFile],
+        stdout: "piped",
+        stderr: "piped",
+      },
+    ).output();
+    return {
+      success,
+      output: new TextDecoder().decode(stdout) +
+        new TextDecoder().decode(stderr),
+    };
+  };
+
+  try {
+    const denied = await run(`--allow-net=0.0.0.0:${port}`);
+    assert(denied.success, denied.output);
+    assert(
+      denied.output.includes("ADD_ERROR:") &&
+        !denied.output.includes("JOINED"),
+      `Membership should have been blocked, but got: ${denied.output}`,
+    );
+
+    const allowed = await run(
+      `--allow-net=0.0.0.0:${port},224.0.0.114:${port}`,
+    );
+    assert(allowed.success, allowed.output);
+    assert(
+      allowed.output.includes("JOINED"),
+      `Membership should have been allowed, but got: ${allowed.output}`,
+    );
+  } finally {
+    Deno.removeSync(tempFile);
+  }
+});
+
 Deno.test("[node/dgram] large recvBufferSize and sendBufferSize do not throw", async () => {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const socket = createSocket({

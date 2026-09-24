@@ -34,6 +34,7 @@ const {
   ReflectApply,
   SafeArrayIterator,
   SafeSet,
+  SafeWeakMap,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
   Symbol,
@@ -44,6 +45,8 @@ const {
   TypeError,
   TypeErrorPrototype,
   Uint8Array,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 const {
   InterruptedPrototype,
@@ -121,8 +124,6 @@ class MessageChannel {
 webidl.configureInterface(MessageChannel);
 const MessageChannelPrototype = MessageChannel.prototype;
 
-const _id = Symbol("id");
-const MessagePortIdSymbol = _id;
 const MessagePortReceiveMessageOnPortSymbol = Symbol(
   "MessagePortReceiveMessageOnPort",
 );
@@ -136,6 +137,39 @@ const refMessagePort = Symbol("refMessagePort");
  * unref/ref on the global message event handler count. */
 const unrefParentPort = Symbol("unrefParentPort");
 
+/** @type {WeakMap<MessagePort, number | null>} */
+const messagePortIds = new SafeWeakMap();
+
+/**
+ * @param {MessagePort} port
+ * @returns {number | null}
+ */
+function getMessagePortId(port) {
+  const id = WeakMapPrototypeGet(messagePortIds, port);
+  if (id === undefined) {
+    throw new TypeError("Illegal invocation");
+  }
+  return id;
+}
+
+/**
+ * @param {MessagePort} port
+ * @param {number | null} id
+ */
+function setMessagePortId(port, id) {
+  WeakMapPrototypeSet(messagePortIds, port, id);
+}
+
+/**
+ * @param {MessagePort} port
+ * @returns {number | null}
+ */
+function takeMessagePortId(port) {
+  const id = getMessagePortId(port);
+  setMessagePortId(port, null);
+  return id;
+}
+
 /**
  * @param {number} id
  * @returns {MessagePort}
@@ -144,7 +178,7 @@ function createMessagePort(id) {
   const port = webidl.createBranded(MessagePort);
   port[core.hostObjectBrand] = "MessagePort";
   setEventTargetData(port);
-  port[_id] = id;
+  setMessagePortId(port, id);
   port[_enabled] = false;
   port[_messageEventListenerCount] = 0;
   port[_refed] = false;
@@ -226,8 +260,6 @@ class _MessagePortBase extends EventTarget {
 }
 
 class MessagePort extends _MessagePortBase {
-  /** @type {number | null} */
-  [_id] = null;
   /** @type {boolean} */
   [_enabled] = false;
   [_refed] = false;
@@ -263,7 +295,8 @@ class MessagePort extends _MessagePortBase {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    const portClosed = this[_id] === null;
+    const portId = getMessagePortId(this);
+    const portClosed = portId === null;
     // Fast path: no transferables - serialize and send in one shot,
     // bypassing the JsMessageData serde overhead
     if (
@@ -279,10 +312,10 @@ class MessagePort extends _MessagePortBase {
           "DataCloneError",
         );
       }
-      op_message_port_post_message_raw(
-        this[_id],
-        serializeMessageData(message, serializeErrorCb),
-      );
+      const data = serializeMessageData(message, serializeErrorCb);
+      const currentPortId = getMessagePortId(this);
+      if (currentPortId === null) return;
+      op_message_port_post_message_raw(currentPortId, data);
       return;
     }
     message = webidl.converters.any(message);
@@ -325,7 +358,7 @@ class MessagePort extends _MessagePortBase {
       for (let i = 0; i < transfer.length; i++) {
         const t = transfer[i];
         if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
-          if (t[_id] === null) {
+          if (getMessagePortId(t) === null) {
             throw new DOMException(
               "MessagePort in transfer list is already detached",
               "DataCloneError",
@@ -351,7 +384,9 @@ class MessagePort extends _MessagePortBase {
     }
     if (portClosed) return;
     const data = serializeJsMessageData(message, transfer);
-    op_message_port_post_message(this[_id], data);
+    const currentPortId = getMessagePortId(this);
+    if (currentPortId === null) return;
+    op_message_port_post_message(currentPortId, data);
   }
 
   start() {
@@ -360,11 +395,12 @@ class MessagePort extends _MessagePortBase {
     (async () => {
       this[_enabled] = true;
       while (true) {
-        if (this[_id] === null) break;
+        const portId = getMessagePortId(this);
+        if (portId === null) break;
         let data;
         try {
           this[_dataPromise] = op_message_port_recv_message(
-            this[_id],
+            portId,
           );
           if (
             typeof this[nodeWorkerThreadCloseCb] === "function" &&
@@ -455,16 +491,16 @@ class MessagePort extends _MessagePortBase {
         cb();
       });
     }
-    if (this[_id] !== null) {
+    const portId = getMessagePortId(this);
+    if (portId !== null) {
       // Drain any already-queued messages synchronously before closing the
       // resource. Node guarantees that messages sent before the close()
       // call get dispatched even if the receiver closes mid-stream
       // (regression test #22762). Without this, messages buffered after
       // the current async recv resolved but before our handler called
       // close() would be silently dropped.
-      const portId = this[_id];
       try {
-        while (this[_id] === portId) {
+        while (getMessagePortId(this) === portId) {
           const data = op_message_port_recv_message_sync(portId);
           if (data === null) break;
           if (!dispatchPortMessageData(this, data)) break;
@@ -474,9 +510,9 @@ class MessagePort extends _MessagePortBase {
       }
       // The dispatch may have closed the port via a user handler that
       // re-entered close(); only tear down the resource if we still own it.
-      if (this[_id] === portId) {
+      if (getMessagePortId(this) === portId) {
         core.close(portId);
-        this[_id] = null;
+        setMessagePortId(this, null);
         nodeWorkerThreadMaybeInvokeCloseCb(this);
       }
     }
@@ -491,7 +527,7 @@ class MessagePort extends _MessagePortBase {
     return inspect(
       getCreateFilteredInspectProxy()({
         object: {
-          active: this[_id] !== null,
+          active: getMessagePortId(this) !== null,
           refed: this[_refed],
           onmessage: this.onmessage,
           onmessageerror: this.onmessageerror,
@@ -528,8 +564,7 @@ webidl.configureInterface(MessagePort);
 const MessagePortPrototype = MessagePort.prototype;
 
 core.registerTransferableResource("MessagePort", (port) => {
-  const id = port[_id];
-  port[_id] = null;
+  const id = takeMessagePortId(port);
   if (id === null) {
     throw new DOMException(
       "Can not transfer disentangled message port",
@@ -1124,7 +1159,7 @@ return {
   markNotSerializable,
   MessageChannel,
   MessagePort,
-  MessagePortIdSymbol,
+  getMessagePortId,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
@@ -1143,6 +1178,7 @@ return {
   refMessagePort,
   serializeJsMessageData,
   serializeMessageData,
+  setMessagePortId,
   structuredClone,
   unrefParentPort,
 };
