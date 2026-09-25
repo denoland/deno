@@ -874,7 +874,7 @@ function _startEsmLoadLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
-      const [id, fileUrl, rawAttributes] = req;
+      const [id, fileUrl, format, rawAttributes] = req;
       const importAttributes = { __proto__: null };
       if (rawAttributes !== null && typeof rawAttributes === "object") {
         for (const key in rawAttributes) {
@@ -882,7 +882,7 @@ function _startEsmLoadLoop() {
         }
       }
       const context = {
-        format: undefined,
+        format,
         conditions: ["node", "import", "module-sync", "node-addons"],
         importAttributes,
       };
@@ -1950,7 +1950,7 @@ Module.prototype.load = function (filename) {
         fileUrl = url.pathToFileURL(this.filename).href;
       }
       const context = {
-        format: undefined,
+        format: getLoadHookFormat(this.filename),
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
       };
@@ -2216,6 +2216,24 @@ function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
   module._compile(content, filename, format);
+}
+
+function getLoadHookFormat(filename) {
+  if (StringPrototypeEndsWith(filename, ".json")) return "json";
+  if (
+    StringPrototypeEndsWith(filename, ".mjs") ||
+    StringPrototypeEndsWith(filename, ".mts")
+  ) {
+    return "module";
+  }
+  if (
+    StringPrototypeEndsWith(filename, ".cjs") ||
+    StringPrototypeEndsWith(filename, ".cts")
+  ) {
+    return "commonjs";
+  }
+  if (StringPrototypeEndsWith(filename, ".wasm")) return "wasm";
+  return op_require_is_maybe_cjs(filename) ? "commonjs" : "module";
 }
 
 function loadCjs(module, filename) {
