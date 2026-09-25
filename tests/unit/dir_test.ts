@@ -40,6 +40,34 @@ Deno.test({ permissions: { read: true, write: true } }, function dirCwdError() {
 
 Deno.test(
   { permissions: { read: true, write: true } },
+  function dirCwdStableAcrossReads() {
+    const initialdir = Deno.cwd();
+    const path = Deno.makeTempDirSync();
+    Deno.chdir(path);
+    try {
+      const first = Deno.cwd();
+      assertEquals(Deno.cwd(), first);
+    } finally {
+      Deno.chdir(initialdir);
+    }
+    assertEquals(Deno.cwd(), initialdir);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function dirCwdUnchangedAfterFailedChdir() {
+    const initialdir = Deno.cwd();
+    const missing = Deno.makeTempDirSync() + "_missing";
+    assertThrows(() => {
+      Deno.chdir(missing);
+    }, Deno.errors.NotFound);
+    assertEquals(Deno.cwd(), initialdir);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
   function dirChdirError() {
     const path = Deno.makeTempDirSync() + "test";
     assertThrows(
