@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod cwd_override;
 mod interface;
 mod ops;
 mod std_fs;
@@ -9,6 +10,10 @@ pub use deno_maybe_sync as sync;
 pub use deno_maybe_sync::MaybeSend;
 pub use deno_maybe_sync::MaybeSync;
 
+pub use crate::cwd_override::CwdOverrideGuard;
+pub use crate::cwd_override::current_dir as override_aware_current_dir;
+pub use crate::cwd_override::current_override as current_cwd_override;
+pub use crate::cwd_override::set_current_dir as override_aware_set_current_dir;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
