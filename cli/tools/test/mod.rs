@@ -91,6 +91,7 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CreateCustomWorkerError;
 
 mod channel;
+mod fast_filter;
 pub mod fmt;
 pub mod reporters;
 mod sanitizers;
@@ -649,6 +650,11 @@ struct TestSpecifiersOptions {
   cwd: Url,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
+  /// Whether the collect-then-run fast path may be used when a name filter is
+  /// active. Set by the caller only when it preserves semantics (currently
+  /// disabled for `--doc` and when coverage is enabled). See the
+  /// `fast_filter` module.
+  fast_filter: bool,
   log_level: Option<log::Level>,
   filter: bool,
   specifier: TestSpecifierOptions,
@@ -1751,13 +1757,63 @@ async fn test_specifiers(
   let reporter = get_test_reporter(&options);
   let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
-  let join_handles = specifiers.into_iter().map(move |specifier| {
+  // Spawn the reporter before the (optional) collect phase below, so that
+  // collect-phase events and Ctrl+C are handled while it runs.
+  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
+
+  // Fast path for `--filter` (see the `fast_filter` module docs): first find
+  // the files that contain matching tests using a small pool of shared-isolate
+  // collector workers, so that only those files go through the fully-isolated
+  // path below. Files with no matching tests come back tagged with their
+  // registered tests and only contribute their `filtered_out` counts.
+  let specifiers: Vec<(ModuleSpecifier, Option<TestDescriptions>)> =
+    if options.fast_filter && options.specifier.filter.is_active() {
+      fast_filter::collect_specifiers_to_run(
+        worker_factory.clone(),
+        cli_options,
+        permission_desc_parser,
+        specifiers,
+        &preload_modules,
+        &require_modules,
+        &options.specifier.filter,
+        concurrent_jobs,
+      )
+      .await
+    } else {
+      specifiers.into_iter().map(|s| (s, None)).collect()
+    };
+
+  let join_handles = specifiers.into_iter().map(move |(specifier, skipped)| {
+    let fail_fast_tracker = fail_fast_tracker.clone();
+    if let Some(descriptions) = skipped {
+      // The collect phase determined that every test in this file is
+      // filtered out. Instead of a fully-isolated run, emit the events a
+      // legacy run of the file would have emitted (all tests registered,
+      // then a plan that filters them all out), in the file's original
+      // position, keeping reporter output identical to the single-phase
+      // path.
+      let mut sender = test_event_sender_factory.weak_sender();
+      return spawn_blocking(move || {
+        if fail_fast_tracker.should_stop() {
+          return Ok(());
+        }
+        let plan = TestPlan {
+          origin: specifier.to_string(),
+          total: 0,
+          filtered_out: descriptions.len(),
+          used_only: false,
+        };
+        sender.send(TestEvent::Register(Arc::new(descriptions)))?;
+        sender.send(TestEvent::Plan(plan))?;
+        sender.send(TestEvent::Completed)?;
+        Ok(())
+      });
+    }
     let worker_factory = worker_factory.clone();
     let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let preload_modules = preload_modules.clone();
     let require_modules = require_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
-    let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     let cli_options = cli_options.clone();
     let permission_desc_parser = permission_desc_parser.clone();
@@ -1790,8 +1846,6 @@ async fn test_specifiers(
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
-
-  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
 
   let (join_results, result) = future::join(join_stream, handler).await;
   sigint_handler_handle.abort();
@@ -2452,6 +2506,14 @@ pub async fn run_tests(
       )?,
       concurrent_jobs: workspace_test_options.concurrent_jobs,
       fail_fast: workspace_test_options.fail_fast,
+      // The collect-then-run fast path can't preserve semantics for
+      // synthetic `--doc` modules, and collectors run without a coverage
+      // collector (which would change `deno coverage` output for
+      // filtered-out files), so fall back to the legacy single-phase path in
+      // both cases.
+      fast_filter: workspace_test_options.filter.is_some()
+        && !workspace_test_options.doc
+        && cli_options.coverage_dir().is_none(),
       log_level,
       filter: workspace_test_options.filter.is_some(),
       reporter: workspace_test_options.reporter,
@@ -2714,6 +2776,12 @@ pub async fn run_tests_with_watch(
             )?,
             concurrent_jobs: workspace_test_options.concurrent_jobs,
             fail_fast: workspace_test_options.fail_fast,
+            // Same gating as the non-watch path; collector pools are created
+            // (and torn down) inside `test_specifiers`, so nothing is reused
+            // across watch iterations.
+            fast_filter: workspace_test_options.filter.is_some()
+              && !workspace_test_options.doc
+              && cli_options.coverage_dir().is_none(),
             log_level,
             filter: workspace_test_options.filter.is_some(),
             reporter: workspace_test_options.reporter,
