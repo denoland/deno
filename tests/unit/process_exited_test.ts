@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import { assertEquals, assertRejects } from "./test_util.ts";
 
 function spawnHanging(): Deno.ChildProcess {
   // A process that never exits on its own, so the test controls when it dies.
@@ -106,7 +106,8 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function processExitedSurvivesWaitAcrossManyResources() {
-    // Opening and completing many waits should not leak descriptors/handles.
+    // Every wait resolves on the one exit. The test's resource sanitizer fails
+    // the test if any wait leaks its descriptor or handle.
     const child = spawnHanging();
     const waits = [];
     for (let i = 0; i < 8; i++) {
@@ -114,7 +115,24 @@ Deno.test(
     }
     child.kill("SIGTERM");
     await Promise.all(waits);
-    assert(true);
+    await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function processExitedAbortIsPerWait() {
+    // Each wait is independent: aborting one must not cancel another wait on
+    // the same process.
+    const child = spawnHanging();
+    const ac = new AbortController();
+    const aborted = Deno.processExited(child.pid, { signal: ac.signal });
+    const kept = Deno.processExited(child.pid);
+    ac.abort();
+    const err = await assertRejects(() => aborted, DOMException);
+    assertEquals(err.name, "AbortError");
+    child.kill("SIGTERM");
+    assertEquals(await kept, undefined);
     await child.status;
   },
 );
