@@ -326,6 +326,42 @@ pub fn is_running_lifecycle_script(sys: &impl sys_traits::EnvVar) -> bool {
   sys.env_var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
 }
 
+/// Finds packages whose lifecycle script failures must fail the install.
+/// Only explicit optional dependency edges break required reachability. Optional
+/// peer metadata can also describe an ordinary required dependency, so it cannot
+/// safely be used here to ignore a failure.
+pub fn required_lifecycle_script_packages<'a>(
+  snapshot: &'a NpmResolutionSnapshot,
+  additional_packages: &'a [&'a NpmResolutionPackage],
+) -> HashSet<&'a PackageNv> {
+  let additional_pkg_by_id: HashMap<_, _> = additional_packages
+    .iter()
+    .map(|pkg| (&pkg.id, *pkg))
+    .collect();
+  let mut pending: Vec<_> = snapshot
+    .top_level_packages()
+    .chain(additional_packages.iter().map(|pkg| &pkg.id))
+    .collect();
+  let mut visited = HashSet::new();
+  let mut required = HashSet::new();
+  while let Some(id) = pending.pop() {
+    if !visited.insert(id) {
+      continue;
+    }
+    // Peer-dependent copies share lifecycle script execution with the base NV.
+    required.insert(&id.nv);
+    if let Some(pkg) = snapshot
+      .package_from_id(id)
+      .or_else(|| additional_pkg_by_id.get(id).copied())
+    {
+      pending.extend(pkg.dependencies.iter().filter_map(|(name, id)| {
+        (!pkg.optional_dependencies.contains(name)).then_some(id)
+      }));
+    }
+  }
+  required
+}
+
 /// Groups packages with lifecycle scripts into topological layers using
 /// Kahn's algorithm. Packages in the same layer have no inter-dependencies
 /// (considering only packages that have lifecycle scripts), so they can
@@ -462,6 +498,7 @@ mod tests {
 
   use super::PackageWithScript;
   use super::compute_lifecycle_script_layers;
+  use super::required_lifecycle_script_packages;
 
   fn pkg_id(s: &str) -> NpmPackageId {
     NpmPackageId::from_serialized(s).unwrap()
@@ -677,5 +714,93 @@ mod tests {
     let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layers.len(), 1);
     assert!(layers[0].is_empty());
+  }
+
+  fn required_names(
+    snapshot: &NpmResolutionSnapshot,
+    additional: &[&NpmResolutionPackage],
+  ) -> Vec<String> {
+    let mut names = required_lifecycle_script_packages(snapshot, additional)
+      .into_iter()
+      .map(|nv| nv.to_string())
+      .collect::<Vec<_>>();
+    names.sort();
+    names
+  }
+
+  #[test]
+  fn required_scripts_optional_subtree_and_shared_path() {
+    let mut root = pkg("root@1.0.0", &[("alias", "optional@1.0.0")]);
+    root.optional_dependencies.insert("alias".into());
+    let optional = pkg("optional@1.0.0", &[("child", "child@1.0.0")]);
+    // A cycle below the optional edge must not make either package required.
+    let child = pkg("child@1.0.0", &[("parent", "optional@1.0.0")]);
+    let snapshot = make_snapshot(
+      &[("root@1", "root@1.0.0")],
+      vec![root.clone(), optional.clone(), child.clone()],
+    );
+    assert_eq!(required_names(&snapshot, &[]), ["root@1.0.0"]);
+
+    // An ordinary path to the same child makes its entire required cycle fatal.
+    root
+      .dependencies
+      .insert("child".into(), pkg_id("child@1.0.0"));
+    let snapshot =
+      make_snapshot(&[("root@1", "root@1.0.0")], vec![root, optional, child]);
+    assert_eq!(
+      required_names(&snapshot, &[]),
+      ["child@1.0.0", "optional@1.0.0", "root@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_peer_copies_share_nv() {
+    let root = pkg("root@1.0.0", &[("child", "child@1.0.0_peer@1.0.0")]);
+    let snapshot = make_snapshot(
+      &[("root@1", "root@1.0.0")],
+      vec![
+        root,
+        pkg("child@1.0.0", &[]),
+        pkg("child@1.0.0_peer@1.0.0", &[("peer", "peer@1.0.0")]),
+        pkg("peer@1.0.0", &[]),
+      ],
+    );
+    assert_eq!(
+      required_names(&snapshot, &[]),
+      ["child@1.0.0", "peer@1.0.0", "root@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_workspace_roots() {
+    let snapshot = make_snapshot(&[], vec![pkg("child@1.0.0", &[])]);
+    let workspace =
+      resolution_pkg("workspace@1.0.0", &[("other", "other@1.0.0")], true);
+    let mut other = resolution_pkg(
+      "other@1.0.0",
+      &[("child", "child@1.0.0"), ("workspace", "workspace@1.0.0")],
+      false,
+    );
+    other.optional_dependencies.insert("workspace".into());
+    assert_eq!(
+      required_names(&snapshot, &[&workspace, &other]),
+      ["child@1.0.0", "other@1.0.0", "workspace@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_optional_peer_metadata_is_conservative() {
+    let mut root = pkg("root@1.0.0", &[("child", "child@1.0.0")]);
+    // The snapshot may carry this metadata even when child is also an ordinary
+    // dependency, or when there was no corresponding peer dependency declaration.
+    root.optional_peer_dependencies.insert("child".into());
+    let snapshot = make_snapshot(
+      &[("root@1", "root@1.0.0")],
+      vec![root, pkg("child@1.0.0", &[])],
+    );
+    assert_eq!(
+      required_names(&snapshot, &[]),
+      ["child@1.0.0", "root@1.0.0"]
+    );
   }
 }

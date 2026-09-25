@@ -1,0 +1,185 @@
+{
+  "tempDir": true,
+  "tests": {
+    "isolated_optional": {
+      "steps": [
+        {
+          "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@1.0.0",
+          "output": "optional.out"
+        },
+        {
+          "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@1.0.0",
+          "output": "main ran\n"
+        }
+      ]
+    },
+    "isolated_required": {
+      "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@2.0.0",
+      "output": "required.out",
+      "exitCode": 1
+    },
+    "isolated_transitive_optional": {
+      "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@3.0.0",
+      "output": "optional.out"
+    },
+    "isolated_shared_required": {
+      "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@4.0.0",
+      "output": "required.out",
+      "exitCode": 1
+    },
+    "isolated_preinstall": {
+      "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@5.0.0",
+      "output": "preinstall.out"
+    },
+    "isolated_postinstall": {
+      "args": "run -A --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@6.0.0",
+      "output": "postinstall.out"
+    },
+    "isolated_explicit_required": {
+      "args": "cache --config deno.json --allow-scripts npm:@denotest/optional-lifecycle@1.0.0 npm:@denotest/failing-lifecycle@1.0.0",
+      "output": "[WILDCARD]error: failed to run scripts for packages: @denotest/failing-lifecycle@1.0.0\n",
+      "exitCode": 1
+    },
+    "isolated_scripts_not_allowed": {
+      "args": "run -A --config deno.json npm:@denotest/optional-lifecycle@1.0.0",
+      "output": "scripts_not_allowed.out"
+    },
+    "hoisted_optional": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 1",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "hoisted_install.out"
+        },
+        {
+          "args": "run -A npm:@denotest/optional-lifecycle@1.0.0",
+          "output": "main ran\n"
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "hoisted_install.out"
+        }
+      ]
+    },
+    "hoisted_required": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 2",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "required.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "hoisted_transitive_optional": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 3",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "hoisted_install.out"
+        },
+        {
+          "args": "run -A npm:@denotest/optional-lifecycle@3.0.0",
+          "output": "main ran\n"
+        }
+      ]
+    },
+    "hoisted_shared_required": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 4",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "required.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "hoisted_preinstall": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 5",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "hoisted_preinstall.out"
+        },
+        {
+          "args": "run -A npm:@denotest/optional-lifecycle@5.0.0",
+          "output": "main ran\n"
+        }
+      ]
+    },
+    "hoisted_postinstall": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 6",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "hoisted_postinstall.out"
+        },
+        {
+          "args": "run -A npm:@denotest/optional-lifecycle@6.0.0",
+          "output": "main ran\n"
+        }
+      ]
+    },
+    "hoisted_explicit_required": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 1 required",
+          "output": ""
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "[WILDCARD]error: failed to run scripts for packages: @denotest/failing-lifecycle@1.0.0\n",
+          "exitCode": 1
+        }
+      ]
+    },
+    "hoisted_scripts_not_allowed": {
+      "steps": [
+        {
+          "args": "run -A --no-config setup_hoisted.js 1",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A npm:@denotest/optional-lifecycle@1.0.0",
+          "output": "main ran\n"
+        }
+      ]
+    },
+    "isolated_optional_allow_list": {
+      "args": "run -A --allow-scripts=npm:@denotest/failing-lifecycle npm:@denotest/optional-lifecycle@1.0.0",
+      "output": "optional.out"
+    },
+    "ordinary_and_optional_peer": {
+      "args": "run -A --allow-scripts npm:@denotest/optional-lifecycle@9.0.0",
+      "output": "required.out",
+      "exitCode": 1
+    },
+    "ordinary_with_peer_metadata": {
+      "args": "run -A --allow-scripts npm:@denotest/optional-lifecycle@8.0.0",
+      "output": "required.out",
+      "exitCode": 1
+    }
+  }
+}

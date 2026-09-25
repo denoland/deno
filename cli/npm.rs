@@ -34,6 +34,7 @@ use deno_npm_installer::lifecycle_scripts::PackageWithScript;
 use deno_npm_installer::lifecycle_scripts::ResolvePkgFolderFn;
 use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
+use deno_npm_installer::lifecycle_scripts::required_lifecycle_script_packages;
 use deno_npmrc::RegistryConfig;
 use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::file_fetcher::FetchOptions;
@@ -518,6 +519,10 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
       options.snapshot,
       options.additional_packages,
     );
+    let required_packages = required_lifecycle_script_packages(
+      options.snapshot,
+      options.additional_packages,
+    );
 
     for layer in &layers {
       log::debug!(
@@ -533,18 +538,20 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
         deno_core::futures::stream::iter(layer.iter().map(|pkg| {
           self.run_single_package_scripts(
             pkg,
+            required_packages.contains(&pkg.package.id.nv),
             &env_vars,
             &base,
             &options,
             &kill_signal,
-            &sys,
           )
         }))
         .buffer_unordered(concurrency);
 
       while let Some(result) = results.next().await {
         let result = result?;
-        if let Some(nv) = result.failed {
+        if let Some(nv) = result.failed
+          && required_packages.contains(nv)
+        {
           failed_packages.push(nv);
         }
         (options.on_ran_pkg_scripts)(result.package)?;
@@ -602,11 +609,11 @@ impl DenoTaskLifeCycleScriptsExecutor {
   async fn run_single_package_scripts<'a>(
     &self,
     pkg: &'a PackageWithScript<'a>,
+    is_required: bool,
     env_vars: &HashMap<OsString, OsString>,
     base_custom_commands: &crate::task_runner::TaskCustomCommands,
     options: &LifecycleScriptsExecutorOptions<'a>,
     kill_signal: &KillSignal,
-    sys: &CliSys,
   ) -> Result<PackageScriptResult<'a>, AnyError> {
     let PackageWithScript {
       package,
@@ -657,7 +664,11 @@ impl DenoTaskLifeCycleScriptsExecutor {
       for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(script) = scripts.get(script_name) {
           if script_name == "install"
-            && is_broken_default_install_script(sys, script, package_folder)
+            && is_broken_default_install_script(
+              &CliSys::default(),
+              script,
+              package_folder,
+            )
           {
             continue;
           }
@@ -693,7 +704,8 @@ impl DenoTaskLifeCycleScriptsExecutor {
           let stderr = stderr.unwrap();
           if exit_code != 0 {
             log::warn!(
-              "error: script '{}' in '{}' failed with exit code {}{}{}",
+              "{}: script '{}' in '{}' failed with exit code {}{}{}",
+              if is_required { "error" } else { "Warning" },
               script_name,
               package.id.nv,
               exit_code,
