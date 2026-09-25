@@ -1,0 +1,40 @@
+{
+  "tempDir": true,
+  "tests": {
+    "tsconfig_direct_types": {
+      // `compilerOptions.types` set directly on the root tsconfig must enter
+      // the materialization pipeline instead of leaking raw into stock tsc.
+      "steps": [
+        {
+          "args": "run -A ./set_tsconfig.ts direct",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ./main.ts",
+          "output": "Check [WILDLINE]\n"
+        }
+      ]
+    },
+    "tsconfig_inherited_types": {
+      // Same, but inherited from a base config through `extends`.
+      "steps": [
+        {
+          "args": "run -A ./set_tsconfig.ts inherited",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ./main.ts",
+          "output": "Check [WILDLINE]\n"
+        }
+      ]
+    }
+  }
+}

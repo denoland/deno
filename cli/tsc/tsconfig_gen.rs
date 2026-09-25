@@ -95,34 +95,22 @@ pub fn build_check_root_overlay(
     };
     obj.insert("extends".to_string(), extends);
 
-    // A user `compilerOptions.types` overrides the generated `types` through the
-    // `extends` chain, dropping our injected `deno`/`node` so every `Deno.*`
-    // reference would error TS2304. Deno always provides its own libs, so when
-    // the user set `types` explicitly, merge the generated entries back in
-    // (first, so they win) ahead of the user's.
+    // A user `compilerOptions.types` never overrides the generated `types`
+    // through the `extends` chain: the generated value is the canonical,
+    // sanitized representation of the user's effective `types` (npm subpaths
+    // materialized into `files`, the rest retained or dropped). Force it at
+    // the overlay root so raw user entries — set directly on the root object
+    // or inherited through the user's own `extends` chain — can't leak back
+    // into stock tsc (e.g. `vite/client` reintroduced as TS2688). Deno always
+    // provides its own libs, so the generated entries stay authoritative.
     if let Some(gen_types) = deno_value
       .as_ref()
       .and_then(|d| d.pointer("/compilerOptions/types"))
       .and_then(|t| t.as_array())
-      && obj
-        .get("compilerOptions")
-        .and_then(|c| c.get("types"))
-        .is_some()
     {
       let co = obj.entry("compilerOptions").or_insert_with(|| json!({}));
       if let Some(co_obj) = co.as_object_mut() {
-        let user_types = co_obj
-          .get("types")
-          .and_then(|t| t.as_array())
-          .cloned()
-          .unwrap_or_default();
-        let mut merged = gen_types.clone();
-        for t in user_types {
-          if !merged.contains(&t) {
-            merged.push(t);
-          }
-        }
-        co_obj.insert("types".to_string(), Value::Array(merged));
+        co_obj.insert("types".to_string(), Value::Array(gen_types.clone()));
       }
     }
   }
@@ -155,6 +143,22 @@ pub struct GeneratedTsConfig {
   pub tsconfig_path: PathBuf,
 }
 
+/// Effective root `compilerOptions.types` as resolved by Deno's
+/// `CompilerOptionsResolver` (see `sync_types_command`).
+///
+/// `entries` is the winning source's `types` list — TypeScript override
+/// semantics, so exactly one source wins, never a merge. `source` is the
+/// config file URL that defined them, so relative entries resolve against
+/// that source's directory (e.g. through `extends` chains) rather than
+/// unconditionally against the project root. `Some` with an empty list is an
+/// explicit empty override; only `None` (no source defines `types`) falls
+/// back to the raw deno.json read.
+#[derive(Debug, Clone)]
+pub struct EffectiveCompilerOptionsTypes {
+  pub source: Url,
+  pub entries: Vec<String>,
+}
+
 /// Generate `.deno/tsconfig.json` and Deno type definitions for use with
 /// stock TypeScript tooling.
 ///
@@ -178,6 +182,7 @@ pub fn generate_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   resolved_compiler_options: Option<&Value>,
+  effective_compiler_options_types: Option<&EffectiveCompilerOptionsTypes>,
   deno_imports: Option<&Value>,
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
@@ -224,6 +229,7 @@ pub fn generate_tsconfig(
     project_root,
     deno_compiler_options,
     resolved_compiler_options,
+    effective_compiler_options_types,
     deno_imports,
     files,
     http_modules,
@@ -759,6 +765,7 @@ fn build_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   resolved_compiler_options: Option<&Value>,
+  effective_compiler_options_types: Option<&EffectiveCompilerOptionsTypes>,
   deno_imports: Option<&Value>,
   check_files: &[String],
   http_modules: &BTreeMap<Url, String>,
@@ -914,19 +921,49 @@ fn build_tsconfig(
   // stock tsc can't resolve there (an imported npm package, a relative path) are
   // materialized as concrete `.d.ts` files added to the program below. See
   // `partition_user_types` / `merge_user_types`.
+  //
+  // The entries come from the effective resolved options when a root tsconfig
+  // entry exists; only when no source defines `types` do we fall back to the
+  // raw deno.json read. An explicit empty list is an override, not a missing
+  // source, so it never falls back.
+  let effective_values: Option<Vec<Value>> = effective_compiler_options_types
+    .map(|effective| effective.entries.iter().map(|s| json!(s)).collect());
+  // Relative entries resolve against the directory of the config source that
+  // defined them (e.g. a base config through `extends`), not the project
+  // root. A non-local source URL can't happen for a collected tsconfig, but
+  // stay conservative rather than panicking.
+  let types_base_dir: PathBuf = match effective_compiler_options_types {
+    Some(effective) => effective
+      .source
+      .to_file_path()
+      .ok()
+      .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+      .unwrap_or_else(|| project_root.to_path_buf()),
+    None => project_root.to_path_buf(),
+  };
+  let user_types: Option<&[Value]> =
+    effective_values.as_deref().or_else(|| {
+      deno_compiler_options
+        .and_then(|co| co.get("types"))
+        .and_then(|t| t.as_array())
+        .map(|v| v.as_slice())
+    });
   let mut extra_type_files: Vec<String> = Vec::new();
-  if let Some(user_types) = deno_compiler_options
-    .and_then(|co| co.get("types"))
-    .and_then(|t| t.as_array())
-  {
+  if let Some(user_types) = user_types {
     let (keep, files) = partition_user_types(
       project_root,
+      &types_base_dir,
       user_types,
       deno_imports,
       npm_package_paths,
     );
     extra_type_files = files;
-    if !keep.is_empty() {
+    // When the user explicitly set `types` (an effective source exists), the
+    // generated `types` is the canonical representation: ensure the key
+    // exists even if nothing was retained, so the check overlay can override
+    // raw user `types` — including ones inherited through an `extends`
+    // chain — instead of letting them leak back into stock tsc.
+    if !keep.is_empty() || effective_compiler_options_types.is_some() {
       match compiler_options.get_mut("types") {
         Some(Value::Array(types)) => merge_user_types(types, &keep),
         _ => {
@@ -1864,18 +1901,6 @@ fn filter_stock_libs(libs: &[Value]) -> Value {
   Value::Array(out)
 }
 
-/// Merge the user's `compilerOptions.types` into `base_types`, keeping only the
-/// entries that actually resolve as `types` entries.
-///
-/// `compilerOptions.types` resolves entries as type *packages* via
-/// typeRoots/node_modules; it does NOT consult `paths`. So only a bare package
-/// name belongs here: unscoped (`node`) or scoped (`@types/react`). A subpath
-/// entry (`lume/types.ts`) can't resolve this way and would make stock tsc/tsgo
-/// fail the whole program build (TS2688), masking every real diagnostic, so it
-/// is dropped. Deno accepts such entries because it loads them as modules; the
-/// stock-tooling equivalent is that the (materialized) file is pulled into the
-/// program by the tsconfig `include` glob, which carries its ambient
-/// declarations and `/// <reference lib=... />` directives just the same.
 /// Resolve the cache/node_modules directory of a `compilerOptions.types` entry
 /// that names an npm package the user imports (matched by import alias).
 fn npm_types_pkg_dir(
@@ -1896,20 +1921,105 @@ fn npm_types_pkg_dir(
   dir.exists().then_some(dir)
 }
 
-/// Partition a user's `compilerOptions.types` into entries stock tsc can resolve
-/// via typeRoots (kept in the `types` array) and entries it cannot - a bare npm
-/// package the user imports, or a relative path - which are materialized as
-/// concrete `.d.ts` files added to the program instead.
+/// Split a `compilerOptions.types` entry into (package name, subpath).
+/// Returns `None` for bare packages (`react`, `@types/react`) and for
+/// relative/absolute paths (`./x`, `/x`), which are handled as local files.
+/// A scoped package name covers the first two segments (`@scope/pkg/sub` ->
+/// (`@scope/pkg`, `sub`)).
+fn split_pkg_subpath(s: &str) -> Option<(&str, &str)> {
+  if s.starts_with('.') || s.starts_with('/') {
+    return None;
+  }
+  let slash = if let Some(rest) = s.strip_prefix('@') {
+    let first = rest.find('/')?;
+    let second = rest[first + 1..].find('/').map(|i| first + 1 + i)?;
+    // `second` is indexed into `rest`; shift by one for the leading `@`.
+    second + 1
+  } else {
+    s.find('/')?
+  };
+  let subpath = &s[slash + 1..];
+  if subpath.is_empty() {
+    return None;
+  }
+  Some((&s[..slash], subpath))
+}
+
+fn is_typescript_file(name: &str) -> bool {
+  name.ends_with(".ts") || name.ends_with(".mts") || name.ends_with(".cts")
+}
+
+fn has_windows_drive_prefix(path: &str) -> bool {
+  let bytes = path.as_bytes();
+  bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+fn package_type_file(pkg_dir: &Path, target: &str) -> Option<PathBuf> {
+  if !is_typescript_file(target)
+    || target.contains('\\')
+    || Path::new(target).is_absolute()
+    || has_windows_drive_prefix(target)
+  {
+    return None;
+  }
+  let root =
+    deno_path_util::normalize_path(std::borrow::Cow::Borrowed(pkg_dir));
+  let path = deno_path_util::normalize_path(std::borrow::Cow::Owned(
+    pkg_dir.join(target),
+  ));
+  (path.starts_with(root.as_ref()) && path.is_file())
+    .then_some(path.into_owned())
+}
+
+/// Resolve the declaration file for a `compilerOptions.types` npm subpath.
+/// Packages with `exports` accept only an exact key and either its string
+/// target or a direct string `types` condition. Nested conditions and arrays
+/// are deliberately not guessed, and an exports boundary never falls back to
+/// files on disk. Packages without exports retain the legacy sibling/as-is
+/// lookup.
+fn resolve_npm_subpath_types(pkg_dir: &Path, subpath: &str) -> Option<PathBuf> {
+  if subpath.contains('\\')
+    || Path::new(subpath).is_absolute()
+    || has_windows_drive_prefix(subpath)
+    || subpath.split('/').any(|segment| segment == "..")
+  {
+    return None;
+  }
+
+  let content = std::fs::read_to_string(pkg_dir.join("package.json")).ok()?;
+  let pkg_json: Value = serde_json::from_str(&content).ok()?;
+  let pkg_json = pkg_json.as_object()?;
+  match pkg_json.get("exports") {
+    Some(exports) if !exports.is_null() => {
+      let entry = exports.as_object()?.get(&format!("./{subpath}"))?;
+      let target = match entry {
+        Value::String(target) => Some(target.as_str()),
+        Value::Object(conditions) => {
+          conditions.get("types").and_then(Value::as_str)
+        }
+        _ => None,
+      }?;
+      // Package export targets are package-relative and must use `./`.
+      package_type_file(pkg_dir, target.strip_prefix("./")?)
+    }
+    _ => package_type_file(pkg_dir, &format!("{subpath}.d.ts"))
+      .or_else(|| package_type_file(pkg_dir, subpath)),
+  }
+}
+
+/// Partition a user's `compilerOptions.types` between the generated `types`
+/// array and concrete declaration files added to the program.
 ///
-/// Stock tsc resolves a `types` entry only as a package under
-/// `typeRoots`/`node_modules/@types`; it never consults `paths`, and a plain
-/// (non-`@types`) npm package or a relative path can't resolve that way at all,
-/// which fails the whole build with TS2688 and masks every real diagnostic. Deno
-/// accepts these because it loads them as modules; the stock-tooling equivalent
-/// is to pull the actual declaration file into the program via `files`, which
-/// carries its ambient/global declarations just the same.
+/// `project_root` stays the base for npm package resolution (import map and
+/// `node_modules`/cache layout); `types_base_dir` is the base for relative
+/// path entries — the directory of the config source that defined them.
+///
+/// In Deno's generated stock-tsc compatibility config, `types` entries outside
+/// the generated/private type roots are not otherwise visible to tsc.
+/// Import-mapped npm entries are therefore materialized into `files`.
 fn partition_user_types(
   project_root: &Path,
+  types_base_dir: &Path,
   user_types: &[Value],
   deno_imports: Option<&Value>,
   npm_package_paths: &BTreeMap<String, PathBuf>,
@@ -1921,25 +2031,42 @@ fn partition_user_types(
       keep_in_types.push(entry.clone());
       continue;
     };
-    // A relative/path-like entry (`./types.d.ts`) resolves relative to the
-    // generated tsconfig in `.deno/`, pointing at the wrong place; materialize
-    // it as an absolute file instead.
     // A genuine relative/absolute path (`./types.d.ts`, `/abs/x.d.ts`)
     // resolves relative to the generated tsconfig in `.deno/`, pointing at the
     // wrong place; materialize it as an absolute file instead. A missing one is
     // left in so tsc reports it (TS6053), matching the user's intent.
     if s.starts_with('.') || s.starts_with('/') {
-      let abs = project_root.join(s.trim_start_matches("./"));
+      let abs = types_base_dir.join(s.trim_start_matches("./"));
       type_files.push(abs.to_string_lossy().replace('\\', "/"));
+      continue;
+    }
+    // A subpath of an import-mapped npm package (`vite/client`) is filtered
+    // from the generated `types`, while `include` excludes node_modules.
+    // Resolve its declaration and add it to `files`, or its ambient
+    // declarations would not enter the program through another path.
+    // This must run before the generic `ends_with(".ts")` branch below: a
+    // `pkg/types.ts` entry whose package part is an import-mapped npm package
+    // is a package subpath, not a project-local path.
+    if let Some((pkg_name, subpath)) = split_pkg_subpath(s)
+      && let Some(pkg_dir) = npm_types_pkg_dir(
+        project_root,
+        pkg_name,
+        deno_imports,
+        npm_package_paths,
+      )
+      && let Some(dts) = resolve_npm_subpath_types(&pkg_dir, subpath)
+    {
+      type_files.push(dts.to_string_lossy().replace('\\', "/"));
       continue;
     }
     // A bare specifier that merely ends in `.ts` (e.g. `lume/types.ts`, where
     // `lume/` is import-mapped to a remote/npm target) is NOT a project-root
-    // path. Only materialize it if it happens to resolve to a local file;
-    // otherwise fall through rather than pushing `project_root/lume/types.ts`,
+    // path. Import-mapped npm subpaths were already attempted above; what
+    // remains is only materialized if it happens to resolve to a local file,
+    // otherwise it is dropped rather than pushing `project_root/lume/types.ts`,
     // which does not exist and would fail the whole build with TS6053, masking
-    // every real diagnostic. (Resolving such entries through the import map is
-    // tracked as a follow-up.)
+    // every real diagnostic. (Resolving the remaining entries — e.g.
+    // remote-mapped ones — through the import map is tracked in #36085.)
     if s.ends_with(".ts") {
       let abs = project_root.join(s);
       if abs.exists() {
@@ -1977,8 +2104,8 @@ fn merge_user_types(base_types: &mut Vec<Value>, user_types: &[Value]) {
     };
     if !is_bare_package {
       log::debug!(
-        "sync-types: dropping non-package `types` entry {s:?} \
-         (resolved via `include` instead)"
+        "sync-types: dropping non-package `types` entry {s:?}; it is not \
+         retained in generated compilerOptions.types"
       );
       continue;
     }
@@ -2087,8 +2214,9 @@ interface AlsoKeep {
       json!("react"),
       // scoped bare package -> kept
       json!("@types/react"),
-      // subpath entry -> `types` can't resolve it (would TS2688); dropped and
-      // instead covered by the `include` glob pulling in the mirrored file
+      // subpath entry -> `types` can't resolve it (would TS2688); dropped
+      // here (npm subpaths are materialized into `files` by
+      // `partition_user_types` instead)
       json!("lume/types.ts"),
       // scoped subpath entry -> also dropped
       json!("@scope/pkg/sub"),
@@ -2107,6 +2235,306 @@ interface AlsoKeep {
         json!("@types/react"),
       ]
     );
+  }
+
+  #[test]
+  fn test_split_pkg_subpath() {
+    assert_eq!(split_pkg_subpath("vite/client"), Some(("vite", "client")));
+    assert_eq!(
+      split_pkg_subpath("@scope/pkg/sub"),
+      Some(("@scope/pkg", "sub"))
+    );
+    assert_eq!(
+      split_pkg_subpath("@scope/pkg/deep/sub"),
+      Some(("@scope/pkg", "deep/sub"))
+    );
+    // bare packages have no subpath
+    assert_eq!(split_pkg_subpath("react"), None);
+    assert_eq!(split_pkg_subpath("@types/react"), None);
+    // empty subpath
+    assert_eq!(split_pkg_subpath("vite/"), None);
+    // relative/absolute paths are local files, not package subpaths
+    assert_eq!(split_pkg_subpath("./types.d.ts"), None);
+    assert_eq!(split_pkg_subpath("/abs/types.d.ts"), None);
+  }
+
+  fn write_test_pkg(
+    project_root: &Path,
+    name: &str,
+    package_json: &str,
+    files: &[(&str, &str)],
+  ) -> PathBuf {
+    let pkg_dir = project_root.join(format!("node_modules/{name}"));
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::write(pkg_dir.join("package.json"), package_json).unwrap();
+    for (file, content) in files {
+      let path = pkg_dir.join(file);
+      std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+      std::fs::write(path, content).unwrap();
+    }
+    pkg_dir
+  }
+
+  #[test]
+  fn test_resolve_npm_subpath_types() {
+    type TestCase = (
+      &'static str,
+      &'static str,
+      &'static [(&'static str, &'static str)],
+      &'static [&'static str],
+      &'static str,
+      Option<&'static str>,
+    );
+    let cases: &[TestCase] = &[
+      (
+        "direct types condition",
+        r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "string declaration export",
+        r#"{"exports":{"./client":"./client.d.ts"}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "types with other conditions",
+        r#"{"exports":{"./client":{"types":"./client.d.ts","default":"./client.js","import":"./client.mjs"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "legacy sibling declaration",
+        r#"{"name":"pkg"}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "legacy explicit typescript file",
+        r#"{"name":"pkg"}"#,
+        &[("types.ts", "export {};")],
+        &[],
+        "types.ts",
+        Some("types.ts"),
+      ),
+      (
+        "legacy sibling precedes explicit typescript file",
+        r#"{"name":"pkg"}"#,
+        &[("types.ts.d.ts", "export {};"), ("types.ts", "export {};")],
+        &[],
+        "types.ts",
+        Some("types.ts.d.ts"),
+      ),
+      (
+        "null exports uses legacy lookup",
+        r#"{"exports":null}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        Some("client.d.ts"),
+      ),
+      (
+        "unexported existing file",
+        r#"{"exports":{".":{"types":"./index.d.ts"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "runtime only export",
+        r#"{"exports":{"./client":"./client.js"}}"#,
+        &[("client.js", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "missing target",
+        r#"{"exports":{"./client":{"types":"./missing.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "directory target",
+        r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+        &[],
+        &["client.d.ts"],
+        "client",
+        None,
+      ),
+      (
+        "nested conditions",
+        r#"{"exports":{"./client":{"browser":{"types":"./browser.d.ts"},"node":{"types":"./node.d.ts"}}}}"#,
+        &[("browser.d.ts", "export {};"), ("node.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "array candidates",
+        r#"{"exports":{"./client":[{"types":"./client.d.ts"},"./client.js"]}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "wildcard without exact key",
+        r#"{"exports":{"./*":{"types":"./*.d.ts"}}}"#,
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "requested extension is not rewritten",
+        r#"{"exports":{"./types":{"types":"./types.d.ts"}}}"#,
+        &[("types.d.ts", "export {};")],
+        &[],
+        "types.ts",
+        None,
+      ),
+      (
+        "parent traversal subpath",
+        r#"{"exports":null}"#,
+        &[("../../../evil.d.ts", "export {};")],
+        &[],
+        "../../../evil",
+        None,
+      ),
+      ("backslash subpath", "{}", &[], &[], r"dir\types", None),
+      ("windows drive subpath", "{}", &[], &[], "C:/types", None),
+      ("absolute subpath", "{}", &[], &[], "/types", None),
+      (
+        "escaping export target exists",
+        r#"{"exports":{"./client":{"types":"./../../../evil.d.ts"}}}"#,
+        &[("../../../evil.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "absolute export target",
+        r#"{"exports":{"./client":{"types":"/tmp/client.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "windows drive export target",
+        r#"{"exports":{"./client":{"types":"C:/client.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "backslash export target",
+        r#"{"exports":{"./client":{"types":".\\client.d.ts"}}}"#,
+        &[],
+        &[],
+        "client",
+        None,
+      ),
+      (
+        "malformed package json does not fall back",
+        "{",
+        &[("client.d.ts", "export {};")],
+        &[],
+        "client",
+        None,
+      ),
+    ];
+
+    for &(name, package_json, files, dirs, subpath, expected) in cases {
+      let dir = tempfile::TempDir::new().unwrap();
+      let project_root = dir.path().join("x/y");
+      let pkg_dir = write_test_pkg(&project_root, "pkg", package_json, files);
+      for directory in dirs {
+        std::fs::create_dir_all(pkg_dir.join(directory)).unwrap();
+      }
+      assert_eq!(
+        resolve_npm_subpath_types(&pkg_dir, subpath),
+        expected.map(|path| pkg_dir.join(path)),
+        "{name}"
+      );
+    }
+  }
+
+  #[test]
+  fn test_partition_user_types_npm_subpath_integration() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let project_root = dir.path();
+    write_test_pkg(
+      project_root,
+      "vite",
+      r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+      &[("client.d.ts", "export {};")],
+    );
+    write_test_pkg(
+      project_root,
+      "@scope/pkg",
+      r#"{"exports":{"./client":{"types":"./client.d.ts"}}}"#,
+      &[("client.d.ts", "export {};")],
+    );
+    write_test_pkg(
+      project_root,
+      "lume-pkg",
+      r#"{"exports":{"./types.ts":{"types":"./types.d.ts"}}}"#,
+      &[("types.d.ts", "export {};")],
+    );
+    let imports = json!({
+      "vite": "npm:vite@7",
+      "@scope/pkg": "npm:@scope/pkg@1",
+      "lume-pkg": "npm:lume-pkg@1",
+    });
+
+    let (keep, files) = partition_user_types(
+      project_root,
+      project_root,
+      &[
+        json!("vite/client"),
+        json!("@scope/pkg/client"),
+        json!("lume-pkg/types.ts"),
+        json!("vite/missing"),
+      ],
+      Some(&imports),
+      &BTreeMap::new(),
+    );
+
+    assert_eq!(keep, vec![json!("vite/missing")]);
+    assert_eq!(files.len(), 3);
+    assert!(
+      files
+        .iter()
+        .any(|p| p.ends_with("node_modules/vite/client.d.ts"))
+    );
+    assert!(
+      files
+        .iter()
+        .any(|p| p.ends_with("node_modules/@scope/pkg/client.d.ts"))
+    );
+    assert!(
+      files
+        .iter()
+        .any(|p| p.ends_with("node_modules/lume-pkg/types.d.ts"))
+    );
+    let mut types = vec![json!("deno")];
+    merge_user_types(&mut types, &keep);
+    assert_eq!(types, vec![json!("deno")]);
   }
 
   #[test]
@@ -2386,6 +2814,7 @@ interface AlsoKeep {
       None,
       None,
       None,
+      None,
       &[],
       &BTreeMap::new(),
       &Map::new(),
@@ -2410,6 +2839,7 @@ interface AlsoKeep {
     let excludes = vec!["jsonc/testdata".to_string(), "./_site".to_string()];
     let tsconfig = build_tsconfig(
       project_root,
+      None,
       None,
       None,
       None,
@@ -2444,6 +2874,7 @@ interface AlsoKeep {
       None,
       None,
       None,
+      None,
       &files,
       &BTreeMap::new(),
       &Map::new(),
@@ -2470,6 +2901,7 @@ interface AlsoKeep {
     ];
     let tsconfig = build_tsconfig(
       Path::new("/tmp/project"),
+      None,
       None,
       None,
       None,
@@ -2508,6 +2940,7 @@ interface AlsoKeep {
     let tsconfig = build_tsconfig(
       project_root,
       Some(&compiler_options),
+      None,
       None,
       Some(&imports),
       &[],
@@ -2762,6 +3195,96 @@ interface AlsoKeep {
         { "path": "./.deno/npm/a/tsconfig.json" },
         { "path": "./.deno/npm/b/tsconfig.json" },
       ])),
+    );
+  }
+
+  fn write_overlay_fixture(
+    dir: &tempfile::TempDir,
+    generated_types: Value,
+    user_tsconfig: &str,
+  ) -> PathBuf {
+    let root = dir.path();
+    std::fs::create_dir_all(root.join(".deno")).unwrap();
+    std::fs::write(
+      root.join(".deno/tsconfig.json"),
+      serde_json::to_string_pretty(&json!({
+        "compilerOptions": { "types": generated_types },
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+    let user_path = root.join("tsconfig.json");
+    std::fs::write(&user_path, user_tsconfig).unwrap();
+    user_path
+  }
+
+  #[test]
+  fn test_build_check_root_overlay_forces_canonical_types() {
+    // Raw user `types` must not be merged back: the generated value is the
+    // canonical sanitized representation.
+    let dir = tempfile::TempDir::new().unwrap();
+    let user_path = write_overlay_fixture(
+      &dir,
+      json!(["deno", "node"]),
+      r#"{"compilerOptions":{"types":["vite/client"]},"files":["main.ts"]}"#,
+    );
+    let overlay = build_check_root_overlay(dir.path(), &user_path).unwrap();
+    assert_eq!(
+      overlay.pointer("/compilerOptions/types"),
+      Some(&json!(["deno", "node"]))
+    );
+  }
+
+  #[test]
+  fn test_build_check_root_overlay_covers_extends_chain() {
+    // Even when the root object sets no `types` itself, the canonical
+    // generated value must sit at the overlay root so it overrides raw
+    // `types` inherited through the user's own `extends` chain.
+    let dir = tempfile::TempDir::new().unwrap();
+    let user_path = write_overlay_fixture(
+      &dir,
+      json!(["deno", "node"]),
+      r#"{"extends":"./base.json","files":["main.ts"]}"#,
+    );
+    let overlay = build_check_root_overlay(dir.path(), &user_path).unwrap();
+    assert_eq!(
+      overlay.pointer("/compilerOptions/types"),
+      Some(&json!(["deno", "node"]))
+    );
+  }
+
+  #[test]
+  fn test_build_tsconfig_effective_types_use_source_dir() {
+    // Relative entries resolve against the defining config source's
+    // directory, not the project root; the base `deno` entry is retained as
+    // the canonical `types`.
+    let effective = EffectiveCompilerOptionsTypes {
+      source: Url::parse("file:///tmp/project/sub/tsconfig.base.json").unwrap(),
+      entries: vec!["./types/global.d.ts".to_string()],
+    };
+    let tsconfig = build_tsconfig(
+      Path::new("/tmp/project"),
+      None,
+      None,
+      Some(&effective),
+      None,
+      &[],
+      &BTreeMap::new(),
+      &Map::new(),
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &[],
+      None,
+      &[],
+      false,
+    );
+    assert_eq!(
+      tsconfig.get("files"),
+      Some(&json!(["/tmp/project/sub/types/global.d.ts"])),
+    );
+    assert_eq!(
+      tsconfig.pointer("/compilerOptions/types"),
+      Some(&json!(["deno"])),
     );
   }
 }
