@@ -104,16 +104,19 @@ pub(crate) fn generate_flamegraph_svg(
     return Ok(());
   }
 
-  // Layout parameters (matching inferno/cargo-flamegraph style)
-  let frame_height: usize = 16;
+  // Layout parameters (modern card-style flamegraph)
+  let frame_height: usize = 20;
   let font_size: f64 = 12.0;
-  let font_width: f64 = 0.59;
-  let x_pad: usize = 10;
-  let y_pad_top: usize = 66;
+  let font_width: f64 = 0.6;
+  let x_pad: usize = 16;
+  let y_pad_top: usize = 60;
   let y_pad_bottom: usize = 40;
   let max_depth = root.max_depth();
   let image_width: usize = 1200;
   let image_height = y_pad_top + (max_depth + 1) * frame_height + y_pad_bottom;
+
+  // Wall-clock duration of the profile, shown in the header.
+  let duration_ms = (profile.end_time - profile.start_time) as f64 / 1000.0;
 
   let mut svg = String::new();
 
@@ -122,22 +125,20 @@ pub(crate) fn generate_flamegraph_svg(
     r##"<?xml version="1.0" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg version="1.1" width="100%" height="100%" onload="init(evt)" viewBox="0 0 {image_width} {image_height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/nicholasgasior/gofern" style="min-height:100vh">
-<defs>
-  <linearGradient id="background" y1="0" y2="1">
-    <stop stop-color="#eeeeee" offset="5%"/>
-    <stop stop-color="#eeeeb0" offset="95%"/>
-  </linearGradient>
-</defs>
 <style>
-  text {{ font-family: Verdana, sans-serif; font-size: {font_size}px; fill: rgb(0,0,0); }}
-  #search {{ text-anchor: end; opacity: 0.1; cursor: pointer; }}
-  #search:hover, #search.show {{ opacity: 1; }}
-  #matched {{ text-anchor: end; }}
-  #subtitle {{ text-anchor: middle; font-color: rgb(160,160,160); }}
-  #unzoom {{ cursor: pointer; }}
-  #frames > *:hover {{ stroke: black; stroke-width: 0.5; cursor: pointer; }}
+  text {{ font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace; font-size: {font_size}px; fill: #1e2329; }}
+  #title {{ font-size: 15px; font-weight: 600; fill: #1f2328; }}
+  #subtitle {{ text-anchor: middle; fill: #8b9098; font-size: 12px; }}
+  #details {{ fill: #6a7079; font-size: 12px; }}
+  #search {{ text-anchor: end; fill: #6a7079; opacity: 0.6; cursor: pointer; }}
+  #search:hover, #search.show {{ opacity: 1; fill: #c026a8; }}
+  #unzoom {{ text-anchor: end; fill: #6a7079; cursor: pointer; }}
+  #matched {{ text-anchor: end; fill: #8b9098; }}
+  #frames > * {{ cursor: pointer; }}
+  #frames rect {{ stroke: #ffffff; stroke-width: 1; }}
+  #frames > *:hover rect {{ stroke: #1f2328; stroke-width: 1; }}
   .hide {{ display: none; }}
-  .parent {{ opacity: 0.5; }}
+  .parent {{ opacity: 0.45; }}
 </style>
 <script type="text/ecmascript"><![CDATA[
   "use strict";
@@ -146,28 +147,40 @@ pub(crate) fn generate_flamegraph_svg(
   var fontwidth = {font_width};
   var xpad = {x_pad};
   var inverted = false;
-  var searchcolor = "rgb(230,0,230)";
+  var searchcolor = "rgb(192,38,168)";
   var fluiddrawing = true;
   var truncate_text_right = true;
 {flamegraph_js}
 ]]></script>
-<rect x="0" y="0" width="100%" height="100%" fill="url(#background)"/>
-<text id="title" x="50%" y="24" text-anchor="middle" style="font-size:17px">CPU Flamegraph</text>
-<text id="details" x="{x_pad}.0" y="{details_y}">&#160;</text>
-<text id="unzoom" class="hide" x="{x_pad}.0" y="24">Reset Zoom</text>
-<text id="search" x="{search_x}.0" y="24">Search</text>
-<text id="matched" class="hide" x="{search_x}.0" y="{details_y}">&#160;</text>
-<foreignObject x="{invert_x}" y="6" width="80" height="30">
+<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+<circle cx="{dot1}" cy="20" r="6" fill="#ff5f56"/>
+<circle cx="{dot2}" cy="20" r="6" fill="#ffbd2e"/>
+<circle cx="{dot3}" cy="20" r="6" fill="#27c93f"/>
+<text id="title" x="{title_x}" y="25">CPU Flamegraph</text>
+<text id="subtitle" x="50%" y="25">{duration_ms:.0}ms &#183; {total_samples} samples</text>
+<text id="unzoom" class="hide" x="{unzoom_x}" y="25">Reset Zoom</text>
+<text id="search" x="{search_x}" y="25">Search</text>
+<foreignObject id="invert_fo" x="{invert_x}" y="11" width="80" height="24">
 <body xmlns="http://www.w3.org/1999/xhtml">
-<label style="font-family:Verdana,sans-serif;font-size:12px;cursor:pointer"><input type="checkbox" id="invert_cb" style="cursor:pointer"/> Invert</label>
+<label style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6a7079;cursor:pointer"><input type="checkbox" id="invert_cb" style="cursor:pointer"/> Invert</label>
 </body>
 </foreignObject>
+<line x1="{x_pad}" y1="{divider_y}" x2="{divider_x2}" y2="{divider_y}" stroke="#ececf0" stroke-width="1"/>
+<text id="details" x="{x_pad}" y="{details_y}">Frame width = time on CPU</text>
+<text id="matched" class="hide" x="{search_x}" y="{details_y}">&#160;</text>
 <g id="frames" total_samples="{total_samples}" width="{frames_width}" fg:max_depth="{max_depth}" fg:frame_height="{frame_height}" fg:y_pad_top="{y_pad_top}" fg:content_height="{image_height}">
 "##,
     flamegraph_js = FLAMEGRAPH_JS,
     details_y = image_height - y_pad_bottom + 21,
     search_x = image_width - x_pad,
-    invert_x = image_width / 2 + 80,
+    unzoom_x = image_width - x_pad - 96,
+    invert_x = image_width - x_pad - 200,
+    dot1 = x_pad + 8,
+    dot2 = x_pad + 26,
+    dot3 = x_pad + 44,
+    title_x = x_pad + 60,
+    divider_y = y_pad_top - 10,
+    divider_x2 = image_width - x_pad,
     frames_width = image_width - 2 * x_pad,
   ));
 
@@ -201,10 +214,10 @@ pub(crate) fn generate_flamegraph_svg(
       let pct = (node.total as f64 / layout.total_samples as f64) * 100.0;
 
       svg.push_str(&format!(
-        r#"<g><title>{name} ({samples} samples, {pct:.2}%)</title><rect x="{x_pct:.4}%" y="{y}" width="{w_pct:.4}%" height="{h}" fill="rgb({r},{g},{b})" fg:x="{x_samples}" fg:w="{w_samples}" fg:y="{y}"/>"#,
+        r#"<g><title>{name} ({samples} samples, {pct:.2}%)</title><rect x="{x_pct:.4}%" y="{y}" width="{w_pct:.4}%" height="{h}" rx="3" fill="rgb({r},{g},{b})" fg:x="{x_samples}" fg:w="{w_samples}" fg:y="{y}"/>"#,
         name = escape_xml(&node.name),
         samples = node.total,
-        h = layout.frame_height - 1,
+        h = layout.frame_height - 2,
         w_samples = node.total,
       ));
 
@@ -319,18 +332,37 @@ impl FlameNode {
   }
 }
 
-/// Generate a warm color for flamegraph frames.
-/// Uses a hash of the function name to vary hue slightly.
+/// Pick a vibrant color for a flamegraph frame.
+///
+/// Frames are colored from a fixed categorical palette (greens, golds,
+/// oranges, blues) keyed by a hash of the function name, so the same
+/// function always gets the same hue. A small per-name brightness jitter
+/// keeps neighbouring tiles visually distinct.
 fn flame_color(name: &str) -> (u8, u8, u8) {
-  let mut hash: u32 = 0;
+  // Flat, saturated palette inspired by modern profiler UIs.
+  const PALETTE: [(u8, u8, u8); 8] = [
+    (0xE2, 0x8C, 0x2C), // orange
+    (0x4F, 0xAA, 0x4F), // green
+    (0xF1, 0xC6, 0x40), // gold
+    (0x6F, 0xCB, 0x6B), // light green
+    (0x4F, 0xA6, 0xD8), // blue
+    (0xE6, 0xA1, 0x32), // amber
+    (0x57, 0xB9, 0x5A), // medium green
+    (0x84, 0xD4, 0x7B), // pale green
+  ];
+
+  // FNV-1a hash for a good spread across the palette.
+  let mut hash: u32 = 2166136261;
   for b in name.bytes() {
-    hash = hash.wrapping_mul(31).wrapping_add(b as u32);
+    hash ^= b as u32;
+    hash = hash.wrapping_mul(16777619);
   }
-  // Warm colors: red-orange-yellow range
-  let r = 200 + (hash % 55) as u8;
-  let g = 80 + (hash.wrapping_shr(8) % 110) as u8;
-  let b = 20 + (hash.wrapping_shr(16) % 40) as u8;
-  (r, g, b)
+
+  let (r, g, b) = PALETTE[(hash as usize) % PALETTE.len()];
+  // Subtle brightness jitter in the range [-10, +10].
+  let jitter = ((hash >> 8) % 21) as i32 - 10;
+  let adj = |c: u8| (c as i32 + jitter).clamp(0, 255) as u8;
+  (adj(r), adj(g), adj(b))
 }
 
 fn escape_xml(s: &str) -> String {
