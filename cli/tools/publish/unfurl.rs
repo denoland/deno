@@ -588,6 +588,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               | PackageJsonDepValueParseErrorKind::JsrRequiresScope {
                 ..
               }
+              | PackageJsonDepValueParseErrorKind::InvalidNpmPackageName {
+                ..
+              }
               | PackageJsonDepValueParseErrorKind::EmptyName => {
                 log::warn!(
                   "Ignoring failed to resolve package.json dependency. {:#}",
