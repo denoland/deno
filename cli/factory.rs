@@ -608,17 +608,14 @@ impl CliFactory {
       self.deno_dir()?.npm_folder_path(),
       npmrc.get_all_known_registries_urls(),
     ));
-    let packument_format =
-      if npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off {
-        NpmPackumentFormat::Full
-      } else {
-        match npmrc.min_release_age_days {
-          Some(0) | None => NpmPackumentFormat::Abbreviated,
-          Some(days) => NpmPackumentFormat::AbbreviatedUnlessModifiedAfter(
-            chrono::Utc::now() - chrono::Duration::days(days as i64),
-          ),
-        }
-      };
+    let packument_format = NpmPackumentFormat::new(
+      &npmrc,
+      self
+        .resolver_factory()?
+        .minimum_dependency_age_config()
+        .ok()
+        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option())),
+    );
     let npm_client = Arc::new(CliNpmCacheHttpClient::new(
       self.http_client_provider().clone(),
       self.text_only_progress_bar().clone(),

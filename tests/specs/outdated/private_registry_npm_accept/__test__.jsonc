@@ -20,12 +20,10 @@
         }
       ]
     },
-    // Documented limitation / parity with the install path: when a
-    // minimum-dependency-age date is configured, the npm `Accept` header is NOT
-    // sent because it requests the abbreviated packument, which omits the `time`
-    // field that date filtering relies on. So `outdated` requests the full
-    // packument (no `Accept` header) — exactly like `deno install` does in this
-    // configuration — which the GitLab-style registry redirects, leaving the
+    // Documented limitation: when a minimum-dependency-age date is configured,
+    // `outdated` requests the full packument (no npm `Accept` header) because
+    // the abbreviated packument omits the `time` field that date filtering
+    // relies on. The GitLab-style registry redirects that request, leaving the
     // metadata unfetchable. The package is then reported as skipped (with a
     // warning) rather than silently dropped. If a future change lets the full
     // packument be fetched from such a registry, this test should be updated to

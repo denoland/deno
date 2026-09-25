@@ -536,21 +536,11 @@ impl<
         .minimum_dependency_age_config()
         .ok()
         .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()));
-      // the `no-downgrade` trust policy reads `_npmUser`/`attestations`, which
-      // are only present in the full packument
-      let packument_format =
-        if npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off {
-          NpmPackumentFormat::Full
-        } else if let Some(date) = newest_dependency_date {
-          NpmPackumentFormat::AbbreviatedUnlessModifiedAfter(date)
-        } else {
-          NpmPackumentFormat::Abbreviated
-        };
       Ok(create_registry_info_provider(
         self.npm_cache()?.clone(),
         self.http_client().clone(),
         npmrc.clone(),
-        packument_format,
+        NpmPackumentFormat::new(npmrc, newest_dependency_date),
       ))
     })
   }

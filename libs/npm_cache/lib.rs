@@ -79,28 +79,79 @@ pub enum NpmPackumentFormat {
   /// Request the abbreviated install manifest (smaller, but omits `time` and `scripts`).
   Abbreviated,
   /// Request the abbreviated install manifest, but fetch the full packument
-  /// for packages modified after the provided date (or with an unknown
-  /// modified date).
+  /// for packages modified at or after the provided date (or with an
+  /// unknown modified date).
   ///
   /// This is used for `minimumDependencyAge`, which needs the publish dates
   /// of the versions, and those are only in the full packument. A package
   /// that was last modified before the newest allowed dependency date can't
   /// have any versions that are too new though, so the much smaller
   /// abbreviated manifest is enough for it.
-  AbbreviatedUnlessModifiedAfter(chrono::DateTime<chrono::Utc>),
+  AbbreviatedUnlessModifiedSince(chrono::DateTime<chrono::Utc>),
   /// Request the full packument (needed for the `no-downgrade` trust policy).
   Full,
 }
 
 impl NpmPackumentFormat {
+  pub fn new(
+    npmrc: &ResolvedNpmRc,
+    newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
+  ) -> Self {
+    // the `no-downgrade` trust policy reads `_npmUser`/`attestations`, which
+    // are only present in the full packument
+    if npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off {
+      NpmPackumentFormat::Full
+    } else if let Some(date) = newest_dependency_date {
+      NpmPackumentFormat::AbbreviatedUnlessModifiedSince(date)
+    } else {
+      NpmPackumentFormat::Abbreviated
+    }
+  }
+
   /// The format to request from the registry when nothing is cached yet.
   pub fn initial_request_format(&self) -> NpmPackumentRequestFormat {
     match self {
       NpmPackumentFormat::Abbreviated
-      | NpmPackumentFormat::AbbreviatedUnlessModifiedAfter(_) => {
+      | NpmPackumentFormat::AbbreviatedUnlessModifiedSince(_) => {
         NpmPackumentRequestFormat::Abbreviated
       }
       NpmPackumentFormat::Full => NpmPackumentRequestFormat::Full,
+    }
+  }
+
+  /// The format to request when refreshing a cached packument, which keeps
+  /// requesting the full packument for a cached full packument so that its
+  /// etag can still match.
+  pub fn refresh_request_format(
+    &self,
+    cached_full_packument: bool,
+  ) -> NpmPackumentRequestFormat {
+    match self {
+      NpmPackumentFormat::Abbreviated => NpmPackumentRequestFormat::Abbreviated,
+      NpmPackumentFormat::AbbreviatedUnlessModifiedSince(_) => {
+        if cached_full_packument {
+          NpmPackumentRequestFormat::Full
+        } else {
+          NpmPackumentRequestFormat::Abbreviated
+        }
+      }
+      NpmPackumentFormat::Full => NpmPackumentRequestFormat::Full,
+    }
+  }
+
+  /// Whether the full packument is required instead of an abbreviated
+  /// install manifest with the provided `modified` date.
+  pub fn requires_full_packument(
+    &self,
+    modified: Option<chrono::DateTime<chrono::Utc>>,
+  ) -> bool {
+    match self {
+      NpmPackumentFormat::Abbreviated => false,
+      // the resolver rejects versions published at or after the date
+      NpmPackumentFormat::AbbreviatedUnlessModifiedSince(date) => {
+        modified.is_none_or(|modified| modified >= *date)
+      }
+      NpmPackumentFormat::Full => true,
     }
   }
 }
@@ -360,7 +411,6 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
   pub async fn load_package_info(
     &self,
     name: &str,
-    _packument_format: NpmPackumentFormat,
   ) -> Result<Option<SerializedCachedPackageInfo>, serde_json::Error> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
@@ -450,8 +500,13 @@ fn slim_package_info_bytes(
   let index = fast_registry_json::pluck_packument_index(text)
     .map_err(|err| JsErrorBox::generic(format!("{err:?}")))?;
   // some registries ignore the `Accept` header and always respond with the
-  // full packument, which is recognizable by it having publish dates
-  let full_packument = requested_full_packument || !index.time.is_empty();
+  // full packument, which is recognizable by it having publish dates for
+  // versions (`time` may also have `created` and `modified` entries)
+  let full_packument = requested_full_packument
+    || index
+      .time
+      .keys()
+      .any(|version| Version::parse_from_npm(version).is_ok());
 
   let mut output =
     Vec::with_capacity(package_info_bytes.len().min(1024 * 1024));
@@ -921,7 +976,7 @@ mod tests {
       "name":"pkg",
       "dist-tags":{"latest":"1.0.0"},
       "versions":{"1.0.0":{"version":"1.0.0"}},
-      "time":{"1.0.0":"2024-01-02T00:00:00.000Z"}
+      "time":{"created":"2024-01-01T00:00:00.000Z","modified":"2024-01-02T00:00:00.000Z","1.0.0":"2024-01-02T00:00:00.000Z"}
     }"#;
     let output = slim_package_info_bytes(full, None, false).unwrap();
     let (info, cache_metadata) =
@@ -931,6 +986,22 @@ mod tests {
       .unwrap();
     assert!(cache_metadata.full_packument);
     assert_eq!(info.time.len(), 1);
+
+    // a `time` map without any versions isn't a full packument
+    let no_versions_time = br#"{
+      "name":"pkg",
+      "dist-tags":{"latest":"1.0.0"},
+      "versions":{"1.0.0":{"version":"1.0.0"}},
+      "time":{"created":"2024-01-01T00:00:00.000Z","modified":"2024-01-02T00:00:00.000Z"}
+    }"#;
+    let output =
+      slim_package_info_bytes(no_versions_time, None, false).unwrap();
+    let (_, cache_metadata) =
+      deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_cache_info(
+        output,
+      )
+      .unwrap();
+    assert!(!cache_metadata.full_packument);
 
     // a marker nested inside a version object is ignored
     let nested = br#"{
@@ -944,6 +1015,47 @@ mod tests {
       )
       .unwrap();
     assert!(!cache_metadata.full_packument);
+  }
+
+  #[test]
+  fn packument_format_requires_full_packument() {
+    fn date(text: &str) -> chrono::DateTime<chrono::Utc> {
+      chrono::DateTime::parse_from_rfc3339(text).unwrap().to_utc()
+    }
+
+    let cutoff = date("2024-01-02T00:00:00.000Z");
+    let format = NpmPackumentFormat::AbbreviatedUnlessModifiedSince(cutoff);
+    assert!(format.requires_full_packument(None));
+    assert!(format.requires_full_packument(Some(cutoff)));
+    assert!(
+      format.requires_full_packument(Some(date("2024-01-03T00:00:00.000Z")))
+    );
+    assert!(
+      !format.requires_full_packument(Some(date("2024-01-01T00:00:00.000Z")))
+    );
+    assert_eq!(
+      format.initial_request_format(),
+      NpmPackumentRequestFormat::Abbreviated
+    );
+    assert_eq!(
+      format.refresh_request_format(false),
+      NpmPackumentRequestFormat::Abbreviated
+    );
+    assert_eq!(
+      format.refresh_request_format(true),
+      NpmPackumentRequestFormat::Full
+    );
+
+    assert!(!NpmPackumentFormat::Abbreviated.requires_full_packument(None));
+    assert_eq!(
+      NpmPackumentFormat::Abbreviated.refresh_request_format(true),
+      NpmPackumentRequestFormat::Abbreviated
+    );
+    assert!(NpmPackumentFormat::Full.requires_full_packument(Some(cutoff)));
+    assert_eq!(
+      NpmPackumentFormat::Full.initial_request_format(),
+      NpmPackumentRequestFormat::Full
+    );
   }
 
   #[test]

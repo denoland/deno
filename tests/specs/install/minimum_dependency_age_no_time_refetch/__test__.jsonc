@@ -5,8 +5,9 @@
   },
   "steps": [
     {
-      // minimumDependencyAge forces the full packument to be requested, but
-      // the test registry serves no publish dates for this package, so the
+      // The test registry serves no publish dates for this package, so its
+      // abbreviated install manifest has no `modified` date, the full
+      // packument is requested because of minimumDependencyAge, and the
       // cached packument has an empty `time` map.
       "args": "run --no-lock main.ts",
       "output": "first.out"

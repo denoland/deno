@@ -1963,6 +1963,30 @@ mod test {
   }
 
   #[test]
+  fn from_packument_bytes_cache_metadata_modified() {
+    let (_, metadata) = NpmPackageInfo::from_packument_bytes_with_cache_info(
+      br#"{"name":"pkg","versions":{},"modified":"2024-01-03T00:00:00.000Z"}"#
+        .to_vec(),
+    )
+    .unwrap();
+    assert_eq!(
+      metadata.modified,
+      Some(
+        chrono::DateTime::parse_from_rfc3339("2024-01-03T00:00:00.000Z")
+          .unwrap()
+          .to_utc()
+      )
+    );
+
+    // unparsable dates are ignored
+    let (_, metadata) = NpmPackageInfo::from_packument_bytes_with_cache_info(
+      br#"{"name":"pkg","versions":{},"modified":"yesterday"}"#.to_vec(),
+    )
+    .unwrap();
+    assert_eq!(metadata.modified, None);
+  }
+
+  #[test]
   fn from_packument_bytes_reuses_lazy_source_allocation() {
     let bytes = br#"{
       "name": "pkg",

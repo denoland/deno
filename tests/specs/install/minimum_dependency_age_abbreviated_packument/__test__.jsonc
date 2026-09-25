@@ -29,6 +29,12 @@
     {
       "args": "run --no-lock latest.ts",
       "output": "1.0.0\n"
+    },
+    {
+      // reloading a cached full packument requests the full packument again
+      // so that the etag can match instead of downloading it twice
+      "args": "run --no-lock --reload latest.ts",
+      "output": "reload.out"
     }
   ]
 }
