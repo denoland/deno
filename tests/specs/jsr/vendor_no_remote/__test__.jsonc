@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "./denodir"
+  },
+  "steps": [{
+    "args": "install -e main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": [
+      "eval",
+      "Deno.removeSync('denodir', { recursive: true, force: true })"
+    ],
+    "output": ""
+  }, {
+    "args": "run --no-remote main.ts",
+    "output": "ok\n"
+  }]
+}
