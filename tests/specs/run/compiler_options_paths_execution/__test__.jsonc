@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "main": {
+      "args": "run --quiet main.ts",
+      "output": "main.out"
+    },
+    "sloppy_imports": {
+      "args": "run --quiet --config deno_sloppy.json sloppy.ts",
+      "output": "sloppy.out"
+    },
+    "error_nonexistent": {
+      "args": "run --quiet error.ts",
+      "output": "error.out",
+      "exitCode": 1
+    }
+  }
+}
