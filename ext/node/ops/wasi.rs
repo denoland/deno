@@ -743,7 +743,7 @@ impl WasiContext {
     let Some(dest) = get_memory_slice_mut(memory, buf_ptr, buf_len) else {
       return ERRNO_FAULT;
     };
-    rand::thread_rng().fill_bytes(dest);
+    rand::rng().fill_bytes(dest);
     ERRNO_SUCCESS
   }
 
