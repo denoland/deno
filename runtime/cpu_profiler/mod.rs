@@ -309,6 +309,124 @@ impl CpuProfiler {
   }
 }
 
+static WORKER_PROFILE_MSG_ID: AtomicI32 = AtomicI32::new(1);
+
+fn next_worker_profile_msg_id() -> i32 {
+  WORKER_PROFILE_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+struct WorkerCpuProfileShared {
+  /// Id of the in-flight `Profiler.stop` request whose response carries the
+  /// profile. Set right before posting `Profiler.stop`, then matched against
+  /// inspector responses in the session callback.
+  stop_msg_id: std::cell::Cell<Option<i32>>,
+  /// Resolved by the callback once the profile has been received.
+  sender: RefCell<Option<tokio::sync::oneshot::Sender<serde_json::Value>>>,
+}
+
+/// A CPU profiling session targeting the current isolate, driven over a local
+/// inspector session.
+///
+/// Unlike [`CpuProfiler`] (which writes the profile to disk for the
+/// `--cpu-prof` flag), this hands the profile JSON back to the caller so it can
+/// be relayed to the parent thread, backing Node's
+/// `worker.startCpuProfile()`/`handle.stop()`.
+pub struct WorkerCpuProfileSession {
+  session: LocalInspectorSession,
+  shared: Rc<WorkerCpuProfileShared>,
+  receiver: Option<tokio::sync::oneshot::Receiver<serde_json::Value>>,
+}
+
+impl WorkerCpuProfileSession {
+  /// Start profiling the current isolate. `sampling_interval_micros` of 0 means
+  /// "use V8's default interval".
+  pub fn start(
+    inspector: Rc<JsRuntimeInspector>,
+    sampling_interval_micros: u32,
+  ) -> Self {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let shared = Rc::new(WorkerCpuProfileShared {
+      stop_msg_id: std::cell::Cell::new(None),
+      sender: RefCell::new(Some(tx)),
+    });
+
+    let cb_shared = shared.clone();
+    let callback = Box::new(move |msg: deno_core::InspectorMsg| {
+      let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+        return;
+      };
+      if cb_shared.stop_msg_id.get() != Some(msg_id) {
+        return;
+      }
+      let parsed: serde_json::Value = match serde_json::from_str(&msg.content) {
+        Ok(v) => v,
+        Err(err) => {
+          log::error!("Failed to parse CPU profiler response: {:?}", err);
+          return;
+        }
+      };
+      let profile = parsed
+        .get("result")
+        .and_then(|result| result.get("profile"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+      if let Some(sender) = cb_shared.sender.borrow_mut().take() {
+        let _ = sender.send(profile);
+      }
+    });
+
+    let mut session = JsRuntimeInspector::create_local_session(
+      inspector,
+      callback,
+      InspectorSessionKind::NonBlocking {
+        wait_for_disconnect: false,
+      },
+    );
+
+    session.post_message::<()>(
+      next_worker_profile_msg_id(),
+      "Profiler.enable",
+      None,
+    );
+    if sampling_interval_micros > 0 {
+      session.post_message(
+        next_worker_profile_msg_id(),
+        "Profiler.setSamplingInterval",
+        Some(cdp::SetSamplingIntervalArgs {
+          interval: sampling_interval_micros,
+        }),
+      );
+    }
+    session.post_message::<()>(
+      next_worker_profile_msg_id(),
+      "Profiler.start",
+      None,
+    );
+
+    Self {
+      session,
+      shared,
+      receiver: Some(rx),
+    }
+  }
+
+  /// Stop profiling and resolve with the collected profile. The session is kept
+  /// alive (by being moved into this future) until the profile arrives so the
+  /// inspector callback can fire.
+  pub async fn stop(mut self) -> Option<serde_json::Value> {
+    let msg_id = next_worker_profile_msg_id();
+    self.shared.stop_msg_id.set(Some(msg_id));
+    let receiver = self.receiver.take();
+    self
+      .session
+      .post_message::<()>(msg_id, "Profiler.stop", None);
+    match receiver {
+      Some(rx) => rx.await.ok(),
+      None => None,
+    }
+  }
+}
+
 /// Apply source maps to all call frames in the CPU profile.
 /// V8's profiler reports positions in transpiled JavaScript; this maps them
 /// back to the original TypeScript (or other) source locations.
