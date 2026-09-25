@@ -1,0 +1,86 @@
+{
+  "name": "tinyglobby",
+  "description": "A fast and minimal alternative to globby and fast-glob",
+  "dist-tags": {
+    "latest": "0.2.17"
+  },
+  "versions": {
+    "0.2.17": {
+      "_id": "tinyglobby@0.2.17",
+      "bugs": {
+        "url": "https://github.com/SuperchupuDev/tinyglobby/issues"
+      },
+      "dist": {
+        "shasum": "562a9a6c9eb2b3b123d39719f9af5bb44fcd7631",
+        "tarball": "http://localhost:4260/tinyglobby/tinyglobby-0.2.17.tgz",
+        "integrity": "sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==",
+        "fileCount": 7,
+        "unpackedSize": 39288,
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/tinyglobby@0.2.17",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      },
+      "main": "./dist/index.cjs",
+      "name": "tinyglobby",
+      "type": "module",
+      "types": "./dist/index.d.cts",
+      "author": "Superchupu",
+      "module": "./dist/index.mjs",
+      "engines": {
+        "node": ">=12.0.0"
+      },
+      "exports": {
+        ".": {
+          "import": "./dist/index.mjs",
+          "require": "./dist/index.cjs"
+        },
+        "./package.json": "./package.json"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/SuperchupuDev"
+      },
+      "license": "MIT",
+      "scripts": {
+        "lint": "biome lint",
+        "test": "node --test \"test/**/*.ts\"",
+        "bench": "node benchmark/bench.ts",
+        "build": "tsdown",
+        "check": "biome check",
+        "format": "biome format --write",
+        "check:fix": "biome check --write --unsafe",
+        "test:only": "node --test --test-only \"test/**/*.ts\"",
+        "typecheck": "tsc --noEmit",
+        "bench:setup": "node benchmark/setup.ts",
+        "test:coverage": "node --test --experimental-test-coverage \"test/**/*.ts\""
+      },
+      "version": "0.2.17",
+      "repository": {
+        "url": "git+https://github.com/SuperchupuDev/tinyglobby.git",
+        "type": "git"
+      },
+      "description": "A fast and minimal alternative to globby and fast-glob",
+      "directories": {},
+      "sideEffects": false,
+      "_nodeVersion": "26.2.0",
+      "dependencies": {
+        "fdir": "^6.5.0",
+        "picomatch": "^4.0.4"
+      },
+      "devDependencies": {
+        "glob": "^13.0.6",
+        "tsdown": "^0.22.1",
+        "fast-glob": "^3.3.3",
+        "tinybench": "^6.0.2",
+        "fs-fixture": "^2.14.0",
+        "typescript": "^6.0.3",
+        "@types/node": "^25.9.1",
+        "@biomejs/biome": "^2.4.16",
+        "@types/picomatch": "^4.0.3"
+      },
+      "_hasShrinkwrap": false
+    }
+  }
+}

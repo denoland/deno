@@ -1,0 +1,95 @@
+{
+  "name": "@isaacs/fs-minipass",
+  "description": "fs read and write streams based on minipass",
+  "dist-tags": {
+    "latest": "4.0.1"
+  },
+  "versions": {
+    "4.0.1": {
+      "name": "@isaacs/fs-minipass",
+      "version": "4.0.1",
+      "main": "./dist/commonjs/index.js",
+      "scripts": {
+        "prepare": "tshy",
+        "pretest": "npm run prepare",
+        "test": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "format": "prettier --write . --loglevel warn",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter"
+      },
+      "license": "ISC",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/npm/fs-minipass.git"
+      },
+      "description": "fs read and write streams based on minipass",
+      "dependencies": {
+        "minipass": "^7.0.4"
+      },
+      "devDependencies": {
+        "@types/node": "^20.11.30",
+        "mutate-fs": "^2.1.1",
+        "prettier": "^3.2.5",
+        "tap": "^18.7.1",
+        "tshy": "^1.12.0",
+        "typedoc": "^0.25.12"
+      },
+      "engines": {
+        "node": ">=18.0.0"
+      },
+      "tshy": {
+        "exports": {
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "exports": {
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "types": "./dist/commonjs/index.d.ts",
+      "type": "module",
+      "prettier": {
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "_id": "@isaacs/fs-minipass@4.0.1",
+      "gitHead": "30706a599289d01e79f313b706c913a1600ddf32",
+      "bugs": {
+        "url": "https://github.com/npm/fs-minipass/issues"
+      },
+      "_nodeVersion": "20.11.0",
+      "_npmVersion": "10.5.1",
+      "dist": {
+        "integrity": "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==",
+        "shasum": "2d59ae3ab4b38fb4270bfa23d30f8e2e86c7fe32",
+        "tarball": "http://localhost:4260/@isaacs/fs-minipass/fs-minipass-4.0.1.tgz",
+        "fileCount": 13,
+        "unpackedSize": 100617
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  }
+}
