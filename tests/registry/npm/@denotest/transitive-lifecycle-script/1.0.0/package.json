@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/transitive-lifecycle-script",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "echo 'module.exports = \"transitive postinstall works\";' > transitive_message.js"
+  }
+}
