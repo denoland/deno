@@ -1,0 +1,5 @@
+(node:[WILDCARD]) internal/test/binding: These APIs are for internal testing only. Do not use them.
+(node:[WILDCARD]) internal/test/binding: These APIs are for internal testing only. Do not use them.
+PASS: worker rejected an unregistered descriptor
+PASS: owner adopted its registered descriptor
+PASS: descriptor could only be adopted once
