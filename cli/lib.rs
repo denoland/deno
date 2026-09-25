@@ -860,6 +860,48 @@ pub(crate) fn boot_phase(label: &str) {
   }
 }
 
+/// Fail-closed FIPS mode gate.
+///
+/// `aws-lc-fips-sys` already links a startup check into the binary when the
+/// `fips` cargo feature is on: it calls `FIPS_mode()` and aborts the process
+/// if the linked `libcrypto` did not actually come up in FIPS mode (catching
+/// deployment-host mismatches or shared-library shadowing the build-time
+/// probe cannot see). This function is the other half of that contract: it
+/// makes the *absence* of FIPS mode loud too, for a deployment that asked
+/// for FIPS via the environment but got a non-FIPS build of `deno`.
+///
+/// `DENO_REQUIRE_FIPS=1` asserts "this process must be running FIPS-validated
+/// crypto or must not start at all". If the binary was not compiled with
+/// `--features fips`, `rustls`/`aws-lc-rs` are backed by the ordinary
+/// (non-validated) `aws-lc-sys` build, so honoring the request here --
+/// rather than silently starting in a non-FIPS binary -- is the fail-closed
+/// choice.
+fn fips_startup_check() {
+  let requested =
+    std::env::var_os("DENO_REQUIRE_FIPS").is_some_and(|v| v == "1");
+  if !requested {
+    return;
+  }
+  #[cfg(feature = "fips")]
+  {
+    // Built with the FIPS module linked in. aws-lc-fips-sys's own linked
+    // startup check has already run FIPS_mode() by this point (it runs at
+    // process init, before `main`); reaching here means it passed. Nothing
+    // further to verify.
+  }
+  #[cfg(not(feature = "fips"))]
+  {
+    eprintln!(
+      "error: DENO_REQUIRE_FIPS=1 was set, but this `deno` binary was not \
+       built with the `fips` feature (no FIPS-validated crypto module is \
+       linked). Refusing to start rather than run with unvalidated crypto. \
+       Rebuild with `cargo build --features fips` or unset \
+       DENO_REQUIRE_FIPS."
+    );
+    deno_runtime::exit(1);
+  }
+}
+
 pub fn main() {
   boot_phase("main start");
   #[cfg(feature = "dhat-heap")]
@@ -889,6 +931,9 @@ pub fn main() {
     .install_default()
     .unwrap();
   boot_phase("after aws_lc install");
+
+  fips_startup_check();
+  boot_phase("after fips check");
 
   let args: Vec<_> = env::args_os().collect();
   // If we were invoked through a `node` shim (a symlink/hardlink named `node`

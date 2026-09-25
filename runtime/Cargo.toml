@@ -20,6 +20,11 @@ exclude_runtime_main_js = []
 hmr = ["transpile"]
 snapshot = ["transpile"]
 transpile = ["deno_ast"]
+# Forwards to deno_crypto's `fips` feature (see ext/crypto/mldsa.rs), which
+# switches deno_crypto off aws-lc-rs's `unstable::signature` (ML-DSA) module
+# -- absent from the FIPS-validated aws-lc-rs build -- and onto a stub that
+# reports ML-DSA as unsupported instead of failing to compile.
+fips = ["deno_crypto/fips"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
