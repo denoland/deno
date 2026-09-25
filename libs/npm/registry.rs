@@ -43,11 +43,15 @@ pub struct NpmPackageInfo {
   pub time: HashMap<Version, chrono::DateTime<chrono::Utc>>,
 }
 
-/// Custom `_deno.*` properties stored alongside a cached packument.
+/// Properties of a packument that aren't needed for resolution, but are
+/// stored alongside a cached packument.
 #[derive(Debug, Default, Clone)]
 pub struct NpmPackageInfoCacheMetadata {
   /// The `_deno.etag` property.
   pub etag: Option<String>,
+  /// The top-level `modified` property of the abbreviated install manifest,
+  /// which is the last time a version of the package was published.
+  pub modified: Option<chrono::DateTime<chrono::Utc>>,
   /// Whether the `_deno.packumentFormat` property records that this cache
   /// entry was created from a full packument response. When set, an empty
   /// `time` map means the registry provides no publish dates rather than
@@ -197,6 +201,12 @@ impl NpmPackageInfo {
     }
 
     let full_packument = index.deno_packument_format == Some("full");
+    // ignore unparsable dates because a missing `modified` is handled
+    // by fetching the full packument
+    let modified = index
+      .modified
+      .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+      .map(|date| date.to_utc());
 
     Ok((
       Self {
@@ -211,6 +221,7 @@ impl NpmPackageInfo {
       },
       NpmPackageInfoCacheMetadata {
         etag: deno_etag,
+        modified,
         full_packument,
       },
     ))

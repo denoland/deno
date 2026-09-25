@@ -608,17 +608,20 @@ impl CliFactory {
       self.deno_dir()?.npm_folder_path(),
       npmrc.get_all_known_registries_urls(),
     ));
-    let packument_format = if npmrc.min_release_age_days.is_some()
-      || npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off
-    {
-      NpmPackumentFormat::Full
-    } else {
-      NpmPackumentFormat::Abbreviated
-    };
+    let packument_format =
+      if npmrc.trust_policy != deno_npmrc::TrustPolicyConfig::Off {
+        NpmPackumentFormat::Full
+      } else {
+        match npmrc.min_release_age_days {
+          Some(0) | None => NpmPackumentFormat::Abbreviated,
+          Some(days) => NpmPackumentFormat::AbbreviatedUnlessModifiedAfter(
+            chrono::Utc::now() - chrono::Duration::days(days as i64),
+          ),
+        }
+      };
     let npm_client = Arc::new(CliNpmCacheHttpClient::new(
       self.http_client_provider().clone(),
       self.text_only_progress_bar().clone(),
-      packument_format,
     ));
     Ok(CliNpmCacheServices::new(
       npm_cache_dir,
@@ -666,20 +669,6 @@ impl CliFactory {
     self.services.npm_installer_factory.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let resolver_factory = self.resolver_factory()?;
-      // the `no-downgrade` trust policy reads `_npmUser`/`attestations`, which
-      // are only present in the full packument
-      let needs_full_packument_for_trust = resolver_factory
-        .workspace_factory()
-        .npmrc()
-        .ok()
-        .map(|rc| rc.trust_policy != deno_npmrc::TrustPolicyConfig::Off)
-        .unwrap_or(false);
-      let needs_full_packument = needs_full_packument_for_trust
-        || resolver_factory
-          .minimum_dependency_age_config()
-          .ok()
-          .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
-          .is_some();
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
@@ -687,11 +676,6 @@ impl CliFactory {
           // `https://` module specifiers, not package resolution
           self.http_client_provider().clone(),
           self.text_only_progress_bar().clone(),
-          if needs_full_packument {
-            NpmPackumentFormat::Full
-          } else {
-            NpmPackumentFormat::Abbreviated
-          },
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
           Some(managed_npm_resolver) => {
