@@ -42,6 +42,8 @@ pub enum Value<'a> {
 pub fn parse_ini(
   input: &str,
 ) -> Result<Vec<KeyValueOrSection<'_>>, ParseErrorFailureError> {
+  // A BOM would otherwise end up inside the first key.
+  let input = input.strip_prefix('\u{feff}').unwrap_or(input);
   with_failure_handling(|input| {
     let (input, _) = skip_trivia(input)?;
     let (input, items) = many0(|input| {
