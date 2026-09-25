@@ -49,12 +49,19 @@ pub enum PluginHostRequest {
     maybe_token: Option<CancellationToken>,
     tx: oneshot::Sender<PluginHostResponse>,
   },
+  RunGraph {
+    graph_json: String,
+    graph_files:
+      std::collections::HashMap<ModuleSpecifier, (SourceTextInfo, Utf16Map)>,
+    tx: oneshot::Sender<PluginHostResponse>,
+  },
 }
 
 pub enum PluginHostResponse {
   // TODO: write to structs
   LoadPlugin(Result<Vec<PluginInfo>, AnyError>),
   Run(Result<Vec<LintDiagnostic>, AnyError>),
+  RunGraph(Result<Vec<LintDiagnostic>, AnyError>),
 }
 
 impl std::fmt::Debug for PluginHostResponse {
@@ -62,6 +69,7 @@ impl std::fmt::Debug for PluginHostResponse {
     match self {
       Self::LoadPlugin(_arg0) => f.debug_tuple("LoadPlugin").finish(),
       Self::Run(_arg0) => f.debug_tuple("Run").finish(),
+      Self::RunGraph(_arg0) => f.debug_tuple("RunGraph").finish(),
     }
   }
 }
@@ -97,6 +105,7 @@ v8_static_strings! {
   DEFAULT = "default",
   INSTALL_PLUGINS = "installPlugins",
   RUN_PLUGINS_FOR_FILE = "runPluginsForFile",
+  RUN_GRAPH_RULES = "runGraphRules",
 }
 
 #[derive(Debug)]
@@ -117,12 +126,23 @@ impl PluginHostProxy {
 
     all_names
   }
+
+  /// Whether any loaded plugin declares a graph-aware rule (`createGraphRule`).
+  /// This is what opts the `deno lint` run into building the module graph.
+  pub fn has_graph_rules(&self) -> bool {
+    self
+      .plugin_info
+      .lock()
+      .iter()
+      .any(|info| !info.graph_rule_names.is_empty())
+  }
 }
 
 pub struct PluginHost {
   worker: MainWorker,
   install_plugins_fn: v8::Global<v8::Function>,
   run_plugins_for_file_fn: v8::Global<v8::Function>,
+  run_graph_rules_fn: v8::Global<v8::Function>,
   rx: mpsc::Receiver<PluginHostRequest>,
 }
 
@@ -173,7 +193,7 @@ async fn create_plugin_runner_inner(
   let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
   log::debug!("Lint plugins loaded, capturing default exports");
-  let (install_plugins_fn, run_plugins_for_file_fn) = {
+  let (install_plugins_fn, run_plugins_for_file_fn, run_graph_rules_fn) = {
     deno_core::scope!(scope, runtime);
     let module_exports: v8::Local<v8::Object> =
       v8::Local::new(scope, obj).try_into().unwrap();
@@ -193,9 +213,17 @@ async fn create_plugin_runner_inner(
     let run_plugins_for_file_fn: v8::Local<v8::Function> =
       run_plugins_for_file_fn_val.try_into().unwrap();
 
+    let run_graph_rules_fn_name = RUN_GRAPH_RULES.v8_string(scope).unwrap();
+    let run_graph_rules_fn_val = module_exports
+      .get(scope, run_graph_rules_fn_name.into())
+      .unwrap();
+    let run_graph_rules_fn: v8::Local<v8::Function> =
+      run_graph_rules_fn_val.try_into().unwrap();
+
     (
       v8::Global::new(scope, install_plugins_fn),
       v8::Global::new(scope, run_plugins_for_file_fn),
+      v8::Global::new(scope, run_graph_rules_fn),
     )
   };
 
@@ -203,6 +231,7 @@ async fn create_plugin_runner_inner(
     worker,
     install_plugins_fn,
     run_plugins_for_file_fn,
+    run_graph_rules_fn,
     rx: rx_req,
   })
 }
@@ -211,6 +240,8 @@ async fn create_plugin_runner_inner(
 pub struct PluginInfo {
   pub name: String,
   pub rule_names: Vec<String>,
+  /// Names of rules in this plugin that declare a `createGraphRule` hook.
+  pub graph_rule_names: Vec<String>,
 }
 
 impl PluginInfo {
@@ -296,6 +327,22 @@ impl PluginHost {
           );
           let _ = tx.send(PluginHostResponse::Run(r));
         }
+        PluginHostRequest::RunGraph {
+          graph_json,
+          graph_files,
+          tx,
+        } => {
+          let start = std::time::Instant::now();
+          let r = match self.run_graph_rules(graph_json, graph_files) {
+            Ok(()) => Ok(self.take_diagnostics()),
+            Err(err) => Err(err),
+          };
+          log::debug!(
+            "Running graph lint rules took {:?}",
+            std::time::Instant::now() - start
+          );
+          let _ = tx.send(PluginHostResponse::RunGraph(r));
+        }
       }
     }
     log::debug!("Lint PluginHost run loop finished");
@@ -360,6 +407,64 @@ impl PluginHost {
       }
       _run_plugins_result
     };
+    Ok(())
+  }
+
+  fn run_graph_rules(
+    &mut self,
+    graph_json: String,
+    graph_files: std::collections::HashMap<
+      ModuleSpecifier,
+      (SourceTextInfo, Utf16Map),
+    >,
+  ) -> Result<(), AnyError> {
+    {
+      let state = self.worker.js_runtime.op_state();
+      let mut state = state.borrow_mut();
+      let container = state.borrow_mut::<LintPluginContainer>();
+      container.set_graph_files(graph_files);
+    }
+
+    let reports: Vec<crate::ops::lint::GraphReport> = {
+      deno_core::scope!(scope, &mut self.worker.js_runtime);
+      let graph_json_v8: v8::Local<v8::Value> =
+        v8::String::new(scope, &graph_json).unwrap().into();
+      let run_graph_rules = v8::Local::new(scope, &self.run_graph_rules_fn);
+      let undefined = v8::undefined(scope);
+
+      let result = {
+        v8::tc_scope!(tc_scope, scope);
+        let result =
+          run_graph_rules.call(tc_scope, undefined.into(), &[graph_json_v8]);
+        if let Some(exception) = tc_scope.exception() {
+          let error = JsError::from_v8_exception(tc_scope, exception);
+          return Err(error.into());
+        }
+        result.unwrap()
+      };
+      <Vec<crate::ops::lint::GraphReport> as FromV8>::from_v8(scope, result)?
+    };
+
+    // Convert the collected reports into diagnostics attributed to each
+    // module's real file + span.
+    let op_state = self.worker.js_runtime.op_state();
+    let mut op_state = op_state.borrow_mut();
+    let container = op_state.borrow_mut::<LintPluginContainer>();
+    for report in reports {
+      let hint = if report.hint.is_empty() {
+        None
+      } else {
+        Some(report.hint)
+      };
+      container.report_graph(
+        report.specifier,
+        report.id,
+        report.message,
+        hint,
+        report.start,
+        report.end,
+      )?;
+    }
     Ok(())
   }
 
@@ -506,6 +611,30 @@ impl PluginHostProxy {
       .await?;
 
     if let Ok(PluginHostResponse::Run(diagnostics_result)) = rx.await {
+      return diagnostics_result;
+    }
+    bail!("Plugin host has closed")
+  }
+
+  pub async fn run_graph_rules(
+    &self,
+    graph_json: String,
+    graph_files: std::collections::HashMap<
+      ModuleSpecifier,
+      (SourceTextInfo, Utf16Map),
+    >,
+  ) -> Result<Vec<LintDiagnostic>, AnyError> {
+    let (tx, rx) = oneshot::channel();
+    self
+      .tx
+      .send(PluginHostRequest::RunGraph {
+        graph_json,
+        graph_files,
+        tx,
+      })
+      .await?;
+
+    if let Ok(PluginHostResponse::RunGraph(diagnostics_result)) = rx.await {
       return diagnostics_result;
     }
     bail!("Plugin host has closed")
