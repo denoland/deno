@@ -44,7 +44,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  laufey::LAUFEY_API_VERSION == 34,
+  laufey::LAUFEY_API_VERSION == 35,
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
@@ -72,6 +72,9 @@ impl WefDesktopApi {
     show_on_first_load: bool,
   ) -> laufey::Window {
     let kb_tx = self.event_tx.clone();
+    let ime_tx = self.event_tx.clone();
+    let composing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let composing_for_kb = composing.clone();
     let mouse_click_tx = self.event_tx.clone();
     let mouse_move_tx = self.event_tx.clone();
     let wheel_tx = self.event_tx.clone();
@@ -101,6 +104,27 @@ impl WefDesktopApi {
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
+            is_composing: composing_for_kb.load(Ordering::Acquire),
+          },
+        );
+      })
+      .on_ime_event(move |ev| {
+        let r#type = match ev.state {
+          laufey::ImeState::Start => {
+            composing.store(true, Ordering::Release);
+            "compositionstart"
+          }
+          laufey::ImeState::Update => "compositionupdate",
+          laufey::ImeState::End => {
+            composing.store(false, Ordering::Release);
+            "compositionend"
+          }
+        };
+        let _ = ime_tx.try_send(
+          deno_runtime::ops::desktop::DesktopEvent::CompositionEvent {
+            window_id: ev.window_id,
+            r#type: r#type.to_string(),
+            data: ev.data,
           },
         );
       })
@@ -338,6 +362,21 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
 
   fn set_window_opacity(&self, window_id: u32, opacity: f64) {
     laufey::Window::from_id(window_id).set_opacity(opacity);
+  }
+
+  fn set_ime_allowed(&self, window_id: u32, allowed: bool) {
+    laufey::Window::from_id(window_id).set_ime_allowed(allowed);
+  }
+
+  fn set_ime_cursor_area(
+    &self,
+    window_id: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  ) {
+    laufey::Window::from_id(window_id).set_ime_cursor_area(x, y, width, height);
   }
 
   fn is_visible(&self, window_id: u32) -> bool {
