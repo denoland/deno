@@ -560,7 +560,9 @@ impl Visit for TestCollector {
       return;
     };
     let is_describe = match prop_chain {
-      ["", "Deno", "test"] | ["Deno", "test", "ignore" | "only"] => false,
+      ["", "Deno", "test"] | ["Deno", "test", "ignore" | "only" | "skip"] => {
+        false
+      }
       ["", "", "describe"] | ["", "describe", "ignore" | "only" | "skip"] => {
         true
       }
@@ -1077,6 +1079,18 @@ pub mod tests {
         .collect(),
       }
     );
+  }
+
+  #[test]
+  fn test_test_collector_function_skip() {
+    let test_module = collect(
+      r#"
+      Deno.test.skip(function skipped() {});
+    "#,
+    );
+
+    assert_eq!(test_module.defs.len(), 1);
+    assert_eq!(test_module.defs.values().next().unwrap().name, "skipped");
   }
 
   #[test]

@@ -306,7 +306,9 @@ impl Visit for DenoTestCollector {
       return;
     };
     let is_describe = match prop_chain {
-      ["", "Deno", "test"] | ["Deno", "test", "ignore" | "only"] => false,
+      ["", "Deno", "test"] | ["Deno", "test", "ignore" | "only" | "skip"] => {
+        false
+      }
       ["", "", "describe"] | ["", "describe", "ignore" | "only" | "skip"] => {
         true
       }
@@ -747,6 +749,32 @@ mod tests {
   use deno_core::resolve_url;
 
   use super::*;
+
+  #[test]
+  fn test_deno_test_skip_code_lens() {
+    let specifier = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.clone(),
+      text: "Deno.test.skip(\"skipped\", () => {});".into(),
+      media_type: MediaType::TypeScript,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let mut collector =
+      DenoTestCollector::new(specifier, parsed_module.clone());
+    parsed_module.program().visit_with(&mut collector);
+    let lenses = collector.take();
+
+    assert_eq!(lenses.len(), 2);
+    for lens in lenses {
+      assert_eq!(
+        lens.command.unwrap().arguments.unwrap()[1],
+        json!("skipped")
+      );
+    }
+  }
 
   #[test]
   fn test_deno_test_collector() {
