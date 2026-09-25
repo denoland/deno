@@ -20,6 +20,7 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSlice,
   Error,
+  MathFloor,
   MathMax,
   MathMin,
   MathCeil,
@@ -210,6 +211,28 @@ function compareMeasurements(a, b) {
   return 0;
 }
 
+// Cap on the number of raw samples we forward to Rust for rendering the
+// distribution histogram. The measurement loop can collect millions of
+// samples, so we uniformly downsample the sorted array down to this many
+// points before crossing the boundary to bound serialization cost. A few
+// hundred buckets' worth of points is far more than the ~20 bucket terminal
+// histogram needs, while still faithfully preserving the shape.
+const sampleCap = 1000;
+
+// Uniformly downsample a sorted array to at most `cap` points. Because the
+// input is already sorted, striding by a fixed step preserves the underlying
+// distribution's shape.
+function downsampleSorted(sorted, length, cap) {
+  if (length <= cap) {
+    return ArrayPrototypeSlice(sorted, 0, length);
+  }
+  const out = new Array(cap);
+  for (let i = 0; i < cap; i++) {
+    out[i] = sorted[MathFloor((i * length) / cap)];
+  }
+  return out;
+}
+
 function benchStats(
   n,
   highPrecision,
@@ -231,6 +254,7 @@ function benchStats(
     avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
     highPrecision,
     usedExplicitTimers,
+    samples: downsampleSorted(all, allLength, sampleCap),
   };
 }
 

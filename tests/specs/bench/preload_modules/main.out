@@ -10,7 +10,7 @@ Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/main_bench.ts
 
-| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
-| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
-| hello       | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-
+benchmark[WILDLINE]
+[WILDLINE]
+hello[WILDLINE]
+[WILDCARD]
