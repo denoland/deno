@@ -4,10 +4,69 @@ use std::future::poll_fn;
 use std::task::Poll;
 
 use deno_error::JsErrorBox;
+use rstest::rstest;
 
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::op2;
+
+#[rstest]
+fn callsite_cache_ignores_array_prototype(
+  #[values(0, 1, 2)] index: u32,
+  #[values(false, true)] eval: bool,
+) {
+  let mut runtime = JsRuntime::new(Default::default());
+  runtime
+    .execute_script(
+      "setup.js",
+      format!("const index = {index}; const useEval = {eval};"),
+    )
+    .unwrap();
+  runtime
+    .execute_script(
+      "callsite_cache.js",
+      r#"
+const originalPrepareStackTrace = Error.prepareStackTrace;
+Error.prepareStackTrace = (_, frames) => frames;
+function capture() {
+  return useEval ? eval("new Error().stack[0]") : new Error().stack[0];
+}
+const expected = capture();
+const fileName = expected.getFileName();
+const lineNumber = expected.getLineNumber();
+const columnNumber = expected.getColumnNumber();
+if (fileName !== (useEval ? undefined : "callsite_cache.js") ||
+    expected.isEval() !== useEval) {
+  throw new Error("unexpected frame type");
+}
+let accesses = 0;
+function fail() {
+  accesses++;
+  throw new Error("array prototype accessed");
+}
+Object.defineProperty(Array.prototype, index, {
+  get: fail,
+  set: fail,
+  configurable: true,
+});
+try {
+  const actual = capture();
+  for (let i = 0; i < 2; i++) {
+    if (actual.getFileName() !== fileName ||
+        actual.getLineNumber() !== lineNumber ||
+        actual.getColumnNumber() !== columnNumber) {
+      throw new Error("incorrect cached location");
+    }
+  }
+} finally {
+  delete Array.prototype[index];
+  Error.prepareStackTrace = originalPrepareStackTrace;
+}
+if (accesses !== 0) throw new Error("array prototype accessed");
+"#,
+    )
+    .unwrap();
+}
 
 #[tokio::test]
 async fn test_error_builder() {
