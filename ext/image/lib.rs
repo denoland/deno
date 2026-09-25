@@ -26,6 +26,9 @@ pub enum ImageError {
   #[class("DOMExceptionInvalidStateError")]
   #[error("The width: {0} or height: {1} could not be zero")]
   InvalidSizeZero(u32, u32),
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("ImageBitmap is closed")]
+  ImageBitmapClosed,
   #[class(generic)]
   #[error(transparent)]
   Lcms(#[from] lcms2::Error),
