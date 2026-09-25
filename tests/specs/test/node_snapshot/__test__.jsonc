@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    "create_and_verify": {
+      "steps": [
+        {
+          // No read/write permissions needed: the default `<file>.snapshot`
+          // location is managed by the test runner.
+          "args": "test --update-snapshots main.js",
+          "exitCode": 0,
+          "output": "all_pass.out"
+        },
+        {
+          "args": "run --allow-read print_snapshot.js",
+          "exitCode": 0,
+          "output": "snapshot_file.out"
+        },
+        {
+          "args": "test main.js",
+          "exitCode": 0,
+          "output": "all_pass.out"
+        }
+      ]
+    },
+    "missing_snapshot_file": {
+      "args": "test missing_test.js",
+      "exitCode": 1,
+      "output": "missing.out"
+    },
+    "mismatch_fails_with_diff": {
+      "args": "test mismatch_test.js",
+      "exitCode": 1,
+      "output": "mismatch.out"
+    }
+  }
+}
