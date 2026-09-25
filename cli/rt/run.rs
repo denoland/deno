@@ -1317,6 +1317,8 @@ pub struct RunOptions {
   pub auto_serve: bool,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  /// Resolve workspace-relative standalone metadata from this directory.
+  pub workspace_root_path: Option<PathBuf>,
   /// Enable HMR file watching from this directory.
   pub hmr_watch_dir: Option<PathBuf>,
   /// Callback invoked after each successful HMR replacement.
@@ -1362,6 +1364,7 @@ pub async fn run_with_options(
   data: StandaloneData,
   options: RunOptions,
 ) -> Result<i32, AnyError> {
+  let workspace_root_path = options.workspace_root_path;
   let hmr_watch_dir = options.hmr_watch_dir;
   let hmr_on_reload = options.hmr_on_reload;
   let op_state_init = options.op_state_init;
@@ -1383,8 +1386,9 @@ pub async fn run_with_options(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
-  let workspace_root_path =
-    hmr_watch_dir.clone().unwrap_or_else(|| root_path.clone());
+  let workspace_root_path = workspace_root_path
+    .or_else(|| hmr_watch_dir.clone())
+    .unwrap_or_else(|| root_path.clone());
   let workspace_root_dir_url =
     Arc::new(Url::from_directory_path(&workspace_root_path).unwrap());
   let entrypoint = root_dir_url.join(&metadata.entrypoint_key).unwrap();
