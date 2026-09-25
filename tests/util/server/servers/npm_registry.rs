@@ -307,8 +307,23 @@ fn to_abbreviated_packument(full: &[u8]) -> Vec<u8> {
   let mut packument: serde_json::Value = serde_json::from_slice(full).unwrap();
   let obj = packument.as_object_mut().unwrap();
 
-  // Remove `time` (not present in abbreviated format)
-  obj.remove("time");
+  // Replace `time` with the top-level `modified` date like the npm registry
+  // does (the abbreviated format has no per-version publish dates)
+  if let Some(time) = obj.remove("time").and_then(|v| match v {
+    serde_json::Value::Object(map) => Some(map),
+    _ => None,
+  }) {
+    let modified = time.get("modified").cloned().or_else(|| {
+      time
+        .values()
+        .filter_map(|v| v.as_str())
+        .max()
+        .map(|v| json!(v))
+    });
+    if let Some(modified) = modified {
+      obj.insert("modified".to_string(), modified);
+    }
+  }
 
   // Transform each version entry
   if let Some(versions) =

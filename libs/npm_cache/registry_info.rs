@@ -7,6 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageInfoCacheMetadata;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npmrc::ResolvedNpmRc;
@@ -20,10 +21,12 @@ use url::Url;
 
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
+use crate::NpmCacheHttpClientBytesResponse;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
 use crate::NpmPackumentFormat;
+use crate::NpmPackumentRequestFormat;
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::rt::spawn_blocking;
@@ -42,6 +45,11 @@ pub struct SerializedCachedPackageInfo {
     rename = "_deno.etag"
   )]
   pub etag: Option<String>,
+  /// The abbreviated install manifest's last modified date, which is used
+  /// to know if the full packument is necessary for `minimumDependencyAge`
+  /// (see `NpmPackumentFormat::AbbreviatedUnlessModifiedSince`).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub modified: Option<chrono::DateTime<chrono::Utc>>,
   /// Custom property recording that this cache entry was created from a full
   /// packument response, so an empty `time` map means the registry provides
   /// no publish dates rather than that the abbreviated install manifest
@@ -293,37 +301,24 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        match downloader.cache.load_package_info(&name, downloader.packument_format).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
-          if downloader.packument_format == NpmPackumentFormat::Full
-            && cached_info.info.time.is_empty()
-            && !cached_info.info.versions.is_empty()
-            && !cached_info.full_packument
+        match downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? {
+          Some(cached_info) => {
             // Re-fetching the full packument requires a network request, which
             // is forbidden with `--cached-only`. Use the cached abbreviated
             // metadata as-is instead of erroring, since the resolver already
             // treats a missing publish timestamp as acceptable.
-            && *downloader.cache.cache_setting() != NpmCacheSetting::Only
-          {
-            // Cached data is from the abbreviated install manifest which
-            // doesn't include the `time` field. Since minimumDependencyAge
-            // is configured, we need to re-fetch the full packument.
-            // Don't use the etag since it corresponds to the abbreviated format.
-            //
-            // When the cache entry records that it already came from a full
-            // packument response (`full_packument`), an empty `time` map means
-            // the registry provides no publish dates at all, so re-fetching
-            // would find nothing new — doing so anyway made every process
-            // start re-download every packument against such registries
-            // (see #35761).
-            Some(SerializedCachedPackageInfo { etag: None, ..cached_info })
-          } else {
-            return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
+            if cached_info_needs_full_packument(downloader.packument_format, &cached_info)
+              && *downloader.cache.cache_setting() != NpmCacheSetting::Only
+            {
+              Some(cached_info)
+            } else {
+              return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
+            }
           }
-        } _ => {
-          None
-        }}
+          None => None,
+        }
       } else {
-        downloader.cache.load_package_info(&name, downloader.packument_format).await.ok().flatten()
+        downloader.cache.load_package_info(&name).await.ok().flatten()
       };
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
@@ -337,73 +332,132 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
-      let npmrc = &downloader.npmrc;
-      let package_url = get_package_url(npmrc, &name);
-      let registry_config = npmrc.get_registry_config(&name);
-      let maybe_auth_header_value =
-        maybe_auth_header_value_for_npm_registry(registry_config).map_err(JsErrorBox::from_err)?;
-      let (maybe_etag, maybe_cached_info) = match maybe_file_cached {
-        Some(cached_info) => (cached_info.etag, Some(cached_info.info)),
-        None => (None, None)
+      let (request_format, maybe_etag, maybe_cached_info) = match maybe_file_cached {
+        // don't use the etag since it corresponds to the abbreviated format
+        Some(cached_info) if cached_info_needs_full_packument(downloader.packument_format, &cached_info) => {
+          (NpmPackumentRequestFormat::Full, None, Some(cached_info.info))
+        }
+        Some(cached_info) => (
+          downloader.packument_format.refresh_request_format(is_full_packument(&cached_info)),
+          cached_info.etag,
+          Some(cached_info.info),
+        ),
+        None => (downloader.packument_format.initial_request_format(), None, None),
       };
 
-      let response = downloader
-        .http_client
-        .download_with_retries_on_any_tokio_runtime(
-          package_url,
-          maybe_auth_header_value,
-          maybe_etag,
-          Some(registry_config),
-        )
-        .await.map_err(JsErrorBox::from_err)?;
-      match response {
+      let response = downloader.download_packument(&name, maybe_etag, request_format).await?;
+      let (package_info, cache_metadata) = match response {
         NpmCacheHttpClientResponse::NotModified => {
           log::debug!("Respected etag for packument '{0}'", name); // used in the tests
-          Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())))
+          return Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())));
         },
-        NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
+        NpmCacheHttpClientResponse::NotFound => return Ok(FutureResult::PackageNotExists),
         NpmCacheHttpClientResponse::Bytes(response) => {
-          let future_result = spawn_blocking(
-            move || -> Result<FutureResult, JsErrorBox> {
-              let package_info_bytes = downloader.cache
-                .build_package_info_cache_bytes(
-                  &response.bytes,
-                  response.etag.as_deref(),
-                  downloader.packument_format,
-                )?;
-              let package_info =
-                NpmPackageInfo::from_packument_bytes(package_info_bytes)
-                  .map_err(JsErrorBox::generic)?;
-              let package_info_bytes =
-                package_info.lazy_packument_source_bytes().ok_or_else(|| {
-                  JsErrorBox::generic("npm packument was not lazily parsed")
-                })?;
-              match downloader.cache.save_package_info_bytes(
-                &name,
-                package_info_bytes,
-              ) {
-                Ok(()) => {
-                  Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
-                }
-                Err(err) => {
-                  log::debug!(
-                    "Error saving package {} to cache: {:#}",
-                    name,
-                    err
-                  );
-                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info)))
-                }
-              }
-            },
-          )
-          .await
-          .map_err(JsErrorBox::from_err)??;
-          Ok(future_result)
-        },
-      }
+          downloader.parse_packument(response, request_format).await?
+        }
+      };
+
+      // the abbreviated install manifest has no publish dates, so when the
+      // package was modified since the newest allowed dependency date (or the
+      // registry doesn't say when it was), a version might be too new and the
+      // full packument is necessary to know
+      let package_info = if request_format == NpmPackumentRequestFormat::Abbreviated
+        && !cache_metadata.full_packument
+        && downloader.packument_format.requires_full_packument(cache_metadata.modified)
+      {
+        log::debug!("Fetching full packument for '{0}' because it was modified at {1:?}", name, cache_metadata.modified);
+        match downloader.download_packument(&name, None, NpmPackumentRequestFormat::Full).await? {
+          NpmCacheHttpClientResponse::Bytes(response) => {
+            downloader.parse_packument(response, NpmPackumentRequestFormat::Full).await?.0
+          }
+          // Some registries only serve metadata to requests with the npm
+          // `Accept` header, so keep the abbreviated data in that case like
+          // with `--cached-only` rather than saying the package doesn't exist.
+          NpmCacheHttpClientResponse::NotFound => {
+            log::debug!("Full packument for '{0}' was not found. Using the abbreviated install manifest.", name);
+            package_info
+          }
+          // not possible without an etag, so keep the abbreviated data
+          NpmCacheHttpClientResponse::NotModified => {
+            log::debug!("Unexpected not modified response for the full packument of '{0}'", name);
+            package_info
+          }
+        }
+      } else {
+        package_info
+      };
+
+      downloader.save_packument(name, package_info).await
     }
     .map(|r| r.map_err(Arc::new))
     .boxed_local()
+  }
+
+  async fn download_packument(
+    &self,
+    name: &str,
+    maybe_etag: Option<String>,
+    request_format: NpmPackumentRequestFormat,
+  ) -> Result<NpmCacheHttpClientResponse, JsErrorBox> {
+    let package_url = get_package_url(&self.npmrc, name);
+    let registry_config = self.npmrc.get_registry_config(name);
+    let maybe_auth_header_value =
+      maybe_auth_header_value_for_npm_registry(registry_config)
+        .map_err(JsErrorBox::from_err)?;
+    self
+      .http_client
+      .download_with_retries_on_any_tokio_runtime(
+        package_url,
+        maybe_auth_header_value,
+        maybe_etag,
+        Some(registry_config),
+        Some(request_format),
+      )
+      .await
+      .map_err(JsErrorBox::from_err)
+  }
+
+  /// Slims down the registry response and parses it.
+  async fn parse_packument(
+    &self,
+    response: NpmCacheHttpClientBytesResponse,
+    request_format: NpmPackumentRequestFormat,
+  ) -> Result<(NpmPackageInfo, NpmPackageInfoCacheMetadata), JsErrorBox> {
+    let cache = self.cache.clone();
+    spawn_blocking(move || {
+      let package_info_bytes = cache.build_package_info_cache_bytes(
+        &response.bytes,
+        response.etag.as_deref(),
+        request_format,
+      )?;
+      NpmPackageInfo::from_packument_bytes_with_cache_info(package_info_bytes)
+        .map_err(JsErrorBox::generic)
+    })
+    .await
+    .map_err(JsErrorBox::from_err)?
+  }
+
+  async fn save_packument(
+    &self,
+    name: String,
+    package_info: NpmPackageInfo,
+  ) -> Result<FutureResult, JsErrorBox> {
+    let cache = self.cache.clone();
+    spawn_blocking(move || {
+      let package_info_bytes =
+        package_info.lazy_packument_source_bytes().ok_or_else(|| {
+          JsErrorBox::generic("npm packument was not lazily parsed")
+        })?;
+      match cache.save_package_info_bytes(&name, package_info_bytes) {
+        Ok(()) => Ok(FutureResult::SavedFsCache(Arc::new(package_info))),
+        Err(err) => {
+          log::debug!("Error saving package {} to cache: {:#}", name, err);
+          Ok(FutureResult::ErroredFsCache(Arc::new(package_info)))
+        }
+      }
+    })
+    .await
+    .map_err(JsErrorBox::from_err)?
   }
 
   fn mark_force_reload(&self) -> bool {
@@ -530,4 +584,106 @@ pub fn get_package_url(npmrc: &ResolvedNpmRc, name: &str) -> Url {
     // to match npm.
     .join(&name.to_string().replace("%2F", "%2f"))
     .unwrap()
+}
+
+/// Whether the cached data needs to be replaced with the full packument
+/// in order to have the publish dates of the versions.
+fn cached_info_needs_full_packument(
+  packument_format: NpmPackumentFormat,
+  cached_info: &SerializedCachedPackageInfo,
+) -> bool {
+  // When the cache entry records that it already came from a full
+  // packument response (`full_packument`), an empty `time` map means
+  // the registry provides no publish dates at all, so re-fetching
+  // would find nothing new — doing so anyway made every process
+  // start re-download every packument against such registries
+  // (see #35761).
+  !is_full_packument(cached_info)
+    && !cached_info.info.versions.is_empty()
+    && packument_format.requires_full_packument(cached_info.modified)
+}
+
+fn is_full_packument(cached_info: &SerializedCachedPackageInfo) -> bool {
+  cached_info.full_packument || !cached_info.info.time.is_empty()
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  fn date(text: &str) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_rfc3339(text).unwrap().to_utc()
+  }
+
+  fn cached_info(json: &str) -> SerializedCachedPackageInfo {
+    let (info, metadata) =
+      NpmPackageInfo::from_packument_bytes_with_cache_info(
+        json.as_bytes().to_vec(),
+      )
+      .unwrap();
+    SerializedCachedPackageInfo {
+      info,
+      etag: metadata.etag,
+      modified: metadata.modified,
+      full_packument: metadata.full_packument,
+    }
+  }
+
+  #[test]
+  fn needs_full_packument() {
+    let cutoff = date("2024-01-02T00:00:00.000Z");
+    let since_cutoff =
+      NpmPackumentFormat::AbbreviatedUnlessModifiedSince(cutoff);
+    let abbreviated_old = cached_info(
+      r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"modified":"2024-01-01T00:00:00.000Z"}"#,
+    );
+    let abbreviated_new = cached_info(
+      r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"modified":"2024-01-02T00:00:00.000Z"}"#,
+    );
+    // written by an old version of deno
+    let abbreviated_unknown =
+      cached_info(r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}}}"#);
+    let full = cached_info(
+      r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"time":{"1.0.0":"2024-01-03T00:00:00.000Z"}}"#,
+    );
+    let full_no_dates = cached_info(
+      r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"_deno.packumentFormat":"full"}"#,
+    );
+    let no_versions = cached_info(r#"{"name":"pkg","versions":{}}"#);
+
+    assert!(!cached_info_needs_full_packument(
+      since_cutoff,
+      &abbreviated_old
+    ));
+    assert!(cached_info_needs_full_packument(
+      since_cutoff,
+      &abbreviated_new
+    ));
+    assert!(cached_info_needs_full_packument(
+      since_cutoff,
+      &abbreviated_unknown
+    ));
+    assert!(!cached_info_needs_full_packument(since_cutoff, &full));
+    assert!(!cached_info_needs_full_packument(
+      since_cutoff,
+      &full_no_dates
+    ));
+    assert!(!cached_info_needs_full_packument(
+      since_cutoff,
+      &no_versions
+    ));
+
+    assert!(cached_info_needs_full_packument(
+      NpmPackumentFormat::Full,
+      &abbreviated_old
+    ));
+    assert!(!cached_info_needs_full_packument(
+      NpmPackumentFormat::Full,
+      &full_no_dates
+    ));
+    assert!(!cached_info_needs_full_packument(
+      NpmPackumentFormat::Abbreviated,
+      &abbreviated_unknown
+    ));
+  }
 }
