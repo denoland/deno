@@ -201,6 +201,7 @@ async function startTls(
   } = { __proto__: null },
 ) {
   return startTlsInternal(conn, {
+    __proto__: null,
     hostname,
     caCerts,
     alpnProtocols,
