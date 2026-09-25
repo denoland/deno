@@ -5,7 +5,8 @@
 // deno-lint-ignore-file no-explicit-any deno-internal/prefer-primordials
 
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const { SharedArrayBuffer } = primordials;
 const {
   PrivateKeyObject,
   PublicKeyObject,

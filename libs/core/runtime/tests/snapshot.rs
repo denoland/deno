@@ -108,6 +108,119 @@ fn test_snapshot_callbacks() {
 }
 
 #[test]
+fn shared_array_buffer_primordial_fresh_runtime() {
+  let mut runtime = JsRuntime::new(Default::default());
+  runtime
+    .execute_script(
+      "check_sab_fresh.js",
+      r#"
+const { SharedArrayBuffer, SharedArrayBufferPrototypeGetByteLength } =
+  __bootstrap.primordials;
+if (typeof SharedArrayBuffer !== "function") {
+  throw new Error("SharedArrayBuffer primordial missing");
+}
+const sab = new SharedArrayBuffer(4);
+if (SharedArrayBufferPrototypeGetByteLength(sab) !== 4) {
+  throw new Error("byteLength mismatch");
+}
+"#,
+    )
+    .unwrap();
+}
+
+/// 01_core.js installs SharedArrayBuffer onto primordials during snapshot
+/// setup (via op_get_shared_array_buffer_constructor), so eager ext scripts
+/// that destructure it at IIFE evaluation time get the real constructor.
+#[test]
+fn shared_array_buffer_available_during_snapshot() {
+  let snapshot = {
+    let mut runtime = JsRuntimeForSnapshot::new(Default::default());
+    runtime
+      .execute_script(
+        "capture_sab.js",
+        r#"
+(() => {
+  const {
+    SharedArrayBuffer,
+    SharedArrayBufferPrototypeGetByteLength,
+  } = __bootstrap.primordials;
+  if (typeof SharedArrayBuffer !== "function") {
+    throw new Error("SharedArrayBuffer primordial missing during snapshot");
+  }
+  const sab = new SharedArrayBuffer(4);
+  if (SharedArrayBufferPrototypeGetByteLength(sab) !== 4) {
+    throw new Error("byteLength mismatch during snapshot");
+  }
+  globalThis.capturedAtSnapshot = SharedArrayBuffer;
+})();
+"#,
+      )
+      .unwrap();
+    runtime.snapshot()
+  };
+
+  let snapshot = Box::leak(snapshot);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(snapshot),
+    ..Default::default()
+  });
+  runtime
+    .execute_script(
+      "check_captured_sab.js",
+      r#"
+if (typeof globalThis.capturedAtSnapshot !== "function") {
+  throw new Error("snapshot-time captured constructor missing after restore");
+}
+const sab = new globalThis.capturedAtSnapshot(8);
+if (!Deno.core.isSharedArrayBuffer(sab)) {
+  throw new Error("captured constructor did not produce a SharedArrayBuffer");
+}
+"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn shared_array_buffer_primordial_from_snapshot() {
+  let snapshot = {
+    let runtime = JsRuntimeForSnapshot::new(Default::default());
+    runtime.snapshot()
+  };
+
+  let snapshot = Box::leak(snapshot);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(snapshot),
+    ..Default::default()
+  });
+  runtime
+    .execute_script(
+      "check_sab.js",
+      r#"
+const {
+  SharedArrayBuffer,
+  SharedArrayBufferPrototypeGetByteLength,
+  SharedArrayBufferPrototypeSlice,
+} = __bootstrap.primordials;
+if (typeof SharedArrayBuffer !== "function") {
+  throw new Error("SharedArrayBuffer primordial missing");
+}
+const sab = new SharedArrayBuffer(8);
+if (!Deno.core.isSharedArrayBuffer(sab)) {
+  throw new Error("constructed value is not a SharedArrayBuffer");
+}
+if (SharedArrayBufferPrototypeGetByteLength(sab) !== 8) {
+  throw new Error("byteLength mismatch");
+}
+const sliced = SharedArrayBufferPrototypeSlice(sab, 2, 6);
+if (SharedArrayBufferPrototypeGetByteLength(sliced) !== 4) {
+  throw new Error("slice length mismatch");
+}
+"#,
+    )
+    .unwrap();
+}
+
+#[test]
 fn test_from_snapshot() {
   let _snapshot_lock = super::snapshot_test_lock();
   let snapshot = {

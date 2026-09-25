@@ -68,8 +68,8 @@ const {
   SafeFinalizationRegistry,
   SafePromiseAll,
   SafeWeakMap,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype,
+  SharedArrayBufferPrototypeGetByteLength,
+  SharedArrayBufferPrototypeSlice,
   String,
   Symbol,
   SymbolAsyncIterator,
@@ -396,9 +396,7 @@ function canTransferArrayBuffer(O) {
  */
 function getArrayBufferByteLength(O) {
   if (isSharedArrayBuffer(O)) {
-    // TODO(petamoriken): use primordials
-    // deno-lint-ignore deno-internal/prefer-primordials
-    return O.byteLength;
+    return SharedArrayBufferPrototypeGetByteLength(O);
   } else {
     return ArrayBufferPrototypeGetByteLength(O);
   }
@@ -1910,9 +1908,11 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
         byteOffset + byteLength,
       );
     } else {
-      // TODO(lucacasonato): add SharedArrayBuffer to primordials
-      // deno-lint-ignore deno-internal/prefer-primordials
-      cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
+      cloneResult = SharedArrayBufferPrototypeSlice(
+        buffer,
+        byteOffset,
+        byteOffset + byteLength,
+      );
     }
   } catch (e) {
     readableByteStreamControllerError(controller, e);
