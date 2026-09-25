@@ -11,6 +11,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use console_static_text::ansi::strip_ansi_codes;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::TaskDefinition;
 use deno_config::workspace::TaskOrScript;
@@ -728,7 +729,9 @@ impl<'a> TaskRunner<'a> {
       return Ok(0);
     };
 
-    self.maybe_npm_install().await?;
+    if !self.should_skip_npm_install_for_script(command) {
+      self.maybe_npm_install().await?;
+    }
 
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(Path::new(path))
@@ -994,6 +997,21 @@ impl<'a> TaskRunner<'a> {
     }
 
     Ok(exit_code)
+  }
+
+  /// The implicit install before running a task exists to set up npm
+  /// binaries in `node_modules` so the task's shell can invoke them. When no
+  /// node_modules directory is configured there is nothing to set up, so a
+  /// task that explicitly asks to run offline (`--cached-only`) should not
+  /// trigger a fetch of unrelated dependencies.
+  fn should_skip_npm_install_for_script(&self, script: &str) -> bool {
+    if !script_has_cached_only_flag(script) {
+      return false;
+    }
+    matches!(
+      self.cli_options.specified_node_modules_dir(),
+      Ok(None) | Ok(Some(NodeModulesDirMode::None))
+    )
   }
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
@@ -1627,9 +1645,38 @@ impl TaskNameFilter<'_> {
   }
 }
 
+/// Whether a task's command explicitly opts into offline execution via
+/// `--cached-only`. Deliberately a simple whitespace token scan: this only
+/// gates an optimization (skipping the implicit install), so a false
+/// positive on something like `echo --cached-only` is harmless. Known
+/// limits of the scan: a compound script like
+/// `deno run --cached-only a.ts && deno run b.ts` skips the install for the
+/// whole task, and a flag spelled differently (e.g. via a shell variable, or
+/// a future `--cached-only=<bool>` form) is not matched.
+fn script_has_cached_only_flag(script: &str) -> bool {
+  script
+    .split_ascii_whitespace()
+    .any(|t| t == "--cached-only")
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_script_has_cached_only_flag() {
+    assert!(script_has_cached_only_flag(
+      "deno run --cached-only main.ts"
+    ));
+    assert!(script_has_cached_only_flag(
+      "deno run -A --cached-only --allow-write='db' api/server.ts"
+    ));
+    assert!(!script_has_cached_only_flag("deno run main.ts"));
+    assert!(!script_has_cached_only_flag(
+      "deno run --cached-onlyx main.ts"
+    ));
+    assert!(!script_has_cached_only_flag("deno run --cached main.ts"));
+  }
 
   #[test]
   fn test_arg_to_task_name_filter() {
