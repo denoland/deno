@@ -343,7 +343,10 @@ pub fn get_base_compiler_options_for_emit(
       },
       "resolveJsonModule": true,
       "sourceMap": false,
-      "skipLibCheck": false,
+      // Default to skipping `.d.ts` type-checking, matching tsgo's `--init`
+      // default. A user `skipLibCheck: false` still overrides this via the
+      // merge below.
+      "skipLibCheck": true,
       "strict": match source_kind {
         CompilerOptionsSourceKind::DenoJson => true,
         CompilerOptionsSourceKind::TsConfig => false,
@@ -834,6 +837,9 @@ impl CompilerOptionsData {
     })
   }
 
+  /// Whether to skip `.d.ts` type-checking. Defaults to true (matching tsgo's
+  /// `--init` default and the base check options); a user `skipLibCheck: false`
+  /// overrides it. Honors `--config` and `extends` (later sources win).
   pub fn skip_lib_check(&self) -> bool {
     *self.memoized.skip_lib_check.get_or_init(|| {
       self
@@ -848,7 +854,7 @@ impl CompilerOptionsData {
             .get("skipLibCheck")?
             .as_bool()
         })
-        .unwrap_or(false)
+        .unwrap_or(true)
     })
   }
 
