@@ -45,6 +45,8 @@ deno_core::extension!(
     ops_error::op_error_custom_with_code_sync,
     ops_buffer::op_v8slice_store,
     ops_buffer::op_v8slice_clone,
+    ops_buffer::op_v8slice_into_bytes,
+    ops_buffer::op_v8slice_into_bytes_aliases,
     ops_worker::op_worker_spawn,
     ops_worker::op_worker_send,
     ops_worker::op_worker_recv,

@@ -113,6 +113,60 @@ impl BufView {
       cursor,
     }
   }
+
+  /// Convert this buffer view into [`bytes::Bytes`], usually without copying.
+  ///
+  /// - A `Bytes`-backed view hands off its [`bytes::Bytes`] directly (slicing
+  ///   away any consumed prefix, which is itself zero-copy).
+  /// - A `JsBuffer`-backed view wraps the V8 backing store as the owner of the
+  ///   returned [`bytes::Bytes`]; the store stays alive for as long as any
+  ///   clone of the returned value does. This is a zero-copy handoff except
+  ///   for the two cases noted below.
+  ///
+  /// # Backing-store caveats (`JsBuffer` arm)
+  ///
+  /// - **Resizable and shared stores are copied.**
+  ///   [`bytes::Bytes::from_owner`] snapshots the slice's pointer and length
+  ///   once. A resizable `ArrayBuffer` may later shrink while the returned
+  ///   `Bytes` is still in flight, leaving that snapshot pointing past the
+  ///   store's valid length; a shared `SharedArrayBuffer` may be mutated
+  ///   concurrently by another thread. Both are copied instead (detected via
+  ///   [`V8Slice::is_backing_store_resizable`] /
+  ///   [`V8Slice::is_backing_store_shared`]).
+  /// - **Contents are not snapshotted.** For the zero-copy path the returned
+  ///   `Bytes` aliases live V8 memory, so subsequent (same-thread) JS mutations
+  ///   of the source buffer are observable through it until the bytes are
+  ///   consumed. Callers that need a point-in-time snapshot must copy.
+  /// - **The whole store is pinned.** The returned `Bytes` keeps the entire
+  ///   backing store alive, not just the viewed sub-range, so a small view over
+  ///   a large `ArrayBuffer` can pin the full allocation for as long as any
+  ///   clone survives.
+  pub fn into_bytes(self) -> bytes::Bytes {
+    let cursor = self.cursor;
+    let bytes = match self.inner {
+      BufViewInner::Empty => return bytes::Bytes::new(),
+      BufViewInner::Bytes(bytes) => bytes,
+      BufViewInner::JsBuffer(slice) => {
+        if slice.is_backing_store_resizable() || slice.is_backing_store_shared()
+        {
+          // A resizable ArrayBuffer may shrink while this chunk is still in
+          // flight (`Bytes::from_owner` would then read past the store's valid
+          // length), and a shared store may be mutated concurrently from
+          // another thread. Copy instead of freezing a pointer into such
+          // memory. The copy reads through `V8Slice`'s clamped `Deref`, so it
+          // can't read out of bounds (a stale `cursor` past the clamped length
+          // would panic, exactly as `BufView::deref` already does).
+          return bytes::Bytes::copy_from_slice(&slice[cursor..]);
+        }
+        bytes::Bytes::from_owner(slice)
+      }
+    };
+    if cursor == 0 {
+      bytes
+    } else {
+      bytes.slice(cursor..)
+    }
+  }
 }
 
 impl Buf for BufView {
@@ -126,6 +180,14 @@ impl Buf for BufView {
 
   fn advance(&mut self, cnt: usize) {
     self.advance_cursor(cnt)
+  }
+
+  /// Override the copying default so generic [`Buf`] consumers (e.g.
+  /// `http_body_util::BodyExt::collect`) get the same zero-copy handoff as
+  /// [`BufView::into_bytes`]. `split_to` panics if `len > remaining()`, which
+  /// matches the `Buf::copy_to_bytes` contract.
+  fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
+    self.split_to(len).into_bytes()
   }
 }
 
@@ -441,6 +503,29 @@ mod tests {
 
     buf.reset_cursor();
     assert_eq!(3, buf.len());
+  }
+
+  #[test]
+  pub fn bufview_into_bytes() {
+    // Empty.
+    assert!(BufView::empty().into_bytes().is_empty());
+
+    // Full buffer, no cursor.
+    let buf = BufView::from(vec![1, 2, 3, 4]);
+    assert_eq!(&*buf.into_bytes(), &[1, 2, 3, 4]);
+
+    // With a consumed prefix, into_bytes exposes only the remainder.
+    let mut buf = BufView::from(vec![1, 2, 3, 4]);
+    buf.advance_cursor(2);
+    assert_eq!(&*buf.into_bytes(), &[3, 4]);
+
+    // Bytes-backed view hands off the same allocation (no copy): the pointer
+    // is preserved.
+    let bytes = bytes::Bytes::from(vec![9, 8, 7, 6, 5]);
+    let ptr = bytes.as_ptr();
+    let out = BufView::from(bytes).into_bytes();
+    assert_eq!(out.as_ptr(), ptr);
+    assert_eq!(&*out, &[9, 8, 7, 6, 5]);
   }
 
   #[test]
