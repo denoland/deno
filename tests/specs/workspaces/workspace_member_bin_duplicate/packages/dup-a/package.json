@@ -1,0 +1,8 @@
+{
+  "name": "dup-a",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "dup": "./cli.js"
+  }
+}
