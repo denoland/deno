@@ -1170,15 +1170,26 @@ function socketErrorListener(err) {
     // Retry on stale keepalive socket before emitting error
     if (maybeRetryRequest(req, socket)) return;
 
-    // End OTel span on error
-    const span = req[kOtelSpan];
-    if (span) {
-      updateSpanFromError(span, err);
-      span.end();
-      req[kOtelSpan] = null;
+    // The whole response already arrived before the transport error did, e.g.
+    // a server that sends RST immediately after a complete response. Node
+    // never surfaces this: the message completes and the socket is released to
+    // the agent before the reset is processed, so the error lands on the freed
+    // socket and is discarded. Here the error can instead arrive in the window
+    // between the last body chunk and the response's 'end', which would fail a
+    // request that actually succeeded. Tear the socket down quietly and let
+    // 'end' (already queued by the parser's push(null)) complete the response.
+    // The span is left alone so responseOnEnd ends it normally.
+    if (!(req.res && req.res.complete)) {
+      // End OTel span on error
+      const span = req[kOtelSpan];
+      if (span) {
+        updateSpanFromError(span, err);
+        span.end();
+        req[kOtelSpan] = null;
+      }
+      socket._hadError = true;
+      emitErrorEvent(req, err);
     }
-    socket._hadError = true;
-    emitErrorEvent(req, err);
   }
 
   const parser = socket.parser;
