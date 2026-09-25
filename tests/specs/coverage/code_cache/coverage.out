@@ -1,0 +1,3 @@
+cover file:///[WILDCARD]/main.ts ... 50.000% (2/4)
+   2 |   console.log("has args");
+   3 | }
