@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -152,6 +153,16 @@ pub struct LockfileReadFromPathOptions {
   /// If true and `file_path` does not exist, attempt to seed the lockfile by
   /// translating a sibling `package-lock.json`.
   pub import_npm_lockfile: bool,
+  /// The node_modules directory that may have a copy of the lockfile to seed
+  /// the lockfile from when `file_path` does not exist.
+  pub node_modules_dir: Option<PathBuf>,
+}
+
+/// Path of the copy of the lockfile that's stored in the node_modules
+/// directory in order to not re-resolve the npm packages when the lockfile
+/// in the workspace is deleted, similar to pnpm's `node_modules/.pnpm/lock.yaml`.
+pub fn node_modules_lockfile_path(node_modules_dir: &Path) -> PathBuf {
+  node_modules_dir.join(".deno").join("deno.lock")
 }
 
 #[sys_traits::auto_impl]
@@ -193,6 +204,8 @@ pub struct LockfileFlags {
   /// translating a sibling `package-lock.json`. Currently only set by
   /// `deno install`.
   pub import_npm_lockfile: bool,
+  /// The node_modules directory that may have a copy of the lockfile.
+  pub node_modules_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -215,6 +228,9 @@ pub struct LockfileLock<TSys: LockfileSys> {
   pub filename: PathBuf,
   frozen: bool,
   skip_write: bool,
+  /// The lockfile didn't exist and was seeded from the copy in the
+  /// node_modules directory, so it should be written even when unchanged.
+  seeded_from_node_modules: bool,
 }
 
 impl<TSys: LockfileSys> LockfileLock<TSys> {
@@ -269,7 +285,11 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       .error_if_changed()
       .map_err(LockfileWriteError::Changed)?;
     let mut lockfile = self.lockfile.lock();
-    let Some(bytes) = lockfile.resolve_write_bytes() else {
+    let Some(bytes) = lockfile.resolve_write_bytes().or_else(|| {
+      self
+        .seeded_from_node_modules
+        .then(|| lockfile.as_json_string().into_bytes())
+    }) else {
       return Ok(()); // nothing to do
     };
     // If the lockfile path is a symlink, resolve it to its target so the
@@ -355,16 +375,18 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
         .unwrap_or(false)
     });
-    let lockfile = Self::read_from_path(
+    // boxed to keep the size of the callers' futures down
+    let lockfile = Box::pin(Self::read_from_path(
       sys,
       LockfileReadFromPathOptions {
         file_path,
         frozen,
         skip_write: flags.skip_write,
         import_npm_lockfile: flags.import_npm_lockfile,
+        node_modules_dir: flags.node_modules_dir,
       },
       api,
-    )
+    ))
     .await?;
     let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
@@ -513,6 +535,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     opts: LockfileReadFromPathOptions,
     api: &dyn deno_lockfile::NpmPackageInfoProvider,
   ) -> Result<LockfileLock<TSys>, AnyError> {
+    let mut seeded_from_node_modules = false;
     let lockfile = match sys.fs_read_to_string(&opts.file_path) {
       Ok(text) => {
         Lockfile::new(
@@ -526,10 +549,21 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
         .await?
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        // Box the seeding future so its (multi-candidate) size stays off the
-        // stack of every caller that awaits a lockfile read, which would
+        // Box the seeding futures so their (multi-candidate) size stays off
+        // the stack of every caller that awaits a lockfile read, which would
         // otherwise trip clippy's `large_futures` lint.
-        if opts.import_npm_lockfile
+        if let Some(node_modules_dir) = &opts.node_modules_dir
+          && let Some(seeded) = Box::pin(try_read_node_modules_lockfile(
+            &sys,
+            node_modules_dir,
+            &opts.file_path,
+            api,
+          ))
+          .await
+        {
+          seeded_from_node_modules = true;
+          seeded
+        } else if opts.import_npm_lockfile
           && let Some(seeded) =
             Box::pin(try_import_npm_lockfile(&sys, &opts.file_path, api))
               .await?
@@ -551,7 +585,36 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       lockfile: Mutex::new(lockfile),
       frozen: opts.frozen,
       skip_write: opts.skip_write,
+      seeded_from_node_modules,
     })
+  }
+
+  /// Writes the npm packages of the lockfile to the node_modules directory
+  /// so they can be used when the lockfile in the workspace is deleted.
+  pub fn write_node_modules_copy(
+    &self,
+    node_modules_dir: &Path,
+  ) -> Result<(), std::io::Error> {
+    if self.skip_write {
+      return Ok(());
+    }
+    let content = self.lockfile.lock().content.only_npm();
+    if content.packages.npm.is_empty() {
+      return Ok(()); // don't create the node_modules directory
+    }
+    let copy = Lockfile {
+      overwrite: true,
+      has_content_changed: true,
+      content,
+      filename: node_modules_lockfile_path(node_modules_dir),
+    };
+    const CACHE_PERM: u32 = 0o644;
+    atomic_write_file_with_retries(
+      &self.sys,
+      &copy.filename,
+      copy.as_json_string().as_bytes(),
+      CACHE_PERM,
+    )
   }
 
   pub fn error_if_changed(&self) -> Result<(), JsErrorBox> {
@@ -559,7 +622,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       return Ok(());
     }
     let lockfile = self.lockfile.lock();
-    if lockfile.has_content_changed {
+    if lockfile.has_content_changed || self.seeded_from_node_modules {
       let contents = self
         .sys
         .fs_read_to_string(&lockfile.filename)
@@ -586,6 +649,52 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       Ok(())
     }
   }
+}
+
+/// Attempts to read the copy of the lockfile stored in the node_modules
+/// directory so the npm packages don't need to be re-resolved when the
+/// lockfile in the workspace was deleted.
+async fn try_read_node_modules_lockfile<TSys: LockfileSys>(
+  sys: &TSys,
+  node_modules_dir: &Path,
+  deno_lock_path: &Path,
+  api: &dyn deno_lockfile::NpmPackageInfoProvider,
+) -> Option<Lockfile> {
+  let path = node_modules_lockfile_path(node_modules_dir);
+  let text = match sys.fs_read_to_string(&path) {
+    Ok(text) => text,
+    Err(err) => {
+      if err.kind() != std::io::ErrorKind::NotFound {
+        log::debug!("Failed reading '{}': {:#}", path.display(), err);
+      }
+      return None;
+    }
+  };
+  let mut lockfile = match Lockfile::new(
+    deno_lockfile::NewLockfileOptions {
+      file_path: deno_lock_path.to_path_buf(),
+      content: &text,
+      overwrite: false,
+    },
+    api,
+  )
+  .await
+  {
+    Ok(lockfile) => lockfile,
+    Err(err) => {
+      log::debug!("Failed parsing '{}': {:#}", path.display(), err);
+      return None;
+    }
+  };
+  log::debug!(
+    "Seeded '{}' from '{}'",
+    deno_lock_path.display(),
+    path.display()
+  );
+  // not marked as changed so that the resolution isn't pending, which
+  // would cause the packages to be re-resolved from the registry
+  lockfile.has_content_changed = false;
+  Some(lockfile)
 }
 
 /// Attempt to translate a sibling `package-lock.json`, `pnpm-lock.yaml`,

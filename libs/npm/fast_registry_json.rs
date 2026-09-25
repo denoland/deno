@@ -934,6 +934,7 @@ pub(crate) fn pluck_packument_index_from_tokens(
 enum PackumentState<'i> {
   Start,
   WantNameValue,
+  WantModifiedValue,
   WantDenoEtagValue,
   WantDenoPackumentFormatValue,
   InVersions,
@@ -989,6 +990,7 @@ struct PackumentIndexer<'i> {
   input: &'i str,
   state: PackumentState<'i>,
   name: Option<&'i str>,
+  modified: Option<&'i str>,
   deno_etag: Option<&'i str>,
   deno_packument_format: Option<&'i str>,
   versions: Vec<&'i str>,
@@ -1009,6 +1011,7 @@ impl<'i> PackumentIndexer<'i> {
       input,
       state: PackumentState::Start,
       name: None,
+      modified: None,
       deno_etag: None,
       deno_packument_format: None,
       versions: Vec::new(),
@@ -1058,6 +1061,11 @@ impl<'i> PackumentIndexer<'i> {
         self.name = Some(self.string_value(start, end));
         self.state = PackumentState::Start;
       } else if !is_key
+        && matches!(self.state, PackumentState::WantModifiedValue)
+      {
+        self.modified = Some(self.string_value(start, end));
+        self.state = PackumentState::Start;
+      } else if !is_key
         && matches!(self.state, PackumentState::WantDenoEtagValue)
       {
         self.deno_etag = Some(self.string_value(start, end));
@@ -1069,6 +1077,8 @@ impl<'i> PackumentIndexer<'i> {
         self.state = PackumentState::Start;
       } else if is_key && v == b"name" {
         self.state = PackumentState::WantNameValue;
+      } else if is_key && v == b"modified" {
+        self.state = PackumentState::WantModifiedValue;
       } else if is_key && v == b"_deno.etag" {
         self.state = PackumentState::WantDenoEtagValue;
       } else if is_key && v == b"_deno.packumentFormat" {
@@ -1263,6 +1273,7 @@ impl<'i> PackumentIndexer<'i> {
 
     Ok(PackumentIndex {
       name: self.name,
+      modified: self.modified,
       deno_etag: self.deno_etag,
       deno_packument_format: self.deno_packument_format,
       versions: self.versions,
@@ -1330,6 +1341,9 @@ pub enum TrustEvidence {
 #[derive(Debug, Clone)]
 pub struct PackumentIndex<'i> {
   pub name: Option<&'i str>,
+  /// Top-level `modified` date of the abbreviated install manifest, which is
+  /// the last time any version was published (or the package changed).
+  pub modified: Option<&'i str>,
   pub deno_etag: Option<&'i str>,
   /// Custom top-level property written by the cache to record which format
   /// the packument was fetched in (currently only `"full"`).
@@ -1694,6 +1708,23 @@ mod tests {
     assert_eq!(index.name, Some("pkg"));
     assert_eq!(index.deno_etag, None);
     assert_eq!(index.versions, vec!["1.0.0"]);
+  }
+
+  #[test]
+  fn packument_index_plucks_modified() {
+    let input = r#"{"name":"pkg","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"version":"1.0.0","modified":"nested"}},"modified":"2024-01-03T00:00:00.000Z"}"#;
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.modified, Some("2024-01-03T00:00:00.000Z"));
+  }
+
+  #[test]
+  fn packument_index_ignores_time_modified() {
+    // the full packument only has `time.modified`, which is not the
+    // top-level `modified` of the abbreviated install manifest
+    let input = r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"time":{"modified":"2024-01-03T00:00:00.000Z","1.0.0":"2024-01-02T00:00:00.000Z"}}"#;
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.modified, None);
+    assert_eq!(index.time.len(), 2);
   }
 
   #[test]
