@@ -666,6 +666,13 @@ pub struct NpmDependencyEntry {
   /// use this entry to resolve the dependency when it can't
   /// be resolved as a peer dependency.
   pub peer_dep_version_req: Option<VersionReq>,
+  /// Whether this dependency is listed in the package's
+  /// `optionalDependencies`. An optional dependency that fails to resolve
+  /// (missing version, or every matching version blocked by the minimum
+  /// dependency age) is skipped instead of aborting the whole install,
+  /// mirroring npm/yarn/pnpm. (os/cpu filtering happens separately, when the
+  /// snapshot is materialized for a specific system.)
+  pub optional: bool,
 }
 
 impl PartialOrd for NpmDependencyEntry {
@@ -995,6 +1002,7 @@ impl NpmPackageVersionInfo {
         name: PackageName::from_str(name),
         version_req,
         peer_dep_version_req: None,
+        optional: false,
       })
     }
 
@@ -1062,12 +1070,22 @@ impl NpmPackageVersionInfo {
     }
     for entry in normalized_dependencies.iter() {
       let entry = parse_dep_entry(nv, entry, NpmDependencyEntryKind::Dep)?;
-      if let Some(entry) = entry {
+      if let Some(mut entry) = entry {
+        // a dependency listed in `optionalDependencies` (regardless of whether
+        // it's also duplicated in `dependencies`) is optional: failing to
+        // resolve it must not abort the install.
+        entry.optional = self
+          .optional_dependencies
+          .contains_key(&entry.bare_specifier);
         // people may define a dependency as a peer dependency as well,
         // so in those cases, attempt to resolve as a peer dependency,
         // but then use this dependency version requirement otherwise
         if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
           peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
+          // the peer entry is the one that gets resolved, so carry the
+          // optional flag over to it rather than dropping it along with the
+          // rest of this entry
+          peer_dep_entry.optional = entry.optional;
         } else {
           result.insert(entry.bare_specifier.clone(), entry);
         }
