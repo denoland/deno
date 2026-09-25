@@ -188,3 +188,67 @@ Deno.test(
     Deno.removeSync(dirPath, { recursive: true });
   },
 );
+
+// chown does not follow a terminal symlink: the permission check is performed
+// no-follow, so a symlink at an allowed path must not be usable to change the
+// owner of a file it points to. The op opens the path with O_NOFOLLOW and fails
+// with FilesystemLoop (ELOOP) on a symlink target. Passing null/null leaves
+// owner and group unchanged, so this needs no elevated privileges.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function chownSyncDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    Deno.writeFileSync(target, new Uint8Array([1, 2, 3]));
+    Deno.symlinkSync(target, link);
+
+    assertThrows(
+      () => Deno.chownSync(link, null, null),
+      Deno.errors.FilesystemLoop,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function chownDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    await Deno.writeFile(target, new Uint8Array([1, 2, 3]));
+    await Deno.symlink(target, link);
+
+    await assertRejects(
+      () => Deno.chown(link, null, null),
+      Deno.errors.FilesystemLoop,
+    );
+  },
+);
+
+// O_NOFOLLOW only protects the final path component. A regular file reached
+// through a symlinked ancestor directory can still be chowned (null/null is a
+// no-op that just confirms the open succeeds).
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function chownSyncFollowsIntermediateSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const realDir = dir + "/real";
+    Deno.mkdirSync(realDir);
+    const file = realDir + "/data.txt";
+    Deno.writeFileSync(file, new Uint8Array([1, 2, 3]));
+    const linkDir = dir + "/linkdir";
+    Deno.symlinkSync(realDir, linkDir);
+
+    Deno.chownSync(linkDir + "/data.txt", null, null);
+  },
+);
