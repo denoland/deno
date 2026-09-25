@@ -337,8 +337,19 @@ async function recvMultipart(conn) {
  * REP socket server (heartbeat).
  * For each connected peer, echo back every received message.
  */
-async function runHeartbeat(port, ip) {
-  const listener = Deno.listen({ hostname: ip, port });
+function listenOptions(info, port) {
+  switch (info.transport ?? "tcp") {
+    case "tcp":
+      return { hostname: info.ip, port };
+    case "ipc":
+      return { transport: "unix", path: `${info.ip}-${port}` };
+    default:
+      throw new TypeError(`Unsupported Jupyter transport: ${info.transport}`);
+  }
+}
+
+async function runHeartbeat(info, port) {
+  const listener = Deno.listen(listenOptions(info, port));
   while (true) {
     const conn = await listener.accept();
     (async () => {
@@ -389,9 +400,9 @@ function makeQueue() {
  * every connected peer via `sendAll`).
  */
 class RouterSocket {
-  constructor(port, ip) {
+  constructor(info, port) {
     this.port = port;
-    this.ip = ip;
+    this.info = info;
     this.incoming = makeQueue();
     this.peers = new Map(); // peerId (string) -> conn
     this._listen();
@@ -399,7 +410,7 @@ class RouterSocket {
 
   _listen() {
     (async () => {
-      const listener = Deno.listen({ hostname: this.ip, port: this.port });
+      const listener = Deno.listen(listenOptions(this.info, this.port));
       while (true) {
         const conn = await listener.accept();
         this._handlePeer(conn);
@@ -479,16 +490,16 @@ class RouterSocket {
  * Sends the same frames to all connected subscribers.
  */
 class PubSocket {
-  constructor(port, ip) {
+  constructor(info, port) {
     this.port = port;
-    this.ip = ip;
+    this.info = info;
     this.conns = new Set();
     this._listen();
   }
 
   _listen() {
     (async () => {
-      const listener = Deno.listen({ hostname: this.ip, port: this.port });
+      const listener = Deno.listen(listenOptions(this.info, this.port));
       while (true) {
         const conn = await listener.accept();
         (async () => {
@@ -536,17 +547,17 @@ class PubSocket {
 
 async function startJupyterKernel() {
   const info = JSON.parse(op_jupyter_get_connection_info());
-  const { ip, key, hb_port, shell_port, control_port, stdin_port, iopub_port } =
+  const { key, hb_port, shell_port, control_port, stdin_port, iopub_port } =
     info;
   const session = crypto.randomUUID();
 
   // Start heartbeat (purely async, fire-and-forget)
-  runHeartbeat(hb_port, ip);
+  runHeartbeat(info, hb_port);
 
-  const shell = new RouterSocket(shell_port, ip);
-  const control = new RouterSocket(control_port, ip);
-  const iopub = new PubSocket(iopub_port, ip);
-  const stdin = new RouterSocket(stdin_port, ip);
+  const shell = new RouterSocket(info, shell_port);
+  const control = new RouterSocket(info, control_port);
+  const iopub = new PubSocket(info, iopub_port);
+  const stdin = new RouterSocket(info, stdin_port);
 
   let executionCount = 0;
   let currentParentHeader = {};
