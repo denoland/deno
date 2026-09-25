@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::io::SeekFrom;
 use std::ops::Range;
@@ -41,6 +42,7 @@ use deno_runtime::deno_io::fs::FsStat;
 use deno_runtime::deno_io::fs::FsStatFs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
+use deno_runtime::deno_napi::NativeAddonSibling;
 use deno_runtime::deno_permissions::CheckedPath;
 use deno_runtime::deno_permissions::CheckedPathBuf;
 #[cfg(windows)]
@@ -1863,6 +1865,42 @@ impl DenoRtNativeAddonLoader for FileBackedVfs {
     let file = self.file_entry(path).ok()?;
     self.read_file_offset_with_len(file.offset).ok()
   }
+
+  fn load_addon_siblings(&self, path: &Path) -> Vec<NativeAddonSibling> {
+    if !self.is_path_within(path) {
+      return Vec::new();
+    }
+    let Some(parent) = path.parent() else {
+      return Vec::new();
+    };
+    let Ok(dir) = self.dir_entry(parent) else {
+      return Vec::new();
+    };
+    let addon_name = path.file_name().and_then(|n| n.to_str());
+    dir
+      .entries
+      .iter()
+      .filter_map(|entry| {
+        // Only regular files can be siblings that the OS loader resolves
+        // from the addon's directory. Skip the addon itself.
+        let VfsEntry::File(file) = entry else {
+          return None;
+        };
+        let is_addon_itself = addon_name.is_some_and(|name| {
+          self.case_sensitivity.cmp_name(&file.name, name)
+            == std::cmp::Ordering::Equal
+        });
+        if is_addon_itself {
+          return None;
+        }
+        let bytes = self.read_file_offset_with_len(file.offset).ok()?;
+        Some(NativeAddonSibling {
+          name: OsString::from(file.name.clone()),
+          bytes,
+        })
+      })
+      .collect()
+  }
 }
 
 #[cfg(test)]
@@ -1980,6 +2018,71 @@ mod test {
     assert_eq!(
       virtual_fs.stat(&dest_path.join("e.txt")).unwrap().file_type,
       sys_traits::FileType::File
+    );
+  }
+
+  #[test]
+  fn load_addon_siblings_returns_files_in_same_dir() {
+    let temp_dir = TempDir::new();
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    src_path.join("addon_dir").create_dir_all();
+    src_path.join("addon_dir").join("nested").create_dir_all();
+    let src_path = src_path.to_path_buf();
+
+    let mut builder = VfsBuilder::new();
+    // anchor the vfs root at `src` (otherwise the builder collapses the root
+    // to the common minimum directory, i.e. `addon_dir`)
+    builder
+      .add_file_with_data_raw_for_testing(
+        &src_path.join("root.txt"),
+        "root".into(),
+        None,
+      )
+      .unwrap();
+    let addon_dir = src_path.join("addon_dir");
+    for (name, data) in [
+      ("my.node", "the addon"),
+      ("dep.dll", "a dependency"),
+      ("data.bin", "some data"),
+    ] {
+      builder
+        .add_file_with_data_raw_for_testing(
+          &addon_dir.join(name),
+          data.into(),
+          None,
+        )
+        .unwrap();
+    }
+    // a file in a nested dir should NOT be treated as a sibling
+    builder
+      .add_file_with_data_raw_for_testing(
+        &addon_dir.join("nested").join("deep.dll"),
+        "deep".into(),
+        None,
+      )
+      .unwrap();
+
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+
+    let addon_path = dest_path.join("addon_dir").join("my.node");
+    let mut siblings = virtual_fs.load_addon_siblings(&addon_path);
+    siblings.sort_by(|a, b| a.name.cmp(&b.name));
+
+    // every regular file in the same directory except the addon itself
+    let names: Vec<_> = siblings
+      .iter()
+      .map(|s| s.name.to_string_lossy().into_owned())
+      .collect();
+    assert_eq!(names, vec!["data.bin", "dep.dll"]);
+    assert_eq!(siblings[0].bytes.as_ref(), b"some data");
+    assert_eq!(siblings[1].bytes.as_ref(), b"a dependency");
+
+    // a path outside the vfs has no siblings
+    assert!(
+      virtual_fs
+        .load_addon_siblings(Path::new("/not/in/vfs/x.node"))
+        .is_empty()
     );
   }
 
