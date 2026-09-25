@@ -5,8 +5,6 @@ use std::convert::Infallible;
 use std::ffi::c_void;
 use std::hash::BuildHasher;
 use std::mem::MaybeUninit;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
@@ -603,35 +601,10 @@ impl From<ExternalPointer> for *const c_void {
   }
 }
 
-const USIZE2X: usize = std::mem::size_of::<usize>() * 2;
-#[derive(PartialEq, Eq, Clone, Debug, Default)]
-pub struct ByteString(SmallVec<[u8; USIZE2X]>);
-
-impl Deref for ByteString {
-  type Target = SmallVec<[u8; USIZE2X]>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl DerefMut for ByteString {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-impl AsRef<[u8]> for ByteString {
-  fn as_ref(&self) -> &[u8] {
-    &self.0
-  }
-}
-
-impl AsMut<[u8]> for ByteString {
-  fn as_mut(&mut self) -> &mut [u8] {
-    &mut self.0
-  }
-}
+// One ByteString definition for the whole crate: this is serde_v8's type
+// (also re-exported at the crate root), with the convert-layer trait impls
+// attached here. The previous byte-identical duplicate struct is gone.
+pub use serde_v8::ByteString;
 
 impl<'a> ToV8<'a> for ByteString {
   type Error = Infallible;
@@ -683,39 +656,7 @@ impl<'a> FromV8<'a> for ByteString {
       buffer.set_len(len);
       v8str.write_one_byte_v2(scope, 0, &mut buffer, v8::WriteFlags::empty());
     }
-    Ok(Self(buffer))
-  }
-}
-
-impl From<Vec<u8>> for ByteString {
-  fn from(vec: Vec<u8>) -> Self {
-    ByteString(SmallVec::from_vec(vec))
-  }
-}
-
-#[allow(clippy::from_over_into, reason = "cannot implement From for Vec")]
-impl Into<Vec<u8>> for ByteString {
-  fn into(self) -> Vec<u8> {
-    self.0.into_vec()
-  }
-}
-
-impl From<&[u8]> for ByteString {
-  fn from(s: &[u8]) -> Self {
-    ByteString(SmallVec::from_slice(s))
-  }
-}
-
-impl From<&str> for ByteString {
-  fn from(s: &str) -> Self {
-    let v: Vec<u8> = s.into();
-    ByteString::from(v)
-  }
-}
-
-impl From<String> for ByteString {
-  fn from(s: String) -> Self {
-    ByteString::from(s.into_bytes())
+    Ok(ByteString::from(buffer))
   }
 }
 
