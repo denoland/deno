@@ -621,10 +621,7 @@ async fn do_load_job<'s, 'i>(
     v8::ModuleStatus::Uninstantiated => {
       module_map_rc
         .instantiate_module(scope, root_id)
-        .map_err(|e| {
-          let exception = v8::Local::new(scope, e);
-          exception_to_err(scope, exception, false, false)
-        })?;
+        .map_err(|error| error.into_error(scope, false, false))?;
     }
     v8::ModuleStatus::Instantiated => {
       // Already instantiated — caller (op_import_sync) will evaluate.
@@ -852,11 +849,7 @@ fn op_import_sync_with_source<'s, 'i>(
 
   module_map_rc
     .instantiate_module(scope, module_id)
-    .map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      CoreErrorKind::Js(exception_to_err(scope, exception, false, false))
-        .into_box()
-    })?;
+    .map_err(|error| error.into_error(scope, false, false))?;
 
   module_map_rc.mod_evaluate_sync(scope, module_id)?;
 

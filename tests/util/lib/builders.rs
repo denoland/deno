@@ -827,11 +827,18 @@ impl TestCommandBuilder {
     });
 
     let status = process.wait().unwrap();
-    // Drop the sender to cancel the watchdog, then check if it timed out
+    // Drop the sender to cancel the watchdog, then check if it timed out.
     if let Some((cancel_tx, handle)) = timeout_handle {
       drop(cancel_tx);
       let timed_out = handle.join().unwrap_or(true);
       if timed_out {
+        if !self.show_output
+          && let Some(combined) = &combined
+        {
+          self
+            .diagnostic_logger
+            .writeln(format!("OUTPUT\n{combined}\nOUTPUT"));
+        }
         panic!("Test command timed out");
       }
     }
