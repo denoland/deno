@@ -1,0 +1,41 @@
+{
+  // A PATCHED npm package (brought in via deno.json `links`) is EXCLUDED from
+  // the side-effects build cache (issue #16164). The cache input key does not
+  // include the patch contents, so a patched package must never be served a
+  // built variant restored from the cache, nor have its (unpatched) build
+  // snapshotted. This guards against silently dropping the patch.
+  //
+  // Both projects below share the same DENO_DIR (and therefore the same global
+  // side-effects cache):
+  //   - `normal/` installs the package the normal way: its `postinstall` build
+  //     script runs and the output is snapshotted into the global cache,
+  //     creating a built variant for `@denotest/lifecycle-scripts-simple@1.0.0`.
+  //   - `patched/` replaces that exact name@version with a local patched copy
+  //     via `links`. Even though a built variant for that nv now exists in the
+  //     shared cache, the patched copy's own files must be served unchanged —
+  //     never overwritten by the cached build.
+  "tempDir": true,
+  "tests": {
+    "patched_package_not_cached": {
+      "steps": [
+        {
+          // Normal install: the `postinstall` script runs (note the
+          // "running 'postinstall' script" line) and its output is cached.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "cwd": "normal",
+          "output": "normal.out"
+        },
+        {
+          // Patched install sharing the same global cache. The patched copy's
+          // `main.js` is served (it prints "patched source in use"), proving the
+          // patch survived. Crucially the output is an EXACT match: there is no
+          // "Reusing cached build output" line, so the cached build from the
+          // `normal/` project was NOT restored over the patch.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "cwd": "patched",
+          "output": "patched.out"
+        }
+      ]
+    }
+  }
+}

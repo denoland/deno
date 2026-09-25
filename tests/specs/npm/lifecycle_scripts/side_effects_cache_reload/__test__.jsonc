@@ -1,0 +1,56 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Proves the npm build side-effects cache (issue #16164) honors npm cache
+    // settings during its RESTORE pass: `--reload=npm:<pkg>` must re-run the
+    // package's lifecycle scripts against a freshly re-extracted copy instead
+    // of silently restoring an older `.build_<hash>` variant whose key
+    // (name/version/scripts/deps/platform/ABI) still matches. Without honoring
+    // the cache setting the restore pass would overwrite the reloaded
+    // extraction with stale build output, defeating `--reload`.
+    "reload_reruns_build": {
+      "steps": [
+        {
+          // First install: the `postinstall` script runs and its output is
+          // snapshotted into the global side-effects cache.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Wipe the local node_modules so the next install re-links the
+          // package from scratch (and drops the local `.scripts-run` marker),
+          // simulating a second project that shares the same global cache.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // Reload just this package: the cache setting disables side-effects
+          // restore for it, so the `postinstall` script RE-RUNS against the
+          // freshly re-extracted copy (the "running 'postinstall' script" line
+          // reappears) rather than being restored from the cached variant (no
+          // "Reusing cached build output" line). The build pass republishes a
+          // fresh variant afterwards.
+          "args": "run --reload=npm:@denotest/lifecycle-scripts-simple --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "reload_run.out"
+        },
+        {
+          // Wipe node_modules again, then run a normal install (no reload): the
+          // built output is restored from the global cache, so the
+          // 'postinstall' script does NOT run again.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "cached_run.out"
+        }
+      ]
+    }
+  }
+}
