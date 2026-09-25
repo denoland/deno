@@ -1,0 +1,22 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/26713
+  // This input previously caused `deno fmt` to keep re-evaluating layout
+  // conditions forever, allocating save points until it consumed all
+  // available memory (OOM). It must now terminate and produce stable output.
+  "tempDir": true,
+  "tests": {
+    "no_oom": {
+      "steps": [
+        {
+          "args": "fmt main.js",
+          "output": "fmt.out"
+        },
+        {
+          // the formatted result must be stable (idempotent)
+          "args": "fmt --check main.js",
+          "output": "check.out"
+        }
+      ]
+    }
+  }
+}
