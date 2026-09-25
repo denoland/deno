@@ -101,6 +101,46 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/36294
+// `graceful-fs` (via `fs-extra`, and many others) wraps `process.cwd`/
+// `process.chdir` to cache the cwd, invalidating the cache only on
+// `process.chdir`. `Deno.chdir` must replay through `process.chdir` so those
+// caches don't go stale.
+Deno.test({
+  name: "Deno.chdir keeps a wrapped process.cwd in sync",
+  fn() {
+    const currentDir = Deno.cwd();
+    const tempDir = Deno.makeTempDirSync();
+
+    // Emulate graceful-fs's cwd caching.
+    const origCwd = process.cwd;
+    const origChdir = process.chdir;
+    let cached: string | null = null;
+    process.cwd = function () {
+      if (cached === null) cached = origCwd.call(process);
+      return cached;
+    };
+    process.chdir = function (dir: string) {
+      cached = null;
+      return origChdir.call(process, dir);
+    };
+
+    try {
+      process.cwd(); // prime the cache with the original directory
+      Deno.chdir(tempDir);
+      assertEquals(
+        Deno.realPathSync(process.cwd()),
+        Deno.realPathSync(tempDir),
+      );
+      assertEquals(process.cwd(), Deno.cwd());
+    } finally {
+      process.cwd = origCwd;
+      process.chdir = origChdir;
+      Deno.chdir(currentDir);
+    }
+  },
+});
+
 Deno.test({
   name: "process.version",
   fn() {
