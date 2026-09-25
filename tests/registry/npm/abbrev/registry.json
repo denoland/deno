@@ -61,6 +61,67 @@
         "@npmcli/template-oss": "4.8.0",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "4.0.0": {
+      "name": "abbrev",
+      "version": "4.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "abbrev@4.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/abbrev-js/issues"
+      },
+      "dist": {
+        "shasum": "ec933f0e27b6cd60e89b5c6b2a304af42209bb05",
+        "tarball": "http://localhost:4260/abbrev/abbrev-4.0.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/abbrev@4.0.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 5121
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "1f9876814876b6a2b24d72639bd55a2c9ff2763d",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "node --test --test-update-snapshots",
+        "test": "node --test",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "test:cover": "node --test --experimental-test-coverage --test-timeout=3000 --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/abbrev-js.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.6.2",
+      "description": "Like ruby's abbrev module, but in js",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.26.1",
+        "testRunner": "node:test",
+        "latestCiVersion": 24,
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "24.10.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "@npmcli/template-oss": "4.26.1",
+        "@npmcli/eslint-config": "^5.0.0"
+      }
     }
   },
   "author": {
