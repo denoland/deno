@@ -75,6 +75,78 @@
         "@npmcli/template-oss": "4.22.0",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "13.0.1": {
+      "name": "ssri",
+      "version": "13.0.1",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "ssri@13.0.1",
+      "bugs": {
+        "url": "https://github.com/npm/ssri/issues"
+      },
+      "dist": {
+        "shasum": "2d8946614d33f4d0c84946bb370dce7a9379fd18",
+        "tarball": "http://localhost:4260/ssri/ssri-13.0.1.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-QUiRf1+u9wPTL/76GTYlKttDEBWV1ga9ZXW8BG6kfdeyyM8LGPix9gROyg9V2+P0xNyF3X2Go526xKFdMZrHSQ==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/ssri@13.0.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 38509
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "73adc1554d0b60606a8fb315d47f7afde7fd913e",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "node --test --test-update-snapshots './test/**/*.js'",
+        "test": "node --test './test/**/*.js'",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "coverage": "tap",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "prerelease": "npm t",
+        "test:cover": "node --test --experimental-test-coverage --test-timeout=3000 --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100 './test/**/*.js'",
+        "postrelease": "npm publish",
+        "test:node20": "node --test test",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/ssri.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.9.0",
+      "description": "Standard Subresource Integrity library -- parses, serializes, generates, and verifies integrity metadata according to the SRI spec.",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.28.1",
+        "allowPaths": [
+          "benchmarks/"
+        ],
+        "testRunner": "node:test",
+        "latestVersion": 24,
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.22.0",
+      "dependencies": {
+        "minipass": "^7.0.3"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "benchmark": "^2.1.4",
+        "@npmcli/template-oss": "4.28.1",
+        "@npmcli/eslint-config": "^6.0.0"
+      }
     }
   },
   "author": {

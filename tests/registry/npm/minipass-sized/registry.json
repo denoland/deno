@@ -56,6 +56,86 @@
         "unpackedSize": 123865
       },
       "_hasShrinkwrap": false
+    },
+    "2.0.0": {
+      "name": "minipass-sized",
+      "version": "2.0.0",
+      "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://izs.me"
+      },
+      "license": "ISC",
+      "scripts": {
+        "test": "tap",
+        "snap": "tap",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "prepare": "tshy",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "format": "prettier --write . --log-level warn",
+        "typedoc": "typedoc"
+      },
+      "devDependencies": {
+        "prettier": "^3.7.4",
+        "tap": "^21.5.0",
+        "tshy": "^3.1.0",
+        "typedoc": "^0.28.15"
+      },
+      "dependencies": {
+        "minipass": "^7.1.2"
+      },
+      "main": "./dist/commonjs/index.js",
+      "directories": {
+        "test": "test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass-sized.git"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "type": "module",
+      "tshy": {
+        "exports": {
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "exports": {
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "types": "./dist/commonjs/index.d.ts",
+      "module": "./dist/esm/index.js",
+      "gitHead": "6bfc4bf784d68ae84f61e0ddfb9415d424fc17fd",
+      "_id": "minipass-sized@2.0.0",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass-sized/issues"
+      },
+      "_nodeVersion": "24.4.1",
+      "_npmVersion": "11.6.3",
+      "dist": {
+        "integrity": "sha512-zSsHhto5BcUVM2m1LurnXY6M//cGhVaegT71OfOXoprxT6o780GZd792ea6FfrQkuU4usHZIUczAQMRUE2plzA==",
+        "shasum": "2228ee97e3f74f6b22ba6d1319addb7621534306",
+        "tarball": "http://localhost:4260/minipass-sized/minipass-sized-2.0.0.tgz",
+        "fileCount": 13,
+        "unpackedSize": 22536
+      },
+      "_hasShrinkwrap": false
     }
   },
   "description": "A Minipass stream that raises an error if you get a different number of bytes than expected",

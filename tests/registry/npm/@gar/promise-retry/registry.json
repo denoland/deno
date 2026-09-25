@@ -1,0 +1,57 @@
+{
+  "name": "@gar/promise-retry",
+  "description": "Retries a function that returns a promise, leveraging the power of the retry module.",
+  "dist-tags": {
+    "latest": "1.0.3"
+  },
+  "versions": {
+    "1.0.3": {
+      "name": "@gar/promise-retry",
+      "version": "1.0.3",
+      "description": "Retries a function that returns a promise, leveraging the power of the retry module.",
+      "main": "./lib/index.js",
+      "type": "commonjs",
+      "exports": {
+        ".": [
+          {
+            "default": "./lib/index.js",
+            "types": "./lib/index.d.ts"
+          },
+          "./lib/index.js"
+        ]
+      },
+      "scripts": {
+        "lint": "npx standard",
+        "lint:fix": "npx standard --fix",
+        "test": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100",
+        "typelint": "npx -p typescript tsc ./lib/index.d.ts",
+        "posttest": "npm run lint",
+        "postlint": "npm run typelint"
+      },
+      "bugs": {
+        "url": "https://github.com/wraithgar/node-promise-retry/issues/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/wraithgar/node-promise-retry.git"
+      },
+      "license": "MIT",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "types": "./lib/index.d.ts",
+      "_id": "@gar/promise-retry@1.0.3",
+      "_nodeVersion": "24.14.0",
+      "_npmVersion": "11.11.1",
+      "dist": {
+        "integrity": "sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA==",
+        "shasum": "65e726428e794bc4453948e0a41e6de4215ce8b0",
+        "tarball": "http://localhost:4260/@gar/promise-retry/promise-retry-1.0.3.tgz",
+        "fileCount": 6,
+        "unpackedSize": 13886
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  }
+}

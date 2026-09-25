@@ -75,6 +75,78 @@
         "@npmcli/template-oss": "4.22.0",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "9.0.0": {
+      "name": "nopt",
+      "version": "9.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "nopt@9.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/nopt/issues"
+      },
+      "bin": {
+        "nopt": "bin/nopt.js"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "6bff0836b2964d24508b6b41b5a9a49c4f4a1f96",
+        "tarball": "http://localhost:4260/nopt/nopt-9.0.0.tgz",
+        "fileCount": 8,
+        "integrity": "sha512-Zhq3a+yFKrYwSBluL4H9XP3m3y5uvQkB/09CwDruCiRmR/UJYnn9W4R48ry0uGC70aeTPKLynBtscP9efFFcPw==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/nopt@9.0.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 28128
+      },
+      "main": "lib/nopt.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "9d8161aae17d52fce9f5122fd706856ded294940",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/nopt.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.6.2",
+      "description": "Option parsing for Node, supporting types, shorthands, etc. Used by npm.",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.27.1",
+        "windowsCI": false,
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.20.0",
+      "dependencies": {
+        "abbrev": "^4.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.27.1",
+        "@npmcli/eslint-config": "^5.0.0"
+      }
     }
   },
   "author": {
