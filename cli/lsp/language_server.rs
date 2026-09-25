@@ -245,14 +245,12 @@ pub struct LanguageServer {
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug, Default)]
 pub struct StateSnapshot {
-  pub project_version: usize,
   pub config: Arc<Config>,
   pub compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   pub linter_resolver: Arc<LspLinterResolver>,
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
   pub cache: Arc<LspCache>,
-  pub client_needs_file_uris_for_virtual_documents: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -744,15 +742,12 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
-      project_version: self.project_version,
       config: Arc::new(self.config.clone()),
       compiler_options_resolver: self.compiler_options_resolver.clone(),
       linter_resolver: self.linter_resolver.clone(),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
       cache: Arc::new(self.cache.clone()),
-      client_needs_file_uris_for_virtual_documents: self
-        .client_needs_file_uris_for_virtual_documents,
     })
   }
 
@@ -785,7 +780,7 @@ impl Inner {
           })
         });
     {
-      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      let ts_server = self.ts_server.as_ref();
       ts_server
         .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     }
@@ -1035,7 +1030,7 @@ impl Inner {
       self.diagnostics_server = Some(diagnostics_server);
     }
     {
-      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      let ts_server = self.ts_server.as_ref();
       ts_server
         .set_inspector_server_addr(self.config.internal_inspect().to_address());
     }
@@ -1766,7 +1761,7 @@ impl Inner {
       project_changes.extend(server_doc_changes);
       self.project_changed(project_changes, ProjectScopesChange::None);
 
-      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      let ts_server = self.ts_server.as_ref();
       ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       if !self.is_using_push_based_diagnostics()
@@ -1808,7 +1803,7 @@ impl Inner {
       // bump the project version, refresh diagnostics, and clear stale TSC
       // script caches so dependents pick up the new state.
       self.project_changed(server_doc_changes, ProjectScopesChange::None);
-      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      let ts_server = self.ts_server.as_ref();
       ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       if !self.is_using_push_based_diagnostics()
@@ -2456,7 +2451,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.code_action_resolve", &params);
-    let TsServer::Js(ts_server) = self.ts_server.as_ref();
+    let ts_server = self.ts_server.as_ref();
     let (Some(kind), Some(data)) = (params.kind.clone(), params.data.clone())
     else {
       return Ok(params);
@@ -2636,7 +2631,7 @@ impl Inner {
       module.scope.clone(),
       &self.resolver,
       {
-        let TsServer::Js(ts_server) = self.ts_server.as_ref();
+        let ts_server = self.ts_server.as_ref();
         ts_server.specifier_map.clone()
       },
     )
@@ -4468,7 +4463,7 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info();
     self.project_changed(vec![], ProjectScopesChange::Config);
-    let TsServer::Js(ts_server) = self.ts_server.as_ref();
+    let ts_server = self.ts_server.as_ref();
     ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     if !self.is_using_push_based_diagnostics()
