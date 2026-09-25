@@ -5,6 +5,7 @@
   const {
     MathMax,
     MathTrunc,
+    NumberIsFinite,
     NumberMIN_SAFE_INTEGER,
   } = window.__bootstrap.primordials;
   const {
@@ -342,8 +343,10 @@
     } else {
       after *= 1;
     }
-    if (!(after >= 1 && after <= TIMEOUT_MAX)) {
+    if (!(after >= 1) || !NumberIsFinite(after)) {
       after = 1;
+    } else if (after > TIMEOUT_MAX) {
+      after = TIMEOUT_MAX;
     }
 
     const id = nextTimerId++;
