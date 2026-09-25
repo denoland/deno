@@ -945,17 +945,17 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
         Ok(FileOrRedirect::Redirect(redirect_url))
       }
       SendRequestResponse::Code(bytes, headers) => {
+        if let Some(checksum) = &maybe_checksum {
+          checksum
+            .check(url, &bytes)
+            .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
+        }
         self.http_cache.set(url, headers.clone(), &bytes).map_err(
           |source| FetchNoFollowErrorKind::CacheSave {
             url: url.clone(),
             source,
           },
         )?;
-        if let Some(checksum) = &maybe_checksum {
-          checksum
-            .check(url, &bytes)
-            .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
-        }
         Ok(FileOrRedirect::File(File {
           url: url.clone(),
           mtime: None,
