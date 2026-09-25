@@ -959,6 +959,9 @@ function streamHandleFd(stream) {
   if (handle && typeof handle.fd === "number" && handle.fd >= 0) {
     return handle.fd;
   }
+  if (typeof stream.fd === "number" && stream.fd >= 0) {
+    return stream.fd;
+  }
   return -1;
 }
 
@@ -997,9 +1000,11 @@ function toDenoStdio(
     // another child's stdin shares the underlying OS pipe.
     const fd = streamHandleFd(pipe);
     if (fd >= 0) {
-      pipe[kChildStdioUsedAsInput] = true;
-      pipe.pause();
-      pipe._handle?.readStop?.();
+      if (typeof pipe.pause === "function") {
+        pipe[kChildStdioUsedAsInput] = true;
+        pipe.pause();
+        pipe._handle?.readStop?.();
+      }
       return fd;
     }
     // For streams without a usable fd, create a pipe and set up JS-level
