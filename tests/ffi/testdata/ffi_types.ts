@@ -175,6 +175,21 @@ const fnptr = new Deno.UnsafeFnPointer(
 fnptr.call(null, null);
 fnptr.call(0, null);
 
+const pointerView = new Deno.UnsafePointerView({} as Deno.PointerObject);
+pointerView.getString(0);
+pointerView.getString(0, 1);
+// @ts-expect-error: Missing byte length.
+pointerView.getString();
+// @ts-expect-error: Invalid byte length.
+pointerView.getString(0n);
+
+Deno.UnsafePointerView.getString({} as Deno.PointerObject, 0);
+Deno.UnsafePointerView.getString({} as Deno.PointerObject, 0, 1);
+// @ts-expect-error: Missing byte length.
+Deno.UnsafePointerView.getString({} as Deno.PointerObject);
+// @ts-expect-error: Invalid byte length.
+Deno.UnsafePointerView.getString({} as Deno.PointerObject, 0n);
+
 const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
   {
     parameters: ["i8"],

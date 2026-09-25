@@ -4,6 +4,7 @@ use std::ffi::CStr;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ptr;
+use std::slice;
 
 use deno_core::OpState;
 use deno_core::op2;
@@ -21,8 +22,10 @@ pub enum ReprError {
   DestinationLengthTooShort,
   #[error("Invalid CString pointer, pointer is null")]
   InvalidCString,
-  #[error("Invalid CString pointer, string exceeds max length")]
-  CStringTooLong,
+  #[error("Invalid string pointer, pointer is null")]
+  InvalidString,
+  #[error("String exceeds max length")]
+  StringTooLong,
   #[error("Invalid bool pointer, pointer is null")]
   InvalidBool,
   #[error("Invalid u8 pointer, pointer is null")]
@@ -220,7 +223,32 @@ pub fn op_ffi_cstr_read<'scope>(
     reason = "ok_or_else needed for error construction"
   )]
   let value = v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
-    .ok_or_else(|| ReprError::CStringTooLong)?;
+    .ok_or_else(|| ReprError::StringTooLong)?;
+  Ok(value)
+}
+
+#[op2(stack_trace)]
+pub fn op_ffi_read_string<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  state: &mut OpState,
+  ptr: *mut c_void,
+  #[number] offset: isize,
+  #[number] len: usize,
+) -> Result<v8::Local<'scope, v8::String>, ReprError> {
+  let permissions = state.borrow_mut::<PermissionsContainer>();
+  permissions.check_ffi_partial_no_path()?;
+
+  if ptr.is_null() {
+    return Err(ReprError::InvalidString);
+  }
+
+  let bytes =
+  // SAFETY: Pointer, offset, and length are user provided.
+    unsafe { slice::from_raw_parts(ptr.offset(offset) as *const u8, len) };
+  #[allow(clippy::unnecessary_lazy_evaluations)]
+  let value =
+    v8::String::new_from_utf8(scope, bytes, v8::NewStringType::Normal)
+      .ok_or_else(|| ReprError::StringTooLong)?;
   Ok(value)
 }
 
