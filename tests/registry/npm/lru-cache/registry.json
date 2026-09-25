@@ -130,6 +130,197 @@
         "@types/node": "^20.2.5",
         "eslint-config-prettier": "^8.5.0"
       }
+    },
+    "11.5.3": {
+      "_id": "lru-cache@11.5.3",
+      "bugs": {
+        "url": "https://github.com/isaacs/node-lru-cache/issues"
+      },
+      "dist": {
+        "shasum": "a7767b4034e35269562d2b9da2b185b5df70c421",
+        "tarball": "http://localhost:4260/lru-cache/lru-cache-11.5.3.tgz",
+        "fileCount": 113,
+        "integrity": "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==",
+        "unpackedSize": 3334485
+      },
+      "main": "./dist/commonjs/index.min.js",
+      "name": "lru-cache",
+      "tshy": {
+        "exports": {
+          ".": {
+            "import": {
+              "node": {
+                "types": "./dist/esm/node/index.d.ts",
+                "default": "./dist/esm/node/index.min.js"
+              },
+              "types": "./dist/esm/index.d.ts",
+              "browser": {
+                "types": "./dist/esm/browser/index.d.ts",
+                "default": "./dist/esm/browser/index.min.js"
+              },
+              "default": "./dist/esm/index.min.js",
+              "react-native": {
+                "types": "./dist/esm/react-native/index.d.ts",
+                "default": "./dist/esm/react-native/index.min.js"
+              }
+            },
+            "require": {
+              "node": {
+                "types": "./dist/commonjs/node/index.d.ts",
+                "default": "./dist/commonjs/node/index.min.js"
+              },
+              "types": "./dist/commonjs/index.d.ts",
+              "browser": {
+                "types": "./dist/commonjs/browser/index.d.ts",
+                "default": "./dist/commonjs/browser/index.min.js"
+              },
+              "default": "./dist/commonjs/index.min.js",
+              "react-native": {
+                "types": "./dist/commonjs/react-native/index.d.ts",
+                "default": "./dist/commonjs/react-native/index.min.js"
+              }
+            }
+          },
+          "./raw": "./src/index.ts"
+        },
+        "selfLink": false,
+        "esmDialects": [
+          "browser",
+          "react-native",
+          "node"
+        ],
+        "commonjsDialects": [
+          "browser",
+          "react-native",
+          "node"
+        ]
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "module": "./dist/esm/index.min.js",
+      "engines": {
+        "node": "20 || >=22"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "node": {
+              "types": "./dist/esm/node/index.d.ts",
+              "default": "./dist/esm/node/index.min.js"
+            },
+            "types": "./dist/esm/index.d.ts",
+            "browser": {
+              "types": "./dist/esm/browser/index.d.ts",
+              "default": "./dist/esm/browser/index.min.js"
+            },
+            "default": "./dist/esm/index.min.js",
+            "react-native": {
+              "types": "./dist/esm/react-native/index.d.ts",
+              "default": "./dist/esm/react-native/index.min.js"
+            }
+          },
+          "require": {
+            "node": {
+              "types": "./dist/commonjs/node/index.d.ts",
+              "default": "./dist/commonjs/node/index.min.js"
+            },
+            "types": "./dist/commonjs/index.d.ts",
+            "browser": {
+              "types": "./dist/commonjs/browser/index.d.ts",
+              "default": "./dist/commonjs/browser/index.min.js"
+            },
+            "default": "./dist/commonjs/index.min.js",
+            "react-native": {
+              "types": "./dist/commonjs/react-native/index.d.ts",
+              "default": "./dist/commonjs/react-native/index.min.js"
+            }
+          }
+        },
+        "./raw": {
+          "import": {
+            "node": {
+              "types": "./dist/esm/node/index.d.ts",
+              "default": "./dist/esm/node/index.js"
+            },
+            "types": "./dist/esm/index.d.ts",
+            "browser": {
+              "types": "./dist/esm/browser/index.d.ts",
+              "default": "./dist/esm/browser/index.js"
+            },
+            "default": "./dist/esm/index.js",
+            "react-native": {
+              "types": "./dist/esm/react-native/index.d.ts",
+              "default": "./dist/esm/react-native/index.js"
+            }
+          },
+          "require": {
+            "node": {
+              "types": "./dist/commonjs/node/index.d.ts",
+              "default": "./dist/commonjs/node/index.js"
+            },
+            "types": "./dist/commonjs/index.d.ts",
+            "browser": {
+              "types": "./dist/commonjs/browser/index.d.ts",
+              "default": "./dist/commonjs/browser/index.js"
+            },
+            "default": "./dist/commonjs/index.js",
+            "react-native": {
+              "types": "./dist/commonjs/react-native/index.d.ts",
+              "default": "./dist/commonjs/react-native/index.js"
+            }
+          }
+        }
+      },
+      "gitHead": "7e71a1f3babdc68dfbadde91f28eaeea919dad9b",
+      "license": "BlueOak-1.0.0",
+      "scripts": {
+        "lint": "oxlint --fix src test",
+        "snap": "tap",
+        "test": "tap",
+        "build": "npm run prepare",
+        "format": "prettier --write .",
+        "prepare": "tshy && bash scripts/build.sh",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "profile": "make -C benchmark profile",
+        "typedoc": "typedoc --tsconfig ./.tshy/esm.json ./src/*.ts",
+        "postlint": "npm run format",
+        "postsnap": "npm run lint",
+        "benchmark": "make -C benchmark",
+        "preprofile": "npm run prepare",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prebenchmark": "npm run prepare",
+        "prepublishOnly": "git push origin --follow-tags",
+        "benchmark-results-typedoc": "bash scripts/benchmark-results-typedoc.sh"
+      },
+      "version": "11.5.3",
+      "repository": {
+        "url": "git+ssh://git@github.com/isaacs/node-lru-cache.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.17.0",
+      "description": "A cache object that deletes the least-recently-used items.",
+      "directories": {},
+      "sideEffects": false,
+      "_nodeVersion": "26.5.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^21.7.4",
+        "tshy": "^4.1.2",
+        "marked": "^4.2.12",
+        "mkdirp": "^3.0.1",
+        "oxlint": "^1.65.0",
+        "esbuild": "^0.28.0",
+        "typedoc": "^0.28.19",
+        "prettier": "^3.8.3",
+        "benchmark": "^2.1.4",
+        "oxlint-tsgolint": "^0.22.1"
+      }
     }
   },
   "bugs": {

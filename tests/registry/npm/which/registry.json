@@ -140,6 +140,78 @@
         "@npmcli/template-oss": "4.18.0",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "6.0.1": {
+      "name": "which",
+      "version": "6.0.1",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "which@6.0.1",
+      "bugs": {
+        "url": "https://github.com/npm/node-which/issues"
+      },
+      "bin": {
+        "node-which": "bin/which.js"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "021642443a198fb93b784a5606721cb18cfcbfce",
+        "tarball": "http://localhost:4260/which/which-6.0.1.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-oGLe46MIrCRqX7ytPUf66EAYvdeMIZYn3WaocqqKZAxrBpkqHfL/qvTyJ/bTk5+AqHCjXmrv3CEWgy368zhRUg==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/which@6.0.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 7477
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "bbc63ba2913e133322f9baf8e1281981f8a9c1cf",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/node-which.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.9.0",
+      "description": "Like which(1) unix command. Find the first instance of an executable in the PATH.",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.28.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.22.0",
+      "dependencies": {
+        "isexe": "^4.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.28.1",
+        "@npmcli/eslint-config": "^6.0.0"
+      }
     }
   },
   "author": {

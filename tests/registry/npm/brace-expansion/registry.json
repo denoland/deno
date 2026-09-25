@@ -64,6 +64,84 @@
       },
       "directories": {},
       "_hasShrinkwrap": false
+    },
+    "5.0.12": {
+      "name": "brace-expansion",
+      "version": "5.0.12",
+      "license": "MIT",
+      "_id": "brace-expansion@5.0.12",
+      "bugs": {
+        "url": "https://github.com/juliangruber/brace-expansion/issues"
+      },
+      "dist": {
+        "shasum": "995fbb4750a77c4d16a7dc942ff2ca6ef8e675ec",
+        "tarball": "http://localhost:4260/brace-expansion/brace-expansion-5.0.12.tgz",
+        "fileCount": 13,
+        "integrity": "sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==",
+        "unpackedSize": 84997
+      },
+      "main": "./dist/commonjs/index.js",
+      "tshy": {
+        "exports": {
+          ".": "./src/index.ts",
+          "./package.json": "./package.json"
+        }
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "module": "./dist/esm/index.js",
+      "engines": {
+        "node": "20 || >=22"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "gitHead": "f3410159d768f56c9d9f4511d3e1b46425fc1099",
+      "scripts": {
+        "snap": "tap",
+        "test": "tap",
+        "format": "prettier --write .",
+        "prepare": "tshy",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts",
+        "benchmark": "node benchmark/index.js",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "format:check": "prettier --check .",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "repository": {
+        "url": "git+https://github.com/juliangruber/brace-expansion.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.13.0",
+      "description": "Brace expansion as known from sh/bash",
+      "directories": {},
+      "_nodeVersion": "24.16.0",
+      "dependencies": {
+        "balanced-match": "^4.0.2"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^21.6.2",
+        "tshy": "^3.0.2",
+        "mkdirp": "^3.0.1",
+        "typedoc": "^0.28.5",
+        "prettier": "^3.3.2",
+        "@types/node": "^25.2.1",
+        "@types/brace-expansion": "^1.1.2"
+      }
     }
   },
   "author": {
