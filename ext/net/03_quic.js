@@ -33,6 +33,7 @@ import {
   op_quic_recv_stream_get_id,
   op_quic_send_stream_get_id,
   op_quic_send_stream_get_priority,
+  op_quic_send_stream_reset,
   op_quic_send_stream_set_priority,
   op_webtransport_accept,
   op_webtransport_connect,
@@ -54,6 +55,7 @@ const {
   PromisePrototypeThen,
   ReflectConstruct,
   SafeSet,
+  SafeWeakMap,
   SetPrototypeAdd,
   SetPrototypeClear,
   SetPrototypeDelete,
@@ -62,6 +64,14 @@ const {
   Symbol,
   SymbolAsyncIterator,
 } = primordials;
+
+const webtransportResetCodes = new SafeWeakMap();
+
+function webtransportResetReason(code) {
+  const reason = { __proto__: null };
+  webtransportResetCodes.set(reason, code);
+  return reason;
+}
 
 let getEndpointResource;
 
@@ -503,7 +513,17 @@ function writableStream(rid, resources) {
       rid,
       true,
       (...args) => ReflectConstruct(QuicSendStream, args),
-      { __proto__: null, onClose },
+      {
+        __proto__: null,
+        onClose,
+        onShutdown: () => core.shutdown(rid),
+        onAbort: (reason) =>
+          op_quic_send_stream_reset(
+            rid,
+            webtransportResetCodes.get(reason) ?? 0n,
+            webtransportResetCodes.has(reason),
+          ),
+      },
     );
   } catch (error) {
     resources.release(rid);
@@ -614,4 +634,5 @@ export {
   QuicSendStream,
   webtransportAccept,
   webtransportConnect,
+  webtransportResetReason,
 };

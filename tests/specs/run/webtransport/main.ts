@@ -20,7 +20,18 @@ Deno.test("WebTransport", async () => {
     alpnProtocols: ["h3"],
   });
 
+  let abortPrefixReceived: () => void;
+  const abortPrefix = new Promise<void>((resolve) =>
+    abortPrefixReceived = resolve
+  );
+  let abortErrorReceived: (error: unknown) => void;
+  const abortError = new Promise<unknown>((resolve) =>
+    abortErrorReceived = resolve
+  );
+
   (async () => {
+    let bidiIndex = 0;
+    const serverRetained = [];
     for await (const incoming of listener) {
       const conn = await incoming.accept();
       const wt = await Deno.upgradeWebTransport(conn);
@@ -30,7 +41,25 @@ Deno.test("WebTransport", async () => {
       wt.ready.then(() => {
         (async () => {
           for await (const bidi of wt.incomingBidirectionalStreams) {
-            bidi.readable.pipeTo(bidi.writable).catch(() => {});
+            serverRetained.push(bidi);
+            if (bidiIndex++ === 121) {
+              const reader = bidi.readable.getReader();
+              const prefix = await reader.read();
+              assertEquals(prefix.value, new Uint8Array([0x11, 0x22, 0x33]));
+              abortPrefixReceived();
+              const pendingRead = reader.read();
+              try {
+                const result = await pendingRead;
+                throw new Error("unexpected observer result: " + result.done);
+              } catch (error) {
+                abortErrorReceived(error);
+              }
+              reader.releaseLock();
+            } else {
+              bidi.readable.pipeTo(bidi.writable).catch((error) => {
+                throw error;
+              });
+            }
           }
         })();
 
@@ -62,7 +91,7 @@ Deno.test("WebTransport", async () => {
     {
       const writer = bi.writable.getWriter();
       await writer.write(new Uint8Array([1, 0, 1, 0]));
-      writer.releaseLock();
+      await writer.close();
     }
 
     {
@@ -71,7 +100,41 @@ Deno.test("WebTransport", async () => {
         value: new Uint8Array([1, 0, 1, 0]),
         done: false,
       });
+      assertEquals(await reader.read(), { value: undefined, done: true });
       reader.releaseLock();
+    }
+
+    const retained = [];
+    for (let i = 0; i < 120; i++) {
+      const cycle = await client.createBidirectionalStream();
+      retained.push(cycle);
+      const payload = new Uint8Array([i & 0xff, 0xa5, 0x5a, i >> 8]);
+      const writer = cycle.writable.getWriter();
+      await writer.write(payload);
+      await writer.close();
+      const reader = cycle.readable.getReader();
+      assertEquals(await reader.read(), { value: payload, done: false });
+      assertEquals(await reader.read(), { value: undefined, done: true });
+      reader.releaseLock();
+    }
+
+    {
+      const aborted = await client.createBidirectionalStream();
+      retained.push(aborted);
+      const writer = aborted.writable.getWriter();
+      await writer.write(new Uint8Array([0x11, 0x22, 0x33]));
+      await abortPrefix;
+      await writer.abort(
+        new WebTransportError("reset", {
+          source: "stream",
+          streamErrorCode: 7,
+        }),
+      );
+      const error = await abortError;
+      assertEquals(
+        (error as Error).message,
+        "stream reset by peer: error 91141958510818",
+      );
     }
 
     {
