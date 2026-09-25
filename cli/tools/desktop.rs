@@ -2360,10 +2360,34 @@ fn locate_backend_binary(
 fn locate_app_bundle(dir: &Path, backend: &str) -> Option<PathBuf> {
   let name = match backend {
     "cef" => "laufey.app",
+    "raw" => "laufey_winit.app",
     _ => "laufey_webview.app",
   };
   let p = dir.join(name);
-  p.exists().then_some(p)
+  if p.exists() {
+    return Some(p);
+  }
+  // The raw backend doesn't ship a .app bundle on macOS — it's a single
+  // binary. Create a minimal .app wrapper so the macOS packaging code
+  // can proceed.
+  if backend == "raw" {
+    let binary = dir.join("laufey_winit");
+    if binary.exists() {
+      // Create Contents/MacOS and copy the binary in.
+      std::fs::create_dir_all(&p.join("Contents/MacOS")).ok()?;
+      std::fs::copy(&binary, p.join("Contents/MacOS/laufey_winit")).ok()?;
+      // Write a minimal Info.plist with the correct CFBundleExecutable.
+      std::fs::write(
+        &p.join("Contents/Info.plist"),
+        br#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>laufey_winit</string></dict></plist>
+"#,
+      ).ok()?;
+      return p.exists().then_some(p);
+    }
+  }
+  None
 }
 
 /// Target triple to use when selecting a laufey backend archive. Honors
@@ -7124,6 +7148,37 @@ def456  other.zip
     // accidentally match).
     let tmp = tempfile::tempdir().unwrap();
     assert!(locate_dev_app_bundle(tmp.path(), "raw").is_none());
+  }
+
+  #[test]
+  fn locate_app_bundle_creates_winit_bundle() {
+    // The raw backend doesn't ship a .app bundle — locate_app_bundle
+    // must create a minimal one when the binary exists alongside.
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("raw/aarch64-apple-darwin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("laufey_winit"), b"binary").unwrap();
+
+    let found = locate_app_bundle(&dir, "raw");
+    assert!(found.is_some(), "expected a synthetic .app bundle");
+    let bundle = found.unwrap();
+
+    // The bundle should be a properly structured .app directory.
+    assert!(bundle.join("Contents/MacOS/laufey_winit").exists(),
+      "expected laufey_winit binary inside .app");
+    assert!(bundle.join("Contents/Info.plist").exists(),
+      "expected Info.plist inside .app");
+  }
+
+  #[test]
+  fn locate_app_bundle_finds_webview() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("webview");
+    std::fs::create_dir_all(&dir).unwrap();
+    let app = dir.join("laufey_webview.app");
+    std::fs::create_dir_all(&app).unwrap();
+    let found = locate_app_bundle(&dir, "webview");
+    assert_eq!(found.as_deref(), Some(app.as_path()));
   }
 
   #[test]
