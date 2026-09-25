@@ -984,7 +984,7 @@ fn write_with_position(
   file: Rc<dyn deno_io::fs::File>,
   buf: &[u8],
   position: i64,
-) -> Result<u32, FsError> {
+) -> Result<usize, FsError> {
   if position >= 0 {
     let mut total = 0usize;
     while total < buf.len() {
@@ -993,25 +993,27 @@ fn write_with_position(
         .write_at_sync(&buf[total..], position as u64 + total as u64)?;
       total += nwritten;
     }
-    Ok(total as u32)
+    Ok(total)
   } else {
     let mut total = 0usize;
     while total < buf.len() {
       let nwritten = file.clone().write_sync(&buf[total..])?;
       total += nwritten;
     }
-    Ok(total as u32)
+    Ok(total)
   }
 }
 
+// Note: the return value is a Number (not an Smi) because a single call can
+// write more than 2^31 bytes, which does not fit in a Smi.
 #[op2(fast)]
-#[smi]
+#[number]
 pub fn op_node_fs_write_sync(
   state: &mut OpState,
   fd: i32,
   #[buffer] buf: &[u8],
   #[number] position: i64,
-) -> Result<u32, FsError> {
+) -> Result<usize, FsError> {
   let file = file_for_fd(state, fd)?;
   write_with_position(file, buf, position)
 }
@@ -1023,13 +1025,13 @@ pub fn op_node_fs_write_sync(
   reason = "async required for deferred op scheduling"
 )]
 #[op2(async(deferred))]
-#[smi]
+#[number]
 pub async fn op_node_fs_write_deferred(
   state: Rc<RefCell<OpState>>,
   fd: i32,
   #[buffer] buf: JsBuffer,
   #[number] position: i64,
-) -> Result<u32, FsError> {
+) -> Result<usize, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   write_with_position(file, &buf, position)
 }
