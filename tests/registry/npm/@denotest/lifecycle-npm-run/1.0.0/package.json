@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/lifecycle-npm-run",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "postinstall": "npm run create-message",
+    "create-message": "echo 'module.exports = \"npm run works\";' > message.js"
+  }
+}
