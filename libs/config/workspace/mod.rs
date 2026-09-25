@@ -1504,13 +1504,9 @@ impl Workspace {
 
     for folder in self.links.values() {
       if let Some(config) = &folder.deno_json {
-        if config.json.links.is_some() {
-          // supporting linking in links is too complicated
-          diagnostics.push(WorkspaceDiagnostic {
-            config_url: config.specifier.clone(),
-            kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-          });
-        }
+        // note: a linked package's own `links` field is ignored (nested
+        // linking is not supported), but the package is a valid standalone
+        // root, so don't warn about it here (#35999)
         check_invalid_exports(config, &mut diagnostics);
       }
     }
@@ -3644,6 +3640,8 @@ pub mod test {
 
   #[test]
   fn test_link_of_link() {
+    // the linked package's `links` field is ignored, but it's a valid
+    // standalone root, so no diagnostic is emitted for it (#35999)
     let workspace_dir = workspace_for_root_and_member_with_fs(
       json!({
         "links": ["../dir"],
@@ -3658,16 +3656,7 @@ pub mod test {
         );
       },
     );
-    assert_eq!(
-      workspace_dir.workspace.diagnostics(),
-      vec![WorkspaceDiagnostic {
-        kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-        config_url: url_from_directory_path(&root_dir())
-          .unwrap()
-          .join("../dir/deno.json")
-          .unwrap(),
-      }]
-    );
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
   }
 
   #[test]
