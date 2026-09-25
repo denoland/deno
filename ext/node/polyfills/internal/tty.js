@@ -33,7 +33,11 @@ const {
 const { validateInteger } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
+import {
+  op_get_env_no_permission_check,
+  op_tty_check_fd_permission,
+  TTY,
+} from "ext:core/ops";
 const { isatty } = core.loadExtScript("ext:deno_node/tty.js");
 const lazyNet = core.createLazyLoader("node:net");
 const {
@@ -125,11 +129,63 @@ function warnOnDeactivatedColors(env) {
 
 let OSRelease;
 
+// Environment variables consulted by getColorDepth for terminal/CI color
+// detection. When operating on the live process env they are snapshotted via a
+// permission-free read (see getColorDepth) so `--deny-env` does not break color
+// detection. All of these are non-secret terminal/CI markers.
+const COLOR_DETECTION_ENV_VARS = [
+  "FORCE_COLOR",
+  "NODE_DISABLE_COLORS",
+  "NO_COLOR",
+  "TERM",
+  "TMUX",
+  "TF_BUILD",
+  "AGENT_NAME",
+  "CI",
+  "CI_NAME",
+  "TEAMCITY_VERSION",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "COLORTERM",
+  "APPVEYOR",
+  "BUILDKITE",
+  "CIRCLECI",
+  "DRONE",
+  "GITEA_ACTIONS",
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "TRAVIS",
+];
+
+// Builds a plain object of the color-detection env vars read from the live OS
+// env without a permission check. Only set vars are present, so `env.X` yields
+// undefined and `ObjectPrototypeHasOwnProperty(env, "X")` is false for unset
+// vars, matching a read of `process.env`.
+function readColorDetectionEnv() {
+  const snapshot = { __proto__: null };
+  for (let i = 0; i < COLOR_DETECTION_ENV_VARS.length; i++) {
+    const name = COLOR_DETECTION_ENV_VARS[i];
+    const value = op_get_env_no_permission_check(name);
+    if (value !== null) {
+      snapshot[name] = value;
+    }
+  }
+  return snapshot;
+}
+
 /**
  * @param {Record<string, string>} [env]
  * @returns {1 | 4 | 8 | 24}
  */
-export function getColorDepth(env = process.env) {
+export function getColorDepth(env) {
+  // When inspecting the live process env (called with no argument, or with
+  // `process.env` itself), snapshot the terminal/CI color-detection variables
+  // via a permission-free read so color detection works even under
+  // `--deny-env` (internal runtime config; mirrors the NODE_OPTIONS read). An
+  // explicit env object passed by a caller is read as-is.
+  if (env === undefined || env === process.env) {
+    env = readColorDetectionEnv();
+  }
   // Use level 0-3 to support the same levels as `chalk` does.
   if (env.FORCE_COLOR !== undefined) {
     switch (env.FORCE_COLOR) {
