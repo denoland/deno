@@ -1,4 +1,8 @@
 {
+  // Each sub-test runs in its own temp copy so the `.deno/` cache and generated
+  // types from one (e.g. the `--desktop` run's `Notification` declarations)
+  // don't leak into the other.
+  "tempDir": true,
   "tests": {
     "without_flag": {
       "args": "check main.ts",
@@ -6,9 +10,6 @@
       "exitCode": 1
     },
     "with_flag": {
-      // ignored: --desktop lib (Notification type) isn't injected into tsc.
-      // https://github.com/denoland/deno/issues/36085
-      "ignore": true,
       "args": "check --desktop main.ts",
       "output": "with_flag.out",
       "exitCode": 0
