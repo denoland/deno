@@ -325,6 +325,32 @@ impl<
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<DenoResolution, DenoResolveError> {
+    let mut resolution = self.resolve_inner(
+      raw_specifier,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )?;
+    // Canonicalize the resolved `file:` URL at this chokepoint, which every
+    // resolution branch (workspace, node, npm) funnels through, so the URL is
+    // normalized before it ever becomes a module URL / referrer. In particular
+    // Windows paths are case-insensitive, so a specifier with a lowercased
+    // drive letter (e.g. produced by `pathToFileURL(cwd)` in a node tool when
+    // the cwd has a lowercase drive letter) must not create a module distinct
+    // from the properly cased one; resolutions from such a module would
+    // otherwise fail to prefix-match config-derived URLs (package.json dep
+    // folders, workspace member import map scopes).
+    crate::workspace::normalize_resolved_file_specifier(&mut resolution.url);
+    Ok(resolution)
+  }
+
+  fn resolve_inner(
+    &self,
+    raw_specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<DenoResolution, DenoResolveError> {
     let mut found_package_json_dep = false;
     let mut maybe_diagnostic = None;
     // Use node resolution if we're in an npm package
