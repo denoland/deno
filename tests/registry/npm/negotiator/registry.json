@@ -45,6 +45,57 @@
       },
       "directories": {},
       "_hasShrinkwrap": false
+    },
+    "1.1.0": {
+      "_id": "negotiator@1.1.0",
+      "bugs": {
+        "url": "https://github.com/jshttp/negotiator/issues"
+      },
+      "dist": {
+        "shasum": "16e003d0db4ac24fd9df168edf871625deeae3df",
+        "tarball": "http://localhost:4260/negotiator/negotiator-1.1.0.tgz",
+        "fileCount": 9,
+        "integrity": "sha512-NMPBRMJgiQHjbd8phG3Vebdx4kZ1H121rbl5IkMqeOsahptB9BKo/d7oJ3zTXqTgagn2bWlNSXkh0QUGM31RYg==",
+        "unpackedSize": 24407
+      },
+      "name": "negotiator",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "url": "https://opencollective.com/express",
+        "type": "opencollective"
+      },
+      "gitHead": "14b0a7b88e7e7bb1cae38681195951bff29ca2fd",
+      "license": "MIT",
+      "scripts": {
+        "lint": "eslint .",
+        "test": "mocha --reporter spec --check-leaks test/",
+        "bench": "vitest bench",
+        "test-ci": "nyc --reporter=lcovonly --reporter=text npm test",
+        "test-cov": "nyc --reporter=html --reporter=text npm test",
+        "test:debug": "mocha --reporter spec --check-leaks --inspect --inspect-brk test/"
+      },
+      "version": "1.1.0",
+      "repository": {
+        "url": "git+https://github.com/jshttp/negotiator.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.17.0",
+      "description": "HTTP content negotiation",
+      "directories": {},
+      "_nodeVersion": "24.19.0",
+      "dependencies": {
+        "content-type": "^2.1.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "nyc": "^17.1.0",
+        "mocha": "^11.7.0",
+        "eslint": "7.32.0",
+        "vitest": "3.2.4",
+        "eslint-plugin-markdown": "2.2.1"
+      }
     }
   },
   "repository": {
