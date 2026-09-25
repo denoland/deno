@@ -1,0 +1,3 @@
+{
+  "unstable": ["no-legacy-abort"]
+}
