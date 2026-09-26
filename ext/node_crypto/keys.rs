@@ -1540,6 +1540,95 @@ impl KeyObjectHandle {
     }
   }
 
+  pub fn new_raw_asymmetric_key(
+    key_type: &str,
+    named_curve: Option<&str>,
+    data: &[u8],
+    is_public: bool,
+  ) -> Result<KeyObjectHandle, RawAsymmetricKeyError> {
+    if key_type != "ec" {
+      let curve = match key_type {
+        "ed25519" => "Ed25519",
+        "x25519" => "X25519",
+        "ed448" => "Ed448",
+        "x448" => "X448",
+        _ => {
+          return Err(RawAsymmetricKeyError::UnsupportedKeyType(
+            key_type.to_string(),
+          ));
+        }
+      };
+      return Self::new_ed_raw(curve, data, is_public)
+        .map_err(|_| RawAsymmetricKeyError::InvalidKey);
+    }
+
+    let named_curve =
+      named_curve.ok_or(RawAsymmetricKeyError::MissingNamedCurve)?;
+    if is_public {
+      let key = match named_curve {
+        "secp224r1" => EcPublicKey::P224(
+          p224::PublicKey::from_sec1_bytes(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "prime256v1" | "secp256r1" => EcPublicKey::P256(
+          p256::PublicKey::from_sec1_bytes(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "secp384r1" => EcPublicKey::P384(
+          p384::PublicKey::from_sec1_bytes(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "secp521r1" => EcPublicKey::P521(
+          p521::PublicKey::from_sec1_bytes(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "secp256k1" => EcPublicKey::Secp256k1(
+          k256::PublicKey::from_sec1_bytes(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        _ => {
+          return Err(RawAsymmetricKeyError::UnsupportedNamedCurve(
+            named_curve.to_string(),
+          ));
+        }
+      };
+      Ok(KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
+        key,
+      )))
+    } else {
+      let key = match named_curve {
+        "secp224r1" => EcPrivateKey::P224(
+          p224::SecretKey::from_slice(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "prime256v1" | "secp256r1" => EcPrivateKey::P256(
+          p256::SecretKey::from_slice(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "secp384r1" => EcPrivateKey::P384(
+          p384::SecretKey::from_slice(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "secp521r1" => EcPrivateKey::P521(
+          p521::SecretKey::from_slice(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        "secp256k1" => EcPrivateKey::Secp256k1(
+          k256::SecretKey::from_slice(data)
+            .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
+        ),
+        _ => {
+          return Err(RawAsymmetricKeyError::UnsupportedNamedCurve(
+            named_curve.to_string(),
+          ));
+        }
+      };
+      Ok(KeyObjectHandle::AsymmetricPrivate(
+        AsymmetricPrivateKey::Ec(key),
+      ))
+    }
+  }
+
   pub fn new_asymmetric_public_key_from_js(
     key: &[u8],
     format: &str,
@@ -1768,6 +1857,19 @@ impl KeyObjectHandle {
 
     Ok(KeyObjectHandle::AsymmetricPublic(public_key))
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum RawAsymmetricKeyError {
+  #[error("raw key format is not supported for key type: {0}")]
+  UnsupportedKeyType(String),
+  #[error("namedCurve is required for EC raw keys")]
+  MissingNamedCurve,
+  #[error("unsupported EC named curve: {0}")]
+  UnsupportedNamedCurve(String),
+  #[error("invalid raw key")]
+  InvalidKey,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -2625,6 +2727,22 @@ pub fn op_node_create_ed_raw(
   is_public: bool,
 ) -> Result<KeyObjectHandle, EdRawError> {
   KeyObjectHandle::new_ed_raw(curve, key, is_public)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_create_raw_asymmetric_key(
+  #[buffer] key: &[u8],
+  #[string] key_type: &str,
+  #[string] named_curve: Option<String>,
+  is_public: bool,
+) -> Result<KeyObjectHandle, RawAsymmetricKeyError> {
+  KeyObjectHandle::new_raw_asymmetric_key(
+    key_type,
+    named_curve.as_deref(),
+    key,
+    is_public,
+  )
 }
 
 #[derive(FromV8)]
@@ -3642,6 +3760,48 @@ pub fn op_node_export_public_key_der(
   public_key.export_der(typ)
 }
 
+#[op2]
+#[buffer]
+pub fn op_node_export_public_key_raw(
+  #[cppgc] handle: &KeyObjectHandle,
+  compressed: bool,
+) -> Result<Box<[u8]>, RawAsymmetricKeyError> {
+  use elliptic_curve::sec1::ToEncodedPoint;
+
+  let key = handle
+    .as_public_key()
+    .ok_or(RawAsymmetricKeyError::InvalidKey)?;
+  let bytes = match key.as_ref() {
+    AsymmetricPublicKey::Ec(key) => match key {
+      EcPublicKey::P224(key) => {
+        key.to_encoded_point(compressed).as_bytes().to_vec()
+      }
+      EcPublicKey::P256(key) => {
+        key.to_encoded_point(compressed).as_bytes().to_vec()
+      }
+      EcPublicKey::P384(key) => {
+        key.to_encoded_point(compressed).as_bytes().to_vec()
+      }
+      EcPublicKey::P521(key) => {
+        key.to_encoded_point(compressed).as_bytes().to_vec()
+      }
+      EcPublicKey::Secp256k1(key) => {
+        key.to_encoded_point(compressed).as_bytes().to_vec()
+      }
+    },
+    AsymmetricPublicKey::X25519(key) => key.as_bytes().to_vec(),
+    AsymmetricPublicKey::Ed25519(key) => key.to_bytes().to_vec(),
+    AsymmetricPublicKey::X448(key) => key.to_vec(),
+    AsymmetricPublicKey::Ed448(key) => key.to_bytes().to_vec(),
+    _ => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType(
+        "asymmetric key".to_string(),
+      ));
+    }
+  };
+  Ok(bytes.into_boxed_slice())
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportPrivateKeyPemError {
   #[class(inherit)]
@@ -4227,6 +4387,35 @@ pub fn op_node_export_private_key_der(
     }
     (None, None) => Ok(data),
   }
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_export_private_key_raw(
+  #[cppgc] handle: &KeyObjectHandle,
+) -> Result<Box<[u8]>, RawAsymmetricKeyError> {
+  let key = handle
+    .as_private_key()
+    .ok_or(RawAsymmetricKeyError::InvalidKey)?;
+  let bytes = match key {
+    AsymmetricPrivateKey::Ec(key) => match key {
+      EcPrivateKey::P224(key) => key.to_bytes().to_vec(),
+      EcPrivateKey::P256(key) => key.to_bytes().to_vec(),
+      EcPrivateKey::P384(key) => key.to_bytes().to_vec(),
+      EcPrivateKey::P521(key) => key.to_bytes().to_vec(),
+      EcPrivateKey::Secp256k1(key) => key.to_bytes().to_vec(),
+    },
+    AsymmetricPrivateKey::X25519(key) => key.to_bytes().to_vec(),
+    AsymmetricPrivateKey::Ed25519(key) => key.to_bytes().to_vec(),
+    AsymmetricPrivateKey::X448(key) => key.to_vec(),
+    AsymmetricPrivateKey::Ed448(key) => key.to_bytes().to_vec(),
+    _ => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType(
+        "asymmetric key".to_string(),
+      ));
+    }
+  };
+  Ok(bytes.into_boxed_slice())
 }
 
 #[op2]
