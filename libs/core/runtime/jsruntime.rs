@@ -171,6 +171,11 @@ pub(crate) struct IsolateAllocations {
   /// empty bytes avoids duplicating residual sources (which the binary already
   /// ships via the residual table).
   pub(crate) lazy_source_specifiers: Box<[ModuleName]>,
+  /// External source strings inherited from the startup snapshot, in
+  /// external-reference table order (they come first, before this runtime's
+  /// own sources). The heap references them by index, so `snapshot()` must
+  /// write them back into the new sidecar ahead of `original_sources`.
+  pub(crate) inherited_external_strings: Vec<&'static [u8]>,
   pub(crate) near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
@@ -958,6 +963,7 @@ impl JsRuntime {
       .as_mut()
       .map(|s| std::mem::take(&mut s.snapshot_data.external_strings))
       .unwrap_or_default();
+    isolate_allocations.inherited_external_strings = snapshot_sources.clone();
     (
       isolate_allocations.externalized_sources,
       isolate_allocations.original_sources,
@@ -2916,7 +2922,12 @@ impl JsRuntimeForSnapshot {
       self.consumed_lazy_specifiers().into_iter().collect();
     let lazy_source_start =
       original_sources.len() - lazy_source_specifiers.len();
-    let external_strings = original_sources
+    // Strings inherited from the startup snapshot keep their table positions
+    // ahead of this runtime's own sources (see `IsolateAllocations`).
+    let inherited_external_strings =
+      std::mem::take(&mut self.0.allocations.inherited_external_strings);
+    let inherited_count = inherited_external_strings.len();
+    let external_strings: Vec<&[u8]> = original_sources
       .iter()
       .enumerate()
       .map(|(i, s)| {
@@ -2928,6 +2939,10 @@ impl JsRuntimeForSnapshot {
         }
         s.as_str().as_bytes()
       })
+      .collect();
+    let external_strings: Vec<&[u8]> = inherited_external_strings
+      .into_iter()
+      .chain(external_strings)
       .collect();
     let realm = JsRealm::clone(&self.inner.main_realm);
 
@@ -2999,7 +3014,7 @@ impl JsRuntimeForSnapshot {
         function_templates_data,
         op_count: self.inner.op_count,
         addl_refs_count: self.inner.addl_refs_count,
-        source_count: self.inner.source_count,
+        source_count: inherited_count + self.inner.source_count,
         extensions: self.inner.extensions.clone(),
         js_handled_promise_rejection_cb: maybe_js_handled_promise_rejection_cb,
         ext_import_meta_proto,
