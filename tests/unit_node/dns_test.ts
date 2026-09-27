@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertThrows, fail } from "@std/assert";
 import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
   getDefaultResultOrder as getDefaultResultOrderPromise,
@@ -42,6 +42,188 @@ Deno.test("lookupService with callback", async () => {
   assertEquals(typeof defaultImportResult.service, "string");
 });
 
+// Regression test for https://github.com/denoland/deno/issues/36537
+// `dns.lookupService` must accept a numeric string port like Node.js instead
+// of throwing `TypeError: expected i32`.
+Deno.test("[node/dns] lookupService accepts a string port", async () => {
+  const result = await new Promise<LookupServiceResult>(
+    (resolve, reject) => {
+      // deno-lint-ignore no-explicit-any
+      lookupService("127.0.0.1", "80" as any, (err, hostname, service) => {
+        if (err) reject(err);
+        else resolve({ hostname, service });
+      });
+    },
+  );
+  assertEquals(typeof result.hostname, "string");
+  assertEquals(typeof result.service, "string");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/36518
+// `Resolver.setLocalAddress` must not throw ERR_NOT_IMPLEMENTED; Node accepts
+// it and returns undefined.
+Deno.test("[node/dns] Resolver.setLocalAddress does not throw", () => {
+  const resolver = new dns.promises.Resolver();
+  resolver.setLocalAddress("0.0.0.0", "::");
+  // The two addresses may be given in either order (one IPv4, one IPv6).
+  resolver.setLocalAddress("::", "0.0.0.0");
+  // Callable with only the IPv4 argument too.
+  resolver.setLocalAddress("0.0.0.0");
+  // ... but the second argument must be the *other* family, and an invalid
+  // address is rejected, matching Node's c-ares `SetLocalAddress`.
+  assertThrows(() => resolver.setLocalAddress("::1", "::1"));
+  assertThrows(() => resolver.setLocalAddress("127.0.0.1", "127.0.0.1"));
+  assertThrows(() => resolver.setLocalAddress("bad"));
+});
+
+// Regression test for https://github.com/denoland/deno/issues/36516
+// `dns.resolveX` with a malformed hostname (e.g. an empty label) must report
+// `EBADNAME` with `errno: undefined`, matching Node.js/c-ares, instead of
+// flattening the error to `UNKNOWN` (errno -4094). The bad name is rejected
+// while parsing the query, so this does not depend on network access.
+Deno.test("[node/dns] resolve of a malformed hostname reports EBADNAME", async () => {
+  const err = await new Promise<ErrnoException>((resolve) => {
+    dns.resolve4("example..com", (err) => {
+      resolve(err as unknown as ErrnoException);
+    });
+  });
+  assert(err, "expected an error for a malformed hostname");
+  assertEquals(err.code, "EBADNAME");
+  assertEquals(err.errno, undefined);
+  assertEquals(err.syscall, "queryA");
+  assertEquals(err.hostname, "example..com");
+});
+
+// A root-name DNS question can have no answer or an NXDOMAIN response. Keep
+// both outcomes distinct and cover a nonempty NXDOMAIN control.
+for (
+  const [api, recordType, response, code, hostname] of [
+    ["callback", "A", "nodata", "ENODATA", ""],
+    ["callback", "A", "nxdomain", "ENOTFOUND", ""],
+    ["promise", "A", "nodata", "ENODATA", ""],
+    ["promise", "A", "nxdomain", "ENOTFOUND", ""],
+    ["promise", "MX", "nodata", "ENODATA", ""],
+    ["promise", "MX", "nxdomain", "ENOTFOUND", ""],
+    ["callback", "A", "nxdomain", "ENOTFOUND", "probe.example.com"],
+  ] as const
+) {
+  Deno.test(
+    `[node/dns] custom ${api} resolver preserves ${response} for ${
+      hostname || "empty"
+    } ${recordType} query`,
+    async () => {
+      const server = Deno.listenDatagram({
+        transport: "udp",
+        hostname: "127.0.0.1",
+        port: 0,
+      });
+      const resolver = api === "callback"
+        ? new dns.Resolver()
+        : new dnsPromises.Resolver();
+      resolver.setServers([
+        `127.0.0.1:${(server.addr as Deno.NetAddr).port}`,
+      ]);
+
+      const responseSent = (async () => {
+        const [request, remoteAddress] = await server.receive();
+        const reply = request.slice();
+        reply[2] = 0x81;
+        reply[3] = response === "nodata" ? 0x80 : 0x83;
+        reply.fill(0, 6, 12);
+        await server.send(reply, remoteAddress);
+        return request;
+      })().then(
+        (request) => ({ ok: true as const, request }),
+        (error) => ({ ok: false as const, error }),
+      );
+
+      let callbackCount = 0;
+      let callbackWasAsync = false;
+      let callReturned = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("DNS query timed out")),
+          3000,
+        );
+      });
+
+      try {
+        const query = api === "callback"
+          ? new Promise<unknown>((resolve) => {
+            (resolver as dns.Resolver).resolve(
+              hostname,
+              recordType,
+              (error) => {
+                callbackCount++;
+                callbackWasAsync = callReturned;
+                resolve(error);
+              },
+            );
+            callReturned = true;
+          })
+          : (resolver as dnsPromises.Resolver).resolve(hostname, recordType)
+            .then(
+              () => undefined,
+              (error) => error,
+            );
+        const error = await Promise.race([query, deadline]);
+        const responseResult = await Promise.race([responseSent, deadline]);
+        if (!responseResult.ok) throw responseResult.error;
+        const request = responseResult.request;
+        const expectedQname = hostname
+          ? new Uint8Array([
+            5,
+            ...new TextEncoder().encode("probe"),
+            7,
+            ...new TextEncoder().encode("example"),
+            3,
+            ...new TextEncoder().encode("com"),
+            0,
+          ])
+          : new Uint8Array([0]);
+        const questionEnd = 12 + expectedQname.length;
+        assert(
+          request.length >= questionEnd + 4,
+          "expected a complete DNS question",
+        );
+        assertEquals(request.slice(12, questionEnd), expectedQname);
+        assertEquals(
+          (request[questionEnd] << 8) | request[questionEnd + 1],
+          recordType === "A" ? 1 : 15,
+        );
+        assertEquals(
+          (request[questionEnd + 2] << 8) | request[questionEnd + 3],
+          1,
+        );
+
+        assert(error instanceof Error);
+        const dnsError = error as ErrnoException;
+        const syscall = recordType === "A" ? "queryA" : "queryMx";
+        assertEquals(dnsError.name, "Error");
+        assertEquals(
+          dnsError.message,
+          `${syscall} ${code}${hostname ? ` ${hostname}` : ""}`,
+        );
+        assertEquals(dnsError.code, code);
+        assertEquals(dnsError.syscall, syscall);
+        assertEquals(dnsError.errno, undefined);
+        assertEquals(dnsError.hostname, hostname || undefined);
+        if (api === "callback") {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          assertEquals(callbackCount, 1);
+          assert(callbackWasAsync, "DNS callback must be asynchronous");
+        }
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+        resolver.cancel();
+        server.close();
+        await responseSent;
+      }
+    },
+  );
+}
+
 Deno.test("lookupService promise", async () => {
   // Named import
   const result = await lookupServicePromise(address, port);
@@ -55,6 +237,25 @@ Deno.test("lookupService promise", async () => {
   );
   assertEquals(typeof defaultImportResult.hostname, "string");
   assertEquals(typeof defaultImportResult.service, "string");
+});
+
+Deno.test("[node/dns] lookupService accepts string ports", async () => {
+  const stringPort = "80" as unknown as number;
+
+  const callbackResult = await new Promise<LookupServiceResult>(
+    (resolve, reject) => {
+      lookupService("127.0.0.1", stringPort, (err, hostname, service) => {
+        if (err) reject(err);
+        else resolve({ hostname, service });
+      });
+    },
+  );
+  assertEquals(typeof callbackResult.hostname, "string");
+  assertEquals(typeof callbackResult.service, "string");
+
+  const promiseResult = await lookupServicePromise("127.0.0.1", stringPort);
+  assertEquals(typeof promiseResult.hostname, "string");
+  assertEquals(typeof promiseResult.service, "string");
 });
 
 Deno.test("lookupService not found", async () => {
@@ -253,116 +454,3 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
 });
-
-function assertEmptyHostnameResolveError(
-  error: unknown,
-  syscall: "queryA" | "queryMx",
-) {
-  assert(error instanceof Error);
-
-  const dnsError = error as ErrnoException;
-  assertEquals(dnsError.name, "Error");
-  assertEquals(dnsError.message, `${syscall} ENODATA`);
-  assertEquals(dnsError.code, "ENODATA");
-  assertEquals(dnsError.errno, undefined);
-  assertEquals(dnsError.syscall, syscall);
-  assertEquals(dnsError.hostname, undefined);
-}
-
-Deno.test(
-  "[node/dns] resolve empty hostname callback reports ENODATA",
-  async () => {
-    const error = await new Promise<unknown>((resolve) => {
-      dns.resolve("", "A", (error) => resolve(error));
-    });
-
-    assertEmptyHostnameResolveError(error, "queryA");
-  },
-);
-
-Deno.test(
-  "[node/dns] promises.resolve empty hostname reports ENODATA",
-  async () => {
-    const error = await dnsPromises.resolve("", "A").then(
-      () => undefined,
-      (error) => error,
-    );
-
-    assertEmptyHostnameResolveError(error, "queryA");
-  },
-);
-
-Deno.test(
-  "[node/dns] promises.resolve empty hostname as MX reports ENODATA",
-  async () => {
-    const error = await dnsPromises.resolve("", "MX").then(
-      () => undefined,
-      (error) => error,
-    );
-
-    assertEmptyHostnameResolveError(error, "queryMx");
-  },
-);
-
-Deno.test(
-  "[node/dns] resolve of a missing host reports ENOTFOUND",
-  async () => {
-    const error = await dnsPromises.resolve(
-      "nonexistent-host.invalid",
-      "A",
-    ).then(
-      () => undefined,
-      (error) => error,
-    );
-
-    assert(error instanceof Error);
-    const dnsError = error as ErrnoException;
-    assertEquals(
-      dnsError.message,
-      "queryA ENOTFOUND nonexistent-host.invalid",
-    );
-    assertEquals(dnsError.code, "ENOTFOUND");
-    assertEquals(dnsError.syscall, "queryA");
-    assertEquals(dnsError.hostname, "nonexistent-host.invalid");
-  },
-);
-
-Deno.test(
-  "[node/dns] custom resolver preserves NXDOMAIN for empty hostname",
-  async () => {
-    const server = Deno.listenDatagram({
-      transport: "udp",
-      hostname: "127.0.0.1",
-      port: 0,
-    });
-    const { port } = server.addr as Deno.NetAddr;
-    const resolver = new dnsPromises.Resolver();
-    resolver.setServers([`127.0.0.1:${port}`]);
-
-    const responseSent = (async () => {
-      const [request, remoteAddress] = await server.receive();
-      const response = request.slice();
-      response[2] = 0x81;
-      response[3] = 0x83; // Standard recursive response with NXDOMAIN.
-      response.fill(0, 6, 12);
-      await server.send(response, remoteAddress);
-    })();
-
-    try {
-      const error = await resolver.resolve("", "A").then(
-        () => undefined,
-        (error) => error,
-      );
-      await responseSent;
-
-      assert(error instanceof Error);
-      const dnsError = error as ErrnoException;
-      assertEquals(dnsError.message, "queryA ENOTFOUND");
-      assertEquals(dnsError.code, "ENOTFOUND");
-      assertEquals(dnsError.syscall, "queryA");
-      assertEquals(dnsError.hostname, undefined);
-    } finally {
-      server.close();
-    }
-  },
-);

@@ -4525,6 +4525,7 @@ class Http2Session extends EventEmitter {
 }
 
 const setTimeoutValue = {
+  __proto__: null,
   configurable: true,
   enumerable: true,
   writable: true,

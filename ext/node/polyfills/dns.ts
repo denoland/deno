@@ -73,7 +73,7 @@ const {
   QueryReqWrap,
   kPermTokenSink,
 } = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
-const { domainToASCII } = core.loadExtScript(
+const { toASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );
 
@@ -304,7 +304,7 @@ function lookup(
 
   const err = cares.getaddrinfo(
     req,
-    domainToASCII(hostname),
+    toASCII(hostname),
     family,
     hints,
     dnsOrderToNumber(dnsOrder),
@@ -429,7 +429,7 @@ function resolver(bindingName: string) {
     req.oncomplete = onresolve;
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
-    const err = this._handle[bindingName](req, domainToASCII(name));
+    const err = this._handle[bindingName](req, toASCII(name));
 
     if (err) {
       throw dnsException(err, bindingName, name);

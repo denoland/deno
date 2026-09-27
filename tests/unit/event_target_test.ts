@@ -352,6 +352,47 @@ Deno.test(function eventTargetAddEventListenerGlobalAbort() {
   });
 });
 
+Deno.test(function eventTargetManualRemoveCleansAbortSignalListener() {
+  const target = new EventTarget();
+  const controller = new AbortController();
+  const listener = () => {};
+
+  target.addEventListener("test", listener, { signal: controller.signal });
+  target.removeEventListener("test", listener);
+
+  let removeCount = 0;
+  const originalRemoveEventListener = target.removeEventListener;
+  target.removeEventListener = function (...args) {
+    removeCount++;
+    return originalRemoveEventListener.apply(this, args);
+  };
+  controller.abort();
+
+  assertEquals(removeCount, 0);
+});
+
+Deno.test(function eventTargetOnceListenerCleansAbortSignalListener() {
+  const target = new EventTarget();
+  const controller = new AbortController();
+  const listener = () => {};
+
+  target.addEventListener("test", listener, {
+    once: true,
+    signal: controller.signal,
+  });
+  target.dispatchEvent(new Event("test"));
+
+  let removeCount = 0;
+  const originalRemoveEventListener = target.removeEventListener;
+  target.removeEventListener = function (...args) {
+    removeCount++;
+    return originalRemoveEventListener.apply(this, args);
+  };
+  controller.abort();
+
+  assertEquals(removeCount, 0);
+});
+
 Deno.test(function eventTargetBrandChecking() {
   const self = {};
 

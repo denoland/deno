@@ -487,14 +487,22 @@ impl<'a> NpmPackageVersionResolver<'a> {
       && self.info
         .dist_tags
         .get("latest")
-        .filter(|version| self.matches_newest_dependency_date(version))
         .map(|version| {
           *version_req == *WILDCARD_VERSION_REQ ||
           self.version_req_satisfies(version_req, version).ok().unwrap_or(false)
         })
         .unwrap_or(false)
     {
-      self.tag_to_version_info("latest")
+      match self.tag_to_version_info("latest") {
+        Ok(version_info) => Ok(version_info),
+        Err(
+          too_new_error @ NpmPackageVersionResolutionError::DistTagVersionTooNew {
+            ..
+          },
+        ) => self
+          .resolve_wildcard_with_latest_too_new(version_req, too_new_error),
+        Err(err) => Err(err),
+      }
     } else {
       self.resolve_best_matching_version_info(version_req, version_req)
     }?;
@@ -543,6 +551,60 @@ impl<'a> NpmPackageVersionResolver<'a> {
       Err(NpmPackageVersionResolutionError::VersionReqNotMatched {
         ..
       }) => Err(too_new_error),
+      Err(err) => Err(err),
+    }
+  }
+
+  /// Handles the case where the `latest` dist tag would have been used
+  /// implicitly (no tag in the version requirement), but points at a version
+  /// newer than the minimum dependency date.
+  ///
+  /// Normal resolution against the version requirement comes first, so an
+  /// explicit requirement like `2.0.0` or `^1.0.0` keeps behaving exactly as
+  /// before and never silently gets a version outside of it. Only when a bare
+  /// `npm:<pkg>` (`*`) has no candidate at all do we retry as `<=latest`, the
+  /// same fallback an explicit `npm:<pkg>@latest` gets. That retry is what
+  /// makes a package with only pre-release versions resolvable: a plain range
+  /// like `*` never matches a pre-release, but a comparator carrying one does.
+  fn resolve_wildcard_with_latest_too_new(
+    &self,
+    version_req: &VersionReq,
+    too_new_error: NpmPackageVersionResolutionError,
+  ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
+    let err = match self
+      .resolve_best_matching_version_info(version_req, version_req)
+    {
+      Err(
+        err @ NpmPackageVersionResolutionError::VersionReqNotMatched { .. },
+      ) if *version_req == *WILDCARD_VERSION_REQ => err,
+      result => return result,
+    };
+    match self.resolve_best_matching_dist_tag_fallback_version_info(
+      "latest",
+      version_req,
+      too_new_error,
+    ) {
+      Ok(version_info) => Ok(version_info),
+      // Nothing at or below `latest` is old enough either. Report against the
+      // user's own version requirement rather than against the tag they never
+      // wrote, but attach the minimum dependency date: that filter, not the
+      // requirement, is what excluded every candidate. The excluded candidate
+      // (`latest`) doesn't match the requirement itself here, so
+      // `resolve_best_matching_version_info` can't infer this on its own.
+      Err(NpmPackageVersionResolutionError::DistTagVersionTooNew {
+        ..
+      }) => Err(match err {
+        NpmPackageVersionResolutionError::VersionReqNotMatched {
+          package_name,
+          version_req,
+          ..
+        } => NpmPackageVersionResolutionError::VersionReqNotMatched {
+          package_name,
+          version_req,
+          newest_dependency_date: self.newest_dependency_date,
+        },
+        err => err,
+      }),
       Err(err) => Err(err),
     }
   }
@@ -836,6 +898,59 @@ mod test {
     let result = version_resolver
       .get_resolved_package_version_and_info(&package_req.version_req);
     assert_eq!(result.unwrap().version.to_string(), "1.0.0");
+  }
+
+  /// A package with only pre-release versions whose `latest` tag is newer than
+  /// the minimum dependency date. A bare `npm:pkg` (`*`) must still resolve, by
+  /// falling back to the newest allowed version at or below `latest`, the same
+  /// way an explicit `npm:pkg@latest` does.
+  /// https://github.com/denoland/deno/issues/36614
+  fn prerelease_only_package_info() -> NpmPackageInfo {
+    NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("0.1.0-rc.6"), version_info("0.1.0-rc.6")),
+        (version("0.1.0-rc.7"), version_info("0.1.0-rc.7")),
+      ])
+      .into(),
+      dist_tags: HashMap::from([("latest".into(), version("0.1.0-rc.7"))]),
+      time: HashMap::from([
+        (version("0.1.0-rc.6"), date("2025-05-15T00:00:00.000Z")),
+        (version("0.1.0-rc.7"), date("2025-05-29T00:00:00.000Z")),
+      ]),
+    }
+  }
+
+  #[test]
+  fn test_wildcard_prerelease_only_latest_tag_too_new() {
+    let package_req = PackageReq::from_str("test").unwrap();
+    let package_info = prerelease_only_package_info();
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "0.1.0-rc.6");
+  }
+
+  #[test]
+  fn test_wildcard_prerelease_only_all_versions_too_new() {
+    let package_req = PackageReq::from_str("test").unwrap();
+    let package_info = prerelease_only_package_info();
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-01T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(
+      result.err().unwrap().to_string(),
+      concat!(
+        "Could not find npm package 'test' matching '*'.\n\n",
+        "A newer matching version was found, but it was not used because it ",
+        "was newer than the specified minimum dependency date of ",
+        "2025-05-01 00:00:00 UTC.",
+      )
+    );
   }
 
   #[test]

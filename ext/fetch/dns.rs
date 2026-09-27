@@ -174,6 +174,7 @@ pub struct PermissionedHttpConnector {
   resolver: Resolver,
   local_address: Option<IpAddr>,
   permissions: Option<PermissionsContainer>,
+  deny_check_kind: ResolvedDenyCheckKind,
 }
 
 impl PermissionedHttpConnector {
@@ -181,11 +182,13 @@ impl PermissionedHttpConnector {
     resolver: Resolver,
     local_address: Option<IpAddr>,
     permissions: Option<PermissionsContainer>,
+    deny_check_kind: ResolvedDenyCheckKind,
   ) -> Self {
     Self {
       resolver,
       local_address,
       permissions,
+      deny_check_kind,
     }
   }
 
@@ -229,17 +232,35 @@ impl std::error::Error for DnsError {
   }
 }
 
+/// Which deny list a connector re-checks resolved addresses against.
+///
+/// Connections made on behalf of `fetch()` and friends are governed by
+/// `--deny-net`; those made to load a module are governed by `--deny-import`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ResolvedDenyCheckKind {
+  #[default]
+  Net,
+  Import,
+}
+
 fn check_resolved(
   permissions: &PermissionsContainer,
+  kind: ResolvedDenyCheckKind,
   ip: &IpAddr,
   port: u16,
 ) -> Result<(), BoxError> {
-  permissions
-    .clone()
-    .check_net_resolved(ip, port, "fetch()")
-    .map_err(|e| {
-      io::Error::new(io::ErrorKind::PermissionDenied, e.to_string()).into()
-    })
+  let mut permissions = permissions.clone();
+  match kind {
+    ResolvedDenyCheckKind::Net => {
+      permissions.check_net_resolved(ip, port, "fetch()")
+    }
+    ResolvedDenyCheckKind::Import => {
+      permissions.check_import_resolved(ip, port, "import()")
+    }
+  }
+  .map_err(|e| {
+    io::Error::new(io::ErrorKind::PermissionDenied, e.to_string()).into()
+  })
 }
 
 /// Extracts the connection host (with IPv6 brackets stripped) and the
@@ -291,7 +312,7 @@ impl Service<Uri> for PermissionedHttpConnector {
       if let Ok(ip) = bare_host.parse::<IpAddr>() {
         // IP literal: `HttpConnector` connects to it directly without
         // consulting the resolver.
-        check_resolved(permissions, &ip, port)?;
+        check_resolved(permissions, this.deny_check_kind, &ip, port)?;
         let mut connector = this.http_connector(this.resolver.clone());
         return connector.call(uri).await.map_err(Into::into);
       }
@@ -307,7 +328,7 @@ impl Service<Uri> for PermissionedHttpConnector {
         .map_err(|e| -> BoxError { DnsError(e).into() })?
         .collect();
       for addr in &addrs {
-        check_resolved(permissions, &addr.ip(), port)?;
+        check_resolved(permissions, this.deny_check_kind, &addr.ip(), port)?;
       }
 
       let mut connector =
@@ -350,7 +371,7 @@ impl CheckDst for PermissionedHttpConnector {
         return Ok(());
       };
       if let Ok(ip) = bare_host.parse::<IpAddr>() {
-        return check_resolved(permissions, &ip, port);
+        return check_resolved(permissions, this.deny_check_kind, &ip, port);
       }
       let Ok(name) = Name::from_str(bare_host) else {
         return Ok(());
@@ -361,7 +382,7 @@ impl CheckDst for PermissionedHttpConnector {
         return Ok(());
       };
       for addr in addrs {
-        check_resolved(permissions, &addr.ip(), port)?;
+        check_resolved(permissions, this.deny_check_kind, &addr.ip(), port)?;
       }
       Ok(())
     })

@@ -19,6 +19,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::BinValue;
 
+use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::DenoXShimName;
 use crate::args::Flags;
@@ -686,6 +687,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
         &min_dep_age_config,
+        resolve_import_deny_rules(cli_options)?,
       )
       .await?;
       let mut runner_flags = (*managed_flags).clone();
@@ -764,6 +766,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
         &min_dep_age_config,
+        resolve_import_deny_rules(cli_options)?,
       )
       .await?;
 
@@ -800,6 +803,23 @@ fn bin_commands_for_package(
     .map_err(Into::into)
 }
 
+/// The user's `--deny-import` rules, resolved against the config the user
+/// actually selected.
+///
+/// The auto-install below runs against a generated temp `deno.json`, which
+/// cannot see a `-P` set defined in the user's config. Resolving the rules
+/// against the user's own options and baking them into the internal flags
+/// keeps the deny list — which decides what code may be downloaded at all —
+/// in force for that install, and lets
+/// `import_deny_permissions_options` treat an unresolvable set as the error it
+/// is everywhere else.
+fn resolve_import_deny_rules(
+  cli_options: &CliOptions,
+) -> Result<Option<Vec<String>>, AnyError> {
+  Ok(cli_options.import_deny_permissions_options()?.deny_import)
+}
+
+#[allow(clippy::too_many_arguments, reason = "internal re-run plumbing")]
 async fn autoinstall_package(
   req_ref: ReqRef<'_>,
   old_flags: &Flags,
@@ -808,13 +828,19 @@ async fn autoinstall_package(
   ignore_scripts: &PackagesAllowedScripts,
   deno_dir: &Path,
   min_dep_age_config: &MinimumDependencyAgeConfig,
+  import_deny_rules: Option<Vec<String>>,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
   fn make_new_flags(
     old_flags: &Flags,
     temp_dir: &Path,
     ignore_scripts: &PackagesAllowedScripts,
+    import_deny_rules: Option<Vec<String>>,
   ) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
+    // The generated config below defines no permission sets, so the selection
+    // is dropped in favour of the rules it resolved to.
+    new_flags.permissions.deny_import = import_deny_rules;
+    new_flags.permission_set = None;
     new_flags.node_modules_dir =
       Some(deno_config::deno_json::NodeModulesDirMode::Auto);
     let temp_node_modules = temp_dir.join("node_modules");
@@ -852,7 +878,12 @@ async fn autoinstall_package(
     min_dep_age_config,
   )?;
 
-  let new_flags = make_new_flags(old_flags, temp_dir.path(), ignore_scripts);
+  let new_flags = make_new_flags(
+    old_flags,
+    temp_dir.path(),
+    ignore_scripts,
+    import_deny_rules,
+  );
   let new_factory = CliFactory::from_flags(new_flags.clone());
 
   match temp_dir {

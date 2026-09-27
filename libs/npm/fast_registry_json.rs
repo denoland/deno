@@ -62,8 +62,8 @@ impl<'a, const STEP_SIZE: usize> BufBlockReader<'a, STEP_SIZE> {
     self.idx < self.len_minus_step
   }
 
-  pub fn full_block(&self) -> &'a [u8] {
-    &self.buf[self.idx..]
+  pub fn full_block(&self) -> &'a [u8; STEP_SIZE] {
+    self.buf[self.idx..].first_chunk().unwrap()
   }
 
   pub fn get_remainder(&self, dest: &mut [u8]) -> usize {
@@ -769,8 +769,7 @@ impl<'a> Tokenizer<'a> {
   pub fn tokenize(mut self) -> Result<Vec<Token>, Error> {
     while self.block_reader.has_full_block() {
       let block = self.block_reader.full_block();
-      let block =
-        simd::Simd8x64::<u8>::load(arrayref::array_ref![block, 0, 64]);
+      let block = simd::Simd8x64::<u8>::load(block);
       let (strings, characters) = self.scanner.next(&block);
       self.block_reader.advance();
       self.process_json_block(strings, characters);
@@ -779,8 +778,7 @@ impl<'a> Tokenizer<'a> {
 
     let mut remainder_buf = [0; 64];
     let _pad = self.block_reader.get_remainder(&mut remainder_buf);
-    let block =
-      simd::Simd8x64::<u8>::load(arrayref::array_ref![&remainder_buf, 0, 64]);
+    let block = simd::Simd8x64::<u8>::load(&remainder_buf);
     let (strings, characters) = self.scanner.next(&block);
     self.block_reader.advance();
     self.process_json_block(strings, characters);
@@ -1357,7 +1355,7 @@ pub fn pluck_packument_index(input: &str) -> Result<PackumentIndex<'_>, Error> {
 
   while block_reader.has_full_block() {
     let block = block_reader.full_block();
-    let block = simd::Simd8x64::<u8>::load(arrayref::array_ref![block, 0, 64]);
+    let block = simd::Simd8x64::<u8>::load(block);
     let (strings, characters) = scanner.next(&block);
     block_reader.advance();
     let ops = characters.op() & !strings.in_string;
@@ -1373,8 +1371,7 @@ pub fn pluck_packument_index(input: &str) -> Result<PackumentIndex<'_>, Error> {
 
   let mut remainder_buf = [0; 64];
   let _pad = block_reader.get_remainder(&mut remainder_buf);
-  let block =
-    simd::Simd8x64::<u8>::load(arrayref::array_ref![&remainder_buf, 0, 64]);
+  let block = simd::Simd8x64::<u8>::load(&remainder_buf);
   let (strings, characters) = scanner.next(&block);
   block_reader.advance();
   let ops = characters.op() & !strings.in_string;

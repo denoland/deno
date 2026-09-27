@@ -739,7 +739,10 @@ const plugin: Deno.lint.Plugin = {
               }
             }
 
-            if (name === "ObjectDefineProperties") {
+            if (
+              name === "ObjectDefineProperties" ||
+              name === "ObjectCreate"
+            ) {
               if (
                 node.parent?.type === "CallExpression" &&
                 (node.parent as Deno.lint.CallExpression).callee === node

@@ -54,6 +54,7 @@ class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
 }
 
 const dedicatedWorkerGlobalScopeConstructorDescriptor = {
+  __proto__: null,
   configurable: true,
   enumerable: false,
   value: DedicatedWorkerGlobalScope,
@@ -61,6 +62,7 @@ const dedicatedWorkerGlobalScopeConstructorDescriptor = {
 };
 
 const windowConstructorDescriptor = {
+  __proto__: null,
   configurable: true,
   enumerable: false,
   value: Window,
@@ -68,6 +70,7 @@ const windowConstructorDescriptor = {
 };
 
 const workerGlobalScopeConstructorDescriptor = {
+  __proto__: null,
   configurable: true,
   enumerable: false,
   value: WorkerGlobalScope,

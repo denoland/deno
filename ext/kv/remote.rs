@@ -180,6 +180,7 @@ impl DatabaseHandler for RemoteDbHandler {
         proxy: options.proxy.clone(),
         dns_resolver: Default::default(),
         permissions: None,
+        resolved_deny_check_kind: Default::default(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),

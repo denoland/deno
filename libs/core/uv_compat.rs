@@ -22,6 +22,7 @@ use std::ffi::c_void;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Waker;
+use std::time::Duration;
 use std::time::Instant;
 
 pub use pipe::*;
@@ -336,6 +337,23 @@ impl UvLoopInner {
   pub(crate) fn update_time(&self) {
     let ms = Instant::now().duration_since(self.time_origin).as_millis() as u64;
     self.cached_time_ms.set(ms);
+  }
+
+  /// The earliest pending timer, as its absolute deadline (loop-time ms) and
+  /// the delay from now until it fires (`0` if already due). Returns `None`
+  /// when no timer is scheduled. Mirrors libuv's `uv__next_timeout`, which the
+  /// event loop uses to bound how long it may block before the next timer.
+  ///
+  /// The deadline is returned alongside the delay so the caller can detect
+  /// when the earliest deadline changes and avoid re-arming its wakeup every
+  /// tick. `timers` is ordered by `(deadline_ms, id)`, so the front entry is
+  /// always the soonest.
+  pub(crate) fn next_timeout(&self) -> Option<(u64, Duration)> {
+    let deadline = self.timers.borrow().iter().next()?.deadline_ms;
+    Some((
+      deadline,
+      Duration::from_millis(deadline.saturating_sub(self.now_ms())),
+    ))
   }
 
   pub(crate) fn has_alive_handles(&self) -> bool {

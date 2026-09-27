@@ -517,6 +517,12 @@ TLSSocket.prototype[kReinitializeHandle] = function (handle) {
   if (options.ALPNProtocols) {
     this._handle.setAlpnProtocols(options.ALPNProtocols);
   }
+  // Only re-enable resumption when the session already passed
+  // setSession()'s host:port validation; an invalid buffer must not
+  // enable resumption on the new handle.
+  if (this._session && this._sessionReused) {
+    this._handle.setSessionAllowed(true);
+  }
 
   this._undestroy();
   this._sockname = undefined;
@@ -851,9 +857,15 @@ TLSSocket.prototype._init = function (socket, wrap) {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = onhandshakedone;
 
-    if (options.session) {
-      ssl.setSession(options.session);
-    }
+    // Unlike Node, options.session is not applied here: it can't be
+    // validated against the destination yet, because kConnectOptions
+    // isn't set until after construction. tls.connect() applies it via
+    // setSession(), which validates against the connect options.
+    // Consequence: a directly constructed
+    // `new TLSSocket(socket, { session })` never resumes -- with no
+    // kConnectOptions, syntheticSessionMatches() can't validate the
+    // buffer. Acceptable under the synthetic-session design, since such
+    // a buffer can't be matched to a destination in the shared cache.
   }
 
   if (options.ALPNProtocols) {
@@ -1107,6 +1119,9 @@ TLSSocket.prototype.setSession = function (_session) {
     this._session,
     this[kConnectOptions],
   );
+  if (this._handle) {
+    this._handle.setSessionAllowed(this._sessionReused);
+  }
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {
@@ -1684,7 +1699,6 @@ function connect(...args) {
     isServer: false,
     requestCert: true,
     rejectUnauthorized: options.rejectUnauthorized !== false,
-    session: options.session,
     ALPNProtocols: options.ALPNProtocols,
     highWaterMark: options.highWaterMark,
     servername: options.servername,
@@ -1695,6 +1709,12 @@ function connect(...args) {
   options.rejectUnauthorized = options.rejectUnauthorized !== false;
 
   tlssock[kConnectOptions] = options;
+
+  // Apply the session before the connection can start so the resumption
+  // gate is set before rustls creates the ClientConnection in start().
+  if (options.session) {
+    tlssock.setSession(options.session);
+  }
 
   if (cb) {
     tlssock.once("secureConnect", cb);
@@ -1708,10 +1728,6 @@ function connect(...args) {
   }
 
   tlssock._releaseControl();
-
-  if (options.session) {
-    tlssock.setSession(options.session);
-  }
 
   if (options.servername) {
     tlssock.setServername(options.servername);

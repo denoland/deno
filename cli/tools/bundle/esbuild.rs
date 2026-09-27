@@ -19,6 +19,9 @@ use crate::npm::CliNpmRegistryInfoProvider;
 use crate::sys::CliSys;
 
 pub const ESBUILD_VERSION: &str = "0.25.5";
+// Bump when helper acquisition semantics change so an existing executable is
+// reacquired under the new rules.
+const ESBUILD_CACHE_VERSION: u8 = 1;
 
 fn esbuild_platform() -> &'static str {
   match (std::env::consts::ARCH, std::env::consts::OS) {
@@ -49,7 +52,10 @@ pub async fn ensure_esbuild(
   let target = esbuild_platform();
   let mut esbuild_path = deno_dir
     .dl_folder_path()
-    .join(format!("esbuild-{}", ESBUILD_VERSION))
+    .join(format!(
+      "esbuild-{}-{}",
+      ESBUILD_VERSION, ESBUILD_CACHE_VERSION
+    ))
     .join(format!("esbuild-{}", target));
   if cfg!(windows) {
     esbuild_path.set_extension("exe");

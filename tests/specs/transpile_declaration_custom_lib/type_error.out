@@ -1,0 +1,7 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+Emit [WILDCARD]type_error_out.js
+error: Type checking failed:
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+export const x: number = "not a number";
+             ^
+    at file:///[WILDCARD]/type_error.ts:1:14

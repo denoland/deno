@@ -399,18 +399,21 @@ function getLocationHref() {
 }
 
 const locationConstructorDescriptor = {
+  __proto__: null,
   value: Location,
   configurable: true,
   writable: true,
 };
 
 const workerLocationConstructorDescriptor = {
+  __proto__: null,
   value: WorkerLocation,
   configurable: true,
   writable: true,
 };
 
 const locationDescriptor = {
+  __proto__: null,
   get() {
     return location;
   },
@@ -420,6 +423,7 @@ const locationDescriptor = {
   enumerable: true,
 };
 const workerLocationDescriptor = {
+  __proto__: null,
   get() {
     if (workerLocation == null) {
       throw new Error(

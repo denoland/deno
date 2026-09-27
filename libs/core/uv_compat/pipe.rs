@@ -43,8 +43,12 @@ pub struct uv_pipe_t {
   pub data: *mut c_void,
   pub flags: u32,
 
+  /// A raw descriptor owned directly by this handle. This is mutually
+  /// exclusive with `internal_stream` and `internal_listener`, which own
+  /// their descriptors through Tokio wrappers.
   #[cfg(unix)]
   pub(crate) internal_fd: Option<RawFd>,
+  /// A non-owning reactor registration for `internal_fd`.
   #[cfg(unix)]
   pub(crate) internal_async_fd: Option<tokio::io::unix::AsyncFd<RawFdWrapper>>,
 
@@ -133,13 +137,35 @@ pub(crate) struct PipeConnectPending {
       dyn std::future::Future<Output = std::io::Result<tokio::net::UnixStream>>,
     >,
   >,
+  /// Descriptor borrowed from the stream captured by `future`. This keeps
+  /// the `fd` getter available while a pre-bound descriptor is connecting.
+  #[cfg(unix)]
+  pub raw_fd: Option<RawFd>,
 }
 
 impl uv_pipe_t {
   /// Get the raw fd if one has been opened on this pipe.
   #[cfg(unix)]
   pub fn fd(&self) -> Option<RawFd> {
-    self.internal_fd
+    use std::os::unix::io::AsRawFd;
+
+    self
+      .internal_stream
+      .as_ref()
+      .map(|stream| stream.as_raw_fd())
+      .or_else(|| {
+        self
+          .internal_listener
+          .as_ref()
+          .map(|listener| listener.as_raw_fd())
+      })
+      .or(self.internal_fd)
+      .or_else(|| {
+        self
+          .internal_connect
+          .as_ref()
+          .and_then(|pending| pending.raw_fd)
+      })
   }
 
   /// Get the bind path if one was set.
@@ -157,8 +183,6 @@ impl uv_pipe_t {
 /// kernel attaches it to the outgoing message.
 #[cfg(unix)]
 pub unsafe fn uv_pipe_fd_for_ipc(pipe: *mut uv_pipe_t) -> c_int {
-  use std::os::fd::AsRawFd;
-
   if pipe.is_null() {
     return -1;
   }
@@ -166,13 +190,7 @@ pub unsafe fn uv_pipe_fd_for_ipc(pipe: *mut uv_pipe_t) -> c_int {
   // SAFETY: Caller guarantees pipe is initialized and valid.
   unsafe {
     let p = &*pipe;
-    let fd = if let Some(stream) = p.internal_stream.as_ref() {
-      stream.as_raw_fd()
-    } else if let Some(listener) = p.internal_listener.as_ref() {
-      listener.as_raw_fd()
-    } else {
-      p.internal_fd.unwrap_or(-1)
-    };
+    let fd = p.fd().unwrap_or(-1);
     if fd < 0 {
       return -1;
     }
@@ -661,8 +679,13 @@ pub unsafe fn uv_pipe_listen(
       libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
     }
 
-    // Wrap as tokio UnixListener using from_std.
+    // Transfer ownership to the Tokio listener. From this point onward,
+    // dropping either the std or Tokio wrapper closes the descriptor.
     use std::os::unix::io::FromRawFd;
+    let fd = (*pipe)
+      .internal_fd
+      .take()
+      .expect("pipe descriptor disappeared before listen");
     let std_listener = std::os::unix::net::UnixListener::from_raw_fd(fd);
     let listener = match tokio::net::UnixListener::from_std(std_listener) {
       Ok(l) => l,
@@ -695,9 +718,8 @@ pub unsafe fn uv_pipe_accept(
 ) -> c_int {
   unsafe {
     if let Some(stream) = (*server).internal_backlog.pop_front() {
-      use std::os::unix::io::AsRawFd;
-      let fd = stream.as_raw_fd();
-      (*client).internal_fd = Some(fd);
+      // The accepted Tokio stream is the sole descriptor owner.
+      debug_assert!((*client).internal_fd.is_none());
       (*client).internal_stream = Some(stream);
       (*client).flags |= UV_HANDLE_ACTIVE;
       // Add to pipe_handles so writes/reads are polled.
@@ -731,11 +753,27 @@ pub unsafe fn uv_pipe_connect(
 ) -> c_int {
   let path = path.to_string();
 
-  // If the pipe has a pre-bound fd (from uv_pipe_bind), use it
-  // for the connect. Otherwise create a fresh connection.
-  let bound_fd = unsafe { (*pipe).internal_fd };
+  // If the pipe has a pre-bound fd (from uv_pipe_bind), transfer it to a
+  // std UnixStream captured by the connect future. The future then owns the
+  // descriptor until it either becomes a Tokio stream or is dropped.
+  let bound_stream = unsafe {
+    use std::os::unix::io::FromRawFd;
+
+    (*pipe).internal_async_fd = None;
+    (*pipe)
+      .internal_fd
+      .take()
+      .map(|fd| std::os::unix::net::UnixStream::from_raw_fd(fd))
+  };
+  let raw_fd = bound_stream.as_ref().map(|stream| {
+    use std::os::unix::io::AsRawFd;
+    stream.as_raw_fd()
+  });
   let future = Box::pin(async move {
-    if let Some(fd) = bound_fd {
+    if let Some(stream) = bound_stream {
+      use std::os::unix::io::AsRawFd;
+
+      let fd = stream.as_raw_fd();
       // Non-blocking connect on the pre-bound socket.
       // SAFETY: fd is a valid socket from uv_pipe_bind.
       unsafe {
@@ -796,10 +834,8 @@ pub unsafe fn uv_pipe_connect(
           drop(async_fd);
         }
 
-        // Wrap the connected fd as a tokio UnixStream.
-        use std::os::unix::io::FromRawFd;
-        let std_stream = std::os::unix::net::UnixStream::from_raw_fd(fd);
-        tokio::net::UnixStream::from_std(std_stream)
+        // Transfer the connected stream into Tokio.
+        tokio::net::UnixStream::from_std(stream)
       }
     } else {
       tokio::net::UnixStream::connect(&path).await
@@ -807,13 +843,12 @@ pub unsafe fn uv_pipe_connect(
   });
 
   unsafe {
-    // Drop any AsyncFd created by a prior read_start_pipe call.
-    // The connect future will create a UnixStream that registers
-    // the same fd with the reactor; having both would corrupt
-    // readiness tracking.
-    (*pipe).internal_async_fd = None;
-
-    (*pipe).internal_connect = Some(PipeConnectPending { req, cb, future });
+    (*pipe).internal_connect = Some(PipeConnectPending {
+      req,
+      cb,
+      future,
+      raw_fd,
+    });
     (*pipe).flags |= UV_HANDLE_ACTIVE;
 
     let inner = super::get_inner((*pipe).loop_);
@@ -1196,6 +1231,15 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
 
     #[cfg(unix)]
     {
+      debug_assert!(
+        (*pipe).internal_fd.is_none()
+          || ((*pipe).internal_stream.is_none()
+            && (*pipe).internal_listener.is_none()),
+        "raw and Tokio pipe descriptor owners overlap"
+      );
+
+      // AsyncFd only borrows internal_fd, so deregister it before dropping
+      // the raw owner. Streams and listeners close their own descriptors.
       (*pipe).internal_async_fd = None;
       (*pipe).internal_stream = None;
       (*pipe).internal_listener = None;
@@ -1733,11 +1777,8 @@ pub(crate) unsafe fn poll_pipe_handle(
     if let Some((req, cb, result)) = connect_result {
       let status = match result {
         Ok(stream) => {
-          use std::os::unix::io::AsRawFd;
-          // Drop the AsyncFd from uv_pipe_open (if any) since the
-          // connected stream now owns the fd.
-          (*pipe_ptr).internal_async_fd = None;
-          (*pipe_ptr).internal_fd = Some(stream.as_raw_fd());
+          // The completed Tokio stream is the sole descriptor owner.
+          debug_assert!((*pipe_ptr).internal_fd.is_none());
           (*pipe_ptr).internal_stream = Some(stream);
           0
         }

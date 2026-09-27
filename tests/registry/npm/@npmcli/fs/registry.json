@@ -66,6 +66,76 @@
         "@npmcli/template-oss": "4.22.0",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "5.0.0": {
+      "name": "@npmcli/fs",
+      "version": "5.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "@npmcli/fs@5.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/fs/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "674619771907342b3d1ac197aaf1deeb657e3539",
+        "tarball": "http://localhost:4260/@npmcli/fs/fs-5.0.0.tgz",
+        "fileCount": 13,
+        "integrity": "sha512-7OsC1gNORBEawOa5+j2pXN9vsicaIOH5cPXxoR6fJOmH6/EXpJB2CajXOu1fPRFun2m1lktEFX11+P89hqO/og==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@npmcli%2ffs@5.0.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 26590
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "b473b1578b8506d0dee9eab2f0e547296c4de5d3",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "postsnap": "npm run lintfix --",
+        "posttest": "npm run lint",
+        "npmclilint": "npmcli-lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/fs.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.6.2",
+      "description": "filesystem utilities for the npm cli",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.27.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.20.0",
+      "dependencies": {
+        "semver": "^7.3.5"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.1",
+        "@npmcli/template-oss": "4.27.1",
+        "@npmcli/eslint-config": "^5.0.0"
+      }
     }
   },
   "author": {

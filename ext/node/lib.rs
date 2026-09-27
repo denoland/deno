@@ -50,7 +50,7 @@ pub use ops::vm::init_global_template;
 /// `runtime/transpile.rs`). Rust consumers can read it directly.
 ///
 /// When bumping the emulated Node version, change it here only.
-pub const NODE_VERSION: &str = "26.3.0";
+pub const NODE_VERSION: &str = "26.5.1";
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -327,6 +327,7 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_module_get_exception,
     ops::vm::op_vm_module_get_module_requests,
     ops::vm::op_vm_module_get_identifier,
+    ops::idna::op_node_idna_to_ascii,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,

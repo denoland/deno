@@ -1032,6 +1032,161 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] hexWrite validates its offset and length",
+  fn() {
+    const buf = Buffer.alloc(10);
+    // Same validation block as base64Write: out-of-bounds and negative
+    // offsets and negative lengths throw coded RangeErrors (negative length
+    // previously returned its own value without writing).
+    for (
+      const call of [
+        () => Buffer.prototype.hexWrite.call(buf, "aabb", 20),
+        () => Buffer.prototype.hexWrite.call(buf, "aabb", -1),
+        () => Buffer.prototype.hexWrite.call(buf, "aabb", 0, -5),
+      ]
+    ) {
+      const err = assertThrows(call, RangeError);
+      assertEquals(
+        (err as { code?: string }).code,
+        "ERR_BUFFER_OUT_OF_BOUNDS",
+      );
+    }
+    // offset == length writes nothing; oversized length clamps (Node
+    // parity).
+    assertEquals(Buffer.prototype.hexWrite.call(buf, "aabb", 10), 0);
+    assertEquals(
+      Buffer.prototype.hexWrite.call(buf, "aabbccddee", 8, 100),
+      2,
+    );
+    assertEquals(buf.toString("hex"), "0000000000000000aabb");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hexSlice direct-call index semantics match Node",
+  fn() {
+    const buf = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const hexSlice = Buffer.prototype.hexSlice;
+    // A forward range reaching past the end throws Node's coded RangeError,
+    // as do negative indexes.
+    for (
+      const call of [
+        () => hexSlice.call(buf, 0, 999),
+        () => hexSlice.call(buf, -1, 5),
+        () => hexSlice.call(buf, 0, -1),
+      ]
+    ) {
+      const err = assertThrows(call, RangeError, "Index out of range");
+      assertEquals((err as { code?: string }).code, "ERR_OUT_OF_RANGE");
+    }
+    // Reversed, empty, and Infinity-start ranges return "" (Node's
+    // StringSlice checks end <= start before bounds).
+    assertEquals(hexSlice.call(buf, 20, 5), "");
+    assertEquals(hexSlice.call(buf, 5, 2), "");
+    assertEquals(hexSlice.call(buf, 10, 10), "");
+    assertEquals(hexSlice.call(buf, Infinity), "");
+    // ToInteger coercion.
+    assertEquals(hexSlice.call(buf, "2", "5"), "030405");
+    assertEquals(hexSlice.call(buf, 1.9, 5.9), "02030405");
+    assertEquals(hexSlice.call(buf, NaN, 4), "01020304");
+    assertEquals(hexSlice.call(buf), "0102030405060708090a");
+    // Any ArrayBufferView receiver encodes its underlying bytes.
+    assertEquals(
+      hexSlice.call(new Uint8ClampedArray([1, 2, 3]), 0, 3),
+      "010203",
+    );
+    // Detached buffers report length 0: both the clamped toString path and
+    // explicit-arg direct calls return "".
+    const ab = new ArrayBuffer(8);
+    const view = Buffer.from(ab);
+    structuredClone(ab, { transfer: [ab] });
+    assertEquals(view.toString("hex"), "");
+    assertEquals(hexSlice.call(view, 0, 5), "");
+    // DataView receivers fail the TypedArray brand check. The old op accepted
+    // any ArrayBufferView here; Node rejects non-Uint8Array receivers, so
+    // throwing is the closer behavior.
+    assertThrows(
+      () => hexSlice.call(new DataView(new ArrayBuffer(4)), 0, 4),
+      TypeError,
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hex on views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+    const view = Buffer.from(ab, 8, 16);
+    const copy = Buffer.from(raw.slice(8, 24));
+    assertEquals(view.toString("hex"), copy.toString("hex"));
+    assertEquals(view.toString("hex", 1, 5), copy.toString("hex", 1, 5));
+    // 64 KiB crosses the old external-string threshold.
+    const big = Buffer.alloc(65536, 0xab);
+    assertEquals(big.toString("hex").length, 131072);
+    assertEquals(big.toString("hex", 1, 257).length, 512);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hex decode dirty-input semantics",
+  fn() {
+    // Odd-length input drops the trailing char (pre-trimmed fast path).
+    assertEquals(Buffer.from("abc", "hex"), Buffer.from([0xab]));
+    assertEquals(Buffer.from("aabbc", "hex"), Buffer.from([0xaa, 0xbb]));
+    // Whitespace and chars above U+00FF truncate through the fallback.
+    assertEquals(Buffer.from("aa bb", "hex"), Buffer.from([0xaa]));
+    assertEquals(Buffer.from("aa\u{1F600}bb", "hex"), Buffer.from([0xaa]));
+    // The fallback masks charCodeAt with 0xff, so chars above U+00FF whose
+    // low byte is a hex digit decode: U+0141 -> 'A', U+0142 -> 'B'. The
+    // native path rejects them, so this pins the fallback's old semantics.
+    assertEquals(
+      Buffer.from("aa\u0141\u0142", "hex"),
+      Buffer.from([0xaa, 0xab]),
+    );
+    // Mixed case decodes on the fast path.
+    assertEquals(
+      Buffer.from("aAbBcC", "hex"),
+      Buffer.from([0xaa, 0xbb, 0xcc]),
+    );
+    // Target fills before trailing junk is reached: clean fast-path return
+    // (Node's target-capped write), no fallback involved.
+    const small = Buffer.alloc(2);
+    assertEquals(small.write("aabbzz", "hex"), 2);
+    assertEquals(small.toString("hex"), "aabb");
+    // Junk before the target fills goes through the truncating fallback.
+    const dirty = Buffer.alloc(2);
+    assertEquals(dirty.write("aazzbb", "hex"), 1);
+    assertEquals(dirty.toString("hex"), "aa00");
+    // A partial native write before the invalid pair must not leave stale
+    // bytes past the truncation point once the fallback rewrites the prefix.
+    const partial = Buffer.alloc(4);
+    assertEquals(partial.write("aabbzz11", "hex"), 2);
+    assertEquals(Array.from(partial), [0xaa, 0xbb, 0, 0]);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hex write into views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+    const view = Buffer.from(ab, 8, 16);
+    // Writes land inside the view and leave the rest of the buffer alone.
+    assertEquals(view.write("ffff", 2, "hex"), 2);
+    assertEquals(Array.from(raw.subarray(10, 12)), [0xff, 0xff]);
+    assertEquals(raw[9], 9);
+    assertEquals(raw[12], 12);
+    assertEquals(raw[24], 24);
+    // An explicit length caps the write window.
+    assertEquals(view.write("aabbccdd", 12, 2, "hex"), 2);
+    assertEquals(Array.from(raw.subarray(20, 23)), [0xaa, 0xbb, 22]);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] File is exported from node:buffer",
   fn() {
     assertEquals(typeof BufferFile, "function");

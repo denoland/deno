@@ -585,8 +585,50 @@ extern "C" fn test_external_string_finalizer_status(
   result
 }
 
+/// Passing a NULL `result` out-pointer to the string constructors must return
+/// `napi_invalid_arg`, matching Node, instead of dereferencing NULL. Returns
+/// `true` only if all three constructors reported the error. See #36569.
+extern "C" fn test_null_result_string(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let bytes = b"hello";
+  let utf16: [u16; 5] = [104, 101, 108, 108, 111];
+
+  let mut all_invalid = true;
+  all_invalid &= unsafe {
+    napi_create_string_utf8(
+      env,
+      bytes.as_ptr() as *const c_char,
+      bytes.len(),
+      std::ptr::null_mut(),
+    )
+  } == napi_sys::Status::napi_invalid_arg;
+  all_invalid &= unsafe {
+    napi_create_string_latin1(
+      env,
+      bytes.as_ptr() as *const c_char,
+      bytes.len(),
+      std::ptr::null_mut(),
+    )
+  } == napi_sys::Status::napi_invalid_arg;
+  all_invalid &= unsafe {
+    napi_create_string_utf16(
+      env,
+      utf16.as_ptr(),
+      utf16.len(),
+      std::ptr::null_mut(),
+    )
+  } == napi_sys::Status::napi_invalid_arg;
+
+  let mut result = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, all_invalid, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
+    napi_new_property!(env, "test_null_result_string", test_null_result_string),
     napi_new_property!(env, "test_utf8", test_utf8),
     napi_new_property!(env, "test_utf16", test_utf16),
     napi_new_property!(env, "test_utf8_roundtrip", test_utf8_roundtrip),

@@ -4,7 +4,7 @@
 -- file
 [WILDCARD]--- vendor2.ts.js
 -- http
---- 127.0.0.1_PORT4250
+--- 127.0.0.1_port_4250
 [# assert_equals.ts]
 ---- 5552028e702144b8ef1fc0b0c45082c0feb18f16783148d34065125a2a0781c1.js
 - node_analysis_cache_v2[WILDCARD]
@@ -33,7 +33,7 @@
 -- add (symlink)
 
 ./vendor
-- http_127.0.0.1_4250
+- http_127.0.0.1_port_4250
 -- @std
 --- assert
 ---- 1.0.0

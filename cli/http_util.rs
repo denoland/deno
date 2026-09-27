@@ -19,6 +19,8 @@ use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_fetch::create_http_client;
+use deno_runtime::deno_fetch::dns::ResolvedDenyCheckKind;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::TlsKey;
 use deno_runtime::deno_tls::load_certs;
@@ -72,6 +74,22 @@ impl HttpClientProvider {
       client: OnceCell::new(),
       cert_clients: DashMap::new(),
     }
+  }
+
+  /// Makes every connection this provider's clients open re-check the address
+  /// it resolved to against the `--deny-import` list.
+  ///
+  /// The import permission check runs on the specifier's hostname before any
+  /// DNS lookup, so on its own it cannot see that a name resolves to a denied
+  /// address. Used by the module fetcher, whose requests are the ones
+  /// `--deny-import` governs.
+  pub fn with_import_permissions(
+    mut self,
+    permissions: PermissionsContainer,
+  ) -> Self {
+    self.options.permissions = Some(permissions);
+    self.options.resolved_deny_check_kind = ResolvedDenyCheckKind::Import;
+    self
   }
 
   pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {

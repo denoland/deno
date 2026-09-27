@@ -168,6 +168,43 @@ mod tests {
   }
 
   #[test]
+  fn parse_net_args_unix_socket() {
+    let entries = svec!["unix:/var/run/docker.sock"];
+    let expected = svec!["unix:/var/run/docker.sock"];
+    let actual = parse(entries).unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn parse_net_args_unix_socket_relative_error() {
+    assert!(parse(svec!["unix:relative.sock"]).is_err());
+    assert!(parse(svec!["unix:"]).is_err());
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn parse_net_args_windows_named_pipe() {
+    let entries = svec![r"unix:\\.\pipe\app"];
+    let expected = svec![r"unix:\\.\pipe\app"];
+    let actual = parse(entries).unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn parse_net_args_drive_letter_unix_socket() {
+    let entries = svec![r"unix:C:\sockets\app.sock"];
+    #[cfg(windows)]
+    {
+      let actual = parse(entries).unwrap();
+      assert_eq!(actual, svec![r"unix:C:\sockets\app.sock"]);
+    }
+    #[cfg(not(windows))]
+    {
+      assert!(parse(entries).is_err());
+    }
+  }
+
+  #[test]
   fn parse_net_args_ipv6() {
     let entries = svec!["[::1]", "[::]:5678", "[::1]:5678"];
     let expected = svec!["[::1]", "[::]:5678", "[::1]:5678"];
