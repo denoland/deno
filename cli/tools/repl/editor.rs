@@ -271,15 +271,6 @@ fn validate(input: &str) -> ValidationResult {
   // Whether the last (non-comment) token was a `.`, which means a member
   // access is still missing its property and more input should be read.
   let mut ends_with_dot = false;
-  // Byte offset (in `input`) up to which the text has already been consumed by
-  // a detected regex literal; tokens starting before it must be skipped.
-  let mut skip_until = 0;
-  // Whether any regex literal was skipped. Deciding that a `/` starts a regex
-  // is a guess (we don't track expression position), so once we've acted on
-  // that guess we only ever *suppress* a validation error, never report one:
-  // a wrong "valid" is recovered by V8 reporting the real syntax error, but a
-  // wrong "invalid"/"incomplete" wedges the REPL waiting for input.
-  let mut skipped_regex = false;
   let tokens = deno_ast::lex(input, deno_ast::MediaType::TypeScript)
     .into_iter()
     .filter_map(|item| match item.inner {
@@ -288,19 +279,12 @@ fn validate(input: &str) -> ValidationResult {
     });
 
   for (token, range) in tokens {
-    if range.start < skip_until {
-      // This token is part of a regex literal that was already consumed.
-      continue;
-    }
     let current_line_index = line_info.line_index(range.start);
     if current_line_index != last_line_index {
       div_token_count_on_current_line = 0;
       last_line_index = current_line_index;
 
       if let Some(error) = queued_validation_error {
-        if skipped_regex {
-          return ValidationResult::Valid(None);
-        }
         return error;
       }
     }
@@ -310,13 +294,11 @@ fn validate(input: &str) -> ValidationResult {
         // A regex literal is reported by the lexer as a division operator (`/`
         // or `/=`) followed by however the rest of the pattern happens to
         // tokenize — often a stray string literal that swallows the closing `]`
-        // of a character class, leaving the `[` orphaned on the stack. Rescan
-        // the literal by hand and skip the tokens it covers.
+        // of a character class. If this could be a regex, use the parser rather
+        // than trusting the bracket stack or prematurely accepting the input.
         // See https://github.com/denoland/deno/issues/24963
-        if let Some(regex_end) = find_regex_literal_end(input, range.start) {
-          skip_until = regex_end;
-          skipped_regex = true;
-          continue;
+        if find_regex_literal_end(input, range.start).is_some() {
+          return validate_after_regex(input);
         }
         // The rescan above rejected this as a regex, so treat it as division.
         // In practice that only happens when the scan ran to the end of the
@@ -366,7 +348,7 @@ fn validate(input: &str) -> ValidationResult {
     }
   }
 
-  let result = if let Some(error) = queued_validation_error {
+  if let Some(error) = queued_validation_error {
     error
   } else if !stack.is_empty() || in_template || ends_with_dot {
     // A trailing `.` means the user broke a method chain across lines (e.g.
@@ -375,21 +357,39 @@ fn validate(input: &str) -> ValidationResult {
     ValidationResult::Incomplete
   } else {
     ValidationResult::Valid(None)
-  };
-
-  if skipped_regex && !matches!(result, ValidationResult::Valid(_)) {
-    // We guessed that a `/` started a regex and skipped over it. If that left
-    // the input looking unbalanced the guess was probably wrong, so hand it to
-    // V8 rather than rejecting it or blocking on more input. The skipped span
-    // can swallow one half of a `` ` `` pair or a trailing `.`, so this covers
-    // every non-`Valid` outcome rather than just a queued error or open stack.
-    // The suppression is whole-input, so one skipped regex on the first line
-    // also silences a genuine error further down; that keeps the guess strictly
-    // non-reporting, which is the property this relies on.
-    return ValidationResult::Valid(None);
   }
+}
 
-  result
+fn validate_after_regex(input: &str) -> ValidationResult {
+  // Unlike the standalone lexer, the parser knows whether `/` is division or
+  // a regex literal and handles quotes and brackets within regexes correctly.
+  // Only ask for more input when parsing reaches EOF unexpectedly; all other
+  // syntax errors should still be reported by the normal REPL evaluation path.
+  // https://github.com/denoland/deno/issues/22328
+  let parsed = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: deno_ast::ModuleSpecifier::parse("file:///repl.ts").unwrap(),
+    text: input.into(),
+    media_type: deno_ast::MediaType::TypeScript,
+    capture_tokens: false,
+    maybe_syntax: None,
+    scope_analysis: false,
+  });
+  // A missing closing brace is recoverable, so also inspect diagnostics from
+  // successful parses rather than only the fatal parse error.
+  let diagnostic = match &parsed {
+    Ok(parsed) => parsed.diagnostics().first(),
+    Err(error) => Some(error),
+  };
+  if let Some(error) = diagnostic {
+    match error.kind() {
+      SyntaxError::Eof => return ValidationResult::Incomplete,
+      SyntaxError::Expected(_, actual) if actual == "<eof>" => {
+        return ValidationResult::Incomplete;
+      }
+      _ => {}
+    }
+  }
+  ValidationResult::Valid(None)
 }
 
 /// Scan a regex literal starting at the opening `/` located at `start` and
@@ -745,6 +745,67 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   }
 
   #[test]
+  fn validate_multiline_regex() {
+    // https://github.com/denoland/deno/issues/22328
+    for code in [
+      "function test(input: string): string {\n  return input.replace(/a/, 'b');",
+      "function test(input: string): string {\n  const regex = /a/;",
+      "if (/regex/) {",
+      "while (/regex/) {",
+      "for (; /regex/;) {",
+      "function test() {\n  return /[']/;",
+      "function test() {\n  return /[\"]/;",
+      "function test() {\n  return /[{}()\\[\\]]/;",
+      "function test() {\n  return /=foo/;",
+      "function test() {\n  return /é/u; // comment",
+      "function test() {\n  return /a/;\n// another line",
+    ] {
+      assert!(
+        matches!(validate(code), ValidationResult::Incomplete),
+        "{code:?} should accept another line"
+      );
+      assert!(
+        matches!(validate(&format!("{code}\n}}")), ValidationResult::Valid(_)),
+        "{code:?} should be complete after closing the block"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_regex_incomplete_expressions() {
+    for (code, closing) in [
+      ("const patterns = [/a/, /b/", "]"),
+      ("console.log(/a/", ")"),
+      ("const pattern = (/a/", ")"),
+      ("function test() { if (/[']/) {", "}}"),
+    ] {
+      assert!(
+        matches!(validate(code), ValidationResult::Incomplete),
+        "{code:?} should accept another line"
+      );
+      assert!(matches!(
+        validate(&format!("{code}{closing}")),
+        ValidationResult::Valid(_)
+      ));
+    }
+  }
+
+  #[test]
+  fn validate_regex_does_not_hide_syntax_errors() {
+    for code in [
+      "function test() { return /a/; const = 1;",
+      "if (/regex/) { ]",
+      "const re = /(/;",
+      "const re = /[']/; ]",
+    ] {
+      assert!(
+        matches!(validate(code), ValidationResult::Valid(_)),
+        "{code:?} should be submitted for a syntax error"
+      );
+    }
+  }
+
+  #[test]
   fn validate_regex_literal_with_quotes() {
     // A character class containing a quote used to lex as a stray string
     // literal that swallowed the closing `]`, leaving the `[` orphaned on the
@@ -784,12 +845,13 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_division_is_not_a_regex() {
     assert!(matches!(validate("a / b"), ValidationResult::Valid(_)));
     assert!(matches!(validate("a / b / c"), ValidationResult::Valid(_)));
-    // The two above reach `Valid` through the regex rescan and its suppression,
-    // not the division counter. A `(` that never closes would otherwise be
-    // `Incomplete`, so this only passes if the second `/` on the line trips the
-    // counter and bails, which is the fallback those two never reach.
+    // A guessed regex must not hide an unclosed call containing division.
     assert!(matches!(
       validate("f(a / b / c"),
+      ValidationResult::Incomplete
+    ));
+    assert!(matches!(
+      validate("f(a / b / c)"),
       ValidationResult::Valid(_)
     ));
   }
@@ -806,18 +868,15 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
 
   #[test]
   fn validate_ambiguous_slash_never_reports_an_error() {
-    // Whether a `/` starts a regex depends on expression position, which we
-    // don't track. Both of these are guesses that can go the wrong way, so the
-    // validator must fall back to letting V8 report the real error rather than
-    // rejecting the input or blocking on more of it.
+    // The parser must distinguish regex literals from division even in
+    // positions that a lexer-only heuristic can get wrong.
     assert!(matches!(
       validate("if (x) /re/.test(y)"),
       ValidationResult::Valid(_)
     ));
     assert!(matches!(validate("x++ /2/ y"), ValidationResult::Valid(_)));
-    // The skipped span can end inside a template literal, leaving the opening
-    // `` ` `` consumed and the closing one not, or swallow the token before a
-    // trailing `.`. Both would otherwise block the REPL waiting for input.
+    // A slash inside a template must not be mistaken for a closing regex
+    // delimiter, and a missing property is left to the evaluation path.
     assert!(matches!(
       validate("a / `x / y`"),
       ValidationResult::Valid(_)
