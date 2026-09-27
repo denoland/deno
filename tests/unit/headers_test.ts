@@ -459,3 +459,41 @@ Deno.test(function invalidHeadersFlaky() {
     'Invalid header value: "\u0000x"',
   );
 });
+
+Deno.test(function headerValuesNormalizationAndValidation() {
+  const invalidHeaderValues = [
+    ["a\nb", "a\nb"],
+    [" a\nb", "a\nb"],
+    ["a\nb ", "a\nb"],
+    [" a\nb ", "a\nb"],
+    ["a\rb", "a\rb"],
+    [" a\rb", "a\rb"],
+    ["a\rb ", "a\rb"],
+    [" a\rb ", "a\rb"],
+  ];
+
+  for (const [value, expected] of invalidHeaderValues) {
+    assertThrows(
+      () => new Headers().append("x", value),
+      TypeError,
+      `Invalid header value: "${expected}"`,
+    );
+  }
+
+  const validHeaderValues = [
+    [" a b ", "a b"],
+    [" a\tb ", "a\tb"],
+    ["c d ", "c d"],
+    [" c d", "c d"],
+    [" ", ""],
+    ["", ""],
+  ];
+
+  for (const [value, expected] of validHeaderValues) {
+    const headers = new Headers();
+
+    headers.append("x", value);
+
+    assertEquals(headers.get("x"), expected);
+  }
+});
