@@ -87,6 +87,90 @@
       "optionalDependencies": {
         "encoding": "^0.1.13"
       }
+    },
+    "5.0.2": {
+      "name": "minipass-fetch",
+      "version": "5.0.2",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "MIT",
+      "_id": "minipass-fetch@5.0.2",
+      "bugs": {
+        "url": "https://github.com/npm/minipass-fetch/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "coverage-map": "map.js",
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "3973a605ddfd8abb865e50d6fc634853c8239729",
+        "tarball": "http://localhost:4260/minipass-fetch/minipass-fetch-5.0.2.tgz",
+        "fileCount": 11,
+        "integrity": "sha512-2d0q2a8eCi2IRg/IGubCNRJoYbA1+YPXAzQVRFmB45gdGZafyivnZ5YSEfo3JikbjGxOdntGFvBQGqaSMXlAFQ==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/minipass-fetch@5.0.2",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 47219
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "f270dcf377e893ff0b473d5bc4680e81ad55fd26",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "test:tls-fixtures": "./test/fixtures/tls/setup.sh",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/minipass-fetch.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.10.1",
+      "description": "An implementation of window.fetch in Node.js using Minipass streams",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.27.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.22.0",
+      "dependencies": {
+        "minipass": "^7.0.3",
+        "minizlib": "^3.0.1",
+        "minipass-sized": "^2.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "nock": "^13.2.4",
+        "parted": "^0.1.1",
+        "form-data": "^4.0.0",
+        "iconv-lite": "^0.7.2",
+        "abort-controller": "^3.0.0",
+        "@npmcli/template-oss": "4.27.1",
+        "@npmcli/eslint-config": "^5.0.0",
+        "string-to-arraybuffer": "^1.0.2",
+        "@ungap/url-search-params": "^0.2.2",
+        "abortcontroller-polyfill": "~1.7.3"
+      },
+      "optionalDependencies": {
+        "iconv-lite": "^0.7.2"
+      }
     }
   },
   "author": {

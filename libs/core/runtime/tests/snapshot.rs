@@ -244,6 +244,7 @@ fn es_snapshot() {
         phase: crate::modules::ModuleImportPhase::Evaluation,
       }],
       module_type: ModuleType::JavaScript,
+      is_internal: false,
     }
   }
 
@@ -281,6 +282,7 @@ fn es_snapshot() {
     name: specifier.into(),
     requests: vec![],
     module_type: ModuleType::JavaScript,
+    is_internal: false,
   });
 
   modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));

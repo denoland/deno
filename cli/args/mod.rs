@@ -1532,8 +1532,12 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
+  /// The code cache is disabled while collecting coverage, because V8
+  /// compiles a module loaded from the code cache without block coverage
+  /// counters, and then reports every line of its top-level code as
+  /// covered.
   pub fn code_cache_enabled(&self) -> bool {
-    self.flags.code_cache_enabled
+    self.flags.code_cache_enabled && self.coverage_dir().is_none()
   }
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {

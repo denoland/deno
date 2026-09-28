@@ -119,6 +119,11 @@ fn parse_args(
   let mut i = 0;
   let mut positional_index = 0;
   let mut trailing_mode = false;
+  // Set when `--` appears before the first positional: the remaining args
+  // fill the positionals literally (a leading hyphen is not a flag).
+  let mut positional_only = false;
+  // Whether any positional value has been consumed yet.
+  let mut positional_started = false;
   let mut found_subcommand = skip_subcommand.is_none();
   let mut passthrough_from: Option<usize> = None;
   // Per-positional trailing: when set, ALL remaining args (including flags)
@@ -161,6 +166,29 @@ fn parse_args(
       continue;
     }
 
+    // Positional-only mode: a `--` appeared before the first positional of
+    // an entrypoint-style command (see the `--` handling below), so consume
+    // positional values without interpreting leading hyphens as flags, e.g.
+    // `deno run -- -script.ts`. Once the positionals are complete, the
+    // command's trailing var args receive the rest. Note that a second `--`
+    // is forwarded literally here: only the first `--` is special, and it
+    // was already consumed to enter this mode.
+    if positional_only {
+      if let Some(pos_def) = positional_defs.get(positional_index) {
+        apply_value_with_delimiter(result, pos_def, arg)?;
+        // Move to next positional unless this one accepts multiple
+        match pos_def.num_args {
+          NumArgs::ZeroOrMore | NumArgs::OneOrMore => {}
+          _ => positional_index += 1,
+        }
+      } else {
+        // This mode is only entered when cmd_def.trailing_var_arg is set.
+        result.trailing.push(arg.clone());
+      }
+      i += 1;
+      continue;
+    }
+
     // After `--`, everything is trailing
     if trailing_mode {
       result.trailing.push(arg.clone());
@@ -175,6 +203,26 @@ fn parse_args(
         && next_pos.trailing
       {
         positional_trailing_def = Some(next_pos);
+        i += 1;
+        continue;
+      }
+      // For entrypoint-style commands (a single-value positional followed
+      // by trailing var args: run/serve/eval/task/compile), a `--` before
+      // the first positional does not start trailing args; it marks the
+      // remaining args as positional-only so the entrypoint itself may
+      // start with a hyphen (mirrors clap's trailing_var_arg). Commands
+      // with a multi-value positional (test/bench/install) instead mirror
+      // clap's `.last(true)`: args after `--` bypass the positional and
+      // stay trailing, so they fall through here.
+      if !positional_started
+        && cmd_def.trailing_var_arg
+        && let Some(next_pos) = positional_defs.get(positional_index)
+        && !matches!(
+          next_pos.num_args,
+          NumArgs::ZeroOrMore | NumArgs::OneOrMore
+        )
+      {
+        positional_only = true;
         i += 1;
         continue;
       }
@@ -213,6 +261,7 @@ fn parse_args(
     } else {
       // Positional argument
       if let Some(pos_def) = positional_defs.get(positional_index) {
+        positional_started = true;
         apply_value_with_delimiter(result, pos_def, arg)?;
 
         // If this positional has trailing: true, absorb everything
