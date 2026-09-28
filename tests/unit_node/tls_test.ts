@@ -801,6 +801,174 @@ Deno.test("mTLS client certificate authentication", async () => {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+// webpki rejects X.509v1 certificates at parse time, so `ext/node` builds and
+// verifies those chains itself. OpenSSL (and therefore Node) accepts them, so
+// a v1 cert with a genuinely signed chain has to keep working, while one that
+// merely *names* a trusted issuer must not.
+const v1Key = Deno.readTextFileSync(join(tlsTestdataDir, "localhost_v1.key"));
+const v1Cert = Deno.readTextFileSync(join(tlsTestdataDir, "localhost_v1.crt"));
+const v1ForgedKey = Deno.readTextFileSync(
+  join(tlsTestdataDir, "localhost_v1_forged.key"),
+);
+const v1ForgedCert = Deno.readTextFileSync(
+  join(tlsTestdataDir, "localhost_v1_forged.crt"),
+);
+const v1ViaNonCaKey = Deno.readTextFileSync(
+  join(tlsTestdataDir, "localhost_v1_via_non_ca.key"),
+);
+const v1ViaNonCaCert = Deno.readTextFileSync(
+  join(tlsTestdataDir, "localhost_v1_via_non_ca.crt"),
+);
+
+async function withV1Server(
+  serverOptions: tls.TlsOptions,
+  fn: (port: number) => Promise<void>,
+) {
+  const server = tls.createServer(serverOptions, (socket) => {
+    socket.end("hello");
+  });
+  server.on("tlsClientError", () => {});
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    await fn((server.address() as net.AddressInfo).port);
+  } finally {
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  }
+}
+
+Deno.test("tls.connect accepts X.509v1 server cert signed by the CA", async () => {
+  await withV1Server({ key: v1Key, cert: v1Cert }, async (port) => {
+    const authorized = await new Promise<boolean>((resolve, reject) => {
+      const client = tls.connect({
+        host: "localhost",
+        servername: "localhost",
+        port,
+        ca: rootCaCert,
+      });
+      client.on("secureConnect", () => {
+        const { authorized } = client;
+        client.destroy();
+        resolve(authorized);
+      });
+      client.on("error", reject);
+    });
+
+    assert(authorized);
+  });
+});
+
+Deno.test("tls.connect rejects X.509v1 server cert not signed by the CA", async () => {
+  await withV1Server(
+    { key: v1ForgedKey, cert: v1ForgedCert },
+    async (port) => {
+      const error = await new Promise<Error>((resolve, reject) => {
+        const client = tls.connect({
+          host: "localhost",
+          servername: "localhost",
+          port,
+          ca: rootCaCert,
+        });
+        client.on("secureConnect", () => {
+          client.destroy();
+          reject(new Error("unexpectedly accepted forged X.509v1 server cert"));
+        });
+        client.on("error", resolve);
+      });
+
+      assertEquals(
+        (error as Error & { code?: string }).code,
+        "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      );
+    },
+  );
+});
+
+Deno.test("tls.connect rejects X.509v1 chain through a non-CA cert", async () => {
+  await withV1Server(
+    // `cert` carries the v1 leaf followed by `localhost.crt`, which really
+    // signed it but has basicConstraints CA:FALSE.
+    { key: v1ViaNonCaKey, cert: v1ViaNonCaCert + cert },
+    async (port) => {
+      const error = await new Promise<Error>((resolve, reject) => {
+        const client = tls.connect({
+          host: "localhost",
+          servername: "localhost",
+          port,
+          ca: rootCaCert,
+        });
+        client.on("secureConnect", () => {
+          client.destroy();
+          reject(new Error("unexpectedly accepted a non-CA issuer"));
+        });
+        client.on("error", resolve);
+      });
+
+      assertEquals(
+        (error as Error & { code?: string }).code,
+        "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+      );
+    },
+  );
+});
+
+Deno.test("tls.connect rejectUnauthorized:false proceeds for untrusted X.509v1 server cert", async () => {
+  await withV1Server({ key: v1Key, cert: v1Cert }, async (port) => {
+    // No `ca`, so the chain can't be built -- the connection must still come
+    // up with the error reported via `authorizationError`, like Node does.
+    const socket = await new Promise<tls.TLSSocket>((resolve, reject) => {
+      const client = tls.connect({
+        host: "localhost",
+        servername: "localhost",
+        port,
+        rejectUnauthorized: false,
+      });
+      client.on("secureConnect", () => resolve(client));
+      client.on("error", reject);
+    });
+
+    try {
+      assertEquals(socket.authorized, false);
+      // Node reports the OpenSSL error code here, not an Error object.
+      assertEquals(
+        socket.authorizationError as unknown as string,
+        "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      );
+    } finally {
+      socket.destroy();
+    }
+  });
+});
+
+Deno.test("tls.connect rejectUnauthorized:false proceeds for forged X.509v1 server cert", async () => {
+  await withV1Server(
+    { key: v1ForgedKey, cert: v1ForgedCert },
+    async (port) => {
+      const socket = await new Promise<tls.TLSSocket>((resolve, reject) => {
+        const client = tls.connect({
+          host: "localhost",
+          servername: "localhost",
+          port,
+          ca: rootCaCert,
+          rejectUnauthorized: false,
+        });
+        client.on("secureConnect", () => resolve(client));
+        client.on("error", reject);
+      });
+
+      try {
+        assertEquals(socket.authorized, false);
+        assertEquals(
+          socket.authorizationError as unknown as string,
+          "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+        );
+      } finally {
+        socket.destroy();
+      }
+    },
+  );
+});
+
 Deno.test(
   "requestCert + rejectUnauthorized:false: no client cert => authorized=false",
   async () => {
