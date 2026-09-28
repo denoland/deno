@@ -332,17 +332,18 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
-      let (request_format, maybe_etag, maybe_cached_info) = match maybe_file_cached {
+      let (request_format, maybe_etag, maybe_cached_info, is_upgrading_cached_info) = match maybe_file_cached {
         // don't use the etag since it corresponds to the abbreviated format
         Some(cached_info) if cached_info_needs_full_packument(downloader.packument_format, &cached_info) => {
-          (NpmPackumentRequestFormat::Full, None, Some(cached_info.info))
+          (NpmPackumentRequestFormat::Full, None, Some(cached_info.info), true)
         }
         Some(cached_info) => (
           downloader.packument_format.refresh_request_format(is_full_packument(&cached_info)),
           cached_info.etag,
           Some(cached_info.info),
+          false,
         ),
-        None => (downloader.packument_format.initial_request_format(), None, None),
+        None => (downloader.packument_format.initial_request_format(), None, None, false),
       };
 
       let response = downloader.download_packument(&name, maybe_etag, request_format).await?;
@@ -351,7 +352,18 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           log::debug!("Respected etag for packument '{0}'", name); // used in the tests
           return Ok(FutureResult::SavedFsCache(Arc::new(maybe_cached_info.unwrap())));
         },
-        NpmCacheHttpClientResponse::NotFound => return Ok(FutureResult::PackageNotExists),
+        NpmCacheHttpClientResponse::NotFound => {
+          // Some registries only serve metadata to requests with the npm
+          // `Accept` header, so keep using the cached abbreviated data when
+          // the full packument isn't found, like when it's freshly fetched.
+          if is_upgrading_cached_info
+            && let Some(cached_info) = maybe_cached_info
+          {
+            log::debug!("Full packument for '{0}' was not found. Using the cached abbreviated install manifest.", name);
+            return Ok(FutureResult::SavedFsCache(Arc::new(cached_info)));
+          }
+          return Ok(FutureResult::PackageNotExists);
+        }
         NpmCacheHttpClientResponse::Bytes(response) => {
           downloader.parse_packument(response, request_format).await?
         }
