@@ -1566,19 +1566,19 @@ impl KeyObjectHandle {
       named_curve.ok_or(RawAsymmetricKeyError::MissingNamedCurve)?;
     if is_public {
       let key = match named_curve {
-        "secp224r1" => EcPublicKey::P224(
+        "P-224" | "prime224v1" | "secp224r1" => EcPublicKey::P224(
           p224::PublicKey::from_sec1_bytes(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
-        "prime256v1" | "secp256r1" => EcPublicKey::P256(
+        "P-256" | "prime256v1" | "secp256r1" => EcPublicKey::P256(
           p256::PublicKey::from_sec1_bytes(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
-        "secp384r1" => EcPublicKey::P384(
+        "P-384" | "prime384v1" | "secp384r1" => EcPublicKey::P384(
           p384::PublicKey::from_sec1_bytes(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
-        "secp521r1" => EcPublicKey::P521(
+        "P-521" | "secp521r1" => EcPublicKey::P521(
           p521::PublicKey::from_sec1_bytes(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
@@ -1597,19 +1597,19 @@ impl KeyObjectHandle {
       )))
     } else {
       let key = match named_curve {
-        "secp224r1" => EcPrivateKey::P224(
+        "P-224" | "prime224v1" | "secp224r1" => EcPrivateKey::P224(
           p224::SecretKey::from_slice(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
-        "prime256v1" | "secp256r1" => EcPrivateKey::P256(
+        "P-256" | "prime256v1" | "secp256r1" => EcPrivateKey::P256(
           p256::SecretKey::from_slice(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
-        "secp384r1" => EcPrivateKey::P384(
+        "P-384" | "prime384v1" | "secp384r1" => EcPrivateKey::P384(
           p384::SecretKey::from_slice(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
-        "secp521r1" => EcPrivateKey::P521(
+        "P-521" | "secp521r1" => EcPrivateKey::P521(
           p521::SecretKey::from_slice(data)
             .map_err(|_| RawAsymmetricKeyError::InvalidKey)?,
         ),
@@ -1862,6 +1862,7 @@ impl KeyObjectHandle {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum RawAsymmetricKeyError {
+  #[class("ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS")]
   #[error("raw key format is not supported for key type: {0}")]
   UnsupportedKeyType(String),
   #[error("namedCurve is required for EC raw keys")]
@@ -3793,10 +3794,19 @@ pub fn op_node_export_public_key_raw(
     AsymmetricPublicKey::Ed25519(key) => key.to_bytes().to_vec(),
     AsymmetricPublicKey::X448(key) => key.to_vec(),
     AsymmetricPublicKey::Ed448(key) => key.to_bytes().to_vec(),
-    _ => {
+    AsymmetricPublicKey::Rsa(_) => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType("rsa".to_string()));
+    }
+    AsymmetricPublicKey::RsaPss(_) => {
       return Err(RawAsymmetricKeyError::UnsupportedKeyType(
-        "asymmetric key".to_string(),
+        "rsa-pss".to_string(),
       ));
+    }
+    AsymmetricPublicKey::Dsa(_) => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType("dsa".to_string()));
+    }
+    AsymmetricPublicKey::Dh(_) => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType("dh".to_string()));
     }
   };
   Ok(bytes.into_boxed_slice())
@@ -4409,10 +4419,19 @@ pub fn op_node_export_private_key_raw(
     AsymmetricPrivateKey::Ed25519(key) => key.to_bytes().to_vec(),
     AsymmetricPrivateKey::X448(key) => key.to_vec(),
     AsymmetricPrivateKey::Ed448(key) => key.to_bytes().to_vec(),
-    _ => {
+    AsymmetricPrivateKey::Rsa(_) => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType("rsa".to_string()));
+    }
+    AsymmetricPrivateKey::RsaPss(_) => {
       return Err(RawAsymmetricKeyError::UnsupportedKeyType(
-        "asymmetric key".to_string(),
+        "rsa-pss".to_string(),
       ));
+    }
+    AsymmetricPrivateKey::Dsa(_) => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType("dsa".to_string()));
+    }
+    AsymmetricPrivateKey::Dh(_) => {
+      return Err(RawAsymmetricKeyError::UnsupportedKeyType("dh".to_string()));
     }
   };
   Ok(bytes.into_boxed_slice())

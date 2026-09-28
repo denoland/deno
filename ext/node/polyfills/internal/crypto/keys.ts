@@ -995,8 +995,10 @@ class PrivateKeyObject extends AsymmetricKeyObject {
 
   export(options: any) {
     if (
-      options?.passphrase !== undefined && options.format !== "pem" &&
-      options.format !== "der"
+      options?.format !== undefined &&
+      options.format !== "pem" &&
+      options.format !== "der" &&
+      (options.passphrase !== undefined || options.cipher !== undefined)
     ) {
       throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
         options.format,

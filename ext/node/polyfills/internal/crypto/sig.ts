@@ -48,7 +48,10 @@ const {
   validateFunction,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+
+const { isAnyArrayBuffer } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const lazyWritable = core.createLazyLoader("node:_stream_writable");
 
@@ -508,10 +511,14 @@ function verifyOneShot(
     validateFunction(callback, "callback");
   }
 
-  if (!ArrayBufferIsView(data) && typeof data !== "string") {
+  if (
+    typeof data !== "string" &&
+    !ArrayBufferIsView(data) &&
+    !isAnyArrayBuffer(data)
+  ) {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
-      ["Buffer", "TypedArray", "DataView"],
+      ["string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
       data,
     );
   }
@@ -519,7 +526,7 @@ function verifyOneShot(
   if (
     typeof signature !== "string" &&
     !ArrayBufferIsView(signature) &&
-    !ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, signature)
+    !isAnyArrayBuffer(signature)
   ) {
     throw new ERR_INVALID_ARG_TYPE(
       "signature",
@@ -533,14 +540,20 @@ function verifyOneShot(
   }
 
   // Normalize ArrayBufferView data to Uint8Array for Rust ops
-  const dataBytes = ArrayBufferIsView(data) &&
-      !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
+  const dataBytes = isAnyArrayBuffer(data)
+    ? new Uint8Array(data)
+    : ArrayBufferIsView(data) &&
+        !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
     ? new Uint8Array(
       TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
       TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
       TypedArrayPrototypeGetByteLength(data as ArrayBufferView),
     )
     : data as ArrayBufferView | string;
+
+  const signatureBytes = isAnyArrayBuffer(signature)
+    ? new Uint8Array(signature)
+    : signature;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePublic);
@@ -585,7 +598,7 @@ function verifyOneShot(
       ) {
         throw new TypeError("Context parameter is unsupported");
       }
-      result = op_node_verify_ed25519(handle, dataBytes, signature);
+      result = op_node_verify_ed25519(handle, dataBytes, signatureBytes);
     } else if (keyType === "ed448") {
       const keyOpts = typeof key === "object" && key !== null &&
           !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
@@ -598,7 +611,7 @@ function verifyOneShot(
       ) {
         throw new TypeError("Context parameter is unsupported");
       }
-      result = op_node_verify_ed448(handle, dataBytes, signature);
+      result = op_node_verify_ed448(handle, dataBytes, signatureBytes);
     } else if (
       keyType === "x25519" || keyType === "x448" || keyType === "dh"
     ) {
@@ -625,7 +638,7 @@ function verifyOneShot(
         ? { ...key, key: publicKeyObject }
         : publicKeyObject;
       result = Verify(digest).update(dataBytes)
-        .verify(verifyKey, signature);
+        .verify(verifyKey, signatureBytes);
     }
 
     if (callback) {
