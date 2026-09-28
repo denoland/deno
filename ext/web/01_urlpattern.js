@@ -390,7 +390,9 @@ class URLPattern {
 
       const res = result[key] ??= {
         input: values[i],
-        groups: component.regexpString === "^(.*)$" ? { "0": values[i] } : {},
+        groups: component.regexpString === "^(.*)$"
+          ? { [component.groupNameList[0]]: values[i] }
+          : {},
       };
 
       switch (component.regexpString) {
@@ -398,7 +400,7 @@ class URLPattern {
           if (values[i] !== "") return null;
           break;
         case "^(.*)$":
-          res.groups["0"] = values[i];
+          res.groups[component.groupNameList[0]] = values[i];
           break;
         default: {
           const match = RegExpPrototypeExec(component.regexp, values[i]);
