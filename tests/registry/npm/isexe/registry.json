@@ -164,6 +164,104 @@
       },
       "directories": {},
       "_hasShrinkwrap": false
+    },
+    "4.0.0": {
+      "name": "isexe",
+      "version": "4.0.0",
+      "description": "Minimal module to check if a file is executable.",
+      "main": "./dist/commonjs/index.min.js",
+      "module": "./dist/esm/index.min.js",
+      "types": "./dist/commonjs/index.d.ts",
+      "tshy": {
+        "selfLink": false,
+        "exports": {
+          "./raw": "./src/index.ts",
+          "./package.json": "./package.json",
+          ".": {
+            "import": {
+              "types": "./dist/esm/index.d.ts",
+              "default": "./dist/esm/index.min.js"
+            },
+            "require": {
+              "types": "./dist/commonjs/index.d.ts",
+              "default": "./dist/commonjs/index.min.js"
+            }
+          }
+        }
+      },
+      "exports": {
+        "./raw": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.min.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.min.js"
+          }
+        }
+      },
+      "devDependencies": {
+        "@types/node": "^25.2.1",
+        "esbuild": "^0.27.3",
+        "prettier": "^3.8.1",
+        "tap": "^21.5.1",
+        "tshy": "^3.1.3",
+        "typedoc": "^0.28.16"
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "prepare": "tshy && bash build.sh",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "tap",
+        "snap": "tap",
+        "format": "prettier --write .",
+        "typedoc": "typedoc"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "BlueOak-1.0.0",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/isexe.git"
+      },
+      "engines": {
+        "node": ">=20"
+      },
+      "type": "module",
+      "gitHead": "2e7df7dabc4f68e88cf6b32b9029225ba52c6b0c",
+      "_id": "isexe@4.0.0",
+      "bugs": {
+        "url": "https://github.com/isaacs/isexe/issues"
+      },
+      "_nodeVersion": "24.4.1",
+      "_npmVersion": "11.9.0",
+      "dist": {
+        "integrity": "sha512-FFUtZMpoZ8RqHS3XeXEmHWLA4thH+ZxCv2lOiPIn1Xc7CxrqhWzNSDzD+/chS/zbYezmiwWLdQC09JdQKmthOw==",
+        "shasum": "48f6576af8e87a18feb796b7ed5e2e5903b43dca",
+        "tarball": "http://localhost:4260/isexe/isexe-4.0.0.tgz",
+        "fileCount": 41,
+        "unpackedSize": 64013
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
     }
   },
   "author": {

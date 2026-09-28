@@ -230,7 +230,10 @@ pub mod _ops {
   pub use super::extensions::Op;
   pub use super::extensions::OpDecl;
   pub use super::extensions::OpMethodDecl;
+  pub use super::ops::OpCommonCtx;
   pub use super::ops::OpCtx;
+  pub use super::ops::OpCtxs;
+  pub use super::ops::OpDeclStorage;
   #[cfg(debug_assertions)]
   pub use super::ops::reentrancy_check;
   pub use super::ops_metrics::OpMetricsEvent;

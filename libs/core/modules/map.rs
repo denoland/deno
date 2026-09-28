@@ -2,8 +2,10 @@
 
 use std::borrow::Cow;
 use std::cell::Cell;
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -16,7 +18,6 @@ use deno_error::JsErrorBox;
 use futures::future::FutureExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
-use sourcemap::DecodedMap;
 
 use super::CustomModuleEvaluationKind;
 use super::ImportAttributesContext;
@@ -58,9 +59,8 @@ use crate::runtime::JsRealm;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
 use crate::runtime::exception_state::ExceptionState;
+use crate::source_map::DATA_PREFIX;
 use crate::source_map::SourceMapper;
-
-const DATA_PREFIX: &str = "data:";
 
 mod dynamic;
 mod evaluation;
@@ -79,7 +79,7 @@ fn is_internal_scheme(scheme: &str) -> bool {
   matches!(scheme, "ext" | "node" | "checkin")
 }
 
-fn is_internal_module_specifier(specifier: &str) -> bool {
+pub(crate) fn is_internal_module_specifier(specifier: &str) -> bool {
   let Ok(specifier) = ModuleSpecifier::parse(specifier) else {
     return false;
   };
@@ -932,32 +932,33 @@ impl ModuleMap {
         .try_clone()
         .unwrap_or_else(|| ModuleName::from(name.as_str().to_string()));
 
-      if source_mapping_url.starts_with(DATA_PREFIX) {
-        if let Ok(DecodedMap::Regular(sm)) =
-          sourcemap::decode_data_url(&source_mapping_url)
-        {
-          self
-            .source_mapper
-            .borrow_mut()
-            .add_source_map(module_name, sm);
-        }
-      } else {
+      // Inline (`data:`) maps are stored undecoded — `SourceMapper` parses
+      // them on the first stack trace that needs them, if ever. Decoding here
+      // used to keep a parsed source map alive for every compiled module.
+      //
+      // Note this trades retention rather than removing it: for a module with
+      // an inline map (every CLI TS module) we now retain a copy of the base64
+      // payload instead of a decoded `SourceMap`, on top of the copy V8 keeps
+      // on the script. It is still a net win — a decoded map with its token
+      // vector is larger than the base64 that produced it — but not free.
+      // TODO(bartlomieju): don't store `data:` URLs at all; re-read
+      // `get_source_mapping_url` off the module handle when a trace needs it.
+      let source_map_url = if source_mapping_url.starts_with(DATA_PREFIX) {
+        source_mapping_url.into_owned()
+      } else if let Ok(module_url) = ModuleSpecifier::parse(name.as_str()) {
         // Resolve external source map URL relative to the module URL
-        let resolved_url =
-          if let Ok(module_url) = ModuleSpecifier::parse(name.as_str()) {
-            module_url
-              .join(&source_mapping_url)
-              .unwrap_or(module_url)
-              .to_string()
-          } else {
-            source_mapping_url.into_owned()
-          };
+        module_url
+          .join(&source_mapping_url)
+          .unwrap_or(module_url)
+          .to_string()
+      } else {
+        source_mapping_url.into_owned()
+      };
 
-        self
-          .source_mapper
-          .borrow_mut()
-          .add_source_map_url(module_name, resolved_url);
-      }
+      self
+        .source_mapper
+        .borrow_mut()
+        .add_source_map_url(module_name, source_map_url);
     }
 
     // TODO(bartlomieju): maybe move to a helper function?
@@ -1190,12 +1191,17 @@ impl ModuleMap {
       return Ok(());
     }
 
-    let _loading_internal_modules_guard = self
+    // `is_internal` is computed once at registration (see
+    // `ModuleMapData::create_module_info`); this used to clone the module name
+    // and `Url::parse` it on every instantiation.
+    let is_internal = self
       .data
       .borrow()
-      .get_name_by_id(id)
-      .filter(|name| is_internal_module_specifier(name))
-      .map(|_| LoadingInternalModulesGuard::new(self));
+      .info
+      .get(id)
+      .is_some_and(|info| info.is_internal);
+    let _loading_internal_modules_guard =
+      is_internal.then(|| LoadingInternalModulesGuard::new(self));
 
     tc_scope.set_slot(self as *const _);
     let instantiate_result = module.instantiate_module2(
@@ -1209,7 +1215,91 @@ impl ModuleMap {
       return Err(v8::Global::new(tc_scope, exception));
     }
 
+    self.drop_instantiated_requests(tc_scope, id);
+
     Ok(())
+  }
+
+  /// Frees the import edges of every module in a just-instantiated graph.
+  ///
+  /// `ModuleInfo::requests` has exactly three consumers, and none of them can
+  /// run for a module that is already linked:
+  ///
+  /// - `module_resolve_callback` / `module_source_callback`, which V8 only
+  ///   invokes while *instantiating* a module (V8 skips modules that are
+  ///   already linked when instantiating a later graph that imports them, and
+  ///   a failed instantiation only resets modules that were still linking);
+  /// - `RecursiveModuleLoad::register_and_recurse_inner`, which walks the
+  ///   edges of an already-registered module purely to make sure the subgraph
+  ///   is registered — and a linked module necessarily has its whole subgraph
+  ///   registered already.
+  ///
+  /// This is the same argument `ModuleMapData::serialize_for_snapshotting`
+  /// makes for dropping the edges of snapshot-instantiated modules; here we
+  /// apply it at runtime, where the edges (a `Url` plus a specifier string per
+  /// import) were previously retained for the life of the process.
+  ///
+  /// "Already linked" is checked against V8 rather than assumed: this runs
+  /// re-entrantly. `instantiate_module` bails out when a module is already
+  /// being instantiated (see the FIXME above), and `lazy_load_esm_module`
+  /// instantiates a module from *inside* a sibling's resolve callback, so an
+  /// inner graph can overlap an outer graph that V8 is still linking. Taking
+  /// the edges of a module still in `Instantiating` would pull them out from
+  /// under the in-flight `module_resolve_callback`/`module_source_callback`.
+  /// Skipping a node also stops the walk there, which only costs retention.
+  fn drop_instantiated_requests<'s, 'i>(
+    &self,
+    scope: &mut v8::PinScope<'s, 'i>,
+    root: ModuleId,
+  ) {
+    // When building a snapshot, `serialize_for_snapshotting` drops exactly the
+    // same edges (those of the modules flagged in `instantiated`), so walking
+    // the graph here is pure overhead.
+    if self.will_snapshot {
+      return;
+    }
+    let mut data = self.data.borrow_mut();
+    if data.info.get(root).is_none_or(|i| i.requests.is_empty()) {
+      return;
+    }
+    let mut stack = vec![root];
+    let mut seen = HashSet::with_capacity(16);
+    while let Some(id) = stack.pop() {
+      if !seen.insert(id) {
+        continue;
+      }
+      // Anything below `Instantiated` may still have its edges read by V8.
+      // `Errored` is reachable only from a failed *evaluation* — a failed
+      // instantiation resets the graph to `Uninstantiated` — so those modules
+      // are linked and will never be resolved again.
+      let status = match data.handles.get(id) {
+        Some(handle) => v8::Local::new(scope, handle).get_status(),
+        None => continue,
+      };
+      if matches!(
+        status,
+        v8::ModuleStatus::Uninstantiated | v8::ModuleStatus::Instantiating
+      ) {
+        continue;
+      }
+      let Some(info) = data.info.get_mut(id) else {
+        continue;
+      };
+      let requests = std::mem::take(&mut info.requests);
+      if requests.is_empty() {
+        continue;
+      }
+      #[cfg(test)]
+      data.dropped_requests.insert(id, requests.clone());
+      for request in &requests {
+        if let Some(child) = data.get_id(
+          request.reference.specifier.as_str(),
+          &request.reference.requested_module_type,
+        ) {
+          stack.push(child);
+        }
+      }
+    }
   }
 
   /// Called by V8 during `JsRuntime::instantiate_module`. This is only used internally, so we use the Isolate's annex
@@ -1262,6 +1352,17 @@ impl ModuleMap {
         })
         .map(|r| r.reference.specifier.clone())
     };
+    // Every real static import edge carries a `specifier_key` (set in
+    // `new_module_from_js_source`) — the only `None` is the synthetic root
+    // request in `recursive_load.rs`, which is never a referrer's edge — and
+    // V8 only asks about modules it is linking, whose edges
+    // `drop_instantiated_requests` leaves alone. A miss here isn't fatal (we
+    // fall through to full loader resolution below), but it would quietly
+    // change the resolution result, so make it loud in dev builds.
+    debug_assert!(
+      pre_resolved_specifier.is_some(),
+      r#"no registered import edge for "{specifier_str}" in "{referrer_name}""#
+    );
     let maybe_module = module_map.resolve_callback(
       scope,
       &specifier_str,
@@ -1306,35 +1407,42 @@ impl ModuleMap {
     );
     let requested_module_type =
       get_requested_module_type_from_attributes(&attributes);
+    // A missing edge should be impossible — V8 only asks about modules it is
+    // linking, and `drop_instantiated_requests` leaves those alone. Report it
+    // as a JS error rather than aborting the process if that ever stops
+    // holding.
     let module_reference = {
       let module_map_data = module_map.data.borrow();
       let referrer_info = module_map_data
         .get_info_by_module(&referrer_global)
         .expect("ModuleInfo not found");
-      let module_request = referrer_info
+      referrer_info
         .requests
         .iter()
         .find(|r| {
           r.specifier_key
             .as_ref()
-            .is_some_and(|s| s == &specifier_str) && r.reference.requested_module_type == requested_module_type
+            .is_some_and(|s| s == &specifier_str)
+            && r.reference.requested_module_type == requested_module_type
         })
-        .expect("ModuleInfo::requests did not contain a matching specifier_key when getting source");
-      module_request.reference.clone()
+        .map(|module_request| module_request.reference.clone())
     };
-    let key = ModuleSourceKey::from_reference(&module_reference);
-    if let Some(entry) = module_map.data.borrow().sources.get(&key) {
-      Some(v8::Local::new(scope, entry))
-    } else {
-      let message = v8::String::new(
-        scope,
-        &format!(r#"Module source can not be imported for "{specifier_str}""#),
-      )
-      .unwrap();
-      let exception = v8::Exception::reference_error(scope, message);
-      scope.throw_exception(exception);
-      None
+    let source = module_reference.and_then(|module_reference| {
+      let key = ModuleSourceKey::from_reference(&module_reference);
+      module_map.data.borrow().sources.get(&key).cloned()
+    });
+    if let Some(source) = source {
+      return Some(v8::Local::new(scope, source));
     }
+
+    let message = v8::String::new(
+      scope,
+      &format!(r#"Module source can not be imported for "{specifier_str}""#),
+    )
+    .unwrap();
+    let exception = v8::Exception::reference_error(scope, message);
+    scope.throw_exception(exception);
+    None
   }
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
@@ -1547,12 +1655,51 @@ impl ModuleMap {
     None
   }
 
+  /// Borrows the import edges of a module. The returned guard keeps the
+  /// module map's `RefCell` borrowed for reads — callers must not try to
+  /// mutate the map while holding it.
   pub(crate) fn get_requested_modules(
     &self,
     id: ModuleId,
+  ) -> Option<Ref<'_, [ModuleRequest]>> {
+    Ref::filter_map(self.data.borrow(), |d| {
+      d.info.get(id).map(|i| i.requests.as_slice())
+    })
+    .ok()
+  }
+
+  /// Owned copy of a module's import edges, for assertions in tests. Falls
+  /// back to the edges recorded before instantiation dropped them.
+  #[cfg(test)]
+  pub(crate) fn get_requested_modules_cloned(
+    &self,
+    id: ModuleId,
   ) -> Option<Vec<ModuleRequest>> {
-    // TODO(mmastrac): Remove cloning. We were originally cloning this at the call sites but that's no excuse.
-    self.data.borrow().info.get(id).map(|i| i.requests.clone())
+    let data = self.data.borrow();
+    let requests = data.info.get(id).map(|i| i.requests.clone())?;
+    if requests.is_empty()
+      && let Some(dropped) = data.dropped_requests.get(&id)
+    {
+      return Some(dropped.clone());
+    }
+    Some(requests)
+  }
+
+  /// Returns the module's registered (canonical, post-redirect) specifier,
+  /// parsed, but only when it differs from `specifier`. Lets callers that
+  /// already hold the requested specifier skip both the string copy and the
+  /// `Url::parse` in the common non-redirect case.
+  pub(crate) fn canonical_specifier_if_different(
+    &self,
+    id: ModuleId,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let data = self.data.borrow();
+    let name = data.info.get(id).map(|i| i.name.as_str())?;
+    if name == specifier.as_str() {
+      return None;
+    }
+    ModuleSpecifier::parse(name).ok()
   }
 
   /// Drain all ready code-cache futures.

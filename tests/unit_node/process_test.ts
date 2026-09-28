@@ -1624,6 +1624,22 @@ Deno.test("process.resourceUsage()", () => {
   assert(later.systemCPUTime >= usage.systemCPUTime);
 });
 
+Deno.test("process.resourceUsage() maxRSS is in kilobytes", () => {
+  const rssBytes = Deno.memoryUsage().rss;
+  const { maxRSS } = process.resourceUsage();
+
+  // maxRSS is a peak, so it must be at least roughly the current RSS.
+  assert(
+    maxRSS * 1024 >= rssBytes / 2,
+    `maxRSS=${maxRSS} rss=${rssBytes}`,
+  );
+  // Keep this loose to account for peak-vs-current drift in the test process.
+  assert(
+    maxRSS * 1024 < rssBytes * 64,
+    `maxRSS=${maxRSS} rss=${rssBytes}`,
+  );
+});
+
 Deno.test("importedResourceUsage", async () => {
   const { resourceUsage } = await import("node:process");
   assert(resourceUsage === process.resourceUsage);
