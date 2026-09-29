@@ -180,6 +180,42 @@
       "args": "run -A --allow-scripts npm:@denotest/optional-lifecycle@8.0.0",
       "output": "required.out",
       "exitCode": 1
+    },
+    "save_optional": {
+      "cwd": "./optional_root",
+      "args": "add --save-optional --allow-scripts npm:@denotest/failing-lifecycle@1.0.0",
+      "output": "[WILDCARD]Warning: script 'install' in '@denotest/failing-lifecycle@1.0.0' failed with exit code 1\n[WILDCARD]"
+    },
+    "hoisted_save_optional": {
+      "cwd": "./optional_root_hoisted",
+      "args": "add --save-optional --allow-scripts npm:@denotest/failing-lifecycle@1.0.0",
+      "output": "[WILDCARD]Warning: script 'install' in '@denotest/failing-lifecycle@1.0.0' failed with exit code 1\n[WILDCARD]"
+    },
+    "member_save_optional": {
+      "cwd": "./optional_member/member",
+      "args": "add --save-optional --allow-scripts npm:@denotest/failing-lifecycle@1.0.0",
+      "output": "[WILDCARD]Warning: script 'install' in '@denotest/failing-lifecycle@1.0.0' failed with exit code 1\n[WILDCARD]"
+    },
+    "package_lock_optional": {
+      // deno.lock is seeded from package-lock.json, which includes the root
+      // optionalDependencies
+      "cwd": "./optional_package_lock",
+      "args": "install --allow-scripts",
+      "output": "[WILDCARD]Warning: script 'install' in '@denotest/failing-lifecycle@1.0.0' failed with exit code 1\n[WILDCARD]"
+    },
+    "optional_also_imported": {
+      "cwd": "./optional_and_import",
+      "args": "install --allow-scripts",
+      "output": "required.out",
+      "exitCode": 1
+    },
+    "optional_also_imported_other_range": {
+      // the import resolves to the same version as the optional dependency
+      // seeded from package-lock.json
+      "cwd": "./optional_and_range_import",
+      "args": "install --allow-scripts",
+      "output": "required.out",
+      "exitCode": 1
     }
   }
 }
