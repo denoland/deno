@@ -95,7 +95,7 @@ pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   // Replaces port part with a special string token (because
   // ":" cannot be used in filename on some platforms).
   // Ex: $DENO_DIR/remote/https/deno.land/
-  let Some(cache_parts) = base_url_to_filename_parts(url, "_PORT") else {
+  let Some(cache_parts) = base_url_to_filename_parts(url) else {
     return Err(std::io::Error::new(
       ErrorKind::InvalidInput,
       format!("Can't convert url (\"{}\") to filename.", url),

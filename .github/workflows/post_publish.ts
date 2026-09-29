@@ -35,21 +35,6 @@ const workflow = createWorkflow({
         with: { "deno-version": "v2.x" },
       }),
       step({
-        name: "Authenticate with Google Cloud",
-        uses: "google-github-actions/auth@v3",
-        with: {
-          project_id: "denoland",
-          credentials_json: "${{ secrets.GCP_SA_KEY }}",
-          export_environment_variables: true,
-          create_credentials_file: true,
-        },
-      }),
-      step({
-        name: "Setup gcloud",
-        uses: "google-github-actions/setup-gcloud@v3",
-        with: { project_id: "denoland" },
-      }),
-      step({
         name: "Upload version file to dl.deno.land",
         env: {
           AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",

@@ -127,6 +127,72 @@
         "@npmcli/template-oss": "4.21.3",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "6.1.0": {
+      "name": "proc-log",
+      "version": "6.1.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "proc-log@6.1.0",
+      "bugs": {
+        "url": "https://github.com/npm/proc-log/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "18519482a37d5198e231133a70144a50f21f0215",
+        "tarball": "http://localhost:4260/proc-log/proc-log-6.1.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-iG+GYldRf2BQ0UDUAd6JQ/RwzaQy6mXmsk/IzlYyal4A4SNFw54MeH4/tLkF4I5WoWG9SQwuqWzS99jaFQHBuQ==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/proc-log@6.1.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 12573
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "9a6975d69bda1a1b2123b79d290dfefc245ab050",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "postsnap": "eslint index.js test/*.js --fix",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/proc-log.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.6.3",
+      "description": "just emit 'log' events on the process object",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.28.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.21.1",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.1",
+        "@npmcli/template-oss": "4.28.1",
+        "@npmcli/eslint-config": "^6.0.0"
+      }
     }
   },
   "author": {
