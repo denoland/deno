@@ -1,0 +1,19 @@
+{
+  "tests": {
+    // A node:http request routed through a proxy writes the target host/port
+    // into the request sent to the proxy. A host or port carrying CR/LF must be
+    // refused with ERR_INVALID_CHAR before it reaches the wire (matching Node)
+    // instead of being injected into the request line / Host header. Passing
+    // `setHost: false` skips the Host-header setter that would otherwise catch
+    // it, so the check has to live at the proxy boundary. The valid target is
+    // still accepted, so the check does not regress the allowed path.
+    "crlf_target_is_refused": {
+      "args": "run --allow-net=127.0.0.1 main.mjs",
+      "envs": {
+        "NODE_USE_ENV_PROXY": "1",
+        "HTTP_PROXY": "http://127.0.0.1:9466"
+      },
+      "output": "main.out"
+    }
+  }
+}
