@@ -7,6 +7,11 @@
   resolved "http://localhost:4260/@denotest/add/-/add-1.0.0.tgz"
   integrity sha512-uvNpnVPU/CC2Do/LNF3TkhoLGLLKC6jFDPiSnojuZCEwmoXJjS2+Sn+LYk7eUix4vsMKA9ctxaMhcfb6pdHQTQ==
 
+"@denotest/different-nested-dep-child@*":
+  version "1.0.0"
+  resolved "http://localhost:4260/@denotest/different-nested-dep-child/-/different-nested-dep-child-1.0.0.tgz"
+  integrity sha512-sIM/PqkkyqcAEpc0YMOnIyON7hVm37IMpWy3JgF/P65F2A5eTid+AIJna3UBwaAcDrh+qORKc2/Zl15EEs5efw==
+
 "@denotest/esm-basic@1.0.0":
   version "1.0.0"
   resolved "http://localhost:4260/@denotest/esm-basic/-/esm-basic-1.0.0.tgz"

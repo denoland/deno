@@ -25,8 +25,14 @@ pub enum YarnLockfileImportError {
 
 /// Convert a yarn v1 `yarn.lock` string into a deno.lock v5 JSON string. Only
 /// the npm subset is populated.
-pub fn yarn_lock_to_deno_lock_v5(
+///
+/// `package_json_deps` are the `(name, version requirement)` pairs, as
+/// written, that the workspace's package.json files declare. yarn.lock does
+/// not record which of its entries are direct dependencies, so only these
+/// become `specifiers`.
+pub fn yarn_lock_to_deno_lock_v5<'a>(
   text: &str,
+  package_json_deps: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> Result<String, YarnLockfileImportError> {
   if is_yarn_berry(text) {
     return Err(YarnLockfileImportError::BerryUnsupported);
@@ -112,19 +118,25 @@ pub fn yarn_lock_to_deno_lock_v5(
     npm.insert(format!("{}@{}", name, version), Value::Object(entry));
   }
 
-  // Build specifiers from every pattern in the lockfile. Unused entries are
-  // pruned during install.
+  // Build specifiers from the package.json dependencies only, like the other
+  // importers do from their root and workspace sections. yarn keys each entry
+  // by the `name@req` pattern exactly as its requester wrote it, so a
+  // declaration finds its entry by that pattern. A pattern that only other
+  // packages request must not become a specifier: deno.lock would treat the
+  // package as a top-level dependency, and install never prunes it, since it
+  // only drops specifiers that the lockfile's workspace section used to list.
   let mut specifiers: BTreeMap<String, String> = BTreeMap::new();
-  for (pattern, (_name, version)) in &pattern_to_resolved {
-    let Some((name, req)) = split_spec(pattern) else {
-      continue;
-    };
+  for (name, req) in package_json_deps {
     if !is_supported_req(req) {
       continue;
     }
+    let Some((_name, version)) = resolve(&pattern_to_resolved, name, req)
+    else {
+      continue;
+    };
     specifiers
       .entry(format!("npm:{}@{}", name, req))
-      .or_insert_with(|| version.clone());
+      .or_insert(version);
   }
 
   let mut output = serde_json::Map::new();
@@ -379,7 +391,7 @@ supports-color@^7.1.0:
 
   #[test]
   fn translates_yarn_v1() {
-    let out = yarn_lock_to_deno_lock_v5(SAMPLE).unwrap();
+    let out = yarn_lock_to_deno_lock_v5(SAMPLE, [("chalk", "^4.0.0")]).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["version"], "5");
     assert_eq!(v["specifiers"]["npm:chalk@^4.0.0"], "4.1.2");
@@ -391,6 +403,26 @@ supports-color@^7.1.0:
   }
 
   #[test]
+  fn only_package_json_deps_become_specifiers() {
+    // chalk's own dependencies are locked as well, but only the package.json
+    // dependency is top-level. A declared dependency that yarn.lock does not
+    // lock is left for Deno to resolve.
+    let out = yarn_lock_to_deno_lock_v5(
+      SAMPLE,
+      [("chalk", "^4.0.0"), ("not-locked", "^1.0.0")],
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let specifiers = v["specifiers"].as_object().unwrap();
+    assert_eq!(
+      specifiers.keys().collect::<Vec<_>>(),
+      vec!["npm:chalk@^4.0.0"]
+    );
+    // The transitive packages stay in the npm graph.
+    assert_eq!(v["npm"].as_object().unwrap().len(), 6);
+  }
+
+  #[test]
   fn scoped_patterns() {
     let input = r#"# yarn lockfile v1
 
@@ -399,7 +431,8 @@ supports-color@^7.1.0:
   resolved "https://registry.yarnpkg.com/@scope/pkg/-/pkg-1.2.3.tgz"
   integrity sha512-SP
 "#;
-    let out = yarn_lock_to_deno_lock_v5(input).unwrap();
+    let out =
+      yarn_lock_to_deno_lock_v5(input, [("@scope/pkg", "^1.0.0")]).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["specifiers"]["npm:@scope/pkg@^1.0.0"], "1.2.3");
     assert!(
@@ -429,7 +462,7 @@ pkg@^1.0.0:
   dependencies:
     "@babel/code-frame" "^7.0.0"
 "#;
-    let out = yarn_lock_to_deno_lock_v5(input).unwrap();
+    let out = yarn_lock_to_deno_lock_v5(input, [("pkg", "^1.0.0")]).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
     let pkg_deps = v["npm"]["pkg@1.0.0"]["dependencies"].as_array().unwrap();
     assert!(pkg_deps.iter().any(|d| d == "@babel/code-frame@7.0.0"));
@@ -437,6 +470,7 @@ pkg@^1.0.0:
 
   #[test]
   fn multi_pattern_header() {
+    // e.g. the root and a workspace member declare different ranges.
     let input = r#"# yarn lockfile v1
 
 "chalk@^4.0.0", "chalk@^4.1.0":
@@ -444,7 +478,11 @@ pkg@^1.0.0:
   resolved "..."
   integrity sha512-CHALK
 "#;
-    let out = yarn_lock_to_deno_lock_v5(input).unwrap();
+    let out = yarn_lock_to_deno_lock_v5(
+      input,
+      [("chalk", "^4.0.0"), ("chalk", "^4.1.0")],
+    )
+    .unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["specifiers"]["npm:chalk@^4.0.0"], "4.1.2");
     assert_eq!(v["specifiers"]["npm:chalk@^4.1.0"], "4.1.2");
@@ -460,7 +498,7 @@ __metadata:
 "chalk@npm:^4.0.0":
   version: 4.1.2
 "#;
-    let err = yarn_lock_to_deno_lock_v5(input).unwrap_err();
+    let err = yarn_lock_to_deno_lock_v5(input, []).unwrap_err();
     assert!(matches!(err, YarnLockfileImportError::BerryUnsupported));
   }
 
@@ -468,8 +506,9 @@ __metadata:
   fn skips_unsupported_reqs() {
     // Non-registry reqs (file:/link:/workspace:/git/http) and aliased
     // (`npm:`) reqs cannot be expressed as plain `npm:name@req` specifiers, so
-    // they must be omitted. A normal registry dep alongside them confirms the
-    // supported subset is still emitted.
+    // they must be omitted even when package.json declares them. A normal
+    // registry dep alongside them confirms the supported subset is still
+    // emitted.
     let input = r#"# yarn lockfile v1
 
 ok@^1.0.0:
@@ -497,7 +536,19 @@ remote@https://example.com/remote.tgz:
   resolved "https://registry.yarnpkg.com/underlying/-/underlying-2.0.0.tgz"
   integrity sha512-UNDERLYING
 "#;
-    let out = yarn_lock_to_deno_lock_v5(input).unwrap();
+    let out = yarn_lock_to_deno_lock_v5(
+      input,
+      [
+        ("ok", "^1.0.0"),
+        ("local", "file:../local"),
+        ("linked", "link:../linked"),
+        ("ws", "workspace:packages/ws"),
+        ("fromgit", "git+https://github.com/example/fromgit.git"),
+        ("remote", "https://example.com/remote.tgz"),
+        ("aliased", "npm:underlying@^2.0.0"),
+      ],
+    )
+    .unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
     let specifiers = v["specifiers"].as_object().unwrap();
     assert_eq!(specifiers.len(), 1);
