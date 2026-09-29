@@ -39,6 +39,7 @@ use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
 use deno_lib::standalone::virtual_fs::BuiltVfs;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
+use deno_lib::standalone::virtual_fs::OffsetWithLength;
 use deno_lib::standalone::virtual_fs::VfsBuilder;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
@@ -57,16 +58,20 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::file_fetcher::FetchLocalOptions;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+use deno_resolver::loader::GraphCjsAnalysisSourceProvider;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::analyze::ResolvedCjsAnalysis;
+use sys_traits::FsRead;
 
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::CompileFlagsExt;
+use crate::args::JavaScriptEngine;
 use crate::args::get_default_v8_flags;
+use crate::args::resolve_compile_target;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -126,6 +131,56 @@ impl StandaloneRelativeFileBaseUrl<'_> {
       None => Cow::Borrowed(target.as_str()),
     }
   }
+}
+
+struct VfsCjsAnalysisSourceProvider<'a> {
+  vfs: &'a VfsBuilder,
+  sources: &'a HashMap<Url, OffsetWithLength>,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+}
+
+impl CjsAnalysisSourceProvider for VfsCjsAnalysisSourceProvider<'_> {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
+    if let Some(offset) = self.sources.get(specifier).copied()
+      && let Some(bytes) = self.vfs.file_bytes(offset)
+      && let Ok(source) = std::str::from_utf8(bytes)
+    {
+      return Some(Cow::Borrowed(source));
+    }
+    self
+      .fallback
+      .and_then(|provider| provider.load_source(specifier))
+  }
+}
+
+// `deno compile` is a trusted local build step, so sources absent from the
+// graph and VFS may be read directly to preserve compile-time CJS analysis.
+struct FileSystemCjsAnalysisSourceProvider<'a> {
+  sys: &'a CliSys,
+}
+
+impl CjsAnalysisSourceProvider for FileSystemCjsAnalysisSourceProvider<'_> {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .ok()
+      .map(|source| Cow::Owned(source.into_owned()))
+  }
+}
+
+fn collect_vfs_cjs_analysis_sources(
+  vfs: &VfsBuilder,
+) -> HashMap<Url, OffsetWithLength> {
+  let mut sources = HashMap::new();
+  for (path, file) in vfs.iter_files() {
+    let Ok(specifier) = deno_path_util::url_from_file_path(&path) else {
+      continue;
+    };
+    sources.insert(specifier, file.offset);
+  }
+  sources
 }
 
 struct SpecifierStore<'a> {
@@ -362,7 +417,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       self.get_base_binary(options.compile_flags).await?;
 
     if options.compile_flags.no_terminal {
-      let target = options.compile_flags.resolve_target();
+      let target = resolve_compile_target(options.compile_flags);
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -373,7 +428,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .context("Setting windows binary to GUI.")?;
     }
     if options.compile_flags.icon.is_some() {
-      let target = options.compile_flags.resolve_target();
+      let target = resolve_compile_target(options.compile_flags);
       // Desktop builds handle icons during app bundle packaging.
       if !target.contains("windows") && !self.is_desktop {
         bail!(
@@ -408,14 +463,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // Phase 2 of the 'min sized' deno compile RFC talks
     // about adding this as a flag.
     if let Some(path) = get_dev_binary_path() {
+      if compile_flags.engine == JavaScriptEngine::QuickJs {
+        log::warn!(
+          "--engine quickjs is ignored when using the development denort at {}",
+          path.to_string_lossy()
+        );
+      }
       log::debug!("Resolved denort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find denort at '{}'", path.to_string_lossy())
       });
     }
 
-    let target = compile_flags.resolve_target();
-    let binary_name = format!("denort-{target}.zip");
+    let target = resolve_compile_target(compile_flags);
+    let binary_name =
+      runtime_archive_name("denort", &compile_flags.engine, &target);
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
       ReleaseChannel::Canary => {
@@ -464,13 +526,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // For development: check DENORT_DESKTOP_BIN env var or look
     // for libdenort next to the deno executable.
     if let Some(path) = get_dev_desktop_binary_path() {
+      if compile_flags.engine == JavaScriptEngine::QuickJs {
+        log::warn!(
+          "--engine quickjs is ignored when using the development libdenort at {}",
+          path.to_string_lossy()
+        );
+      }
       log::debug!("Resolved libdenort: {}", path.to_string_lossy());
       return std::fs::read(&path).with_context(|| {
         format!("Could not find libdenort at '{}'", path.to_string_lossy())
       });
     }
 
-    let target = compile_flags.resolve_target();
+    let target = resolve_compile_target(compile_flags);
     let lib_ext = if target.contains("darwin") {
       "dylib"
     } else if target.contains("windows") {
@@ -483,7 +551,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     } else {
       format!("libdenort.{lib_ext}")
     };
-    let binary_name = format!("libdenort-{target}.zip");
+    let binary_name =
+      runtime_archive_name("libdenort", &compile_flags.engine, &target);
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
       ReleaseChannel::Canary => {
@@ -664,6 +733,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
     progress.set_total_size(specifiers_count as u64);
     let mut modules_done: u64 = 0;
+    let vfs_sources = collect_vfs_cjs_analysis_sources(&vfs);
+    let sys = CliSys::default();
+    let file_system_source_provider =
+      FileSystemCjsAnalysisSourceProvider { sys: &sys };
     // todo(dsherret): transpile and analyze CJS in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
@@ -685,11 +758,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               m.media_type,
               m.is_script,
             )? {
+              let vfs_source_provider = VfsCjsAnalysisSourceProvider {
+                vfs: &vfs,
+                sources: &vfs_sources,
+                fallback: Some(&file_system_source_provider),
+              };
+              let graph_source_provider = GraphCjsAnalysisSourceProvider::new(
+                graph,
+                Some(&vfs_source_provider),
+              );
               let cjs_analysis = self
                 .cjs_module_export_analyzer
                 .analyze_all_exports(
                   module.specifier(),
                   Some(Cow::Borrowed(m.source.text.as_ref())),
+                  Some(&graph_source_provider),
                 )
                 .await?;
               maybe_cjs_analysis = Some(match cjs_analysis {
@@ -850,6 +933,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     // do CJS export analysis on all the files in the VFS
     // todo(dsherret): analyze cjs in parallel
+    let vfs_source_provider = VfsCjsAnalysisSourceProvider {
+      vfs: &vfs,
+      sources: &vfs_sources,
+      fallback: Some(&file_system_source_provider),
+    };
+    let graph_source_provider =
+      GraphCjsAnalysisSourceProvider::new(graph, Some(&vfs_source_provider));
     let mut to_add = Vec::new();
     for (file_path, file) in vfs.iter_files() {
       if file.cjs_export_analysis_offset.is_some() {
@@ -892,7 +982,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         };
         let cjs_analysis_result = self
           .cjs_module_export_analyzer
-          .analyze_all_exports(&specifier, Some(source.into()))
+          .analyze_all_exports(
+            &specifier,
+            Some(source.into()),
+            Some(&graph_source_provider),
+          )
           .await;
         let analysis = match cjs_analysis_result {
           Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,
@@ -1528,7 +1622,7 @@ fn write_binary_bytes(
   data_section_bytes: Vec<u8>,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let target = compile_flags.resolve_target();
+  let target = resolve_compile_target(compile_flags);
   if target.contains("linux") {
     libsui::Elf::new(&original_bin).append(
       "d3n0l4nd",
@@ -1691,6 +1785,14 @@ fn get_denort_path(deno_exe: PathBuf) -> Option<OsString> {
   denort.exists().then(|| denort.into_os_string())
 }
 
+fn runtime_archive_name(
+  prefix: &str,
+  engine: &JavaScriptEngine,
+  target: &str,
+) -> String {
+  format!("{prefix}{}-{target}.zip", engine.artifact_suffix())
+}
+
 fn get_dev_binary_path() -> Option<OsString> {
   env::var_os("DENORT_BIN").or_else(|| {
     env::current_exe().ok().and_then(|exec_path| {
@@ -1799,6 +1901,25 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
 #[cfg(test)]
 mod tests {
   use super::default_app_name;
+  use super::runtime_archive_name;
+  use crate::args::JavaScriptEngine;
+
+  #[test]
+  fn runtime_archive_names_include_engine_suffix() {
+    let target = "aarch64-apple-darwin";
+    assert_eq!(
+      runtime_archive_name("denort", &JavaScriptEngine::V8, target),
+      "denort-aarch64-apple-darwin.zip"
+    );
+    assert_eq!(
+      runtime_archive_name("denort", &JavaScriptEngine::QuickJs, target),
+      "denort-quickjs-aarch64-apple-darwin.zip"
+    );
+    assert_eq!(
+      runtime_archive_name("libdenort", &JavaScriptEngine::QuickJs, target),
+      "libdenort-quickjs-aarch64-apple-darwin.zip"
+    );
+  }
 
   #[test]
   fn default_app_name_strips_only_deno_added_extensions() {

@@ -1,0 +1,62 @@
+{
+  "tempDir": true,
+  "tests": {
+    // the alias is the package name without its scope
+    "basic": {
+      "steps": [
+        {
+          "args": "add --unscoped jsr:@denotest/add npm:@denotest/esm-basic",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "deno.json.out"
+        }
+      ]
+    },
+    "install_subcommand": {
+      "steps": [
+        {
+          "args": "install --unscoped jsr:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "install.out"
+        }
+      ]
+    },
+    // an explicit alias is used as-is
+    "explicit_alias_wins": {
+      "steps": [
+        {
+          "args": "add --unscoped my-alias@jsr:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "explicit_alias.out"
+        }
+      ]
+    },
+    // packages in different scopes can share an unscoped name
+    "collision": {
+      "steps": [
+        {
+          "args": "add --unscoped jsr:@denotest/add npm:@denotest/add",
+          "output": "collision.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

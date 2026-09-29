@@ -69,7 +69,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
-use crate::args::TypeCheckModeExt;
+use crate::args::graph_kind;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -2316,7 +2316,7 @@ async fn filter_specifiers_by_changed(
   // mode uses, where the cost is amortized across reruns; for a one-shot
   // `--changed`/`--related` run it's an extra graph build we accept for now to
   // keep the filtering self-contained.
-  let graph_kind = cli_options.type_check_mode().as_graph_kind();
+  let graph_kind = graph_kind(cli_options.type_check_mode());
   let module_graph_creator = factory.module_graph_creator().await?;
   let graph_roots = specifiers_with_mode
     .iter()
@@ -2555,7 +2555,7 @@ pub async fn run_tests_with_watch(
           cli_options.resolve_workspace_test_options(&test_flags);
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let graph_kind = graph_kind(cli_options.type_check_mode());
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
         let module_graph_creator = factory.module_graph_creator().await?;

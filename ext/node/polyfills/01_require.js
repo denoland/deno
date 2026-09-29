@@ -2051,7 +2051,10 @@ let wrapperProxy = new Proxy(wrapper, {
 
   defineProperty(target, property, descriptor) {
     patched = true;
-    return ObjectDefineProperty(target, property, descriptor);
+    return ObjectDefineProperty(target, property, {
+      __proto__: null,
+      ...descriptor,
+    });
   },
 });
 
@@ -2220,12 +2223,30 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+// Walks the chain of first-requiring parents, innermost first. The chain is
+// the require() stack at first load and so is acyclic, but a `seen` guard
+// keeps a corrupted cache from spinning here forever.
+function getRequireStack(parent) {
+  const requireStack = [];
+  const seen = new SafeSet();
+  for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
+    if (SetPrototypeHas(seen, cursor)) break;
+    SetPrototypeAdd(seen, cursor);
+    ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
+  }
+  return requireStack;
+}
+
 function _throwRequireAsyncModule(specifier, module) {
   // Use moduleParentCache directly to avoid triggering the module.parent
   // deprecation getter when --pending-deprecation is set.
   const parentModule = module ? moduleParentCache.get(module) : undefined;
   const parent = parentModule?.filename ?? "<unknown>";
-  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
+  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(
+    specifier,
+    parent,
+    getRequireStack(parentModule),
+  );
 }
 
 function loadESMFromCJS(module, filename, code, sourceFromHook = false) {

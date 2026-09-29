@@ -139,7 +139,6 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 
 - op_base64_decode
 - op_base64_decode_into
-- op_base64_encode
 - op_base64_encode_from_buffer
 - op_base64_atob
 - op_base64_btoa

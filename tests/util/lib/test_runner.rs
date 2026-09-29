@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::hash::Hasher;
 use std::io::IsTerminal;
 use std::io::Write;
 use std::sync::Arc;
@@ -41,7 +42,7 @@ impl ShardConfig {
 }
 
 /// Filter a collected test category to only include tests assigned to this shard.
-/// Uses round-robin distribution by sorted test name.
+/// Distributes by a hash of the test name.
 pub fn filter_to_shard<T>(
   category: CollectedTestCategory<T>,
   shard: &ShardConfig,
@@ -80,15 +81,27 @@ fn assign_shard_tests(
   all_names: Vec<String>,
   shard: &ShardConfig,
 ) -> HashSet<String> {
-  // round-robin: distribute by sorted name index
-  let mut sorted: Vec<_> = all_names;
-  sorted.sort();
-  sorted
+  all_names
     .into_iter()
-    .enumerate()
-    .filter(|(i, _)| i % shard.total == shard.index)
-    .map(|(_, name)| name)
+    .filter(|name| shard_index_of(name, shard.total) == shard.index)
     .collect()
+}
+
+/// Which shard a test belongs to, derived only from its own name.
+///
+/// Deliberately *not* round-robin over the sorted test list: with positional
+/// assignment, adding or removing a single test shifts every test after it
+/// into a different shard. That made suite updates (e.g. bumping the vendored
+/// node_compat suite) silently re-deal expensive tests onto one runner, which
+/// then ran out of memory. Hashing the name keeps every other test where it
+/// was, so a suite bump only moves the tests it actually adds or removes.
+///
+/// Shards end up approximately, rather than exactly, even in size. That is the
+/// intended trade: stability matters more here than a perfect split.
+fn shard_index_of(name: &str, shard_total: usize) -> usize {
+  let mut hasher = twox_hash::XxHash64::default();
+  hasher.write(name.as_bytes());
+  (hasher.finish() % shard_total as u64) as usize
 }
 
 /// Tracks the number of times each test has been flaky
@@ -877,5 +890,61 @@ impl<TData> file_test_runner::reporter::Reporter<TData> for PtyReporter {
     let mut stderr = std::io::stderr().lock();
     _ = stderr.write_all(&final_text);
     _ = stderr.flush();
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn adding_a_test_does_not_move_the_others() {
+    let names: Vec<String> = (0..200)
+      .map(|i| format!("suite::category::test-{i:03}.js"))
+      .collect();
+    let assign = |names: &[String]| -> Vec<(String, usize)> {
+      (0..3)
+        .flat_map(|index| {
+          let shard = ShardConfig { index, total: 3 };
+          assign_shard_tests(names.to_vec(), &shard)
+            .into_iter()
+            .map(move |name| (name, index))
+        })
+        .collect()
+    };
+
+    let before = assign(&names);
+
+    // Insert a test that sorts near the front, which under positional
+    // round-robin would have re-dealt every test after it.
+    let mut after_names = names.clone();
+    after_names.push("suite::category::test-000-new.js".to_string());
+    let after: HashMap<String, usize> =
+      assign(&after_names).into_iter().collect();
+
+    for (name, shard) in before {
+      assert_eq!(after.get(&name), Some(&shard), "{name} changed shard");
+    }
+  }
+
+  #[test]
+  fn shards_are_roughly_even() {
+    let names: Vec<String> = (0..3000)
+      .map(|i| format!("suite::category::test-{i}.js"))
+      .collect();
+    for total in [2, 3, 5] {
+      let mut counts = vec![0usize; total];
+      for name in &names {
+        counts[shard_index_of(name, total)] += 1;
+      }
+      let expected = names.len() / total;
+      for count in counts {
+        // within 10% of an even split
+        assert!(
+          count.abs_diff(expected) < expected / 10,
+          "shard sizes {count} vs expected {expected}"
+        );
+      }
+    }
   }
 }

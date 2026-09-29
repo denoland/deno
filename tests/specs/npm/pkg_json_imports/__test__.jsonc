@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "check": {
       "args": "check main.ts",
@@ -40,7 +41,6 @@
       "output": "run.out"
     },
     "compile": {
-      "tempDir": true,
       "steps": [{
         "args": "compile --no-check --output bin main.ts",
         "output": "[WILDCARD]"
@@ -51,7 +51,6 @@
       }]
     },
     "compile_node_modules_dir_auto": {
-      "tempDir": true,
       "steps": [{
         "args": "compile --node-modules-dir=auto --no-check --output bin main.ts",
         "output": "[WILDCARD]"
@@ -62,7 +61,6 @@
       }]
     },
     "compile_node_modules_dir_none": {
-      "tempDir": true,
       "steps": [{
         "args": "compile --node-modules-dir=none --no-check --output bin main.ts",
         "output": "[WILDCARD]"

@@ -195,6 +195,53 @@ Deno.test(async function cacheApi() {
   assertFalse(await caches.has(cacheName));
 });
 
+Deno.test(async function cacheVaryUsesCombinedHeaderValues() {
+  const cacheName = "cache-vary-combined-values";
+  await caches.delete(cacheName);
+  const cache = await caches.open(cacheName);
+  const url = "https://example.com/vary-combined-values";
+
+  const cachedRequest = new Request(url, {
+    headers: [
+      ["x-unchanged", "same"],
+      ["x-example", "first"],
+      ["X-Example", "cached"],
+    ],
+  });
+  await cache.put(
+    cachedRequest,
+    new Response("cached response", {
+      headers: [
+        ["Vary", "x-unchanged"],
+        ["vary", "x-example"],
+      ],
+    }),
+  );
+
+  const matchingRequest = new Request(url, {
+    headers: [
+      ["x-unchanged", "same"],
+      ["x-example", "first"],
+      ["x-example", "cached"],
+    ],
+  });
+  assertEquals(
+    await (await cache.match(matchingRequest))?.text(),
+    "cached response",
+  );
+
+  const differentRequest = new Request(url, {
+    headers: [
+      ["x-unchanged", "same"],
+      ["x-example", "first"],
+      ["x-example", "query"],
+    ],
+  });
+  assertEquals(await cache.match(differentRequest), undefined);
+
+  await caches.delete(cacheName);
+});
+
 Deno.test(async function cacheStorageMatch() {
   const names = ["match-a", "match-b", "match-c"];
   for (const name of names) {

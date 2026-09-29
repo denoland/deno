@@ -98,7 +98,7 @@ const fn op_state_ref() -> ::deno_core::_ops::OpDecl {
                     .value() as *const deno_core::_ops::OpCtx)
             };
             let result = {
-                let arg0 = &::std::cell::RefCell::borrow(&opctx.state);
+                let arg0 = &::std::cell::RefCell::borrow(opctx.state());
                 Self::call(arg0)
             };
             result as _
@@ -123,7 +123,7 @@ const fn op_state_ref() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
+            let opstate = opctx.state();
             let result = {
                 let arg0 = &::std::cell::RefCell::borrow(&opstate);
                 Self::call(arg0)
@@ -242,7 +242,7 @@ const fn op_state_mut() -> ::deno_core::_ops::OpDecl {
                     .value() as *const deno_core::_ops::OpCtx)
             };
             let result = {
-                let arg0 = &mut ::std::cell::RefCell::borrow_mut(&opctx.state);
+                let arg0 = &mut ::std::cell::RefCell::borrow_mut(opctx.state());
                 Self::call(arg0)
             };
             result as _
@@ -267,7 +267,7 @@ const fn op_state_mut() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
+            let opstate = opctx.state();
             let result = {
                 let arg0 = &mut ::std::cell::RefCell::borrow_mut(&opstate);
                 Self::call(arg0)
@@ -396,7 +396,7 @@ const fn op_state_and_v8_local() -> ::deno_core::_ops::OpDecl {
                     .value() as *const deno_core::_ops::OpCtx)
             };
             let result = {
-                let arg0 = &mut ::std::cell::RefCell::borrow_mut(&opctx.state);
+                let arg0 = &mut ::std::cell::RefCell::borrow_mut(opctx.state());
                 let Ok(mut arg1) = deno_core::_ops::v8_try_convert::<
                     deno_core::v8::Function,
                 >(arg1) else {
@@ -438,7 +438,7 @@ const fn op_state_and_v8_local() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
+            let opstate = opctx.state();
             let result = {
                 let arg1 = args.get(0usize as i32);
                 let Ok(mut arg1) = deno_core::_ops::v8_try_convert::<

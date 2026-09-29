@@ -47,6 +47,7 @@ pub use self::extra_info::ExpectedExtraInfo;
 pub use self::extra_info::NpmPackageExtraInfoProvider;
 use self::extra_info::NpmPackageExtraInfoProviderSys;
 pub use self::factory::InstallReporter;
+pub use self::factory::NpmCacheServices;
 pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;

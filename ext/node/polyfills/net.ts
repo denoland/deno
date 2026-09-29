@@ -150,6 +150,7 @@ const {
   validateNumber,
   validatePort,
   validateString,
+  validateStringWithoutNullBytes,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
@@ -1053,7 +1054,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
 
-  validateString(host, "options.host");
+  validateStringWithoutNullBytes(host, "options.host");
 
   if (localAddress && !isIP(localAddress)) {
     throw new ERR_INVALID_IP_ADDRESS(localAddress);

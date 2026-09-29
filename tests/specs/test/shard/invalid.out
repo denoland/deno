@@ -1,1 +1,1 @@
-error: invalid value '3/2' for '--shard=<INDEX/COUNT>': shard index must be between 1 and 2[WILDCARD]
+error: invalid value '3/2' for '--shard'[WILDCARD]

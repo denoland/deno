@@ -1,0 +1,9 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+Publishing @foo/provenance-fails@1.0.0 ...
+Warning: the registry did not accept the provenance attestation: Internal Server Error (internalServerError)
+  The package was published, but it will not show a provenance badge.
+  The attestation itself was signed and is in the transparency log at https://search.sigstore.dev/?logIndex=42069
+Successfully published @foo/provenance-fails@1.0.0
+Visit http://127.0.0.1:4250/@foo/provenance-fails@1.0.0 for details

@@ -1,0 +1,7 @@
+{
+  "name": "@scope/foo",
+  "tasks": {
+    "dev": "echo '@scope/foo'"
+  },
+  "exports": {}
+}

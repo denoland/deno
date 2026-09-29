@@ -32,10 +32,11 @@ const {
   PromisePrototypeThen,
   SafePromiseAll,
   Symbol,
-  SymbolFor,
 } = primordials;
 
-const { FsFile } = core.loadExtScript("ext:deno_fs/30_fs.js");
+const { FsFile, fsFileConstructorKey } = core.loadExtScript(
+  "ext:deno_fs/30_fs.js",
+);
 const { readAll } = core.loadExtScript("ext:deno_io/12_io.js");
 const { assert, pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { packageData } = core.loadExtScript("ext:deno_fetch/22_body.js");
@@ -93,20 +94,20 @@ class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
+      this.stdin = new FsFile(res.stdinRid, fsFileConstructorKey);
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
       this.stdout = new FsFile(
         res.stdoutRid,
-        SymbolFor("Deno.internal.FsFile"),
+        fsFileConstructorKey,
       );
     }
 
     if (res.stderrRid && res.stderrRid > 0) {
       this.stderr = new FsFile(
         res.stderrRid,
-        SymbolFor("Deno.internal.FsFile"),
+        fsFileConstructorKey,
       );
     }
   }

@@ -94,6 +94,7 @@ pub async fn execute_script(
         filter,
         force_use_pkg_json,
         task_flags.recursive,
+        task_flags.members,
       )?;
 
       return Ok(0);
@@ -107,7 +108,14 @@ pub async fn execute_script(
     for (folder_url, folder) in
       workspace.config_folders_sorted_by_dependencies()
     {
+      // `--members` runs the task in every workspace member, but never in
+      // the workspace root, even when the root config has a name.
+      if task_flags.members && folder_url == root_dir_url {
+        continue;
+      }
+
       if !task_flags.recursive
+        && !task_flags.members
         && !matches_package(
           folder,
           folder_url,
@@ -1257,13 +1265,19 @@ fn print_available_tasks_workspace(
   filter: &str,
   force_use_pkg_json: bool,
   recursive: bool,
+  members: bool,
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
   let root_dir_url = workspace.root_dir_url();
 
   let mut matched = false;
   for (folder_url, folder) in workspace.config_folders() {
+    if members && folder_url == root_dir_url {
+      continue;
+    }
+
     if !recursive
+      && !members
       && !matches_package(
         folder,
         folder_url,

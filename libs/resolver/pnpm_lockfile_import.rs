@@ -44,10 +44,7 @@ pub fn pnpm_lock_to_deno_lock_v5(
   let syntax =
     yaml_parser::parse(yaml_text).map_err(PnpmLockfileImportError::Parse)?;
   let root_map = Root::cast(syntax)
-    .and_then(|root| root.documents().next())
-    .and_then(|doc| doc.block())
-    .and_then(|block| block.block_map())
-    .map(MapNode::Block)
+    .and_then(select_project_document)
     .ok_or(PnpmLockfileImportError::EmptyOrInvalid)?;
 
   let version = root_map
@@ -72,8 +69,10 @@ pub fn pnpm_lock_to_deno_lock_v5(
   let mut integrity: HashMap<String, String> = HashMap::new();
   if let Some(packages) = root_map.get("packages").and_then(Node::into_map) {
     for (key, value) in packages.entries() {
-      let key = normalize_package_key(&key);
-      let base = strip_peer_suffix(&key).to_string();
+      let base = normalize_package_key(strip_peer_suffix(&key));
+      if !is_package_id(&base) {
+        continue;
+      }
       if let Some(integ) = value
         .into_map()
         .and_then(|m| m.get("resolution"))
@@ -97,11 +96,13 @@ pub fn pnpm_lock_to_deno_lock_v5(
       continue;
     };
     for (raw_key, value) in snaps.entries() {
-      let normalized = normalize_package_key(&raw_key);
-      let base = strip_peer_suffix(&normalized).to_string();
       // Snapshot keys may include peer-suffix parens; for our purposes,
-      // collapse to the base `name@version`. First entry wins.
-      if npm.contains_key(&base) {
+      // collapse to the base `name@version`. First entry wins. The suffix
+      // comes off before normalizing because the `@` inside it would
+      // otherwise hide the v6 `name/version` form from
+      // `normalize_package_key`.
+      let base = normalize_package_key(strip_peer_suffix(&raw_key));
+      if !is_package_id(&base) || npm.contains_key(&base) {
         continue;
       }
       let Some(integ) = integrity.get(&base) else {
@@ -181,6 +182,15 @@ pub fn pnpm_lock_to_deno_lock_v5(
   }
   // pnpm v6 places top-level deps directly on the document root.
   if major == 6 {
+    // 6.0 gives each of them the same `{ specifier, version }` shape an
+    // importer uses. Older 6.x lockfiles instead put the resolved version
+    // here and the requirement in a separate `specifiers` section, which the
+    // loop below reads.
+    root_dep_keys.extend(collect_importer_specifiers(
+      &root_map,
+      &catalogs,
+      &mut specifiers,
+    ));
     let specifiers_section =
       root_map.get("specifiers").and_then(Node::into_map);
     for section in ["dependencies", "devDependencies", "optionalDependencies"] {
@@ -512,8 +522,16 @@ fn build_workspace(
   }
 }
 
-/// Build a sorted list of `dep@version` strings from a pnpm dependency
-/// mapping (e.g. `{ ansi-styles: 4.3.0, color-convert: 2.0.1 }`).
+/// Build a sorted list of dependency entries from a pnpm dependency mapping
+/// (e.g. `{ ansi-styles: 4.3.0, color-convert: 2.0.1 }`).
+///
+/// Entries are usually `dep@version`, but an aliased dependency becomes
+/// `dep@npm:name@version`. A dependency that deno.lock has no spelling for —
+/// a workspace link, a path, a tarball url — is **silently dropped**, so the
+/// package ends up described with fewer dependencies than it really has. That
+/// is the deliberate trade against emitting an id that cannot be parsed back
+/// in, and it matches what `is_supported_spec` already does for root
+/// specifiers.
 fn collect_deps(node: Option<MapNode>) -> Vec<String> {
   let Some(map) = node else {
     return Vec::new();
@@ -522,9 +540,8 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
     .entries()
     .into_iter()
     .filter_map(|(name, value)| {
-      let ver = value.into_string()?;
-      let ver = strip_peer_suffix(&ver);
-      Some(format!("{}@{}", name, ver))
+      let value = value.into_string()?;
+      dep_entry(&name, strip_peer_suffix(&value))
     })
     .collect();
   out.sort();
@@ -532,25 +549,182 @@ fn collect_deps(node: Option<MapNode>) -> Vec<String> {
   out
 }
 
+/// Build the deno.lock dependency entry for one pnpm dependency mapping.
+///
+/// The value is normally a bare version (`ansi-styles: 4.3.0`), but an aliased
+/// dependency names the package it resolves to instead
+/// (`string-width-cjs: string-width@4.2.3`) and a workspace dependency points
+/// at a directory (`vite: link:packages/vite`).
+///
+/// `value` must already have its peer suffix stripped.
+fn dep_entry(name: &str, value: &str) -> Option<String> {
+  // `link:`/`file:` paths, urls and the other non-registry schemes have no
+  // deno.lock spelling, so leave them out and let resolution handle them.
+  // This has to happen before `normalize_package_key`, whose `name/version`
+  // -> `name@version` fallback would otherwise rewrite such a value into
+  // something that reads as a valid alias: `file:vendor/1.0.0.tgz` would
+  // become `file:vendor@1.0.0.tgz` and then `name@npm:file:vendor@1.0.0.tgz`.
+  if !is_supported_spec(value) {
+    return None;
+  }
+  // pnpm v6 prefixes ids with `/` in dependency values too, not just in the
+  // `packages` keys.
+  let value = normalize_package_key(value);
+  if starts_with_digit(&value) {
+    return Some(format!("{}@{}", name, value));
+  }
+  match value.rfind('@') {
+    // A leading `@` is a scope, not a separator. deno.lock spells an alias
+    // `key@npm:name@version`. Telling an alias apart from a path rests on npm
+    // versions always starting with a digit, which semver guarantees.
+    Some(idx) if idx > 0 && starts_with_digit(&value[idx + 1..]) => {
+      // Naming the package it already is isn't an alias — that's just the v6
+      // `/name/version` id spelled out. Recording it as one would point at
+      // `name@npm:name@version`, which the lock has no entry for.
+      if &value[..idx] == name {
+        Some(format!("{}@{}", name, &value[idx + 1..]))
+      } else {
+        Some(format!("{}@npm:{}", name, value))
+      }
+    }
+    _ => None,
+  }
+}
+
+fn starts_with_digit(value: &str) -> bool {
+  value.starts_with(|c: char| c.is_ascii_digit())
+}
+
+/// Whether a `packages`/`snapshots` key is a `name@version` deno.lock can
+/// hold. A package installed from a path or a tarball is keyed by where it
+/// came from, e.g. `fake-data-pkg@file:packages/…/fake-data-pkg-1.0.0.tgz`,
+/// and has no npm id to record.
+fn is_package_id(base: &str) -> bool {
+  // A leading `@` is a scope, not a separator.
+  let Some(idx) = base.rfind('@').filter(|idx| *idx > 0) else {
+    return false;
+  };
+  if !starts_with_digit(&base[idx + 1..]) {
+    return false;
+  }
+  // An npm name carries a `/` only as the scope separator, so anything else
+  // is a registry host or a path that `strip_registry_prefix` didn't peel
+  // off. Those parse as an id but name a package the lock has no entry for.
+  match base[..idx].strip_prefix('@') {
+    Some(scoped) => scoped.matches('/').count() == 1,
+    None => !base[..idx].contains('/'),
+  }
+}
+
+/// Pick the document that describes the project.
+///
+/// pnpm writes `pnpm-lock.yaml` as more than one YAML document once the
+/// project pins its own package manager: the packages that make up pnpm
+/// itself come first, in a document whose importers carry
+/// `packageManagerDependencies`, and the project's lockfile comes last.
+fn select_project_document(root: Root) -> Option<MapNode> {
+  let mut package_manager_doc = None;
+  let mut project_doc = None;
+  for doc in root.documents() {
+    let Some(map) = doc
+      .block()
+      .and_then(|block| block.block_map())
+      .map(MapNode::Block)
+    else {
+      continue;
+    };
+    if is_package_manager_document(&map) {
+      package_manager_doc.get_or_insert(map);
+    } else {
+      project_doc = Some(map);
+    }
+  }
+  // Fall back to the package manager's document rather than nothing at all,
+  // so a lockfile that only has one stays readable whatever it holds.
+  project_doc.or(package_manager_doc)
+}
+
+fn is_package_manager_document(doc: &MapNode) -> bool {
+  let Some(importers) = doc.get("importers").and_then(Node::into_map) else {
+    return false;
+  };
+  importers.entries().into_iter().any(|(_, importer)| {
+    importer
+      .into_map()
+      .and_then(|importer| importer.get("packageManagerDependencies"))
+      .is_some()
+  })
+}
+
 /// In pnpm v6 the keys in `packages` and reference paths are prefixed with
 /// `/`, e.g. `/lodash@4.17.21` or `/@babel/core@7.0.0`. Strip it.
 fn normalize_package_key(key: &str) -> String {
   let stripped = key.strip_prefix('/').unwrap_or(key);
+  let stripped = strip_registry_prefix(stripped);
   // pnpm v6 sometimes used `/name/version` instead of `/name@version`. We
   // detect the `/version` form by checking whether the last `/` is followed
   // by what looks like a semver number.
-  if !stripped.contains('@') || stripped.starts_with('@') {
-    // For scoped packages, the only `@` may be at the start. Check the
-    // `name/version` form by splitting on the last `/`.
+  //
+  // The `@` that rules the form out is the one separating name from version,
+  // so a scoped id is judged on what follows its scope: `@babel/core@7.0.0`
+  // is already `name@version`, while `@babel/core/7.0.0` is not. Looking at
+  // the whole string instead would miss the boundary for a scoped package
+  // whose name starts with a digit — `@types/3d-view@1.0.0` would be
+  // rewritten to `@types@3d-view@1.0.0`.
+  let slash_form =
+    match stripped.strip_prefix('@').and_then(|s| s.split_once('/')) {
+      Some((_, after_scope)) => !after_scope.contains('@'),
+      None => !stripped.contains('@'),
+    };
+  if slash_form {
+    // The version is whatever follows the last `/`.
     if let Some(idx) = stripped.rfind('/') {
       let (name, ver) = stripped.split_at(idx);
       let ver = &ver[1..];
-      if ver.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        return format!("{}@{}", name, ver);
+      if starts_with_digit(ver) {
+        // An unscoped mirror id — `registry.npmmirror.com/lodash/4.17.21` —
+        // only becomes strippable once the version boundary is an `@`, so
+        // the host gets another chance here.
+        let rewritten = format!("{}@{}", name, ver);
+        return strip_registry_prefix(&rewritten).to_string();
       }
     }
   }
   stripped.to_string()
+}
+
+/// Drop the registry host from the front of a pnpm id.
+///
+/// A lockfile written against a mirror keys its packages by where they came
+/// from, e.g. `registry.npmmirror.com/@nodelib/fs.stat@2.0.5`. An npm name
+/// carries a `/` only as the scope separator, so a segment sitting in front
+/// of an `@scope` — or in front of the `name@version` of an unscoped package
+/// — is the host rather than part of the name.
+///
+/// Expects the leading `/` and any peer suffix to be gone already.
+fn strip_registry_prefix(id: &str) -> &str {
+  // A key that names where the package came from is a path or a url, not a
+  // host-prefixed id, and its last `/` segment can look like a `name@version`
+  // by accident: `fake-pkg@file:vendor/pkg@1.0.0.tgz` would be cut down to
+  // `pkg@1.0.0.tgz`, which reads as an id but names no package. A registry
+  // host never carries a scheme, and an npm id never carries a `:`, so the
+  // presence of one is enough to tell the two apart.
+  if id.contains(':') {
+    return id;
+  }
+  // Already a scope, so there is nothing in front of the name.
+  if id.starts_with('@') {
+    return id;
+  }
+  if let Some(idx) = id.find("/@") {
+    return &id[idx + 1..];
+  }
+  match id.rsplit_once('/') {
+    // Only strip when the last segment is itself a `name@version`. Otherwise
+    // this is the v6 `name/version` form, whose `/` the caller rewrites.
+    Some((_, last)) if is_package_id(last) => last,
+    _ => id,
+  }
 }
 
 /// Strip pnpm's peer-dependency suffix from a package id. E.g.
@@ -575,6 +749,8 @@ fn is_supported_spec(req: &str) -> bool {
     && !req.starts_with("http:")
     && !req.starts_with("https:")
     && !req.starts_with("npm:")
+    // `runtime:` pins a language runtime, e.g. `node: runtime:26.8.1`.
+    && !req.starts_with("runtime:")
   // `catalog:` specifiers are resolved before this check (see
   // `collect_importer_specifiers`), so they never reach here.
 }
@@ -728,6 +904,46 @@ packages:
   }
 
   #[test]
+  fn translates_v6_root_dependencies() {
+    // A single-project pnpm 6.0 lockfile has no `specifiers` section: the
+    // root deps carry their own `specifier` the way an importer's do.
+    let input = r#"
+lockfileVersion: '6.0'
+
+settings:
+  autoInstallPeers: true
+
+dependencies:
+  '@vueuse/core':
+    specifier: ^9.13.0
+    version: 9.13.0(vue@3.2.47)
+  lodash:
+    specifier: ^4.17.21
+    version: 4.17.21
+
+devDependencies:
+  typescript:
+    specifier: ^5.0.0
+    version: 5.0.4
+
+packages:
+  /@vueuse/core@9.13.0:
+    resolution: {integrity: sha512-VUSE}
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  /typescript@5.0.4:
+    resolution: {integrity: sha512-TS}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // The peer suffix on the resolved version is dropped, as elsewhere.
+    assert_eq!(v["specifiers"]["npm:@vueuse/core@^9.13.0"], "9.13.0");
+    assert_eq!(v["specifiers"]["npm:lodash@^4.17.21"], "4.17.21");
+    assert_eq!(v["specifiers"]["npm:typescript@^5.0.0"], "5.0.4");
+    assert_eq!(v["npm"]["@vueuse/core@9.13.0"]["integrity"], "sha512-VUSE");
+  }
+
+  #[test]
   fn skips_aliased_specifier() {
     // An aliased dependency (`my-lodash: npm:lodash@^4`) must not produce a
     // malformed `npm:my-lodash@npm:lodash@^4` specifier.
@@ -754,6 +970,618 @@ snapshots:
     assert!(v.get("specifiers").is_none());
     // The resolved package itself is still captured in the npm section.
     assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-AAA");
+  }
+
+  #[test]
+  fn aliased_snapshot_dependency() {
+    // `string-width-cjs: string-width@4.2.3` names a package, not a version,
+    // so it must not collapse into `string-width-cjs@string-width@4.2.3`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      wrap-ansi:
+        specifier: ^8.1.0
+        version: 8.1.0
+
+packages:
+  wrap-ansi@8.1.0:
+    resolution: {integrity: sha512-WRAP}
+  ansi-styles@6.2.1:
+    resolution: {integrity: sha512-ANSI}
+  string-width@4.2.3:
+    resolution: {integrity: sha512-WIDTH}
+  '@scope/pkg@1.0.0':
+    resolution: {integrity: sha512-SCOPED}
+
+snapshots:
+  wrap-ansi@8.1.0:
+    dependencies:
+      ansi-styles: 6.2.1
+      string-width-cjs: string-width@4.2.3
+      scoped-alias: '@scope/pkg@1.0.0'
+  ansi-styles@6.2.1: {}
+  string-width@4.2.3: {}
+  '@scope/pkg@1.0.0': {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // Every entry has to survive the parsers that read a deno.lock back in.
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for pkg in content.packages.npm.values() {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
+
+    let deps = v["npm"]["wrap-ansi@8.1.0"]["dependencies"]
+      .as_array()
+      .unwrap();
+    assert_eq!(
+      deps.as_slice(),
+      [
+        "ansi-styles@6.2.1",
+        "scoped-alias@npm:@scope/pkg@1.0.0",
+        "string-width-cjs@npm:string-width@4.2.3",
+      ]
+    );
+  }
+
+  #[test]
+  fn workspace_link_snapshot_dependency() {
+    // A dependency satisfied by a workspace package is recorded as
+    // `vite: link:packages/vite`. That has no deno.lock spelling, so it must
+    // be left out rather than turned into `vite@link:packages/vite`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      some-plugin:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  some-plugin@1.0.0:
+    resolution: {integrity: sha512-PLUGIN}
+  cac@7.0.0:
+    resolution: {integrity: sha512-CAC}
+
+snapshots:
+  some-plugin@1.0.0:
+    dependencies:
+      cac: 7.0.0
+    optionalDependencies:
+      vite: link:packages/vite
+  cac@7.0.0: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let plugin = &v["npm"]["some-plugin@1.0.0"];
+    assert_eq!(
+      plugin["dependencies"].as_array().unwrap().as_slice(),
+      ["cac@7.0.0"]
+    );
+    // The only optional dependency was the workspace link.
+    assert!(plugin.get("optionalDependencies").is_none());
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for pkg in content.packages.npm.values() {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
+  }
+
+  #[test]
+  fn path_and_url_snapshot_dependencies() {
+    // `normalize_package_key`'s `name/version` -> `name@version` fallback
+    // fires on anything whose last `/` segment starts with a digit, which a
+    // path or a tarball url can. Those have to be rejected before they reach
+    // it, or they come back out dressed as aliases
+    // (`tarball-dep@npm:file:vendor@1.0.0.tgz`) — ids that `LockfileContent`
+    // accepts but `NpmPackageId` cannot parse.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      some-plugin:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  some-plugin@1.0.0:
+    resolution: {integrity: sha512-PLUGIN}
+  cac@7.0.0:
+    resolution: {integrity: sha512-CAC}
+
+snapshots:
+  some-plugin@1.0.0:
+    dependencies:
+      cac: 7.0.0
+      tarball-dep: file:vendor/1.0.0.tgz
+      url-dep: https://host/pkg/1.2.3.tgz
+      link-dep: link:packages/2fa-utils
+      git-dep: github:owner/repo#1.0.0
+  cac@7.0.0: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // Only the one dependency that has a deno.lock spelling survives.
+    assert_eq!(
+      v["npm"]["some-plugin@1.0.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["cac@7.0.0"]
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for pkg in content.packages.npm.values() {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+      }
+    }
+  }
+
+  #[test]
+  fn aliased_snapshot_dependency_with_peer_suffix() {
+    // An alias can carry a peer suffix. It comes off before the value is
+    // normalized, so the entry still resolves to the aliased package.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      wrap-ansi:
+        specifier: ^8.1.0
+        version: 8.1.0
+
+packages:
+  wrap-ansi@8.1.0:
+    resolution: {integrity: sha512-WRAP}
+  string-width@4.2.3:
+    resolution: {integrity: sha512-WIDTH}
+  emoji-regex@8.0.0:
+    resolution: {integrity: sha512-EMOJI}
+
+snapshots:
+  wrap-ansi@8.1.0:
+    dependencies:
+      string-width-cjs: string-width@4.2.3(emoji-regex@8.0.0)
+  string-width@4.2.3: {}
+  emoji-regex@8.0.0: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+      v["npm"]["wrap-ansi@8.1.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["string-width-cjs@npm:string-width@4.2.3"]
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      for dep in pkg.dependencies.values() {
+        deno_npm::NpmPackageId::from_serialized(dep).unwrap();
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn v6_slash_form_key_with_peer_suffix() {
+    // pnpm v6 also wrote ids as `/name/version`. The peer suffix has to come
+    // off before `normalize_package_key`, otherwise the `@` inside the parens
+    // hides that form and the package is dropped, leaving `specifiers`
+    // pointing at an id the `npm` section doesn't have.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  foo: ^1.0.0
+
+dependencies:
+  foo: 1.0.0(bar@2.0.0)
+
+packages:
+  /foo/1.0.0(bar@2.0.0):
+    resolution: {integrity: sha512-FOO}
+    dependencies:
+      bar: /bar/2.0.0
+  /bar/2.0.0:
+    resolution: {integrity: sha512-BAR}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["foo@1.0.0"]["integrity"], "sha512-FOO");
+    assert_eq!(
+      v["npm"]["foo@1.0.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["bar@2.0.0"]
+    );
+    assert_eq!(v["specifiers"]["npm:foo@^1.0.0"], "1.0.0");
+
+    // Nothing dangles: every specifier and dependency names a package the
+    // lock actually holds.
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn mirror_registry_package_keys() {
+    // A lockfile written against a mirror keys its packages by where they
+    // came from. The host is not part of the name, so it comes off rather
+    // than reaching the lock as `registry.npmmirror.com/@nodelib/fs.stat`.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  '@nodelib/fs.stat': ^2.0.5
+  lodash: ^4.17.21
+
+dependencies:
+  '@nodelib/fs.stat': 2.0.5
+  lodash: 4.17.21
+
+packages:
+  /registry.npmmirror.com/@nodelib/fs.stat@2.0.5:
+    resolution: {integrity: sha512-STAT}
+    dependencies:
+      run-parallel: /registry.npmmirror.com/run-parallel@1.2.0
+  /registry.npmmirror.com/lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  /registry.npmmirror.com/run-parallel@1.2.0:
+    resolution: {integrity: sha512-PARALLEL}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+      v["npm"]["@nodelib/fs.stat@2.0.5"]["integrity"],
+      "sha512-STAT"
+    );
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    // The host comes off dependency values too, so the reference resolves.
+    assert_eq!(
+      v["npm"]["@nodelib/fs.stat@2.0.5"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["run-parallel@1.2.0"]
+    );
+    assert_eq!(v["specifiers"]["npm:@nodelib/fs.stat@^2.0.5"], "2.0.5");
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn mirror_registry_slash_version_keys() {
+    // The same mirror ids in the older `name/version` spelling, where the
+    // host can only be told apart from the name once the version boundary
+    // has been rewritten to an `@`.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  lodash: ^4.17.21
+
+dependencies:
+  lodash: 4.17.21
+
+packages:
+  /registry.npmmirror.com/lodash/4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  /registry.npmmirror.com/@nodelib/fs.stat/2.0.5:
+    resolution: {integrity: sha512-STAT}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    assert_eq!(
+      v["npm"]["@nodelib/fs.stat@2.0.5"]["integrity"],
+      "sha512-STAT"
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for key in content.packages.npm.keys() {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+    }
+  }
+
+  #[test]
+  fn scoped_package_keys_are_not_mistaken_for_a_host() {
+    // `@scope/name` has a `/` of its own; it must survive untouched.
+    assert_eq!(
+      normalize_package_key("/@babel/core@7.0.0"),
+      "@babel/core@7.0.0"
+    );
+    assert_eq!(
+      normalize_package_key("/@babel/core/7.0.0"),
+      "@babel/core@7.0.0"
+    );
+    assert_eq!(normalize_package_key("/lodash@4.17.21"), "lodash@4.17.21");
+    assert_eq!(normalize_package_key("/lodash/4.17.21"), "lodash@4.17.21");
+    // A scoped name may itself start with a digit. The `@` that decides
+    // between the two forms is the one after the scope, so this is already
+    // `name@version` and must not be rewritten to `@types@3d-view@1.0.0`.
+    assert_eq!(
+      normalize_package_key("/@types/3d-view@1.0.0"),
+      "@types/3d-view@1.0.0"
+    );
+    assert_eq!(
+      normalize_package_key("/@types/3d-view/1.0.0"),
+      "@types/3d-view@1.0.0"
+    );
+    // A path is not a host-prefixed id, however much its last segment looks
+    // like one.
+    assert_eq!(
+      normalize_package_key("other-pkg@file:vendor/pkg@1.0.0.tgz"),
+      "other-pkg@file:vendor/pkg@1.0.0.tgz"
+    );
+    // A name that still carries a host is not an id we can record.
+    assert!(!is_package_id("registry.npmmirror.com/lodash@4.17.21"));
+    assert!(is_package_id("@babel/core@7.0.0"));
+    assert!(is_package_id("@types/3d-view@1.0.0"));
+    assert!(is_package_id("lodash@4.17.21"));
+    assert!(!is_package_id("fake-pkg@file:vendor/fake-pkg-1.0.0.tgz"));
+    assert!(!is_package_id("other-pkg@file:vendor/pkg@1.0.0.tgz"));
+  }
+
+  #[test]
+  fn scoped_dependency_whose_name_starts_with_a_digit() {
+    // An alias pointing at such a package has to keep naming it, or the
+    // entry dangles: the `npm` section holds `@types/3d-view@1.0.0` while
+    // the dependency points at `@types@3d-view@1.0.0`.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      host-pkg:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+  host-pkg@1.0.0:
+    resolution: {integrity: sha512-HOST}
+  '@types/3d-view@1.0.0':
+    resolution: {integrity: sha512-3D}
+
+snapshots:
+  host-pkg@1.0.0:
+    dependencies:
+      view-alias: '@types/3d-view@1.0.0'
+  '@types/3d-view@1.0.0': {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["@types/3d-view@1.0.0"]["integrity"], "sha512-3D");
+    assert_eq!(
+      v["npm"]["host-pkg@1.0.0"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      ["view-alias@npm:@types/3d-view@1.0.0"]
+    );
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn v6_aliased_snapshot_dependency() {
+    // pnpm v6 prefixes ids with `/` in dependency values too, so
+    // `string-width-cjs: /string-width@4.2.3` has to end up pointing at the
+    // same package as the `/string-width@4.2.3` key.
+    let input = r#"
+lockfileVersion: '6.0'
+
+specifiers:
+  '@isaacs/cliui': ^8.0.2
+
+dependencies:
+  '@isaacs/cliui': 8.0.2
+
+packages:
+  /@isaacs/cliui@8.0.2:
+    resolution: {integrity: sha512-CLIUI}
+    dependencies:
+      string-width: 5.1.2
+      string-width-cjs: /string-width@4.2.3
+  /string-width@5.1.2:
+    resolution: {integrity: sha512-W512}
+  /string-width@4.2.3:
+    resolution: {integrity: sha512-W423}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+      v["npm"]["@isaacs/cliui@8.0.2"]["dependencies"]
+        .as_array()
+        .unwrap()
+        .as_slice(),
+      [
+        "string-width-cjs@npm:string-width@4.2.3",
+        "string-width@5.1.2"
+      ]
+    );
+
+    // Both point at packages the lock actually has.
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for (key, pkg) in &content.packages.npm {
+      for dep in pkg.dependencies.values() {
+        assert!(
+          content.packages.npm.contains_key(dep),
+          "{key} depends on {dep}, which isn't in the lock"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn package_installed_from_a_path_is_left_out() {
+    // A package keyed by where it came from has no npm id to record, so it
+    // must not reach the npm section as `fake-pkg@file:…`.
+    //
+    // The second one is the case `strip_registry_prefix` has to keep its
+    // hands off: its last `/` segment reads as a `name@version`, so without
+    // the scheme check it would be cut down to `pkg@1.0.0.tgz` — an id that
+    // looks recordable but names nothing, and that `NpmPackageId` rejects.
+    let input = r#"
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+  fake-pkg@file:vendor/fake-pkg-1.0.0.tgz:
+    resolution: {integrity: sha512-FAKE, tarball: file:vendor/fake-pkg-1.0.0.tgz}
+  other-pkg@file:vendor/pkg@1.0.0.tgz:
+    resolution: {integrity: sha512-OTHER, tarball: file:vendor/pkg@1.0.0.tgz}
+
+snapshots:
+  lodash@4.17.21: {}
+  fake-pkg@file:vendor/fake-pkg-1.0.0.tgz: {}
+  other-pkg@file:vendor/pkg@1.0.0.tgz: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    assert_eq!(v["npm"].as_object().unwrap().len(), 1);
+
+    let content = deno_lockfile::LockfileContent::from_json(
+      serde_json::from_str(&out).unwrap(),
+    )
+    .unwrap();
+    for key in content.packages.npm.keys() {
+      deno_npm::NpmPackageId::from_serialized(key).unwrap();
+    }
+  }
+
+  #[test]
+  fn multi_document_lockfile() {
+    // The packages that make up pnpm itself come first; the project's own
+    // lockfile is the document after it.
+    let input = r#"---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 11.10.0
+        version: 11.10.0
+
+packages:
+
+  pnpm@11.10.0:
+    resolution: {integrity: sha512-PNPM}
+    hasBin: true
+
+snapshots:
+
+  pnpm@11.10.0: {}
+---
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+      node:
+        specifier: runtime:26.8.1
+        version: runtime:26.8.1
+
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-LODASH}
+
+snapshots:
+  lodash@4.17.21: {}
+"#;
+    let out = pnpm_lock_to_deno_lock_v5(input).unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["specifiers"]["npm:lodash@^4.17.21"], "4.17.21");
+    assert_eq!(v["npm"]["lodash@4.17.21"]["integrity"], "sha512-LODASH");
+    // pnpm's own packages are not the project's dependencies.
+    assert!(v["npm"].get("pnpm@11.10.0").is_none());
+    // A pinned runtime is not an npm package either.
+    assert_eq!(v["specifiers"].as_object().unwrap().len(), 1);
   }
 
   #[test]

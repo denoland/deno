@@ -129,14 +129,14 @@ const {
 const INVALID_PATH_REGEX = new SafeRegExp(/[^\u0021-\u00ff]/);
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
+const kAuthority = Symbol("kAuthority");
+const kProxyRewrittenToAbsolute = Symbol("kProxyRewrittenToAbsolute");
 const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
 const kRetryDataSize = Symbol("kRetryDataSize");
 const kRetryOptions = Symbol("kRetryOptions");
 const kProxy = Symbol("kProxy");
-const kProxyTargetHost = Symbol("kProxyTargetHost");
-const kProxyTargetPort = Symbol("kProxyTargetPort");
 const kInspectorRequestId = Symbol("kInspectorRequestId");
 const kInspectorNetwork = Symbol("kInspectorNetwork");
 const kInspectorUrl = Symbol("kInspectorUrl");
@@ -446,6 +446,62 @@ function isURL(input) {
   return ObjectPrototypeIsPrototypeOf(URL.prototype, input);
 }
 
+// Builds the absolute-form request target (RFC 9112 section 3.2.2) that an
+// HTTP proxy is given in place of the origin-form path.
+//
+// Node builds it with `new URL()`, so go through the URL parser here too:
+// `href` omits the port when it is the scheme default and normalizes the
+// authority (lowercasing, IDNA), neither of which string concatenation does.
+// `authorityHost` must not carry the port - it is applied separately so the
+// parser can drop it when it is the default.
+//
+// The path is resolved against the origin rather than the full base URL: a
+// path of `//host/x` is protocol-relative to the URL parser and would
+// otherwise silently retarget the request at another authority.
+function buildProxyRequestTarget(authorityHost, port, path) {
+  let base;
+  try {
+    base = new URL(`http://${authorityHost}`);
+    base.port = port;
+  } catch {
+    // A host the URL parser rejects is not a reachable target; node:http
+    // reports that while building the request. Fall back to concatenation so
+    // this helper is not what fails first.
+    const portSuffix = +port === 80 ? "" : `:${port}`;
+    return `http://${authorityHost}${portSuffix}${path}`;
+  }
+
+  // An absolute-form path is already a complete target. It is only honored
+  // when its authority matches the one that `--allow-net` validated and it
+  // carries no userinfo: the permission check upstream sees only `host` and
+  // `port`, so an absolute `path` aimed at another authority (or embedding
+  // credentials for one) would otherwise retarget the proxied request past
+  // that check. Fail closed instead - like a denied direct connection.
+  let absolute = null;
+  try {
+    absolute = new URL(path);
+  } catch {
+    // Not absolute-form; resolved as an origin-form path below.
+  }
+  if (absolute !== null) {
+    if (
+      absolute.host !== base.host ||
+      absolute.username !== "" ||
+      absolute.password !== ""
+    ) {
+      throw new ERR_INVALID_URL(path);
+    }
+    return absolute.href;
+  }
+
+  try {
+    return new URL(base.origin + path).href;
+  } catch {
+    const portSuffix = +port === 80 ? "" : `:${port}`;
+    return `http://${authorityHost}${portSuffix}${path}`;
+  }
+}
+
 function ClientRequest(input, options, cb) {
   FunctionPrototypeCall(OutgoingMessage, this);
 
@@ -570,8 +626,6 @@ function ClientRequest(input, options, cb) {
       );
     }
     this[kProxy] = proxyEntry;
-    this[kProxyTargetHost] = host;
-    this[kProxyTargetPort] = port;
     optsWithoutSignal._proxy = proxyEntry;
     optsWithoutSignal._proxyTargetHost = host;
     optsWithoutSignal._proxyTargetPort = port;
@@ -637,19 +691,7 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
-
-  // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
-  // knows where to forward the request.
-  if (this[kProxy] && protocol === "http:") {
-    const t = this[kProxyTargetHost];
-    const formattedHost = t && StringPrototypeIndexOf(t, ":") !== -1 &&
-        StringPrototypeCharCodeAt(t, 0) !== 91
-      ? `[${t}]`
-      : t;
-    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
-      options.path || "/"
-    }`;
-  }
+  this[kProxyRewrittenToAbsolute] = false;
 
   if (cb) {
     this.once("response", cb);
@@ -690,6 +732,41 @@ function ClientRequest(input, options, cb) {
     }
   }
 
+  let hostHeaderFromOptions = host;
+  // For the Host header, ensure that IPv6 addresses are enclosed
+  // in square brackets, as defined by URI formatting
+  // https://tools.ietf.org/html/rfc3986#section-3.2.2
+  const posColon = StringPrototypeIndexOf(hostHeaderFromOptions, ":");
+  if (
+    posColon !== -1 &&
+    StringPrototypeIncludes(hostHeaderFromOptions, ":", posColon + 1) &&
+    StringPrototypeCharCodeAt(hostHeaderFromOptions, 0) !== 91 /* '[' */
+  ) {
+    hostHeaderFromOptions = `[${hostHeaderFromOptions}]`;
+  }
+  // Captured before the port is appended: building the proxy request target
+  // takes the host and the port separately, the way Node's does.
+  const proxyAuthorityHost = hostHeaderFromOptions;
+
+  if (port && +port !== defaultPort) {
+    hostHeaderFromOptions += ":" + port;
+  }
+  // Preserve the request authority (with the port when non-default) so that
+  // the perf_hooks entry can report a faithful URL.
+  this[kAuthority] = hostHeaderFromOptions;
+
+  // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
+  // knows where to forward the request. This has to come after the authority
+  // above so both derive from the same bracketed host.
+  if (this[kProxy] && protocol === "http:") {
+    this[kPath] = buildProxyRequestTarget(
+      proxyAuthorityHost,
+      port,
+      this[kPath],
+    );
+    this[kProxyRewrittenToAbsolute] = true;
+  }
+
   const headersArray = ArrayIsArray(options.headers);
   if (!headersArray) {
     if (options.headers) {
@@ -701,20 +778,14 @@ function ClientRequest(input, options, cb) {
     }
 
     if (host && !this.getHeader("host") && setHost) {
-      let hostHeader = host;
+      let hostHeader = hostHeaderFromOptions;
 
-      const posColon = StringPrototypeIndexOf(hostHeader, ":");
-      if (
-        posColon !== -1 &&
-        StringPrototypeIncludes(hostHeader, ":", posColon + 1) &&
-        StringPrototypeCharCodeAt(hostHeader, 0) !== 91 /* '[' */
-      ) {
-        hostHeader = `[${hostHeader}]`;
+      // The request target of a CONNECT is the authority being tunnelled to,
+      // so Host has to name that authority rather than the proxy we dialed.
+      if (method === "CONNECT" && options.path) {
+        hostHeader = String(options.path);
       }
 
-      if (port && +port !== defaultPort) {
-        hostHeader += ":" + port;
-      }
       this.setHeader("Host", hostHeader);
     }
 
@@ -863,11 +934,15 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
       });
     }
 
-    // Set request attributes
+    // Set request attributes. When the path has been rewritten to
+    // absolute-form for proxying it is already a full URL, so appending it to
+    // the authority again would duplicate it.
     const protocol = this.protocol || "http:";
-    const host = this.getHeader("host") || this.host || "localhost";
     const path = this.path || "/";
-    const fullUrl = `${protocol}//${host}${path}`;
+    const authority = this[kAuthority] || this.host || "localhost";
+    const fullUrl = this[kProxyRewrittenToAbsolute]
+      ? path
+      : `${protocol}//${authority}${path}`;
     try {
       const parsedUrl = new URL(fullUrl);
       span.setAttribute("http.request.method", this.method);
@@ -1257,7 +1332,6 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   // Emit HttpClient perf entry (at response-header time)
   const perfStartTime = req[kPerfStartTime];
   if (perfStartTime !== undefined) {
-    const host = req.getHeader("host") || req.host || "localhost";
     enqueueNodePerformanceEntry({
       name: "HttpClient",
       entryType: "http",
@@ -1266,7 +1340,13 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
       detail: {
         req: {
           method: req.method,
-          url: `${req.protocol || "http:"}//${host}${req.path || "/"}`,
+          // If the path has been rewritten to absolute-form for proxying,
+          // it is already a full URL.
+          url: req[kProxyRewrittenToAbsolute]
+            ? req.path
+            : `${req.protocol || "http:"}//${
+              req[kAuthority] || req.host || "localhost"
+            }${req.path || "/"}`,
           headers: req.getHeaders(),
         },
         res: {

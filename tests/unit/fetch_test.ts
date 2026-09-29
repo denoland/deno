@@ -521,6 +521,91 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchRedirectSensitiveHeadersAreOriginScoped() {
+    const started = Promise.withResolvers<number>();
+    await using _server = Deno.serve({
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/redirect") {
+        return Response.redirect(url.searchParams.get("location")!, 302);
+      }
+      return Response.json({
+        authorization: request.headers.get("authorization"),
+        cookie: request.headers.get("cookie"),
+        proxyAuthorization: request.headers.get("proxy-authorization"),
+        safe: request.headers.get("x-safe"),
+      });
+    });
+
+    const port = await started.promise;
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "tcp",
+        hostname: "localhost",
+        port,
+      },
+    });
+    const headers = {
+      authorization: "Bearer parent",
+      cookie: "session=parent",
+      "proxy-authorization": "Basic parent",
+      "x-safe": "keep",
+    };
+
+    async function redirect(
+      from: string,
+      to: string,
+    ): Promise<Record<string, string | null>> {
+      const response = await fetch(
+        `${from}/redirect?location=${encodeURIComponent(`${to}/target`)}`,
+        { client, headers },
+      );
+      return await response.json();
+    }
+
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "http://parent.example.test",
+      ),
+      {
+        authorization: "Bearer parent",
+        cookie: "session=parent",
+        proxyAuthorization: "Basic parent",
+        safe: "keep",
+      },
+    );
+
+    const strippedHeaders = {
+      authorization: null,
+      cookie: null,
+      proxyAuthorization: null,
+      safe: "keep",
+    };
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "http://child.parent.example.test",
+      ),
+      strippedHeaders,
+    );
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "https://parent.example.test",
+      ),
+      strippedHeaders,
+    );
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -1476,6 +1561,23 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { read: true } },
+  function createHttpClientMismatchedCertAndKey() {
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          cert: Deno.readTextFileSync(
+            "tests/testdata/tls/localhost.crt",
+          ),
+          key: Deno.readTextFileSync("tests/testdata/tls/RootCA.key"),
+        }),
+      TypeError,
+      "keys may not be consistent: KeyMismatch",
+    );
+  },
+);
+
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchCustomClientPrivateKey(): Promise<
     void
@@ -1693,6 +1795,22 @@ Deno.test(
       caCerts: [caCert],
       http2MaxHeaderListSize: 64 * 1024,
     });
+    const res = await fetch("https://localhost:5547/large_headers", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "ok");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function fetchHttp2LargeHeadersDefault() {
+    // Regression test for https://github.com/denoland/deno/issues/36462:
+    // responses with large header blocks (larger than hyper's old 16KB
+    // SETTINGS_MAX_HEADER_LIST_SIZE default) must not be rejected with an
+    // http2 PROTOCOL_ERROR when no explicit http2MaxHeaderListSize is set.
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
     const res = await fetch("https://localhost:5547/large_headers", { client });
     assert(res.ok);
     assertEquals(await res.text(), "ok");
@@ -2263,34 +2381,27 @@ Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
     const listener = Deno.listen({ port: listenPort });
-    // Accept connections in a loop so retries also hit the same error.
-    // This is needed because connection reset is retryable.
-    const server = (async () => {
-      while (true) {
-        let conn;
-        try {
-          conn = await listener.accept();
-        } catch {
-          break;
-        }
-        conn.close();
-      }
-    })();
+    // A single connection is enough: a failure on a freshly established
+    // connection is never retried.
+    // Immediately close the connection to simulate a connection error.
+    const server = listener.accept().then((conn) => conn.close());
 
-    const url = `http://localhost:${listenPort}`;
-    const err = await assertRejects(() => fetch(url));
-    listener.close();
+    try {
+      const url = `http://localhost:${listenPort}`;
+      const err = await assertRejects(() => fetch(url));
 
-    assert(err instanceof TypeError, `${err}`);
-    // Node-compatible shape: `"fetch failed"` with the low-level transport
-    // detail surfaced via `.cause`. The exact `.cause` text (the innermost OS
-    // error, e.g. "Connection reset by peer") is platform-specific, so only the
-    // shape is asserted here.
-    assertEquals(err.message, "fetch failed", `${err.message}`);
-    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
-    assert(err.cause.message.length > 0, `err.cause.message was empty`);
-
-    await server;
+      assert(err instanceof TypeError, `${err}`);
+      // Node-compatible shape: `"fetch failed"` with the low-level transport
+      // detail surfaced via `.cause`. The exact `.cause` text (the innermost OS
+      // error, e.g. "Connection reset by peer") is platform-specific, so only
+      // the shape is asserted here.
+      assertEquals(err.message, "fetch failed", `${err.message}`);
+      assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+      assert(err.cause.message.length > 0, `err.cause.message was empty`);
+    } finally {
+      listener.close();
+      await server.catch(() => {});
+    }
   },
 );
 
@@ -2488,6 +2599,61 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { write: true, run: true },
+  },
+  async function fetchEnvUnixProxyRequiresUnixPermissions() {
+    const socketPath = tmpUnixSocketPath();
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      try {
+        await fetch("http://example.com/");
+        console.log("FETCH_OK");
+      } catch (error) {
+        console.log(error.name + ":" + error.message);
+        console.log(error.cause?.name + ":" + error.cause?.message);
+      }
+      `,
+    );
+
+    async function run(extraPermissions: string[]) {
+      const { code, stdout, stderr } = await new Deno.Command(
+        Deno.execPath(),
+        {
+          args: [
+            "run",
+            "--no-prompt",
+            "--allow-env=ALL_PROXY",
+            "--allow-net=example.com",
+            ...extraPermissions,
+            scriptPath,
+          ],
+          env: { ALL_PROXY: `unix:${socketPath}` },
+          stdout: "piped",
+          stderr: "piped",
+        },
+      ).output();
+      const output = new TextDecoder().decode(stdout) +
+        new TextDecoder().decode(stderr);
+      assertEquals(code, 0);
+      return output;
+    }
+
+    const missingFilePermissions = await run([]);
+    assertStringIncludes(missingFilePermissions, "Requires read access");
+
+    const missingUnixNetPermission = await run([
+      `--allow-read=${socketPath}`,
+      `--allow-write=${socketPath}`,
+    ]);
+    assertStringIncludes(missingUnixNetPermission, "Requires net access");
+  },
+);
+
 // Regression test for https://github.com/denoland/deno/issues/29281
 // A server advertising `Content-Encoding: gzip` (or br) while returning an
 // empty body should not fail decompression with "unexpected end of file".
@@ -2637,6 +2803,26 @@ Deno.test(
         });
       },
       TypeError,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function createHttpClientRejectsUnixSchemeInProxyUrl() {
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            url: "unix://tmp/%2E%2E/tmp/deno-proxy.sock",
+          },
+        });
+      },
+      TypeError,
+      "invalid proxy url",
     );
   },
 );

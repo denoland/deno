@@ -1,0 +1,6 @@
+Available tasks (@scope/bar):
+- dev
+    echo '@scope/bar'
+Available tasks (@scope/foo):
+- dev
+    echo '@scope/foo'

@@ -17,10 +17,3 @@ removeSync("test2");
 deno run -A --unstable run.mjs
 node run.js
 ```
-
-### view report
-
-```bash
-deno run --allow-net=127.0.0.1:9000 serve.jsx
-# View rendered report at http://127.0.0.1:9000/
-```

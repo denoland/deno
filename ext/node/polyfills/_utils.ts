@@ -144,7 +144,7 @@ function makeMethodsEnumerable(klass: { new (): unknown }) {
       const desc = ReflectGetOwnPropertyDescriptor(proto, key);
       if (desc) {
         desc.enumerable = true;
-        ObjectDefineProperty(proto, key, desc);
+        ObjectDefineProperty(proto, key, { __proto__: null, ...desc });
       }
     }
   }

@@ -7,3 +7,4 @@
 
 mod ffi;
 pub mod spki;
+pub mod x448;

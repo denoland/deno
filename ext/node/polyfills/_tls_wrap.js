@@ -99,6 +99,9 @@ const { kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 const {
   validateFunction,
   validateInt32,
@@ -514,6 +517,12 @@ TLSSocket.prototype[kReinitializeHandle] = function (handle) {
   if (options.ALPNProtocols) {
     this._handle.setAlpnProtocols(options.ALPNProtocols);
   }
+  // Only re-enable resumption when the session already passed
+  // setSession()'s host:port validation; an invalid buffer must not
+  // enable resumption on the new handle.
+  if (this._session && this._sessionReused) {
+    this._handle.setSessionAllowed(true);
+  }
 
   this._undestroy();
   this._sockname = undefined;
@@ -848,9 +857,15 @@ TLSSocket.prototype._init = function (socket, wrap) {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = onhandshakedone;
 
-    if (options.session) {
-      ssl.setSession(options.session);
-    }
+    // Unlike Node, options.session is not applied here: it can't be
+    // validated against the destination yet, because kConnectOptions
+    // isn't set until after construction. tls.connect() applies it via
+    // setSession(), which validates against the connect options.
+    // Consequence: a directly constructed
+    // `new TLSSocket(socket, { session })` never resumes -- with no
+    // kConnectOptions, syntheticSessionMatches() can't validate the
+    // buffer. Acceptable under the synthetic-session design, since such
+    // a buffer can't be matched to a destination in the shared cache.
   }
 
   if (options.ALPNProtocols) {
@@ -1104,6 +1119,9 @@ TLSSocket.prototype.setSession = function (_session) {
     this._session,
     this[kConnectOptions],
   );
+  if (this._handle) {
+    this._handle.setSessionAllowed(this._sessionReused);
+  }
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {
@@ -1681,7 +1699,6 @@ function connect(...args) {
     isServer: false,
     requestCert: true,
     rejectUnauthorized: options.rejectUnauthorized !== false,
-    session: options.session,
     ALPNProtocols: options.ALPNProtocols,
     highWaterMark: options.highWaterMark,
     servername: options.servername,
@@ -1692,6 +1709,12 @@ function connect(...args) {
   options.rejectUnauthorized = options.rejectUnauthorized !== false;
 
   tlssock[kConnectOptions] = options;
+
+  // Apply the session before the connection can start so the resumption
+  // gate is set before rustls creates the ClientConnection in start().
+  if (options.session) {
+    tlssock.setSession(options.session);
+  }
 
   if (cb) {
     tlssock.once("secureConnect", cb);
@@ -1705,10 +1728,6 @@ function connect(...args) {
   }
 
   tlssock._releaseControl();
-
-  if (options.session) {
-    tlssock.setSession(options.session);
-  }
 
   if (options.servername) {
     tlssock.setServername(options.servername);
@@ -1864,8 +1883,14 @@ function checkServerIdentity(hostname, cert) {
   let valid = false;
   let reason = "Unknown reason";
 
+  // Remove trailing dots for error messages and matching.
   hostname = unfqdn(hostname);
 
+  // An IP literal must not be IDNA-normalized: domainToASCII() returns '' for
+  // an IPv6 literal (it is not a domain), so matching against the normalized
+  // host would skip IP-SAN matching for IPv6 entirely. Match IP hosts against
+  // the hostname as given; net.isIP() rejects non-ASCII, so there is no IDNA
+  // confusion to guard against here.
   if (net.isIP(hostname)) {
     valid = ArrayPrototypeIncludes(ips, canonicalizeIP(hostname));
     if (!valid) {
@@ -1873,7 +1898,20 @@ function checkServerIdentity(hostname, cert) {
         ArrayPrototypeJoin(ips, ", ");
     }
   } else if (dnsNames.length > 0 || subject?.CN) {
-    const hostParts = splitHost(hostname);
+    // Match on the IDNA-normalized host: splitHost() only splits on U+002E,
+    // but IDNA also maps U+3002, U+FF0E and U+FF61 to a label separator, so
+    // "foo<U+3002>bar.example.com" must be seen as the four-label
+    // "foo.bar.example.com" rather than a single label matching "*". An
+    // all-ASCII host has no such mapping to apply (check() lowercases and
+    // rejects non-ASCII patterns), so it is matched as given and the
+    // normalization is skipped, keeping the op off the common handshake path.
+    // domainToASCII() returns '' for a host IDNA rejects; that empty host is
+    // then matched by no pattern, which is the intended fail-closed outcome.
+    const hostParts = splitHost(
+      RegExpPrototypeTest(nonAsciiPattern, hostname)
+        ? domainToASCII(hostname)
+        : hostname,
+    );
     const wildcard = (pattern) => check(hostParts, pattern, true);
 
     if (dnsNames.length > 0) {

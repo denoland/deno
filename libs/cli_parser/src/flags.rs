@@ -9,11 +9,6 @@ use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-#[allow(
-  clippy::disallowed_types,
-  reason = "Arc needed for CompletionsFlags::Dynamic"
-)]
-use std::sync::Arc;
 
 pub use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundleOptions;
@@ -23,7 +18,6 @@ pub use deno_bundle_runtime::SourceMapType;
 pub use deno_config::deno_json::NewestDependencyDate;
 pub use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::NodeModulesLinkerMode;
-use deno_core::error::AnyError;
 pub use deno_core::url::Url;
 pub use deno_lib::args::CaData;
 pub use deno_lib::args::UnstableConfig;
@@ -64,6 +58,7 @@ pub struct AddFlags {
   pub lockfile_only: bool,
   pub save_exact: bool,
   pub package_json: bool,
+  pub unscoped: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -170,6 +165,34 @@ pub struct SyncTypesFlags {
   pub roots: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum JavaScriptEngine {
+  #[default]
+  V8,
+  QuickJs,
+}
+
+impl JavaScriptEngine {
+  pub const fn artifact_suffix(&self) -> &'static str {
+    match self {
+      Self::V8 => "",
+      Self::QuickJs => "-quickjs",
+    }
+  }
+}
+
+impl std::str::FromStr for JavaScriptEngine {
+  type Err = String;
+
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    match value {
+      "v8" => Ok(Self::V8),
+      "quickjs" => Ok(Self::QuickJs),
+      _ => Err(format!("unsupported JavaScript engine: {value}")),
+    }
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompileFlags {
   pub source_file: String,
@@ -196,6 +219,9 @@ pub struct CompileFlags {
   /// analyzable dynamic imports may not appear in the graph; pass
   /// `--include npm:<pkg>` for any such packages.
   pub exclude_unused_npm: bool,
+  /// JS engine the compiled binary should run on. Named `engine` because
+  /// `deno desktop --backend` already means the render backend.
+  pub engine: JavaScriptEngine,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -223,6 +249,9 @@ pub struct DesktopFlags {
   pub exclude: Vec<String>,
   pub hmr: bool,
   pub backend: Option<String>,
+  /// JS engine the desktop binary runs on. Distinct from `backend`, which
+  /// selects the render backend (webview/cef/raw).
+  pub engine: JavaScriptEngine,
   pub all_targets: bool,
   /// Reverse-DNS bundle / application identifier (e.g. `com.acme.foo`).
   /// Used for the macOS `CFBundleIdentifier`, the Linux `.desktop` file
@@ -253,36 +282,14 @@ pub struct DesktopFlags {
   pub exclude_unused_npm: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompletionsFlags {
+  /// Pre-rendered static completion script.
   Static(Box<[u8]>),
-  #[allow(
-    clippy::disallowed_types,
-    reason = "Arc needed for dynamic completion callback"
-  )]
-  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
-}
-
-#[allow(clippy::disallowed_types, reason = "Arc used in Dynamic variant")]
-impl PartialEq for CompletionsFlags {
-  fn eq(&self, other: &Self) -> bool {
-    match (self, other) {
-      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
-      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
-      _ => false,
-    }
-  }
-}
-
-impl Eq for CompletionsFlags {}
-
-impl std::fmt::Debug for CompletionsFlags {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
-      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
-    }
-  }
+  /// Dynamic completions for the given shell. The actual generation is
+  /// performed on the CLI side (it needs the runtime's completion handler),
+  /// so this variant only records the target shell.
+  Dynamic { shell: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -614,6 +621,8 @@ pub struct TaskFlags {
   pub task: Option<String>,
   pub is_run: bool,
   pub recursive: bool,
+  /// Run the task in all workspace members, but not in the workspace root.
+  pub members: bool,
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,

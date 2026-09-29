@@ -2257,6 +2257,13 @@ class MockFunctionContext {
 
   resetCalls() {
     ArrayPrototypeSplice(this.#calls, 0, this.#calls.length);
+    // Node's MockTracker.reset() restores mocked methods (and Deno's
+    // mock.reset() already restores module mocks via MockModuleContext).
+    // Invoke restore here without splicing activeMocks mid-iteration.
+    if (this.#restore) {
+      this.#restore();
+      this.#restore = undefined;
+    }
   }
 
   restore() {
@@ -2521,7 +2528,10 @@ function mockMethodImpl(object, methodName, implementation, options) {
   }
 
   const restore = () => {
-    ObjectDefineProperty(object, methodName, descriptor);
+    ObjectDefineProperty(object, methodName, {
+      __proto__: null,
+      ...descriptor,
+    });
   };
 
   const impl = implementation === undefined ? original : implementation;
@@ -2531,6 +2541,7 @@ function mockMethodImpl(object, methodName, implementation, options) {
   const mockFn = createMockFunction(original, impl, ctx);
 
   const mockDescriptor = {
+    __proto__: null,
     configurable: descriptor.configurable,
     enumerable: descriptor.enumerable,
   };

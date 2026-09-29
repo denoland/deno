@@ -110,7 +110,11 @@ pub struct TlsStreamResource {
   inner: TlsStreamInner,
   // `None` when a TLS handshake hasn't been done.
   handshake_info: RefCell<Option<TlsHandshakeInfo>>,
-  cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
+  // op_cancel_read only cancels read and handshake ops. Closing the resource
+  // cancels both halves so blocked writes don't keep the underlying socket
+  // alive.
+  read_cancel_handle: CancelHandle,
+  write_cancel_handle: CancelHandle,
 }
 
 impl TlsStreamResource {
@@ -123,7 +127,8 @@ impl TlsStreamResource {
         wr: AsyncRefCell::new(wr),
       },
       handshake_info: RefCell::new(None),
-      cancel_handle: Default::default(),
+      read_cancel_handle: Default::default(),
+      write_cancel_handle: Default::default(),
     }
   }
 
@@ -158,7 +163,7 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    let cancel_handle = RcRef::map(&self, |r| &r.read_cancel_handle);
     rd.read(data).try_or_cancel(cancel_handle).await
   }
 
@@ -171,9 +176,14 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    let nwritten = wr.write(data).await?;
-    wr.flush().await?;
-    Ok(nwritten)
+    let cancel_handle = RcRef::map(&self, |r| &r.write_cancel_handle);
+    async {
+      let nwritten = wr.write(data).await?;
+      wr.flush().await?;
+      Ok(nwritten)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
@@ -182,7 +192,8 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    wr.shutdown().await?;
+    let cancel_handle = RcRef::map(&self, |r| &r.write_cancel_handle);
+    wr.shutdown().try_or_cancel(cancel_handle).await?;
     Ok(())
   }
 
@@ -198,7 +209,7 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+    let cancel_handle = RcRef::map(self, |r| &r.read_cancel_handle);
     let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
     let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
@@ -225,7 +236,8 @@ impl Resource for TlsStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
+    self.read_cancel_handle.cancel();
+    self.write_cancel_handle.cancel();
   }
 }
 

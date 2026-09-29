@@ -1624,9 +1624,58 @@ Deno.test("process.resourceUsage()", () => {
   assert(later.systemCPUTime >= usage.systemCPUTime);
 });
 
+Deno.test("process.resourceUsage() maxRSS is in kilobytes", () => {
+  const rssBytes = Deno.memoryUsage().rss;
+  const { maxRSS } = process.resourceUsage();
+
+  // maxRSS is a peak, so it must be at least roughly the current RSS.
+  assert(
+    maxRSS * 1024 >= rssBytes / 2,
+    `maxRSS=${maxRSS} rss=${rssBytes}`,
+  );
+  // Keep this loose to account for peak-vs-current drift in the test process.
+  assert(
+    maxRSS * 1024 < rssBytes * 64,
+    `maxRSS=${maxRSS} rss=${rssBytes}`,
+  );
+});
+
 Deno.test("importedResourceUsage", async () => {
   const { resourceUsage } = await import("node:process");
   assert(resourceUsage === process.resourceUsage);
+});
+
+Deno.test({
+  name:
+    "process.constrainedMemory requires systemMemoryInfo permission on Linux and Android",
+  ignore: Deno.build.os !== "linux" && Deno.build.os !== "android",
+  permissions: { sys: false },
+  fn() {
+    assertThrows(
+      () => process.constrainedMemory(),
+      Deno.errors.NotCapable,
+      'Requires sys access to "systemMemoryInfo"',
+    );
+  },
+});
+
+Deno.test({
+  name: "process.constrainedMemory works with sys permission",
+  ignore: Deno.build.os !== "linux" && Deno.build.os !== "android",
+  permissions: { sys: true },
+  fn() {
+    assert(typeof process.constrainedMemory() === "number");
+  },
+});
+
+Deno.test({
+  name:
+    "process.constrainedMemory returns 0 without sys permission outside Linux and Android",
+  ignore: Deno.build.os === "linux" || Deno.build.os === "android",
+  permissions: { sys: false },
+  fn() {
+    assertEquals(process.constrainedMemory(), 0);
+  },
 });
 
 Deno.test("process.stdout.columns writable", () => {

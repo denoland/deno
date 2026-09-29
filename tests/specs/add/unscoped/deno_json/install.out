@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "manual",
+  "imports": {
+    "add": "jsr:@denotest/add@^1.0.0"
+  }
+}

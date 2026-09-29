@@ -650,6 +650,81 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true, write: true, run: true } },
+  async function netUdpMulticastMembershipChecksGroupPermission() {
+    const reservation = Deno.listenDatagram({
+      hostname: "0.0.0.0",
+      port: 0,
+      transport: "udp",
+    });
+    assert(reservation.addr.transport === "udp");
+    const port = reservation.addr.port;
+    reservation.close();
+
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const listener = Deno.listenDatagram({
+        hostname: "0.0.0.0",
+        port: ${port},
+        transport: "udp",
+        reuseAddress: true,
+      });
+      try {
+        const membership = await listener.joinMulticastV4(
+          "224.0.0.114",
+          "0.0.0.0",
+        );
+        console.log("MEMBERSHIP_RESULT:JOINED");
+        membership.leave();
+      } catch (error) {
+        console.log(
+          error instanceof Deno.errors.NotCapable
+            ? "NOT_CAPABLE"
+            : "MEMBERSHIP_RESULT:" + error.name,
+        );
+      } finally {
+        listener.close();
+      }
+      `,
+    );
+
+    const run = (permissionArgs: string[]) =>
+      execCode3(Deno.execPath(), [
+        "run",
+        "--unstable-net",
+        "--no-prompt",
+        ...permissionArgs,
+        scriptPath,
+      ]).finished();
+
+    try {
+      const [deniedStatus, deniedOutput] = await run([
+        `--allow-net=0.0.0.0:${port}`,
+      ]);
+      assertEquals(deniedStatus, 0);
+      assertStringIncludes(deniedOutput, "NOT_CAPABLE");
+
+      const scopedGrant = `--allow-net=0.0.0.0:${port},224.0.0.114:${port}`;
+      const [allowedStatus, allowedOutput] = await run([scopedGrant]);
+      assertEquals(allowedStatus, 0);
+      assertStringIncludes(allowedOutput, "MEMBERSHIP_RESULT:");
+      assert(!allowedOutput.includes("NOT_CAPABLE"));
+
+      const [explicitlyDeniedStatus, explicitlyDeniedOutput] = await run([
+        scopedGrant,
+        `--deny-net=224.0.0.114:${port}`,
+      ]);
+      assertEquals(explicitlyDeniedStatus, 0);
+      assertStringIncludes(explicitlyDeniedOutput, "NOT_CAPABLE");
+    } finally {
+      Deno.removeSync(scriptPath);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { net: true }, ignore: true },
   async function netUdpSendReceiveMulticastv4() {
     const alice = Deno.listenDatagram({
@@ -1783,6 +1858,53 @@ Deno.test(
     ]).finished();
     assertEquals(status, 0);
     assertStringIncludes(output, "OK");
+  },
+);
+
+// On case-insensitive filesystems (macOS APFS/HFS+) a case-variant spelling
+// of a socket path names the same socket, so it must not slip past a
+// `--deny-net=unix:<path>` rule. The subprocess is granted blanket
+// `--allow-net` with the socket carved out by a deny rule, then connects to
+// the lowercase alias: the permission check must reject it (NOT_CAPABLE)
+// rather than let it through to the connect (which would fail with a
+// different error since nothing is listening).
+Deno.test(
+  {
+    ignore: Deno.build.os !== "darwin",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixDenyNetIsCaseInsensitiveOnCaseInsensitiveFs() {
+    const dir = Deno.makeTempDirSync();
+    const deniedPath = `${dir}/Control.sock`;
+    const aliasPath = `${dir}/control.sock`;
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      try {
+        const conn = await Deno.connect({
+          path: ${JSON.stringify(aliasPath)},
+          transport: "unix",
+        });
+        conn.close();
+        console.log("CONNECTED");
+      } catch (e) {
+        console.log(
+          e instanceof Deno.errors.NotCapable ? "NOT_CAPABLE" : "OTHER:" + e.name,
+        );
+      }
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      "--allow-net",
+      `--deny-net=unix:${deniedPath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "NOT_CAPABLE");
   },
 );
 

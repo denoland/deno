@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  // `deno x` installs with an internal factory whose config is a generated
+  // temp `deno.json`, so the `-P` set named on the command line does not
+  // resolve against it. Resolving a set is fatal now that an unreadable
+  // `--deny-import` policy fails the command instead of silently becoming an
+  // empty deny list, so `deno x` resolves the rules against the user's own
+  // options and carries them into that internal factory.
+  //
+  // Without that, this exits 1 with `Could not find permission set 'locked'`.
+  "tests": {
+    "runs_with_permission_set_defining_deny_import": {
+      "args": "x -y -P=locked npm:@denotest/try-write",
+      "output": "[WILDCARD]write succeeded\n"
+    }
+  }
+}

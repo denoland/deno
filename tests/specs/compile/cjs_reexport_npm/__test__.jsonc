@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "canonicalizedTempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --node-modules-dir=manual --output main main.mjs",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out"
+  }, {
+    "if": "windows",
+    "args": "compile --node-modules-dir=manual --output main.exe main.mjs",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "main.out"
+  }]
+}

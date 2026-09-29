@@ -126,16 +126,17 @@ class URLSearchParams {
    */
   constructor(init = undefined) {
     this[webidl.brand] = webidl.brand;
-    // Node treats `null` and `undefined` as a missing argument (empty params).
-    // The WHATWG spec would stringify them via the union conversion, but
-    // browsers actually never observe this case in practice; matching Node
-    // here unblocks node:url compat without affecting WPT.
-    if (init === null || init === undefined) {
+    // `undefined` is the default value of an optional argument, so it means
+    // "not passed". `null` is a value, and per WebIDL union resolution it
+    // reaches the USVString overload as "null".
+    if (init === undefined) {
       this[_list] = [];
       return;
     }
 
-    if (typeof init === "object" || typeof init === "function") {
+    if (
+      init !== null && (typeof init === "object" || typeof init === "function")
+    ) {
       // Object overloads: either iterable of pairs or a record.
       const method = init[SymbolIterator];
       if (method !== undefined && method !== null) {

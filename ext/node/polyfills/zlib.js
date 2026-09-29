@@ -29,6 +29,7 @@ const { core, primordials } = __bootstrap;
 const {
   ArrayBuffer,
   MathMax,
+  NumberIsInteger,
   NumberIsNaN,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -38,6 +39,7 @@ const {
   ObjectSetPrototypeOf,
   ReflectApply,
   Symbol,
+  TypedArrayPrototypeGetByteLength,
   Uint32Array,
 } = primordials;
 
@@ -79,6 +81,7 @@ const { ownerSymbol: owner_symbol } = core.loadExtScript(
 );
 const {
   checkRangesOrGetDefault,
+  validateBoolean,
   validateFiniteNumber,
   validateFunction,
   validateUint32,
@@ -319,6 +322,13 @@ function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
       kMaxLength,
     );
 
+    if (opts.rejectGarbageAfterEnd !== undefined) {
+      validateBoolean(
+        opts.rejectGarbageAfterEnd,
+        "options.rejectGarbageAfterEnd",
+      );
+    }
+
     if (opts.encoding || opts.objectMode || opts.writableObjectMode) {
       opts = { ...opts };
       opts.encoding = null;
@@ -471,7 +481,40 @@ ZlibBase.prototype._processChunk = function (chunk, flushFlag, cb) {
   }
 };
 
+// `byteLength` can be shadowed by an own accessor, and the write paths below
+// trust the value they are handed to size the read out of the backing store.
+// Check the reported size against the intrinsic one before it is used as a
+// length, and likewise that the output window is inside the output buffer.
+// The ops bounds-check as well, so this is about reporting Node's error rather
+// than about memory safety.
+function validateChunkBounds(self, chunk) {
+  if (isUint8Array(chunk)) {
+    const actual = TypedArrayPrototypeGetByteLength(chunk);
+    if (chunk.byteLength > actual) {
+      throw new ERR_OUT_OF_RANGE(
+        "chunk.byteLength",
+        `<= ${actual}`,
+        chunk.byteLength,
+      );
+    }
+  }
+  // A fractional offset would otherwise be truncated on the way into the op,
+  // so reject it here instead of silently writing somewhere else.
+  if (
+    !NumberIsInteger(self._outOffset) ||
+    self._outOffset < 0 ||
+    self._outOffset > self._chunkSize
+  ) {
+    throw new ERR_OUT_OF_RANGE(
+      "outOffset",
+      `an integer >= 0 and <= ${self._chunkSize}`,
+      self._outOffset,
+    );
+  }
+}
+
 function processChunkSync(self, chunk, flushFlag) {
+  validateChunkBounds(self, chunk);
   let availInBefore = chunk.byteLength;
   let availOutBefore = self._chunkSize - self._outOffset;
   let inOff = 0;
@@ -554,7 +597,15 @@ function processChunkSync(self, chunk, flushFlag) {
     }
   }
 
+  // Recorded before the trailing-junk check so the count of what was actually
+  // consumed is observable on the throwing path too.
   self.bytesWritten = inputRead;
+
+  if (availInAfter > 0 && self._rejectGarbageAfterEnd) {
+    _close(self);
+    throw new ERR_TRAILING_JUNK_AFTER_STREAM_END();
+  }
+
   _close(self);
 
   if (nread === 0) {
@@ -567,6 +618,8 @@ function processChunkSync(self, chunk, flushFlag) {
 function processChunk(self, chunk, flushFlag, cb) {
   const handle = self._handle;
   if (!handle) return process.nextTick(cb);
+
+  validateChunkBounds(self, chunk);
 
   // The native binding expects a Uint8Array
   if (!isUint8Array(chunk)) {
@@ -898,6 +951,12 @@ function Zlib(opts, mode) {
   );
 
   ReflectApply(ZlibBase, this, [opts, mode, handle, zlibDefaultOpts]);
+
+  if (this._rejectGarbageAfterEnd) {
+    // Stop the engine from transparently continuing into the next gzip member,
+    // so trailing input is still visible as unconsumed after the write.
+    handle.setRejectGarbageAfterEnd(true);
+  }
 
   this._level = level;
   this._strategy = strategy;

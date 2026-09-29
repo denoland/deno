@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "add": "npm:@jsr/denotest__add@^1.0.0"
+  }
+}

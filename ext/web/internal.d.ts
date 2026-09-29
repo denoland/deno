@@ -41,8 +41,6 @@ declare module "ext:deno_web/00_infra.js" {
   };
   function forgivingBase64Encode(data: Uint8Array): string;
   function forgivingBase64Decode(data: string): Uint8Array;
-  function forgivingBase64UrlEncode(data: Uint8Array | string): string;
-  function forgivingBase64UrlDecode(data: string): Uint8Array;
   function pathFromURL(pathOrURL: string | URL): string;
   function serializeJSValueToJSONString(value: unknown): string;
 }
@@ -118,7 +116,8 @@ declare module "ext:deno_web/13_message_port.js" {
   }
   const MessageChannel: typeof MessageChannel;
   const MessagePort: typeof MessagePort;
-  const MessagePortIdSymbol: typeof MessagePortIdSymbol;
+  function getMessagePortId(port: MessagePort): number | null;
+  function setMessagePortId(port: MessagePort, id: number | null): void;
   function deserializeJsMessageData(
     messageData: messagePort.MessageData,
   ): [object, object[]];

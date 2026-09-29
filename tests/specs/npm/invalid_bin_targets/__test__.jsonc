@@ -1,0 +1,45 @@
+{
+  "tempDir": true,
+  "tests": {
+    "isolated": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=auto --node-modules-linker=isolated",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A prepare.ts isolated",
+          "output": ""
+        },
+        {
+          "args": "install --node-modules-dir=auto --node-modules-linker=isolated",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A verify.ts isolated",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "hoisted": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=manual --node-modules-linker=hoisted",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A prepare.ts hoisted",
+          "output": ""
+        },
+        {
+          "args": "install --node-modules-dir=manual --node-modules-linker=hoisted",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A verify.ts hoisted",
+          "output": "ok\n"
+        }
+      ]
+    }
+  }
+}

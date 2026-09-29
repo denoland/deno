@@ -24,6 +24,9 @@ const {
   SymbolIterator,
 } = primordials;
 
+// Note: unlike `fs.readdir`, `fs.opendir`/`Dir` streams entries in filesystem
+// order and does NOT sort them, matching Node.js (libuv's `uv_fs_readdir`, as
+// opposed to `uv_fs_scandir` which backs `readdir`). Do not add sorting here.
 export default class Dir {
   #dirPath: string | Uint8Array;
   #syncIterator!: Iterator<Deno.DirEntry, undefined> | null;

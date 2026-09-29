@@ -1,0 +1,7 @@
+{
+  "name": "root",
+  "workspaces": ["./foo", "./bar"],
+  "scripts": {
+    "dev": "echo 'root ran'"
+  }
+}

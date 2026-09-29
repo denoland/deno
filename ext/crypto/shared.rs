@@ -12,6 +12,14 @@ use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
 use serde::Deserialize;
 use serde::Serialize;
+use sha1::Sha1;
+use sha2::Digest;
+use sha2::Sha256;
+use sha2::Sha384;
+use sha2::Sha512;
+use sha3::Sha3_256;
+use sha3::Sha3_384;
+use sha3::Sha3_512;
 
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
@@ -39,6 +47,34 @@ pub enum ShaHash {
   Sha3_384,
   #[serde(rename = "SHA3-512")]
   Sha3_512,
+}
+
+fn rsa_oaep_padding_for_digest<D>(label: &[u8]) -> rsa::Oaep
+where
+  D: Digest + sha2::digest::DynDigest + Default + Send + Sync + 'static,
+{
+  let mut digest = D::default();
+  Digest::update(&mut digest, label);
+
+  // `rsa::Oaep` only accepts string labels. Preloading the label bytes into
+  // the label digest and passing an empty label preserves arbitrary bytes.
+  rsa::Oaep {
+    digest: Box::new(digest),
+    mgf_digest: Box::<D>::default(),
+    label: None,
+  }
+}
+
+pub(crate) fn rsa_oaep_padding(hash: ShaHash, label: &[u8]) -> rsa::Oaep {
+  match hash {
+    ShaHash::Sha1 => rsa_oaep_padding_for_digest::<Sha1>(label),
+    ShaHash::Sha256 => rsa_oaep_padding_for_digest::<Sha256>(label),
+    ShaHash::Sha384 => rsa_oaep_padding_for_digest::<Sha384>(label),
+    ShaHash::Sha512 => rsa_oaep_padding_for_digest::<Sha512>(label),
+    ShaHash::Sha3_256 => rsa_oaep_padding_for_digest::<Sha3_256>(label),
+    ShaHash::Sha3_384 => rsa_oaep_padding_for_digest::<Sha3_384>(label),
+    ShaHash::Sha3_512 => rsa_oaep_padding_for_digest::<Sha3_512>(label),
+  }
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]

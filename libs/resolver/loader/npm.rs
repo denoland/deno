@@ -7,6 +7,7 @@ use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::analyze::CjsCodeAnalyzer;
 use node_resolver::analyze::NodeCodeTranslatorRc;
 use node_resolver::analyze::NodeCodeTranslatorSys;
@@ -118,12 +119,13 @@ pub type DenoNpmModuleLoader<TSys> = NpmModuleLoader<
 #[derive(Clone)]
 pub struct NpmModuleLoader<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
-  TInNpmPackageChecker: InNpmPackageChecker,
+  TInNpmPackageChecker: InNpmPackageChecker + Clone,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: NpmModuleLoaderSys,
 > {
   cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
+  in_npm_pkg_checker: TInNpmPackageChecker,
   node_code_translator: NodeCodeTranslatorRc<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -136,7 +138,7 @@ pub struct NpmModuleLoader<
 
 impl<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
-  TInNpmPackageChecker: InNpmPackageChecker,
+  TInNpmPackageChecker: InNpmPackageChecker + Clone,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: NpmModuleLoaderSys,
@@ -151,6 +153,7 @@ impl<
 {
   pub fn new(
     cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     node_code_translator: NodeCodeTranslatorRc<
       TCjsCodeAnalyzer,
       TInNpmPackageChecker,
@@ -162,6 +165,7 @@ impl<
   ) -> Self {
     Self {
       cjs_tracker,
+      in_npm_pkg_checker,
       node_code_translator,
       sys,
     }
@@ -172,6 +176,7 @@ impl<
     specifier: Cow<'a, Url>,
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
+    fallback_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<LoadedModule<'a>, NpmModuleLoadError> {
     let file_path = deno_path_util::url_to_file_path(&specifier)?;
     let code = self.sys.fs_read(&file_path).map_err(|source| {
@@ -229,7 +234,15 @@ impl<
           LoadedModuleSource::String(
             self
               .node_code_translator
-              .translate_cjs_to_esm(&specifier, Some(code))
+              .translate_cjs_to_esm_with_source_provider(
+                &specifier,
+                Some(code),
+                Some(&NpmCjsAnalysisSourceProvider {
+                  in_npm_pkg_checker: &self.in_npm_pkg_checker,
+                  sys: &self.sys,
+                  fallback: fallback_source_provider,
+                }),
+              )
               .await?
               .into_owned()
               .into(),
@@ -246,6 +259,36 @@ impl<
         })
       }
     }
+  }
+}
+
+struct NpmCjsAnalysisSourceProvider<'a, TInNpmPackageChecker, TSys> {
+  in_npm_pkg_checker: &'a TInNpmPackageChecker,
+  sys: &'a TSys,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+}
+
+impl<TInNpmPackageChecker, TSys> CjsAnalysisSourceProvider
+  for NpmCjsAnalysisSourceProvider<'_, TInNpmPackageChecker, TSys>
+where
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TSys: NpmModuleLoaderSys,
+{
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
+    // Recursive npm analysis reads package-owned sources directly. Targets
+    // outside package roots must go through the active loader's source
+    // provider so its permission and source-selection policy remains in force.
+    if !self.in_npm_pkg_checker.in_npm_package(specifier) {
+      return self
+        .fallback
+        .and_then(|provider| provider.load_source(specifier));
+    }
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .ok()
+      .map(|source| Cow::Owned(source.into_owned()))
   }
 }
 

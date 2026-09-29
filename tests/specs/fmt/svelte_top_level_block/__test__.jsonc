@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    // a Svelte block at the top level used to pin the whole file, so nothing
+    // in it was formatted at all, not even the script body
+    "top_level_block_does_not_skip_the_file": {
+      "args": "fmt --unstable-component badly_formatted.svelte",
+      "output": "[WILDLINE]badly_formatted.svelte\nChecked 1 file\n"
+    },
+    "idempotent": {
+      "steps": [{
+        "args": "fmt --unstable-component badly_formatted.svelte",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "fmt --unstable-component --check badly_formatted.svelte",
+        "output": "Checked 1 file\n"
+      }]
+    }
+  }
+}

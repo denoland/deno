@@ -97,9 +97,12 @@ pub fn op_inspector_open(
   let port = port.unwrap_or(DEFAULT_PORT);
   let addr = SocketAddr::new(host_ip, port);
 
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("inspector", "inspector.open")?;
+    permissions
+      .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
+  }
 
   let server =
     create_inspector_server(addr, "deno", InspectPublishUid::default())?;

@@ -281,6 +281,14 @@ Deno.test("[node/net] BlockList doesn't leak resources", () => {
   assert(blockList.check("1.1.1.1"));
 });
 
+Deno.test("[node/net] BlockList stores large ranges compactly", () => {
+  const blockList = new net.BlockList();
+  blockList.addRange("0.0.0.0", "255.255.255.255");
+  assert(blockList.check("1.2.3.4"));
+  assert(blockList.check("::ffff:1.2.3.4", "ipv6"));
+  assertEquals(blockList.rules, ["Range: IPv4 0.0.0.0-255.255.255.255"]);
+});
+
 Deno.test("[node/net] net.Server can listen on the same port immediately after it's closed", async () => {
   const serverClosed = Promise.withResolvers<void>();
   const server = net.createServer();

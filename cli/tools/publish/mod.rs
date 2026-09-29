@@ -28,6 +28,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_resolver::collections::FolderScopedMap;
 use deno_runtime::deno_fetch;
+use deno_semver::Version;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
 use serde::Deserialize;
@@ -80,9 +81,6 @@ pub async fn publish(
 ) -> Result<(), AnyError> {
   let cli_factory = CliFactory::from_flags(flags);
 
-  let auth_method =
-    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
-
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
@@ -122,6 +120,11 @@ pub async fn publish(
       publish_config.config_file = Arc::new(config_file);
     }
   }
+
+  validate_publish_configs(&publish_configs)?;
+
+  let auth_method =
+    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   // Bail out early if the version is already published, before doing the
   // expensive type checking and tarball preparation. Already-published
@@ -223,6 +226,34 @@ pub async fn publish(
   )
   .await?;
 
+  Ok(())
+}
+
+fn validate_publish_configs(
+  publish_configs: &[JsrPackageConfig],
+) -> Result<(), AnyError> {
+  for config in publish_configs {
+    registry::parse_package_name(&config.name).with_context(|| {
+      format!(
+        "Invalid package name '{}' in '{}'",
+        config.name, config.config_file.specifier
+      )
+    })?;
+
+    let version =
+      config.config_file.json.version.as_deref().ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "{} is missing 'version' field",
+          config.config_file.specifier
+        )
+      })?;
+    Version::parse_standard(version).with_context(|| {
+      format!(
+        "Invalid package version '{}' in '{}'",
+        version, config.config_file.specifier
+      )
+    })?;
+  }
   Ok(())
 }
 
@@ -785,15 +816,27 @@ struct CreatePackageInfo {
 
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
+///
+/// The check is authenticated when an authorization is available: the
+/// registry answers 404 for a private package unless the caller has access
+/// to it, so an anonymous check would misreport an existing private package
+/// as missing.
 async fn check_if_scope_and_package_exist(
   client: &HttpClient,
   registry_api_url: &Url,
   registry_manage_url: &Url,
   scope: &str,
   package: &str,
+  authorization: Option<&str>,
 ) -> Result<Option<CreatePackageInfo>, AnyError> {
-  let response =
-    registry::get_package(client, registry_api_url, scope, package).await?;
+  let response = registry::get_package(
+    client,
+    registry_api_url,
+    scope,
+    package,
+    authorization,
+  )
+  .await?;
   if response.status() == 404 {
     let create_url = format!(
       "{}new?scope={}&package={}&from=cli",
@@ -814,17 +857,30 @@ async fn ensure_scopes_and_packages_exist(
   registry_api_url: &Url,
   registry_manage_url: &Url,
   packages: &[Rc<PreparedPublishPackage>],
+  authorizations: &HashMap<(String, String, String), Rc<str>>,
 ) -> Result<(), AnyError> {
   let mut futures = FuturesUnordered::new();
 
   for package in packages {
-    let future = check_if_scope_and_package_exist(
-      client,
-      registry_api_url,
-      registry_manage_url,
-      &package.scope,
-      &package.package,
-    );
+    let authorization = authorizations.get(&(
+      package.scope.clone(),
+      package.package.clone(),
+      package.version.clone(),
+    ));
+    let future = async move {
+      let maybe_create_package_info = check_if_scope_and_package_exist(
+        client,
+        registry_api_url,
+        registry_manage_url,
+        &package.scope,
+        &package.package,
+        authorization.map(|a| a.as_ref()),
+      )
+      .await?;
+      Ok::<_, AnyError>(
+        maybe_create_package_info.map(|info| (info, authorization)),
+      )
+    };
     futures.push(future);
   }
 
@@ -839,7 +895,7 @@ async fn ensure_scopes_and_packages_exist(
   if !std::io::stdin().is_terminal() {
     let missing_packages_lines: Vec<_> = missing_packages
       .into_iter()
-      .map(|info| format!("- {}", info.create_url))
+      .map(|(info, _)| format!("- {}", info.create_url))
       .collect();
     if !missing_packages_lines.is_empty() {
       bail!(
@@ -850,7 +906,7 @@ async fn ensure_scopes_and_packages_exist(
     return Ok(());
   }
 
-  for create_package_info in missing_packages {
+  for (create_package_info, authorization) in missing_packages {
     ring_bell();
     log::warn!(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
@@ -861,15 +917,16 @@ async fn ensure_scopes_and_packages_exist(
     log::warn!("{}", colors::gray("Waiting..."));
     let _ = open::that_detached(&create_package_info.create_url);
 
-    let package_api_url = registry::get_package_api_url(
-      registry_api_url,
-      &create_package_info.scope,
-      &create_package_info.package,
-    );
-
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-      let response = client.get(package_api_url.parse()?)?.send().await?;
+      let response = registry::get_package(
+        client,
+        registry_api_url,
+        &create_package_info.scope,
+        &create_package_info.package,
+        authorization.map(|a| a.as_ref()),
+      )
+      .await?;
       if response.status() == 200 {
         let name = format!(
           "@{}/{}",
@@ -899,19 +956,24 @@ async fn perform_publish(
     .cloned()
     .collect::<Vec<_>>();
 
-  ensure_scopes_and_packages_exist(
-    http_client,
-    registry_api_url,
-    registry_url,
-    &packages,
-  )
-  .await?;
-
+  // Authenticate before checking which packages exist: the registry hides
+  // private packages from unauthenticated callers (they 404), so the
+  // existence check must be able to send the authorization the publish will
+  // use.
   let mut authorizations =
     get_auth_headers(http_client, registry_api_url, &packages, auth_method)
       .await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
+
+  ensure_scopes_and_packages_exist(
+    http_client,
+    registry_api_url,
+    registry_url,
+    &packages,
+    &authorizations,
+  )
+  .await?;
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
     Default::default();
   // Collect the errors of any packages that failed to publish so that we can
@@ -1043,17 +1105,18 @@ async fn publish_package(
     package.version
   );
 
+  let config_path = format!("/{}", package.config);
   let url = registry::get_package_version_api_url(
     registry_api_url,
     &package.scope,
     &package.package,
     &package.version,
-    Some(&format!("config=/{}", package.config)),
-  );
+    Some(&config_path),
+  )?;
 
   let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
   let response = http_client
-    .post(url.parse()?, body)?
+    .post(url, body)?
     .header(
       http::header::AUTHORIZATION,
       authorization.parse().map_err(http::Error::from)?,
@@ -1174,25 +1237,43 @@ async fn publish_package(
       Box::pin(provenance::generate_provenance(http_client, vec![subject]))
         .await?;
 
-    let tlog_entry = &bundle.verification_material.tlog_entries[0];
-    log::info!(
-      "{}",
-      colors::green(format!(
-        "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
-        tlog_entry.log_index
-      ))
-    );
+    let log_index = bundle.verification_material.tlog_entries[0].log_index;
+    let transparency_log =
+      format!("https://search.sigstore.dev/?logIndex={log_index}");
 
     // Submit bundle to JSR
-    let provenance_url = format!(
-      "{}scopes/{}/packages/{}/versions/{}/provenance",
-      registry_api_url, package.scope, package.package, package.version
-    );
-    http_client
-      .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
-      .header(http::header::AUTHORIZATION, authorization.parse()?)
-      .send()
-      .await?;
+    let provenance_url = registry::get_package_version_provenance_api_url(
+      registry_api_url,
+      &package.scope,
+      &package.package,
+      &package.version,
+    )?;
+    match submit_provenance_bundle(
+      http_client,
+      &provenance_url,
+      authorization,
+      &bundle,
+    )
+    .await
+    {
+      Ok(()) => log::info!(
+        "{}",
+        colors::green(format!(
+          "Provenance transparency log available at {transparency_log}"
+        ))
+      ),
+      // The version is already published and immutable at this point, so a
+      // registry-side failure must not turn a successful release into a failed
+      // command. Say plainly what did not happen instead.
+      Err(err) => log::warn!(
+        "{} {:#}\n  The package was published, but it will not show a provenance badge.\n  The attestation itself was signed and is in the transparency log at {}",
+        colors::yellow(
+          "Warning: the registry did not accept the provenance attestation:"
+        ),
+        err,
+        transparency_log,
+      ),
+    }
   }
 
   log::info!(
@@ -1308,6 +1389,51 @@ struct ManifestEntry {
 struct VersionManifest {
   manifest: HashMap<String, ManifestEntry>,
   exports: HashMap<String, String>,
+}
+
+/// Submit a signed provenance bundle to the registry, erroring on any response
+/// that is not a success.
+///
+/// The response used to be discarded entirely, so a registry that rejected
+/// every attestation looked identical to one that accepted them: publishes kept
+/// reporting a transparency-log entry and success while no package gained a
+/// provenance badge. That is how jsr-io/jsr#1474 went unnoticed for a month.
+async fn submit_provenance_bundle(
+  http_client: &HttpClient,
+  provenance_url: &Url,
+  authorization: &str,
+  bundle: &provenance::ProvenanceBundle,
+) -> Result<(), AnyError> {
+  let response = http_client
+    .post_json(provenance_url.clone(), &json!({ "bundle": bundle }))?
+    .header(http::header::AUTHORIZATION, authorization.parse()?)
+    .send()
+    .await?;
+
+  let status = response.status();
+  if status.is_success() {
+    return Ok(());
+  }
+
+  // Carried into the error so that a report of this warning is traceable in the
+  // registry's own logs, which is where the reason for a rejection lives.
+  let x_deno_ray = response
+    .headers()
+    .get("x-deno-ray")
+    .and_then(|value| value.to_str().ok())
+    .map(|s| s.to_string());
+
+  // The endpoint answers 204 with an empty body on success, so there is nothing
+  // to deserialize; on failure the body is the registry's JSON error, which
+  // `ApiError` renders as "<message> (<code>)".
+  let body = response.collect().await?.to_bytes();
+  match serde_json::from_slice::<registry::ApiError>(&body) {
+    Ok(mut err) => {
+      err.x_deno_ray = x_deno_ray;
+      Err(err.into())
+    }
+    Err(_) => bail!("{}: {}", status, response_body_snippet(&body)),
+  }
 }
 
 /// Returns a truncated, lossy UTF-8 rendering of a response body for use in

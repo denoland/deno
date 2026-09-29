@@ -43,6 +43,7 @@ pub mod reference;
 pub mod strings;
 pub mod symbol;
 pub mod tsfn;
+pub mod tsfn_finalizer;
 pub mod typedarray;
 pub mod uv;
 
@@ -188,6 +189,7 @@ unsafe extern "C" fn napi_register_module_v1(
   r#async::init(env, exports);
   date::init(env, exports);
   tsfn::init(env, exports);
+  tsfn_finalizer::init(env, exports);
   mem::init(env, exports);
   bigint::init(env, exports);
   symbol::init(env, exports);

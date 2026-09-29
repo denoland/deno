@@ -493,3 +493,92 @@ Deno.test("zlib writeSync works with the Node 7-argument signature", () => {
   assert(state[0] <= output.length, "avail_out out of range");
   assert(state[1] <= input.length, "avail_in out of range");
 });
+
+// Callers that drive `_handle.writeSync()` directly (see above) choose the
+// offsets and lengths themselves. The Brotli encoder ops used to index the
+// backing store with them unchecked, which panicked the process; they must
+// report an out-of-range window as an error instead.
+Deno.test("brotli writeSync rejects out-of-range offsets", () => {
+  const input = Buffer.from("hello");
+  const output = Buffer.allocUnsafe(1024);
+  // deno-lint-ignore no-explicit-any
+  const handle = (createBrotliCompress() as any)._handle;
+
+  const writeSync = (
+    inOff: number,
+    inLen: number,
+    outOff: number,
+    outLen: number,
+  ) =>
+    handle.writeSync(
+      constants.BROTLI_OPERATION_PROCESS,
+      input,
+      inOff,
+      inLen,
+      output,
+      outOff,
+      outLen,
+    );
+
+  assertThrows(() => writeSync(0, input.length + 1, 0, output.length));
+  assertThrows(() => writeSync(input.length, 1, 0, output.length));
+  assertThrows(() => writeSync(0xffffffff, 1, 0, output.length));
+  assertThrows(() => writeSync(0, input.length, 0, output.length + 1));
+  assertThrows(() => writeSync(0, input.length, output.length, 1));
+  assertThrows(() => writeSync(0, input.length, 0xffffffff, 1));
+  // The in-range window still works.
+  writeSync(0, input.length, 0, output.length);
+});
+
+Deno.test("Brotli encoder validates direct handle operations", () => {
+  const input = Buffer.alloc(0);
+  const output = Buffer.allocUnsafe(1024);
+  const operations = [
+    constants.BROTLI_OPERATION_PROCESS,
+    constants.BROTLI_OPERATION_FLUSH,
+    constants.BROTLI_OPERATION_FINISH,
+    constants.BROTLI_OPERATION_EMIT_METADATA,
+  ];
+
+  for (const operation of operations) {
+    // deno-lint-ignore no-explicit-any
+    const handle = (createBrotliCompress() as any)._handle;
+    handle.writeSync(
+      operation,
+      input,
+      0,
+      input.length,
+      output,
+      0,
+      output.length,
+    );
+  }
+
+  const invalidOperation = constants.BROTLI_OPERATION_EMIT_METADATA + 1;
+  for (const method of ["writeSync", "write"] as const) {
+    // deno-lint-ignore no-explicit-any
+    const handle = (createBrotliCompress() as any)._handle;
+    assertThrows(
+      () =>
+        handle[method](
+          invalidOperation,
+          input,
+          0,
+          input.length,
+          output,
+          0,
+          output.length,
+        ),
+      TypeError,
+      "invalid Brotli operation",
+    );
+  }
+});
+
+Deno.test("Brotli encoder rejects oversized direct init parameters", () => {
+  // deno-lint-ignore no-explicit-any
+  const handle = (createBrotliCompress() as any)._handle;
+  const params = new Uint32Array(257);
+  params.fill(0xffffffff);
+  assertEquals(handle.init(params, () => {}), false);
+});

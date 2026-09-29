@@ -30,6 +30,8 @@ pub const DESKTOP_JS: &str = r#"
     op_desktop_alert,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_read_clipboard_text,
+    op_desktop_write_clipboard_text,
     op_desktop_request_notification_permission,
     op_desktop_query_notification_permission,
   } = internals.core.ops;
@@ -696,6 +698,75 @@ pub const DESKTOP_JS: &str = r#"
     console.error("[deno desktop] failed to install navigator.permissions:", e);
   }
 
+  // --- navigator.clipboard (text only) ---
+  //
+  // Spec surface: `navigator.clipboard` is a `Clipboard` (extends EventTarget)
+  // exposing async `readText()` / `writeText()`. The ops behind them are
+  // genuinely async: laufey's clipboard calls block their calling thread, and
+  // on X11/Wayland a read is serviced by whichever app owns the selection, so
+  // an unresponsive owner would otherwise freeze the whole runtime behind a
+  // Promise that looks like it couldn't. They reject rather than resolve if
+  // that owner never answers — `""` is indistinguishable from an empty
+  // clipboard, and a resolved `writeText()` has to mean the write happened.
+  //
+  // The richer `read()` / `write()` (`ClipboardItem` / arbitrary MIME types)
+  // aren't backed by laufey, so they're omitted rather than stubbed. Per spec
+  // the read/write are gated on the `clipboard-read` / `clipboard-write`
+  // permissions, but laufey has no clipboard permission model, so access
+  // isn't gated here (mirroring how the desktop Notification surface
+  // degrades).
+  const webidl = internals.webidl;
+  class Clipboard extends EventTarget {
+    constructor() {
+      super();
+      webidl.illegalConstructor();
+    }
+
+    async readText() {
+      webidl.assertBranded(this, ClipboardPrototype);
+      return (await op_desktop_read_clipboard_text()) ?? "";
+    }
+
+    async writeText(data) {
+      webidl.assertBranded(this, ClipboardPrototype);
+      const prefix = "Failed to execute 'writeText' on 'Clipboard'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      data = webidl.converters["DOMString"](data, prefix, "Argument 1");
+      await op_desktop_write_clipboard_text(data);
+    }
+  }
+  webidl.configureInterface(Clipboard);
+  const ClipboardPrototype = Clipboard.prototype;
+
+  try {
+    const clipboard = webidl.createBranded(Clipboard);
+    // createBranded skips the constructor, so initialize the EventTarget
+    // internal slots explicitly (see ext/web/02_event.js setEventTargetData).
+    internals.setEventTargetData(clipboard);
+
+    if (typeof navigator === "object" && navigator != null) {
+      // Install as a prototype getter (as in browsers) rather than an own
+      // data property, asserting the receiver is a real Navigator.
+      const NavigatorPrototype = Object.getPrototypeOf(navigator);
+      Object.defineProperty(NavigatorPrototype, "clipboard", {
+        get() {
+          webidl.assertBranded(this, NavigatorPrototype);
+          return clipboard;
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    Object.defineProperty(globalThis, "Clipboard", {
+      value: Clipboard,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch (e) {
+    console.error("[deno desktop] failed to install navigator.clipboard:", e);
+  }
+
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
   // tick used by HMR, or module evaluation with top-level await).
@@ -1147,11 +1218,33 @@ pub fn desktop_error_reporting_js(
 ) -> String {
   format!(
     r#"(() => {{
-  const {{ op_desktop_alert, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
+  const {{ op_desktop_alert_async, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
   const _errorReportingUrl = {url};
   const _appVersion = {version};
+  // Set once the first error has taken over the exit. The dialog it shows
+  // is what keeps the process alive, so later errors only log and report —
+  // which also keeps at most one error dialog on screen rather than
+  // stacking one per rejection.
+  let _exiting = false;
 
-  function handleError(message, stack) {{
+  function handleError(ev, err, message, stack) {{
+    // Always reach stderr first: the dialog below is best-effort, and in
+    // headless/hidden-window runs it's the only place the error surfaces
+    // at all (#36393).
+    //
+    // Log the error object itself when there is one. `preventDefault()`
+    // below suppresses Deno's own uncaught-error output, and passing the
+    // object keeps that path's formatting (console.error inspects an Error
+    // into its formatted stack); flattening to `String(message)` plus a raw
+    // stack string would hand a developer watching a terminal strictly less
+    // than they get today.
+    if (err !== null && err !== undefined) {{
+      console.error("Uncaught (desktop):", err);
+    }} else {{
+      console.error("Uncaught (desktop):", String(message));
+      if (stack) console.error(String(stack));
+    }}
+
     if (_errorReportingUrl) {{
       const body = JSON.stringify({{
         version: 1,
@@ -1169,15 +1262,33 @@ pub fn desktop_error_reporting_js(
       op_desktop_send_error_report(body);
     }}
 
+    // Take over the default handling. Letting this listener return without
+    // preventing it tears the runtime down immediately, which would cut the
+    // dialog off before it appeared — the old blocking `alert` was what held
+    // the process open. Instead the dialog goes up on its own thread, the
+    // event loop keeps running (timers, servers and the SIGTERM handler stay
+    // live, which is the #36393 fix), and we exit once it's dismissed.
+    ev.preventDefault();
+    if (_exiting) return;
+    _exiting = true;
+
+    let shown;
     try {{
-      op_desktop_alert("Application Error", String(message));
-    }} catch (_) {{}}
+      shown = op_desktop_alert_async("Application Error", String(message));
+    }} catch (_) {{
+      Deno.exit(1);
+      return;
+    }}
+    // Exit on rejection too: a dialog we can't show must not strand the app.
+    shown.then(() => Deno.exit(1), () => Deno.exit(1));
   }}
 
   addEventListener("error", (ev) => {{
     if (ev.defaultPrevented) return;
     const err = ev.error;
     handleError(
+      ev,
+      err,
       err?.message ?? ev.message ?? "Unknown error",
       err?.stack ?? null,
     );
@@ -1187,6 +1298,8 @@ pub fn desktop_error_reporting_js(
     if (ev.defaultPrevented) return;
     const err = ev.reason;
     handleError(
+      ev,
+      err,
       err?.message ?? String(err ?? "Unhandled promise rejection"),
       err?.stack ?? null,
     );
@@ -1291,6 +1404,57 @@ mod tests {
     assert!(DESKTOP_JS.contains("navigator"));
     assert!(DESKTOP_JS.contains("permissions"));
     assert!(DESKTOP_JS.contains("PermissionStatus"));
+  }
+
+  #[test]
+  fn desktop_js_installs_navigator_clipboard() {
+    // Assert on code, not prose: every one of "navigator", "clipboard",
+    // "readText" and "writeText" also appears in the comment block above the
+    // implementation, so substring checks on those words alone would still
+    // pass with the whole class deleted.
+    assert!(
+      DESKTOP_JS.contains("class Clipboard extends EventTarget"),
+      "Clipboard must be a real EventTarget subclass"
+    );
+    assert!(
+      DESKTOP_JS.contains("async readText()"),
+      "readText must be defined on the class"
+    );
+    assert!(
+      DESKTOP_JS.contains("async writeText(data)"),
+      "writeText must be defined on the class"
+    );
+    // Installed as a prototype getter on Navigator, as in browsers, rather
+    // than an own data property on the instance.
+    assert!(
+      DESKTOP_JS.contains("defineProperty(NavigatorPrototype, \"clipboard\""),
+      "clipboard must be installed on Navigator.prototype"
+    );
+    // The constructor is not reachable, and the receiver is checked.
+    assert!(
+      DESKTOP_JS.contains("webidl.illegalConstructor()"),
+      "Clipboard must not be constructible"
+    );
+    assert!(
+      DESKTOP_JS.contains("webidl.assertBranded(this, ClipboardPrototype)"),
+      "the text methods must assert a branded receiver"
+    );
+  }
+
+  #[test]
+  fn desktop_js_clipboard_awaits_the_ops() {
+    // The ops are async so a slow clipboard owner can't freeze the runtime
+    // (see op_desktop_read_clipboard_text). That only holds if the JS side
+    // actually awaits them — dropping the `await` would return a pending
+    // promise as the text and silently break `readText()`.
+    assert!(
+      DESKTOP_JS.contains("await op_desktop_read_clipboard_text()"),
+      "readText must await the op"
+    );
+    assert!(
+      DESKTOP_JS.contains("await op_desktop_write_clipboard_text(data)"),
+      "writeText must await the op"
+    );
   }
 
   #[test]
@@ -1407,6 +1571,57 @@ mod tests {
     // the alert.
     assert!(js.contains("const _errorReportingUrl = null"));
     assert!(js.contains("const _appVersion = null"));
+  }
+
+  #[test]
+  fn error_reporting_js_never_blocks_the_js_thread() {
+    // The error dialog must go through the async op: the blocking
+    // `op_desktop_alert` parks the JS thread until the dialog is dismissed,
+    // which wedged the entire runtime (timers, servers, signal handlers)
+    // whenever nobody could click it — hidden window, headless child
+    // (#36393). Errors must also always reach stderr, because in those runs
+    // the dialog is invisible and stderr is the only surface left.
+    let js = desktop_error_reporting_js(None, None);
+    assert!(js.contains("op_desktop_alert_async"));
+    assert!(!js.contains("op_desktop_alert(\"Application Error\""));
+    assert!(js.contains("console.error"));
+  }
+
+  #[test]
+  fn error_reporting_js_holds_the_process_open_for_the_dialog() {
+    // The dialog is only reached by awaiting the op, so the handler has to
+    // stop the runtime tearing down the moment it returns — otherwise the
+    // dialog (and the exit that follows it) races process teardown and the
+    // user sees nothing. `preventDefault()` hands us the default handling;
+    // the exit below is then ours to perform.
+    let js = desktop_error_reporting_js(None, None);
+    assert!(
+      js.contains("ev.preventDefault()"),
+      "handler must prevent the runtime from terminating before the dialog"
+    );
+    assert!(
+      js.contains("Deno.exit(1)"),
+      "having prevented the default, the handler owns the exit"
+    );
+    // Both listeners must pass the event through, or `preventDefault` above
+    // is unreachable for one of them. Counting `addEventListener` and
+    // `handleError(` separately rather than matching an indented literal:
+    // the previous form pinned the exact whitespace inside the template and
+    // would have broken on a reformat that changed nothing real.
+    assert_eq!(
+      js.matches("addEventListener(").count(),
+      2,
+      "both the `error` and `unhandledrejection` listeners must be installed"
+    );
+    assert_eq!(
+      js.matches("handleError(").count(),
+      3,
+      "one definition plus one call from each listener"
+    );
+    assert!(
+      js.contains("function handleError(ev, err, message, stack)"),
+      "the handler must receive the event so it can prevent the default"
+    );
   }
 
   #[test]

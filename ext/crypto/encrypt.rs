@@ -23,13 +23,6 @@ use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use sha1::Sha1;
-use sha2::Sha256;
-use sha2::Sha384;
-use sha2::Sha512;
-use sha3::Sha3_256;
-use sha3::Sha3_384;
-use sha3::Sha3_512;
 
 use crate::shared::*;
 
@@ -77,49 +70,11 @@ pub(crate) fn encrypt_rsa_oaep(
   label: Vec<u8>,
   data: &[u8],
 ) -> Result<Vec<u8>, EncryptError> {
-  let label = String::from_utf8_lossy(&label).to_string();
-
   let public_key = key.as_rsa_public_key()?;
   let public_key = rsa::RsaPublicKey::from_pkcs1_der(&public_key)
     .map_err(|_| SharedError::FailedDecodePublicKey)?;
   let mut rng = OsRng;
-  let padding = match hash {
-    ShaHash::Sha1 => rsa::Oaep {
-      digest: Box::<Sha1>::default(),
-      mgf_digest: Box::<Sha1>::default(),
-      label: Some(label),
-    },
-    ShaHash::Sha256 => rsa::Oaep {
-      digest: Box::<Sha256>::default(),
-      mgf_digest: Box::<Sha256>::default(),
-      label: Some(label),
-    },
-    ShaHash::Sha384 => rsa::Oaep {
-      digest: Box::<Sha384>::default(),
-      mgf_digest: Box::<Sha384>::default(),
-      label: Some(label),
-    },
-    ShaHash::Sha512 => rsa::Oaep {
-      digest: Box::<Sha512>::default(),
-      mgf_digest: Box::<Sha512>::default(),
-      label: Some(label),
-    },
-    ShaHash::Sha3_256 => rsa::Oaep {
-      digest: Box::<Sha3_256>::default(),
-      mgf_digest: Box::<Sha3_256>::default(),
-      label: Some(label),
-    },
-    ShaHash::Sha3_384 => rsa::Oaep {
-      digest: Box::<Sha3_384>::default(),
-      mgf_digest: Box::<Sha3_384>::default(),
-      label: Some(label),
-    },
-    ShaHash::Sha3_512 => rsa::Oaep {
-      digest: Box::<Sha3_512>::default(),
-      mgf_digest: Box::<Sha3_512>::default(),
-      label: Some(label),
-    },
-  };
+  let padding = rsa_oaep_padding(hash, &label);
   let encrypted = public_key
     .encrypt(&mut rng, padding, data)
     .map_err(|_| EncryptError::Failed)?;

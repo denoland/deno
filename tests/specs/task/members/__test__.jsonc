@@ -1,0 +1,36 @@
+{
+  "tests": {
+    // `--members` runs the task in all workspace members, but not in the
+    // workspace root, even when the root config has a `name` field (which
+    // would be matched by `--filter *`).
+    "deno_members": {
+      "cwd": "./deno",
+      "args": "task --members dev",
+      "output": "deno_members.out"
+    },
+    // Without a task name, `--members` lists tasks from the workspace
+    // members only.
+    "deno_members_no_task": {
+      "cwd": "./deno",
+      "args": "task --members",
+      "output": "deno_members_no_task.out"
+    },
+    "npm_members": {
+      "cwd": "./npm",
+      "args": "task --members dev",
+      "output": "npm_members.out"
+    },
+    // The root can define a task with the same name that fans out to the
+    // members without recursing into itself.
+    "wrapper_task_in_root": {
+      "cwd": "./wrapper",
+      "args": "task dev",
+      "output": "wrapper_task_in_root.out"
+    },
+    "members_conflicts_with_recursive": {
+      "args": "task --members -r dev",
+      "output": "[WILDCARD]the argument '--members' cannot be used with '--recursive'\n[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}

@@ -4,6 +4,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Waker;
 use std::task::ready;
 
 use tokio::io::AsyncRead;
@@ -289,6 +290,14 @@ pub struct SharedConn<I> {
   protocol: Protocol,
   buffered: Vec<u8>,
   response_state: ResponseState,
+  // Waker for a task reading the request body. The request body reader and the
+  // response writer share this connection: while a streaming response is being
+  // written, the response writer polls `poll_peer_closed_with`, which reads any
+  // available bytes off the socket (to detect a client disconnect). Those bytes
+  // may belong to the request body, so they are stashed in `buffered`. This
+  // waker lets us re-wake the body reader so it drains `buffered`, instead of
+  // parking forever with its bytes stranded here.
+  body_read_waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,6 +334,7 @@ impl<I> SharedConn<I> {
       protocol: Protocol::new(),
       buffered: Vec::new(),
       response_state: ResponseState::Idle,
+      body_read_waker: None,
     }
   }
 
@@ -900,6 +910,26 @@ where
     cx: &mut Context<'_>,
     scratch: &mut SharedScratch,
     limit: usize,
+    callback: F,
+  ) -> Poll<Result<SharedBodyChunk<R>, Error>>
+  where
+    F: for<'a> FnMut(&'a [u8]) -> R,
+  {
+    let result =
+      self.poll_read_body_chunk_limited_inner(cx, scratch, limit, callback);
+    if result.is_ready() {
+      // Nothing is parked on the body any more, so don't keep a waker around
+      // for `poll_peer_closed_with` to fire at a task that isn't waiting.
+      self.body_read_waker = None;
+    }
+    result
+  }
+
+  fn poll_read_body_chunk_limited_inner<R, F>(
+    &mut self,
+    cx: &mut Context<'_>,
+    scratch: &mut SharedScratch,
+    limit: usize,
     mut callback: F,
   ) -> Poll<Result<SharedBodyChunk<R>, Error>>
   where
@@ -939,6 +969,13 @@ where
         }
       }
 
+      // Record our waker so that if the response writer's `poll_peer_closed_with`
+      // reads request-body bytes off the socket while we're parked, it can wake
+      // us to drain them from `buffered`.
+      match &self.body_read_waker {
+        Some(waker) if waker.will_wake(cx.waker()) => {}
+        _ => self.body_read_waker = Some(cx.waker().clone()),
+      }
       let read = ready!(poll_read_into_scratch(&mut self.io, cx, scratch))?;
       if read == 0 {
         match body_status_from_buf(&mut self.protocol, &[])? {
@@ -1428,6 +1465,11 @@ where
     if read != 0 {
       self.buffered.extend_from_slice(&scratch.read_buf[..read]);
       cx.waker().wake_by_ref();
+      // These bytes may belong to a request body still being read on another
+      // task; wake it so it drains `buffered` instead of stalling.
+      if let Some(waker) = self.body_read_waker.take() {
+        waker.wake();
+      }
     }
     Poll::Ready(Ok(read == 0))
   }
@@ -1899,6 +1941,93 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(method, b"GET");
+    Ok(())
+  }
+
+  // The response writer's `poll_peer_closed_with` reads whatever is on the
+  // socket, which can be request-body bytes. A body read parked at that moment
+  // must be woken so it drains them from `buffered` instead of stalling with
+  // its bytes stranded there.
+  #[tokio::test]
+  async fn shared_conn_peer_closed_poll_wakes_parked_body_read()
+  -> TestResult<()> {
+    struct WakeFlag(std::sync::atomic::AtomicBool);
+
+    impl std::task::Wake for WakeFlag {
+      fn wake(self: std::sync::Arc<Self>) {
+        self.wake_by_ref();
+      }
+
+      fn wake_by_ref(self: &std::sync::Arc<Self>) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+      }
+    }
+
+    let (mut client, server) = tokio::io::duplex(64 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+    client
+      .write_all(
+        b"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 12\r\n\r\nsix by",
+      )
+      .await?;
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::ContentLength(12));
+
+    let chunk = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_with(cx, &mut scratch, |chunk| chunk.to_vec())
+    })
+    .await?;
+    assert!(
+      matches!(&chunk, SharedBodyChunk::Chunk(chunk) if chunk == b"six by")
+    );
+
+    // Park a body read: the rest of the body hasn't been sent yet.
+    let flag = std::sync::Arc::new(WakeFlag(false.into()));
+    let waker = std::task::Waker::from(flag.clone());
+    let mut body_cx = Context::from_waker(&waker);
+    assert!(
+      conn
+        .poll_read_body_chunk_with(&mut body_cx, &mut scratch, |chunk| chunk
+          .to_vec())
+        .is_pending()
+    );
+
+    // The response writer polls for a client disconnect, which registers its
+    // own waker with the socket in place of the parked reader's.
+    let writer_flag = std::sync::Arc::new(WakeFlag(false.into()));
+    let writer_waker = std::task::Waker::from(writer_flag.clone());
+    let mut writer_cx = Context::from_waker(&writer_waker);
+    assert!(
+      conn
+        .poll_peer_closed_with(&mut writer_cx, &mut scratch)
+        .is_pending()
+    );
+    assert!(!flag.0.load(std::sync::atomic::Ordering::SeqCst));
+
+    // The rest of the body arrives: only the response writer is woken, and the
+    // bytes it reads land in `buffered` rather than in the parked read.
+    client.write_all(b"tes!!!").await?;
+    tokio::task::yield_now().await;
+    assert!(writer_flag.0.load(std::sync::atomic::Ordering::SeqCst));
+    let peer_closed = conn.poll_peer_closed_with(&mut writer_cx, &mut scratch);
+    assert!(matches!(peer_closed, Poll::Ready(Ok(false))));
+    // Without waking the reader here it would park forever with its bytes
+    // stranded in `buffered`.
+    assert!(flag.0.load(std::sync::atomic::Ordering::SeqCst));
+
+    let chunk = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_with(cx, &mut scratch, |chunk| chunk.to_vec())
+    })
+    .await?;
+    assert!(
+      matches!(&chunk, SharedBodyChunk::Chunk(chunk) if chunk == b"tes!!!")
+    );
     Ok(())
   }
 

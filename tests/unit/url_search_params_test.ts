@@ -379,3 +379,15 @@ Deno.test(function urlSearchParamsOverridingEntriesNotChangeForEach() {
   params.forEach(() => void ++loopCount);
   assertEquals(loopCount, 1);
 });
+
+Deno.test(function urlSearchParamsInitUndefinedIsEmpty() {
+  assertEquals(new URLSearchParams(undefined).toString(), "");
+  assertEquals(new URLSearchParams().toString(), "");
+});
+
+// `null` is a value, not a missing argument: WebIDL union resolution sends it
+// to the USVString overload, since `record` is not a dictionary type.
+Deno.test(function urlSearchParamsInitNullIsStringified() {
+  assertEquals(new URLSearchParams(null!).toString(), "null=");
+  assertEquals(new URLSearchParams(null!).get("null"), "");
+});

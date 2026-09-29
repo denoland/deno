@@ -298,6 +298,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
             && cached_info.info.time.is_empty()
             && !cached_info.info.versions.is_empty()
             && !cached_info.full_packument
+            // Re-fetching the full packument requires a network request, which
+            // is forbidden with `--cached-only`. Use the cached abbreviated
+            // metadata as-is instead of erroring, since the resolver already
+            // treats a missing publish timestamp as acceptable.
+            && *downloader.cache.cache_setting() != NpmCacheSetting::Only
           {
             // Cached data is from the abbreviated install manifest which
             // doesn't include the `time` field. Since minimumDependencyAge

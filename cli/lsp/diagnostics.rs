@@ -630,9 +630,9 @@ fn compute_document_doc_diagnostics(
       reporter: None,
       resolver: None,
       unstable_bytes_imports: false,
-      unstable_text_imports: false,
       unstable_css_imports: false,
       unstable_config_imports: false,
+      prefer_cached_jsr_versions: false,
     },
   ));
   if token.is_cancelled() {

@@ -1,0 +1,16 @@
+{
+  "spans": [
+    {
+      "traceId": "0af7651916cd43dd8448eb211c80319c",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "b7ad6b7169203331",
+      "flags": 257,
+      "name": "GET",
+      "kind": 2,
+[WILDCARD]
+    }
+  ],
+  "logs": [],
+  "metrics": [WILDCARD]
+}

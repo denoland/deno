@@ -12,6 +12,7 @@ use deno_core::convert::Uint8Array;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 
 deno_core::extension!(
   deno_bundle_runtime,
@@ -41,6 +42,7 @@ impl BundleProvider for () {
   async fn bundle(
     &self,
     _options: BundleOptions,
+    _permissions: PermissionsContainer,
   ) -> Result<BuildResponse, AnyError> {
     // Embedders that don't wire up a real provider (notably `denort`, used
     // by `deno compile` outputs) fall through to this no-op implementation.
@@ -59,6 +61,7 @@ pub trait BundleProvider: Send + Sync {
   async fn bundle(
     &self,
     options: BundleOptions,
+    permissions: PermissionsContainer,
   ) -> Result<BuildResponse, AnyError>;
 }
 
@@ -226,13 +229,24 @@ pub async fn op_bundle(
   #[scoped] options: BundleOptions,
 ) -> Result<BuildResponse, JsErrorBox> {
   // eprintln!("op_bundle: {:?}", options);
-  let provider = {
+  let (provider, permissions) = {
     let state = state.borrow();
-    state.borrow::<Arc<dyn BundleProvider>>().clone()
+    let permissions = state
+      .try_borrow::<PermissionsContainer>()
+      .cloned()
+      .ok_or_else(|| {
+        JsErrorBox::generic(
+          "Deno.bundle() requires a runtime permissions context",
+        )
+      })?;
+    (
+      state.borrow::<Arc<dyn BundleProvider>>().clone(),
+      permissions,
+    )
   };
 
   provider
-    .bundle(options)
+    .bundle(options, permissions)
     .await
     .map_err(|e| JsErrorBox::generic(e.to_string()))
 }
