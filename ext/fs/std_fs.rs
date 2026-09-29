@@ -34,19 +34,10 @@ use crate::interface::FsReadDirRc;
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
 
-fn resolve_path(path: &Path) -> Cow<'_, Path> {
-  match crate::cwd_override::current_override() {
-    Some(cwd) if path.is_relative() && !path.as_os_str().is_empty() => {
-      Cow::Owned(cwd.join(path))
-    }
-    _ => Cow::Borrowed(path),
-  }
-}
-
 #[async_trait::async_trait(?Send)]
 impl FileSystem for RealFs {
   fn cwd(&self) -> FsResult<PathBuf> {
-    crate::cwd_override::current_dir().map_err(Into::into)
+    std::env::current_dir().map_err(Into::into)
   }
 
   fn tmp_dir(&self) -> FsResult<PathBuf> {
@@ -54,7 +45,7 @@ impl FileSystem for RealFs {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    crate::cwd_override::set_current_dir(path).map_err(Into::into)
+    std::env::set_current_dir(path).map_err(Into::into)
   }
 
   #[cfg(windows)]
@@ -109,11 +100,10 @@ impl FileSystem for RealFs {
     path: &CheckedPath,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    let resolved_path = resolve_path(path);
-    let std_file = open_with_checked_path_at(options, path, &resolved_path)?;
+    let std_file = open_with_checked_path(options, path)?;
     Ok(Rc::new(StdFileResourceInner::file(
       std_file,
-      Some(resolved_path.into_owned()),
+      Some(path.to_path_buf()),
     )))
   }
   async fn open_async<'a>(
@@ -121,17 +111,12 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    let resolved_path = resolve_path(&path).into_owned();
     // Open on the blocking pool: opening a FIFO with O_RDONLY (or O_WRONLY)
     // blocks until the other end is opened, which would otherwise stall the
     // runtime thread.
     let std_file = spawn_blocking(move || {
-      open_with_checked_path_at(
-        options,
-        &path.as_checked_path(),
-        &resolved_path,
-      )
-      .map(|file| (file, resolved_path))
+      open_with_checked_path(options, &path.as_checked_path())
+        .map(|f| (f, path))
     })
     .await??;
     let (std_file, path) = std_file;
@@ -147,7 +132,7 @@ impl FileSystem for RealFs {
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
-    mkdir(&resolve_path(path), recursive, mode)
+    mkdir(path, recursive, mode)
   }
   async fn mkdir_async(
     &self,
@@ -155,27 +140,24 @@ impl FileSystem for RealFs {
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
 
   #[cfg(unix)]
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
-    chmod(&resolve_path(path), mode)
+    chmod(path, mode)
   }
   #[cfg(not(unix))]
   fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()> {
-    chmod(&resolve_path(path), mode)
+    chmod(path, mode)
   }
 
   #[cfg(unix)]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || chmod(&path, mode)).await?
   }
   #[cfg(not(unix))]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || chmod(&path, mode)).await?
   }
 
@@ -185,7 +167,7 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    chown(&resolve_path(path), uid, gid)
+    chown(path, uid, gid)
   }
   async fn chown_async(
     &self,
@@ -193,19 +175,17 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || chown(&path, uid, gid)).await?
   }
 
   fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()> {
-    remove(&resolve_path(path), recursive)
+    remove(path, recursive)
   }
   async fn remove_async(
     &self,
     path: CheckedPathBuf,
     recursive: bool,
   ) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || remove(&path, recursive)).await?
   }
 
@@ -214,44 +194,38 @@ impl FileSystem for RealFs {
     from: &CheckedPath,
     to: &CheckedPath,
   ) -> FsResult<()> {
-    copy_file(&resolve_path(from), &resolve_path(to))
+    copy_file(from, to)
   }
   async fn copy_file_async(
     &self,
     from: CheckedPathBuf,
     to: CheckedPathBuf,
   ) -> FsResult<()> {
-    let from = resolve_path(&from).into_owned();
-    let to = resolve_path(&to).into_owned();
     spawn_blocking(move || copy_file(&from, &to)).await?
   }
 
   fn cp_sync(&self, fro: &CheckedPath, to: &CheckedPath) -> FsResult<()> {
-    cp(&resolve_path(fro), &resolve_path(to))
+    cp(fro, to)
   }
   async fn cp_async(
     &self,
     fro: CheckedPathBuf,
     to: CheckedPathBuf,
   ) -> FsResult<()> {
-    let fro = resolve_path(&fro).into_owned();
-    let to = resolve_path(&to).into_owned();
     spawn_blocking(move || cp(&fro, &to)).await?
   }
 
   fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    stat(&resolve_path(path))
+    stat(path)
   }
   async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || stat(&path)).await?
   }
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    lstat(&resolve_path(path))
+    lstat(path)
   }
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || lstat(&path)).await?
   }
 
@@ -260,43 +234,39 @@ impl FileSystem for RealFs {
     path: &CheckedPath,
     bigint: bool,
   ) -> FsResult<FsStatFs> {
-    statfs(&resolve_path(path), bigint)
+    statfs(path, bigint)
   }
   async fn statfs_async(
     &self,
     path: CheckedPathBuf,
     bigint: bool,
   ) -> FsResult<FsStatFs> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || statfs(&path, bigint)).await?
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
-    exists(&resolve_path(path))
+    exists(path)
   }
   async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || exists(&path))
       .await
       .map_err(Into::into)
   }
 
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    realpath(&resolve_path(path))
+    realpath(path)
   }
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || realpath(&path)).await?
   }
 
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
-    read_dir(&resolve_path(path))
+    read_dir(path)
   }
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
   ) -> FsResult<FsReadDirRc> {
-    let path = resolve_path(&path).into_owned();
     Ok(new_rc(RealFsReadDir(Mutex::new(
       tokio::fs::read_dir(path).await?,
     ))))
@@ -307,22 +277,20 @@ impl FileSystem for RealFs {
     oldpath: &CheckedPath,
     newpath: &CheckedPath,
   ) -> FsResult<()> {
-    fs::rename(resolve_path(oldpath), resolve_path(newpath)).map_err(Into::into)
+    fs::rename(oldpath, newpath).map_err(Into::into)
   }
   async fn rename_async(
     &self,
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
-    let oldpath = resolve_path(&oldpath).into_owned();
-    let newpath = resolve_path(&newpath).into_owned();
     spawn_blocking(move || fs::rename(oldpath, newpath))
       .await?
       .map_err(Into::into)
   }
 
   fn lchmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
-    lchmod(&resolve_path(path), mode)
+    lchmod(path, mode)
   }
 
   async fn lchmod_async(
@@ -330,7 +298,6 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     mode: u32,
   ) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || lchmod(&path, mode)).await?
   }
 
@@ -339,16 +306,13 @@ impl FileSystem for RealFs {
     oldpath: &CheckedPath,
     newpath: &CheckedPath,
   ) -> FsResult<()> {
-    fs::hard_link(resolve_path(oldpath), resolve_path(newpath))
-      .map_err(Into::into)
+    fs::hard_link(oldpath, newpath).map_err(Into::into)
   }
   async fn link_async(
     &self,
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
-    let oldpath = resolve_path(&oldpath).into_owned();
-    let newpath = resolve_path(&newpath).into_owned();
     spawn_blocking(move || fs::hard_link(oldpath, newpath))
       .await?
       .map_err(Into::into)
@@ -360,7 +324,7 @@ impl FileSystem for RealFs {
     newpath: &CheckedPath,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    symlink(oldpath, &resolve_path(newpath), file_type)
+    symlink(oldpath, newpath, file_type)
   }
   async fn symlink_async(
     &self,
@@ -368,39 +332,35 @@ impl FileSystem for RealFs {
     newpath: CheckedPathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    let newpath = resolve_path(&newpath).into_owned();
     spawn_blocking(move || symlink(&oldpath, &newpath, file_type)).await?
   }
 
   fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    fs::read_link(resolve_path(path)).map_err(Into::into)
+    fs::read_link(path).map_err(Into::into)
   }
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || fs::read_link(path))
       .await?
       .map_err(Into::into)
   }
 
   fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
-    fs::remove_dir(resolve_path(path)).map_err(Into::into)
+    fs::remove_dir(path).map_err(Into::into)
   }
   async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || fs::remove_dir(path))
       .await?
       .map_err(Into::into)
   }
 
   fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()> {
-    truncate(&resolve_path(path), len)
+    truncate(path, len)
   }
   async fn truncate_async(
     &self,
     path: CheckedPathBuf,
     len: u64,
   ) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || truncate(&path, len)).await?
   }
 
@@ -414,8 +374,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    filetime::set_file_times(resolve_path(path), atime, mtime)
-      .map_err(Into::into)
+    filetime::set_file_times(path, atime, mtime).map_err(Into::into)
   }
   async fn utime_async(
     &self,
@@ -427,7 +386,6 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || {
       filetime::set_file_times(path, atime, mtime).map_err(Into::into)
     })
@@ -444,8 +402,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    filetime::set_symlink_file_times(resolve_path(path), atime, mtime)
-      .map_err(Into::into)
+    filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
   }
 
   async fn lutime_async(
@@ -458,7 +415,6 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || {
       filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
     })
@@ -471,7 +427,7 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    lchown(&resolve_path(path), uid, gid)
+    lchown(path, uid, gid)
   }
 
   async fn lchown_async(
@@ -480,7 +436,6 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    let path = resolve_path(&path).into_owned();
     spawn_blocking(move || lchown(&path, uid, gid)).await?
   }
 
@@ -1365,14 +1320,6 @@ pub fn open_with_checked_path(
   opts: OpenOptions,
   path: &CheckedPath,
 ) -> FsResult<std::fs::File> {
-  open_with_checked_path_at(opts, path, &resolve_path(path))
-}
-
-fn open_with_checked_path_at(
-  opts: OpenOptions,
-  checked_path: &CheckedPath,
-  path: &Path,
-) -> FsResult<std::fs::File> {
   // Rust's std::fs::OpenOptions requires write or append when create is set.
   // However, POSIX allows O_RDONLY | O_CREAT (create the file if it doesn't
   // exist, then open for reading). Handle this by creating the file first
@@ -1390,7 +1337,7 @@ fn open_with_checked_path_at(
         mode: opts.mode,
       };
       // Create and immediately close the file
-      drop(open_path_with_options(create_opts, checked_path, path)?);
+      drop(open_path_with_options(create_opts, path)?);
     }
     let read_opts = OpenOptions {
       read: true,
@@ -1402,9 +1349,9 @@ fn open_with_checked_path_at(
       custom_flags: opts.custom_flags,
       mode: None,
     };
-    return Ok(open_path_with_options(read_opts, checked_path, path)?);
+    return Ok(open_path_with_options(read_opts, path)?);
   }
-  Ok(open_path_with_options(opts, checked_path, path)?)
+  Ok(open_path_with_options(opts, path)?)
 }
 
 // Open the path using the configured options. On Windows we set
@@ -1415,16 +1362,14 @@ fn open_with_checked_path_at(
 // See https://github.com/denoland/deno/issues/26257.
 fn open_path_with_options(
   opts: OpenOptions,
-  checked_path: &CheckedPath,
-  path: &Path,
+  path: &CheckedPath,
 ) -> io::Result<fs::File> {
-  let std_opts = open_options_for_checked_path(opts, checked_path);
+  let std_opts = open_options_for_checked_path(opts, path);
   match std_opts.open(path) {
     Ok(file) => Ok(file),
     #[cfg(windows)]
     Err(err) if err.raw_os_error() == Some(ERROR_INVALID_FUNCTION) => {
-      let fallback =
-        open_options_for_checked_path_no_backup(opts, checked_path);
+      let fallback = open_options_for_checked_path_no_backup(opts, path);
       fallback.open(path).map_err(|_| err)
     }
     // A canonicalized path is opened with `O_NOFOLLOW` (see
@@ -1437,8 +1382,7 @@ fn open_path_with_options(
     // See https://github.com/denoland/deno/issues/29139.
     #[cfg(unix)]
     Err(err)
-      if checked_path.canonicalized()
-        && err.raw_os_error() == Some(libc::ELOOP) =>
+      if path.canonicalized() && err.raw_os_error() == Some(libc::ELOOP) =>
     {
       Err(io::Error::from_raw_os_error(libc::ENOENT))
     }
