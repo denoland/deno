@@ -91,7 +91,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ## Update https://deno.com
 
 - [ ] Run
-      https://github.com/denoland/docs/actions/workflows/update_version.yml to
+      https://github.com/denoland/docs/actions/workflows/update_versions.yml to
       automatically open a PR.
   - [ ] Merge the PR.
 
