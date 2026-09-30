@@ -217,10 +217,9 @@ impl EmbeddedModuleLoader {
     if specifier.scheme() != "file" || !(is_dynamic_import || self.is_worker) {
       return Ok(());
     }
-    let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
-      return Ok(());
-    };
-    if self.shared.vfs.file_entry(&path).is_ok() {
+    if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+      && self.shared.vfs.file_entry(&path).is_ok()
+    {
       return Ok(());
     }
     self
