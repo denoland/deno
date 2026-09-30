@@ -2672,13 +2672,13 @@ Deno.test(function inspectLargeArrayBuffer() {
     Deno.inspect(arrayBuffer),
     `ArrayBuffer {
   [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
-  byteLength: 4294967297
+  [byteLength]: 4294967297
 }`,
   );
   structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
   assertEquals(
     Deno.inspect(arrayBuffer),
-    "ArrayBuffer { (detached), byteLength: 0 }",
+    "ArrayBuffer { (detached), [byteLength]: 0 }",
   );
 
   const sharedArrayBuffer = new SharedArrayBuffer(2 ** 32 + 1);
@@ -2686,7 +2686,43 @@ Deno.test(function inspectLargeArrayBuffer() {
     Deno.inspect(sharedArrayBuffer),
     `SharedArrayBuffer {
   [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
-  byteLength: 4294967297
+  [byteLength]: 4294967297
+}`,
+  );
+});
+
+Deno.test(function inspectDataViewAndTypedArrayHiddenKeys() {
+  const buffer = new Uint8Array([1, 2, 3, 4]).buffer;
+  assertEquals(
+    Deno.inspect(new DataView(buffer, 1, 2)),
+    `DataView {
+  [byteLength]: 2,
+  [byteOffset]: 1,
+  [buffer]: ArrayBuffer { [Uint8Contents]: <01 02 03 04>, [byteLength]: 4 }
+}`,
+  );
+  assertEquals(
+    Deno.inspect(new Uint8Array([1]), { showHidden: true }),
+    `Uint8Array(1) [
+  1,
+  [BYTES_PER_ELEMENT]: 1,
+  [length]: 1,
+  [byteLength]: 1,
+  [byteOffset]: 0,
+  [buffer]: ArrayBuffer { [byteLength]: 1 }
+]`,
+  );
+
+  // The getters of a detached DataView throw.
+  const detached = new ArrayBuffer(4);
+  const dataView = new DataView(detached, 1, 2);
+  structuredClone(detached, { transfer: [detached] });
+  assertEquals(
+    Deno.inspect(dataView),
+    `DataView {
+  [byteLength]: 0,
+  [byteOffset]: undefined,
+  [buffer]: ArrayBuffer { (detached), [byteLength]: 0 }
 }`,
   );
 });
