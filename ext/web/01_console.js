@@ -43,7 +43,10 @@ const {
   FunctionPrototypeToString,
   Map,
   MapPrototype,
+  MathTrunc,
   Number,
+  NumberIsFinite,
+  NumberIsNaN,
   NumberPrototype,
   NumberPrototypeValueOf,
   Object,
@@ -69,6 +72,9 @@ const {
   SetPrototype,
   String,
   StringPrototype,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
   StringPrototypeValueOf,
   Symbol,
   SymbolFor,
@@ -437,13 +443,69 @@ function stripVTControlCharacters(str) {
   return op_console_strip_vt(str);
 }
 
-function formatNumber(fn, value) {
-  // Format -0 as '-0'. Checking `value === -0` won't distinguish 0 from -0.
-  return fn(ObjectIs(value, -0) ? "-0" : `${value}`, "number");
+function addNumericSeparator(integerString) {
+  let result = "";
+  let i = integerString.length;
+  const start = integerString[0] === "-" ? 1 : 0;
+  for (; i >= start + 4; i -= 3) {
+    result = `_${StringPrototypeSlice(integerString, i - 3, i)}${result}`;
+  }
+  return i === integerString.length
+    ? integerString
+    : `${StringPrototypeSlice(integerString, 0, i)}${result}`;
 }
 
-function formatBigInt(fn, value) {
-  return fn(`${value}n`, "bigint");
+function addNumericSeparatorEnd(integerString) {
+  let result = "";
+  let i = 0;
+  for (; i < integerString.length - 3; i += 3) {
+    result += `${StringPrototypeSlice(integerString, i, i + 3)}_`;
+  }
+  return i === 0
+    ? integerString
+    : `${result}${StringPrototypeSlice(integerString, i)}`;
+}
+
+function formatNumber(fn, value, numericSeparator) {
+  // Format -0 as '-0'. Checking `value === -0` won't distinguish 0 from -0.
+  if (ObjectIs(value, -0)) {
+    return fn("-0", "number");
+  }
+  if (!numericSeparator) {
+    return fn(`${value}`, "number");
+  }
+
+  const numberString = String(value);
+  const integer = MathTrunc(value);
+
+  if (integer === value) {
+    if (!NumberIsFinite(value) || StringPrototypeIncludes(numberString, "e")) {
+      return fn(numberString, "number");
+    }
+    return fn(addNumericSeparator(numberString), "number");
+  }
+  if (NumberIsNaN(value) || StringPrototypeIncludes(numberString, "e")) {
+    return fn(numberString, "number");
+  }
+
+  const decimalIndex = StringPrototypeIndexOf(numberString, ".");
+  const integerPart = StringPrototypeSlice(numberString, 0, decimalIndex);
+  const fractionalPart = StringPrototypeSlice(numberString, decimalIndex + 1);
+
+  return fn(
+    `${addNumericSeparator(integerPart)}.${
+      addNumericSeparatorEnd(fractionalPart)
+    }`,
+    "number",
+  );
+}
+
+function formatBigInt(fn, value, numericSeparator) {
+  const string = String(value);
+  if (!numericSeparator) {
+    return fn(`${string}n`, "bigint");
+  }
+  return fn(`${addNumericSeparator(string)}n`, "bigint");
 }
 
 function formatValue(ctx, value, recurseTimes) {
