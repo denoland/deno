@@ -39,4 +39,12 @@ impl Enumeration {
             Self::World => "hello",
         }
     }
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "foo-bar" => Some(Self::FooBar),
+            "baz" => Some(Self::Baz),
+            "hello" => Some(Self::World),
+            _ => None,
+        }
+    }
 }

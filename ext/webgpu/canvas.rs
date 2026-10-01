@@ -42,6 +42,21 @@ impl Drop for SurfaceData {
   }
 }
 
+impl ContextData {
+  pub fn dimensions(&self) -> (u32, u32) {
+    match self {
+      ContextData::Canvas(image) => {
+        let d = image.borrow();
+        (d.width(), d.height())
+      }
+      ContextData::Surface(surface) => {
+        let d = surface.borrow();
+        (d.width, d.height)
+      }
+    }
+  }
+}
+
 pub enum Descriptor {
   Texture(TextureDescriptor<'static>),
   Surface(SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>),
@@ -650,7 +665,12 @@ pub fn copy_texture_to_vec(
 
 pub const CONTEXT_ID: &str = "webgpu";
 
+#[allow(
+  clippy::too_many_arguments,
+  reason = "matches CreateCanvasContext signature"
+)]
 pub fn create<'s>(
+  _state: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>,
   _instance: Option<Instance>,
   canvas: v8::Global<v8::Object>,
   data: ContextData,
@@ -658,7 +678,7 @@ pub fn create<'s>(
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
   _context: &'static str,
-) -> Result<v8::Global<v8::Value>, JsErrorBox> {
+) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
   let obj = deno_core::cppgc::make_cppgc_object(
     scope,
     GPUCanvasContext {
@@ -671,5 +691,5 @@ pub fn create<'s>(
     },
   );
 
-  Ok(v8::Global::new(scope, obj.cast()))
+  Ok(Some(v8::Global::new(scope, obj.cast())))
 }

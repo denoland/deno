@@ -41,12 +41,21 @@ pub fn get_body(
 
   let names = variants.keys();
   let idents = variants.values();
+  let from_names = variants.keys();
+  let from_idents = variants.values();
 
   let as_str = quote! {
     impl #ident {
       pub fn as_str(&self) -> &'static str {
         match self {
           #(Self::#idents => #names),*,
+        }
+      }
+
+      pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+          #(#from_names => Some(Self::#from_idents)),*,
+          _ => None,
         }
       }
     }
