@@ -1132,6 +1132,21 @@ impl<
     &self,
     bin_dir: &Path,
   ) -> BTreeMap<String, BinValue> {
+    self.resolve_npm_commands_from_bin_dir_filtered(bin_dir, |_| true)
+  }
+
+  /// Same as [`Self::resolve_npm_commands_from_bin_dir`], but only classifies
+  /// entries whose command name passes `filter`.
+  ///
+  /// Classifying an entry reads the file ([`read_bin_value`]); shebang scripts,
+  /// which is most of what's in a `node_modules/.bin`, are read to EOF. Callers
+  /// that already know they will discard some of the names should filter here
+  /// so that I/O never happens.
+  pub fn resolve_npm_commands_from_bin_dir_filtered(
+    &self,
+    bin_dir: &Path,
+    filter: impl Fn(&str) -> bool,
+  ) -> BTreeMap<String, BinValue> {
     log::debug!("Resolving npm commands in '{}'.", bin_dir.display());
     let mut result = BTreeMap::new();
     match self.sys.fs_read_dir(bin_dir) {
@@ -1141,7 +1156,7 @@ impl<
             continue;
           };
           if let Some((command, bin_value)) =
-            self.resolve_bin_dir_entry_command(entry)
+            self.resolve_bin_dir_entry_command(entry, &filter)
           {
             result.insert(command, bin_value);
           }
@@ -1157,9 +1172,15 @@ impl<
   fn resolve_bin_dir_entry_command(
     &self,
     entry: TSys::ReadDirEntry,
+    filter: &impl Fn(&str) -> bool,
   ) -> Option<(String, BinValue)> {
     if entry.path().extension().is_some() {
       return None; // only look at files without extensions (even on Windows)
+    }
+    let command_name = entry.file_name().to_string_lossy().into_owned();
+    // check the name before touching the file system any further
+    if !filter(&command_name) {
+      return None;
     }
     let file_type = entry.file_type().ok()?;
     let path = if file_type.is_file() {
@@ -1169,7 +1190,6 @@ impl<
     } else {
       return None;
     };
-    let command_name = entry.file_name().to_string_lossy().into_owned();
     let bin_value = read_bin_value(&path, &self.sys)?;
     Some((command_name, bin_value))
   }

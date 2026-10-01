@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/dup-a",
+    "./packages/dup-b"
+  ],
+  "tasks": {
+    "dup": "dup"
+  }
+}

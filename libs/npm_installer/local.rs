@@ -25,6 +25,7 @@ use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
+use deno_npm::registry::NpmPackageVersionBinEntry;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
@@ -244,12 +245,20 @@ impl<
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
+    // Declared before `bin_entries` below so it outlives the borrows it hands
+    // out to it.
+    let workspace_bin_packages =
+      resolve_workspace_bin_packages(&self.npm_install_deps_provider);
+
     // 1. Check if packages changed and clean up if needed
     if self.clean_on_install {
       let root_folder_names =
         root_package_folder_names(snapshot, &self.npm_install_deps_provider);
-      let packages_hash =
-        calculate_packages_hash(&package_partitions, &root_folder_names);
+      let packages_hash = calculate_packages_hash(
+        &package_partitions,
+        &root_folder_names,
+        &workspace_bin_packages,
+      );
       if setup_cache.packages_changed(packages_hash) {
         cleanup_unused_packages(
           sys.as_ref(),
@@ -916,10 +925,18 @@ impl<
 
     // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
-      let bin_entries = match Rc::try_unwrap(bin_entries) {
+      let mut bin_entries = match Rc::try_unwrap(bin_entries) {
         Ok(bin_entries) => bin_entries.into_inner(),
         Err(_) => panic!("Should have sole ref to rc."),
       };
+      // Workspace members that declare a `bin` get a root `.bin` entry too, so
+      // `deno task` and any tooling that looks in `node_modules/.bin` can run
+      // them (#36313). Added last so snapshot packages win a name collision.
+      add_workspace_bin_entries(
+        &mut bin_entries,
+        &workspace_bin_packages,
+        self.clean_on_install,
+      );
       bin_entries.finish(
         snapshot,
         &bin_node_modules_dir_path,
@@ -976,6 +993,11 @@ impl<
         .iter()
         .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
         .collect();
+      let workspace_bin_pkgs_by_nv: HashMap<&PackageNv, &WorkspaceBinPackage> =
+        workspace_bin_packages
+          .iter()
+          .map(|pkg| (&pkg.nv, pkg))
+          .collect();
       for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
         // The workspace root's `node_modules` is already fully set up above.
         // (Comparing paths here is unreliable: `root_node_modules_path` is
@@ -1032,6 +1054,7 @@ impl<
                   // its bins (the alias link exists either way).
                   bin_deps.push(MemberBinDep {
                     package,
+                    extra: None,
                     read_path: local_registry_package_path.clone(),
                     link_path: member_node_modules.join(alias.as_str()),
                   });
@@ -1042,6 +1065,16 @@ impl<
                 let Some(target_dir) = workspace_member_dirs.get(nv) else {
                   continue;
                 };
+                // a sibling member's executables land in this member's
+                // `.bin` too (#36313)
+                if let Some(bin_pkg) = workspace_bin_pkgs_by_nv.get(nv) {
+                  bin_deps.push(MemberBinDep {
+                    package: &bin_pkg.package,
+                    extra: Some(&bin_pkg.extra),
+                    read_path: bin_pkg.package_path.clone(),
+                    link_path: member_node_modules.join(alias.as_str()),
+                  });
+                }
                 (alias, target_dir.to_path_buf(), nv.to_string())
               }
             };
@@ -1835,11 +1868,171 @@ pub(crate) fn remove_stale_member_symlinks<TSys: LocalNpmInstallSys>(
   }
 }
 
+/// A non-root workspace member that declares a `bin` in its package.json.
+///
+/// Members are not npm packages in the resolution snapshot, so a synthetic
+/// [`NpmResolutionPackage`] is built for them here in order to reuse the same
+/// [`BinEntries`] machinery as registry packages (#36313).
+pub(crate) struct WorkspaceBinPackage {
+  pub nv: PackageNv,
+  pub package: NpmResolutionPackage,
+  pub extra: NpmPackageExtraInfo,
+  /// The member's own directory (where its `bin` scripts live).
+  pub package_path: PathBuf,
+}
+
+/// Builds a [`WorkspaceBinPackage`] for every non-root workspace member that
+/// declares a `bin`. The workspace root is skipped because npm never links a
+/// package's own executables into its `node_modules/.bin`.
+pub(crate) fn resolve_workspace_bin_packages(
+  npm_install_deps_provider: &NpmInstallDepsProvider,
+) -> Vec<WorkspaceBinPackage> {
+  npm_install_deps_provider
+    .workspace_pkgs()
+    .iter()
+    .filter(|pkg| !pkg.is_root)
+    .filter_map(|pkg| {
+      let bin = pkg.bin.clone()?;
+      let extra = NpmPackageExtraInfo {
+        bin: Some(bin),
+        ..Default::default()
+      };
+      Some(WorkspaceBinPackage {
+        nv: pkg.nv.clone(),
+        package: NpmResolutionPackage {
+          id: NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(extra.clone()),
+          is_deprecated: false,
+          has_bin: true,
+          // This stand-in exists only to link the member's executables; its
+          // lifecycle scripts are handled by the workspace lifecycle packages.
+          has_scripts: false,
+        },
+        extra,
+        package_path: pkg.target_dir.clone(),
+      })
+    })
+    .collect()
+}
+
+/// Adds the workspace members' executables to the root `node_modules/.bin`
+/// entries.
+///
+/// Members are added after every snapshot package and aren't in the snapshot,
+/// so `sort_by_depth` gives them depth `u64::MAX` and a real dependency wins
+/// a name collision (as it does in npm). Two members colliding fall back to
+/// that sort's descending `nv` tiebreak, so the greatest `<name>@<version>`
+/// wins; that's arbitrary, hence the warning.
+///
+/// `warn_on_collisions` should only be set on the install path: `node_modules`
+/// is re-linked by `deno run`/`deno task` too, and npm reports this once at
+/// install time rather than ahead of every command.
+pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
+  bin_entries: &mut BinEntries<'a, TSys>,
+  workspace_bin_packages: &'a [WorkspaceBinPackage],
+  warn_on_collisions: bool,
+) {
+  if warn_on_collisions {
+    // must run first so `has_bin_name` only reports snapshot package names
+    warn_on_workspace_bin_name_collisions(workspace_bin_packages, |name| {
+      bin_entries.has_bin_name(name)
+    });
+  }
+  for pkg in workspace_bin_packages {
+    // Point at the member's real directory rather than its root
+    // `node_modules/<name>` symlink, which isn't created until after the root
+    // `.bin` setup. Note this means `BinEntries` chmods the member's bin
+    // script `+x` in the user's own source tree, same as npm's `bin-links`.
+    bin_entries.add_workspace_member(
+      &pkg.package,
+      &pkg.extra,
+      pkg.package_path.clone(),
+    );
+  }
+}
+
+/// Warns when a workspace member's `bin` name won't end up in the root
+/// `node_modules/.bin` pointing at that member, either because another member
+/// declares the same name or because a dependency already claims it. See
+/// [`add_workspace_bin_entries`] for the precedence.
+fn warn_on_workspace_bin_name_collisions(
+  workspace_bin_packages: &[WorkspaceBinPackage],
+  is_claimed_by_dependency: impl Fn(&str) -> bool,
+) {
+  for message in workspace_bin_name_collision_warnings(
+    workspace_bin_packages,
+    is_claimed_by_dependency,
+  ) {
+    log::warn!("{} {}", deno_terminal::colors::yellow("Warning"), message);
+  }
+}
+
+/// Builds the warning messages for [`warn_on_workspace_bin_name_collisions`].
+///
+/// `is_claimed_by_dependency` reports whether a snapshot package already
+/// contributes that name. Those always win, so the message must not say the
+/// member gets linked, including when only a single member declares the name.
+fn workspace_bin_name_collision_warnings(
+  workspace_bin_packages: &[WorkspaceBinPackage],
+  is_claimed_by_dependency: impl Fn(&str) -> bool,
+) -> Vec<String> {
+  let mut members_by_bin_name: BTreeMap<&str, BTreeSet<&PackageNv>> =
+    BTreeMap::new();
+  for pkg in workspace_bin_packages {
+    for name in crate::bin_entries::bin_names(
+      pkg.nv.name.as_str(),
+      pkg.extra.bin.as_ref(),
+    ) {
+      members_by_bin_name.entry(name).or_default().insert(&pkg.nv);
+    }
+  }
+  let mut messages = Vec::new();
+  for (bin_name, members) in members_by_bin_name {
+    let claimed_by_dependency = is_claimed_by_dependency(bin_name);
+    // A single member that wins its name outright is the normal case.
+    if members.len() < 2 && !claimed_by_dependency {
+      continue;
+    }
+    let member_names = members
+      .iter()
+      .map(|nv| nv.name.as_str())
+      .collect::<Vec<_>>()
+      .join(", ");
+    messages.push(match (claimed_by_dependency, members.len()) {
+      (true, 1) => format!(
+        "Workspace member \"{member_names}\" declares a \"{bin_name}\" bin, but it will not be linked into node_modules/.bin because a dependency already provides it."
+      ),
+      (true, _) => format!(
+        "Multiple workspace members declare a \"{bin_name}\" bin: {member_names}. None of them will be linked into node_modules/.bin because a dependency already provides it."
+      ),
+      // `BTreeSet` is sorted ascending and the greatest `nv` wins the entry.
+      (false, _) => format!(
+        "Multiple workspace members declare a \"{bin_name}\" bin: {member_names}. Only \"{}\" will be linked into node_modules/.bin.",
+        members.last().unwrap().name,
+      ),
+    });
+  }
+  messages
+}
+
 /// A workspace member's direct dependency that may contribute executables to
 /// the member's `node_modules/.bin`.
 pub(crate) struct MemberBinDep<'a> {
   /// The resolved npm package, used for its `bin` metadata.
   pub package: &'a NpmResolutionPackage,
+  /// Already-known extra info, for workspace members (whose `bin` comes
+  /// straight from the package.json the deps provider read). `None` means read
+  /// it from `read_path`.
+  pub extra: Option<&'a NpmPackageExtraInfo>,
   /// Where the package's `package.json` is read from: its real location in the
   /// layout (the `.deno` store path for the isolated linker, or the hoisted
   /// package directory for the hoisted linker).
@@ -1863,8 +2056,8 @@ pub(crate) struct MemberBinDep<'a> {
 /// shims are plain files (`<tool>`, `<tool>.cmd`, `<tool>.ps1`) rather than
 /// symlinks.
 ///
-/// Sibling workspace members are not npm packages and so are not included in
-/// `bin_deps`; their executables are not linked into a member's `.bin` yet.
+/// Sibling workspace members that declare a `bin` are included in `bin_deps`
+/// too (via a synthetic [`WorkspaceBinPackage`]).
 pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
   sys: SysWithPathsInErrors<'a, TSys>,
   snapshot: &'a NpmResolutionSnapshot,
@@ -1895,17 +2088,27 @@ pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
     if !dep.package.has_bin {
       continue;
     }
-    // Cached from the root setup that ran earlier, so this is a map lookup
-    // rather than a disk read in the common case.
-    let extra = extra_info_provider
-      .get_package_extra_info(
-        &dep.package.id.nv,
-        &dep.read_path,
-        ExpectedExtraInfo::from_package(dep.package),
-      )
-      .await
-      .map_err(SyncResolutionWithFsError::Other)?;
-    bin_entries.add(dep.package, &extra, dep.link_path.clone());
+    match dep.extra {
+      // only workspace members come with their extra info already known
+      Some(extra) => bin_entries.add_workspace_member(
+        dep.package,
+        extra,
+        dep.link_path.clone(),
+      ),
+      None => {
+        // Cached from the root setup that ran earlier, so this is a map lookup
+        // rather than a disk read in the common case.
+        let extra = extra_info_provider
+          .get_package_extra_info(
+            &dep.package.id.nv,
+            &dep.read_path,
+            ExpectedExtraInfo::from_package(dep.package),
+          )
+          .await
+          .map_err(SyncResolutionWithFsError::Other)?;
+        bin_entries.add(dep.package, &extra, dep.link_path.clone());
+      }
+    }
   }
   // Ignore setup failures here: every package linked into a member is also
   // linked at the root, whose `.bin` setup already reports a missing entrypoint
@@ -2029,9 +2232,10 @@ pub(crate) fn join_package_name(
 
 /// Calculates a hash of the current package set for change detection.
 /// This allows us to detect when npm packages have been added, removed, or changed.
-fn calculate_packages_hash(
+pub(crate) fn calculate_packages_hash(
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
   root_folder_names: &BTreeSet<String>,
+  workspace_bin_packages: &[WorkspaceBinPackage],
 ) -> u64 {
   use std::hash::Hash;
   use std::hash::Hasher;
@@ -2056,7 +2260,36 @@ fn calculate_packages_hash(
     folder_name.hash(&mut hasher);
   }
 
+  // and hash the workspace members' executables, which also land in the root
+  // `node_modules/.bin` but aren't part of the resolution snapshot, so that
+  // renaming or dropping a member's bin trips the cleanup
+  for name in workspace_bin_hash_names(workspace_bin_packages) {
+    name.hash(&mut hasher);
+  }
+
   hasher.finish()
+}
+
+/// The `<name>@<version>/<bin name>` pairs contributed by the workspace
+/// members, sorted so the hash doesn't depend on iteration order.
+fn workspace_bin_hash_names(
+  workspace_bin_packages: &[WorkspaceBinPackage],
+) -> BTreeSet<String> {
+  let mut names = BTreeSet::new();
+  for pkg in workspace_bin_packages {
+    match pkg.extra.bin.as_ref() {
+      Some(NpmPackageVersionBinEntry::String(script)) => {
+        names.insert(format!("{}/{}", pkg.nv, script));
+      }
+      Some(NpmPackageVersionBinEntry::Map(entries)) => {
+        for (name, script) in entries {
+          names.insert(format!("{}/{}={}", pkg.nv, name, script));
+        }
+      }
+      None => {}
+    }
+  }
+  names
 }
 
 /// Calculates the set of package folder names that are expected to have a
@@ -2171,7 +2404,19 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     },
   );
 
-  // remove the .bin directory entries
+  clear_bin_dir(sys, root_node_modules_dir);
+}
+
+/// Removes every entry in the root `node_modules/.bin`.
+///
+/// Entries for packages (and workspace members) that are no longer part of the
+/// install have no cheap way to be identified on disk, so the directory is
+/// cleared and `BinEntries::finish` recreates the current entries right after.
+/// Only called when the install actually changed.
+pub(crate) fn clear_bin_dir<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  root_node_modules_dir: &Path,
+) {
   let bin_dir = root_node_modules_dir.join(".bin");
   if let Ok(entries) = sys.fs_read_dir(&bin_dir) {
     for entry in entries.flatten() {
@@ -2353,6 +2598,7 @@ mod test {
         copy_packages: Vec::new(),
       },
       &root_folder_names,
+      &[],
     );
     let reversed_hash = calculate_packages_hash(
       &deno_npm::resolution::NpmPackagesPartitioned {
@@ -2360,8 +2606,172 @@ mod test {
         copy_packages: Vec::new(),
       },
       &root_folder_names,
+      &[],
     );
     assert_eq!(hash, reversed_hash);
+  }
+
+  #[test]
+  fn test_calculate_packages_hash_includes_workspace_bins() {
+    fn workspace_bin_pkg(
+      nv: &str,
+      bin: NpmPackageVersionBinEntry,
+    ) -> WorkspaceBinPackage {
+      let nv = PackageNv::from_str(nv).unwrap();
+      let extra = NpmPackageExtraInfo {
+        bin: Some(bin),
+        ..Default::default()
+      };
+      WorkspaceBinPackage {
+        nv: nv.clone(),
+        package: NpmResolutionPackage {
+          id: NpmPackageId {
+            nv,
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+          copy_index: 0,
+          system: Default::default(),
+          dist: None,
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(extra.clone()),
+          is_deprecated: false,
+          has_bin: true,
+          has_scripts: false,
+        },
+        extra,
+        package_path: PathBuf::from("/workspace/packages/member"),
+      }
+    }
+    fn hash(workspace_bin_packages: &[WorkspaceBinPackage]) -> u64 {
+      calculate_packages_hash(
+        &deno_npm::resolution::NpmPackagesPartitioned {
+          packages: Vec::new(),
+          copy_packages: Vec::new(),
+        },
+        &BTreeSet::new(),
+        workspace_bin_packages,
+      )
+    }
+
+    let map = |name: &str, script: &str| {
+      NpmPackageVersionBinEntry::Map(HashMap::from([(
+        name.to_string(),
+        script.to_string(),
+      )]))
+    };
+
+    let base = vec![workspace_bin_pkg("member@1.0.0", map("tool", "./cli.js"))];
+    // renaming the bin must change the hash so the stale `.bin/tool` is pruned
+    let renamed =
+      vec![workspace_bin_pkg("member@1.0.0", map("tool2", "./cli.js"))];
+    // so must dropping the `bin` field entirely, or removing the member
+    let removed: Vec<WorkspaceBinPackage> = Vec::new();
+    // ...and pointing the same bin name at a different script
+    let repointed =
+      vec![workspace_bin_pkg("member@1.0.0", map("tool", "./other.js"))];
+    // the string form participates too
+    let string_form = vec![workspace_bin_pkg(
+      "member@1.0.0",
+      NpmPackageVersionBinEntry::String("./cli.js".to_string()),
+    )];
+
+    let base_hash = hash(&base);
+    assert_ne!(base_hash, hash(&renamed));
+    assert_ne!(base_hash, hash(&removed));
+    assert_ne!(base_hash, hash(&repointed));
+    assert_ne!(base_hash, hash(&string_form));
+    // and it stays stable for an unchanged set
+    assert_eq!(base_hash, hash(&base));
+  }
+
+  #[test]
+  fn test_workspace_bin_name_collision_warnings() {
+    fn workspace_bin_pkg(nv: &str, bin_name: &str) -> WorkspaceBinPackage {
+      let nv = PackageNv::from_str(nv).unwrap();
+      let extra = NpmPackageExtraInfo {
+        bin: Some(NpmPackageVersionBinEntry::Map(HashMap::from([(
+          bin_name.to_string(),
+          "./cli.js".to_string(),
+        )]))),
+        ..Default::default()
+      };
+      WorkspaceBinPackage {
+        nv: nv.clone(),
+        package: NpmResolutionPackage {
+          id: NpmPackageId {
+            nv,
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+          copy_index: 0,
+          system: Default::default(),
+          dist: None,
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(extra.clone()),
+          is_deprecated: false,
+          has_bin: true,
+          has_scripts: false,
+        },
+        extra,
+        package_path: PathBuf::from("/workspace/packages/member"),
+      }
+    }
+
+    let one_member = vec![workspace_bin_pkg("member-a@1.0.0", "tool")];
+    let two_members = vec![
+      workspace_bin_pkg("member-a@1.0.0", "tool"),
+      workspace_bin_pkg("member-b@1.0.0", "tool"),
+    ];
+
+    // a single member that wins its name outright is the normal case
+    assert!(
+      workspace_bin_name_collision_warnings(&one_member, |_| false).is_empty()
+    );
+
+    // ...but a single member whose name a dependency already claims must still
+    // warn, and the message must not claim the member gets linked
+    let warnings =
+      workspace_bin_name_collision_warnings(&one_member, |name| name == "tool");
+    assert_eq!(
+      warnings,
+      vec![
+        "Workspace member \"member-a\" declares a \"tool\" bin, but it will not be linked into node_modules/.bin because a dependency already provides it."
+          .to_string()
+      ]
+    );
+    // an unrelated dependency name doesn't warn
+    let unrelated =
+      workspace_bin_name_collision_warnings(&one_member, |name| {
+        name == "other"
+      });
+    assert!(unrelated.is_empty());
+
+    // member vs. member is unchanged: the greatest `nv` wins
+    let warnings =
+      workspace_bin_name_collision_warnings(&two_members, |_| false);
+    assert_eq!(
+      warnings,
+      vec![
+        "Multiple workspace members declare a \"tool\" bin: member-a, member-b. Only \"member-b\" will be linked into node_modules/.bin."
+          .to_string()
+      ]
+    );
+
+    // ...and when a dependency claims it, neither member is named as a winner
+    let warnings =
+      workspace_bin_name_collision_warnings(&two_members, |name| {
+        name == "tool"
+      });
+    assert_eq!(
+      warnings,
+      vec![
+        "Multiple workspace members declare a \"tool\" bin: member-a, member-b. None of them will be linked into node_modules/.bin because a dependency already provides it."
+          .to_string()
+      ]
+    );
   }
 
   #[test]

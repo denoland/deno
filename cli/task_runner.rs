@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::io::Write;
@@ -18,6 +19,7 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
 use deno_task_shell::ShellPipeWriter;
+use node_resolver::BinValue;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -529,10 +531,15 @@ pub fn resolve_custom_commands(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
   bin_dirs: &[PathBuf],
+  workspace_bin_names: &HashSet<String>,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
     CliNpmResolver::Byonm(_) => {
       // Walk the bin dirs in order (closest first) and merge; closest wins.
+      // Unlike the managed branch below, every entry is routed through
+      // `deno run`, including `Executable` ones: a JS bin without a shebang
+      // classifies as `Executable` and running it through deno is the only
+      // thing that makes it work here.
       let mut commands: HashMap<String, Rc<dyn ShellCommand>> = HashMap::new();
       for bin_dir in bin_dirs {
         for (name, cmd) in
@@ -544,19 +551,92 @@ pub fn resolve_custom_commands(
       commands
     }
     CliNpmResolver::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(node_resolver, npm_resolver)?
+      let mut commands =
+        resolve_managed_npm_commands(node_resolver, npm_resolver)?;
+      merge_workspace_member_bin_commands(
+        node_resolver,
+        bin_dirs,
+        workspace_bin_names,
+        &mut commands,
+      );
+      commands
     }
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
   Ok(commands)
 }
 
-/// Builds the list of `node_modules/.bin` directories to consult for a task.
+/// Merges the `node_modules/.bin` entries contributed by local workspace
+/// members into `commands`.
+///
+/// Workspace members aren't in the npm resolution snapshot, so a `bin` they
+/// declare is only ever visible as a `.bin` entry (#36313). Prepending the bin
+/// dirs to `PATH` isn't enough on its own: on Windows the entries are plain
+/// `<name>`, `<name>.cmd` and `<name>.ps1` files rather than executables.
+///
+/// Only names in `workspace_bin_names` are considered, so a dependency's bin
+/// keeps resolving the way it did before. Only `JsFile` entries are merged; an
+/// `Executable` entry is a shell script or a native binary, which `PATH`
+/// already handles and which `deno run --ext=js` would reject.
+///
+/// Precedence is closest-first among the bin dirs, but note that `commands` is
+/// pre-seeded from the snapshot's top level packages, so a root dependency's
+/// bin still beats a nearer member's bin of the same name (npm runs the nearer
+/// one). Fixing that requires the `TODO(nathanwhit)` on
+/// `resolve_managed_npm_commands` below.
+fn merge_workspace_member_bin_commands(
+  node_resolver: &CliNodeResolver,
+  bin_dirs: &[PathBuf],
+  workspace_bin_names: &HashSet<String>,
+  commands: &mut HashMap<String, Rc<dyn ShellCommand>>,
+) {
+  if workspace_bin_names.is_empty() {
+    return;
+  }
+  // names classified in any bin dir, merged or not: a closer `Executable`
+  // entry must still shadow a farther `JsFile` of the same name, since a
+  // custom command beats `PATH` in `deno_task_shell`
+  let mut seen: HashSet<String> = HashSet::new();
+  for bin_dir in bin_dirs {
+    // classifying an entry reads the file, so filter by name first
+    let bin_values = node_resolver.resolve_npm_commands_from_bin_dir_filtered(
+      bin_dir,
+      |name| {
+        workspace_bin_names.contains(name)
+          && !commands.contains_key(name)
+          && !seen.contains(name)
+      },
+    );
+    for (name, bin_value) in bin_values {
+      seen.insert(name.clone());
+      let BinValue::JsFile(path) = bin_value else {
+        continue;
+      };
+      commands.insert(
+        name.clone(),
+        Rc::new(NodeModulesFileRunCommand {
+          command_name: name,
+          path,
+        }) as Rc<dyn ShellCommand>,
+      );
+    }
+  }
+}
+
+/// Builds the list of `node_modules/.bin` directories to consult for a task,
+/// ordered closest-first.
 ///
 /// For BYONM this walks up the filesystem from `cwd` collecting every
-/// `<ancestor>/node_modules/.bin` directory (matching how Node, npm, and pnpm
-/// resolve bin commands). For the managed npm resolver there is only ever a
-/// single `node_modules/.bin`.
+/// `<ancestor>/node_modules/.bin` directory, matching how Node, npm, and pnpm
+/// look up bin commands.
+///
+/// For the managed npm resolver the walk is bounded by the workspace root (the
+/// directory holding the root `node_modules`), so a task run with
+/// `--cwd <member>` also sees that member's own `node_modules/.bin` without
+/// picking up unrelated directories above the workspace.
+///
+/// The returned paths are candidates only: they aren't checked for existence.
+/// See `resolve_custom_commands` for how the order is applied.
 pub fn resolve_task_node_modules_bin_dirs(
   npm_resolver: &CliNpmResolver,
   cwd: &Path,
@@ -566,11 +646,43 @@ pub fn resolve_task_node_modules_bin_dirs(
       .ancestors()
       .map(|dir| dir.join("node_modules").join(".bin"))
       .collect(),
-    CliNpmResolver::Managed(npm_resolver) => npm_resolver
-      .root_node_modules_path()
-      .map(|p| vec![p.join(".bin")])
-      .unwrap_or_default(),
+    CliNpmResolver::Managed(npm_resolver) => {
+      match npm_resolver.root_node_modules_path() {
+        Some(root_node_modules_path) => {
+          managed_task_node_modules_bin_dirs(root_node_modules_path, cwd)
+        }
+        None => Vec::new(),
+      }
+    }
   }
+}
+
+fn managed_task_node_modules_bin_dirs(
+  root_node_modules_path: &Path,
+  cwd: &Path,
+) -> Vec<PathBuf> {
+  let mut bin_dirs = Vec::new();
+  match root_node_modules_path.parent() {
+    // when the cwd is outside the workspace only the root `.bin` applies, so
+    // we don't reach into unrelated `node_modules` directories
+    Some(root_dir) if cwd.starts_with(root_dir) => {
+      bin_dirs.extend(
+        cwd
+          .ancestors()
+          .take_while(|dir| *dir != root_dir)
+          .map(|dir| dir.join("node_modules").join(".bin")),
+      );
+    }
+    _ => {
+      log::debug!(
+        "Task cwd '{}' is not under the root node_modules directory '{}'. Only using the root node_modules/.bin.",
+        cwd.display(),
+        root_node_modules_path.display(),
+      );
+    }
+  }
+  bin_dirs.push(root_node_modules_path.join(".bin"));
+  bin_dirs
 }
 
 pub fn resolve_npm_commands_from_bin_dir(
@@ -599,6 +711,11 @@ fn resolve_managed_npm_commands(
   let mut result = HashMap::new();
   for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
+    // TODO(nathanwhit): this discards the `BinValue` that
+    // `resolve_npm_binary_commands_for_package` already computed, so a registry
+    // package whose bin is a native binary or a shell script is still handed to
+    // `deno run --ext=js`. See `merge_workspace_member_bin_commands` above for
+    // how that distinction should be honoured.
     let bins =
       node_resolver.resolve_npm_binary_commands_for_package(&package_folder)?;
     result.extend(bins.into_iter().map(|(command_name, path)| {
@@ -718,6 +835,43 @@ async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
 mod test {
 
   use super::*;
+
+  #[test]
+  fn test_managed_task_node_modules_bin_dirs() {
+    #[cfg(windows)]
+    let root_dir = PathBuf::from("C:\\workspace");
+    #[cfg(not(windows))]
+    let root_dir = PathBuf::from("/workspace");
+    let root_node_modules = root_dir.join("node_modules");
+    let bin_dir = |dir: &Path| dir.join("node_modules").join(".bin");
+
+    // cwd at the root: only the root `.bin`
+    assert_eq!(
+      managed_task_node_modules_bin_dirs(&root_node_modules, &root_dir),
+      vec![bin_dir(&root_dir)]
+    );
+
+    // cwd in a member: the member's `.bin` first, then the root's
+    let member = root_dir.join("apps").join("web");
+    assert_eq!(
+      managed_task_node_modules_bin_dirs(&root_node_modules, &member),
+      vec![
+        bin_dir(&member),
+        bin_dir(&root_dir.join("apps")),
+        bin_dir(&root_dir),
+      ]
+    );
+
+    // cwd outside the workspace: only the root `.bin`
+    #[cfg(windows)]
+    let outside = PathBuf::from("C:\\other\\project");
+    #[cfg(not(windows))]
+    let outside = PathBuf::from("/other/project");
+    assert_eq!(
+      managed_task_node_modules_bin_dirs(&root_node_modules, &outside),
+      vec![bin_dir(&root_dir)]
+    );
+  }
 
   #[test]
   fn test_prepend_to_path() {
