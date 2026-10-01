@@ -1755,3 +1755,117 @@ Deno.test("tls autoSelectFamily fallback preserves a validated session", async (
     await closeServer(server);
   }
 });
+
+// Regression test: each buffer of a corked/writev batch must be encrypted
+// into its own TLS record(s), matching Node's TLSWrap::DoWrite which calls
+// SSL_write once per buffer. tedious/mssql relies on this: SQL Server's
+// TDS-over-TLS drops the connection when a TLS record crosses a TDS packet
+// boundary, so a >2-packet INSERT (where the stream machinery batches
+// packets 2..n into one writev) failed with "socket hang up".
+// tedious itself pins TLS 1.2 (TDS 7.x caps there), but the framing is
+// version-independent, so both versions are covered.
+for (const version of ["TLSv1.2", "TLSv1.3"] as const) {
+  Deno.test(
+    `tls js-backed duplex client keeps writev chunk boundaries in TLS records (${version})`,
+    async () => {
+      const chunkSizes = [4096, 4096, 54];
+      const total = chunkSizes.reduce((a, b) => a + b, 0);
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+      const server = tls.createServer({ key, cert }, (sock) => {
+        let received = 0;
+        let acked = false;
+        sock.on("data", (d: Uint8Array) => {
+          if (!acked) {
+            // First write is the handshake-drained marker, see below; the
+            // client sends nothing else until this reply arrives.
+            acked = true;
+            sock.write("k");
+            return;
+          }
+          received += d.length;
+          if (received >= total) sock.write("done");
+        });
+        sock.on("error", () => {});
+      });
+
+      // Parse client->server TLS records off the wire. Capture starts only
+      // once the handshake bytes are through: under TLS 1.3 the client's
+      // Finished is also an outer application_data record.
+      let capture = false;
+      const recordLens: number[] = [];
+      let wire = Buffer.alloc(0);
+      const parseRecords = (chunk: Uint8Array) => {
+        wire = Buffer.concat([wire, chunk]);
+        while (wire.length >= 5) {
+          const type = wire[0];
+          const len = wire.readUInt16BE(3);
+          if (wire.length < 5 + len) break;
+          if (type === 23 && capture) recordLens.push(len); // application_data
+          wire = wire.subarray(5 + len);
+        }
+      };
+
+      let clientTls: tls.TLSSocket | undefined;
+      let raw: net.Socket | undefined;
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        raw = net.connect(port, "localhost", () => {
+          const { socket1, socket2 } = backToBackDuplexPair();
+          raw!.pipe(socket2);
+          socket2.pipe(raw!);
+          socket2.on("data", parseRecords); // taps client->server bytes
+          clientTls = tls.connect({
+            socket: socket1 as net.Socket,
+            servername: "localhost",
+            rejectUnauthorized: false,
+            minVersion: version,
+            maxVersion: version,
+          });
+          clientTls.on("error", reject);
+          clientTls.on("secureConnect", () => {
+            // One byte and wait for the echo: the reply proves every
+            // handshake record has already passed the tap above, so what
+            // is captured next is only the corked batch.
+            clientTls!.write("p");
+          });
+          let started = false;
+          clientTls.on("data", () => {
+            if (started) {
+              resolve();
+              return;
+            }
+            started = true;
+            capture = true;
+            // Cork so the chunks flow through a single _writev batch, like
+            // a Writable draining queued packets after an in-flight write.
+            clientTls!.cork();
+            for (const size of chunkSizes) {
+              clientTls!.write(Buffer.alloc(size, 0x78));
+            }
+            clientTls!.uncork();
+          });
+        });
+        raw.on("error", reject);
+      });
+
+      try {
+        await deadline(promise, 10_000);
+        // One record per chunk: normalize by the constant per-record cipher
+        // overhead (nonce/tag, plus the inner content type on TLS 1.3)
+        // derived from the first record.
+        assertEquals(recordLens.length, chunkSizes.length);
+        const overhead = recordLens[0] - chunkSizes[0];
+        assert(overhead >= 0 && overhead <= 64, `overhead=${overhead}`);
+        assertEquals(
+          recordLens.map((l) => l - overhead),
+          chunkSizes,
+        );
+      } finally {
+        clientTls?.destroy();
+        raw?.destroy();
+        server.close();
+      }
+    },
+  );
+}
