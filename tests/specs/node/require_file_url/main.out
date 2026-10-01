@@ -1,0 +1,11 @@
+esm-dep
+cjs-dep
+cjs-dep
+dir/index.js
+pkg-dir main
+with space
+true
+true
+?t=1 MODULE_NOT_FOUND
+#frag MODULE_NOT_FOUND
+missing MODULE_NOT_FOUND
