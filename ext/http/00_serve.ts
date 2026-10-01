@@ -1669,6 +1669,12 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for onListen: must be a function");
   }
 
+  if (
+    exports.onError !== undefined && typeof exports.onError !== "function"
+  ) {
+    throw new TypeError("Invalid type for onError: must be a function");
+  }
+
   return ({
     servePort,
     serveHost,
@@ -1716,6 +1722,7 @@ function registerDeclarativeServer(exports) {
           );
         }
       },
+      onError: exports.onError ? (error) => exports.onError(error) : undefined,
       handler: (req, connInfo) => {
         return exports.fetch(req, connInfo);
       },
