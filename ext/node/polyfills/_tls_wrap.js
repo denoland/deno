@@ -1240,11 +1240,15 @@ function makeVerifyError(code) {
   const message = {
     CERT_HAS_EXPIRED: "certificate has expired",
     CERT_NOT_YET_VALID: "certificate is not yet valid",
+    CERT_SIGNATURE_FAILURE: "certificate signature failure",
     DEPTH_ZERO_SELF_SIGNED_CERT: "self-signed certificate",
+    INVALID_PURPOSE: "unsupported certificate purpose",
+    PATH_LENGTH_EXCEEDED: "path length constraint exceeded",
     SELF_SIGNED_CERT_IN_CHAIN: "self-signed certificate in certificate chain",
     UNABLE_TO_GET_ISSUER_CERT: "unable to get issuer certificate",
     UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "unable to get local issuer certificate",
     UNABLE_TO_VERIFY_LEAF_SIGNATURE: "unable to verify the first certificate",
+    UNHANDLED_CRITICAL_EXTENSION: "unhandled critical extension",
   }[code] ?? code;
   const err = new Error(message);
   err.code = code;
