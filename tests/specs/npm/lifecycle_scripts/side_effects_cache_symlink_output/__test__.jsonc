@@ -1,0 +1,40 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for the npm build side-effects cache (issue #16164) when a
+    // build script produces a SYMLINK inside its own package directory. The
+    // snapshot/restore clone can't represent symlinks, so the package must be
+    // left uncacheable (its scripts re-run on every install) rather than served
+    // a variant that silently dropped the link. Without the fix, the second
+    // install reports "Reusing cached build output" and then fails to resolve
+    // the dropped `linked.js` symlink.
+    "symlink_output_is_not_cached": {
+      "steps": [
+        {
+          // First install: the `postinstall` script runs and creates the
+          // `linked.js` symlink. Requiring through it prints the target value.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-symlink main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Wipe node_modules so the next install must re-link from scratch,
+          // simulating a second project sharing the same global cache.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // Second install: because the package's build output contains a
+          // symlink the cache can't represent, it was NOT cached, so the
+          // `postinstall` script runs AGAIN (note the "running 'postinstall'
+          // script" line and the ABSENCE of "Reusing cached build output"),
+          // recreating the symlink so the require still succeeds.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-symlink main.js",
+          "output": "second_run.out"
+        }
+      ]
+    }
+  }
+}
