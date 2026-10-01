@@ -4279,21 +4279,54 @@ fn signature_is_valid(
 }
 
 /// Whether `cert` may sign other certificates, following OpenSSL's
-/// `X509_check_ca` with default flags: `basicConstraints` and `keyUsage` are
-/// honoured when present, and a certificate carrying neither is permitted —
-/// which is how X.509v1 CAs, having no extensions at all, are trusted.
+/// `check_chain_extensions` with default flags.
+///
+/// An intermediate must assert `basicConstraints` `cA`: OpenSSL applies
+/// `X509_V_FLAG_X509_STRICT` to intermediates implicitly, so a certificate
+/// without the extension -- every X.509v1 certificate -- cannot sign another
+/// certificate unless it is a trust anchor. A trust anchor the caller
+/// configured is refused only when an extension it carries says it is not a
+/// CA, which is how X.509v1 roots, having no extensions at all, are trusted.
 ///
 /// A CA carrying a constraint this verifier does not evaluate is refused, so
 /// that an unevaluated restriction can never read as an absent one.
-fn usable_as_ca(cert: &ParsedCertificate<'_>, certs_below: u64) -> bool {
-  cert.extensions.is_ca != Some(false)
-    && cert.extensions.key_cert_sign != Some(false)
-    && cert.extensions.server_auth != Some(false)
-    && cert
-      .extensions
-      .path_len
-      .is_none_or(|limit| limit >= certs_below)
-    && !cert.extensions.unhandled_constraint
+///
+/// Returns the Node/OpenSSL error code a refusal is reported with, or `None`
+/// when `cert` may sign.
+fn ca_rejection(
+  cert: &ParsedCertificate<'_>,
+  certs_below: u64,
+  is_trust_anchor: bool,
+) -> Option<&'static str> {
+  let extensions = &cert.extensions;
+  if extensions.unhandled_constraint {
+    return Some("UNHANDLED_CRITICAL_EXTENSION");
+  }
+  let is_ca = match is_trust_anchor {
+    true => extensions.is_ca != Some(false),
+    false => extensions.is_ca == Some(true),
+  };
+  // OpenSSL checks the CA flag as part of the purpose check for an issuer,
+  // so Node reports a non-CA issuer as `INVALID_PURPOSE`.
+  if !is_ca
+    || extensions.key_cert_sign == Some(false)
+    || extensions.server_auth == Some(false)
+  {
+    return Some("INVALID_PURPOSE");
+  }
+  if extensions.path_len.is_some_and(|limit| limit < certs_below) {
+    return Some("PATH_LENGTH_EXCEEDED");
+  }
+  None
+}
+
+#[cfg(test)]
+fn usable_as_ca(
+  cert: &ParsedCertificate<'_>,
+  certs_below: u64,
+  is_trust_anchor: bool,
+) -> bool {
+  ca_rejection(cert, certs_below, is_trust_anchor).is_none()
 }
 
 /// Longest certification path considered, counting the end entity and the
@@ -4392,8 +4425,8 @@ impl ChainSearch<'_> {
     // store over whatever the peer supplied.
     for root in roots.iter().filter(|r| r.parsed.subject == current.issuer) {
       had_candidate = true;
-      if !usable_as_ca(&root.parsed, certs_below) {
-        note("UNHANDLED_CRITICAL_EXTENSION");
+      if let Some(code) = ca_rejection(&root.parsed, certs_below, true) {
+        note(code);
         continue;
       }
       match self.check_signature(current, &root.parsed) {
@@ -4408,8 +4441,8 @@ impl ChainSearch<'_> {
         continue;
       }
       had_candidate = true;
-      if !usable_as_ca(&issuer.parsed, certs_below) {
-        note("UNHANDLED_CRITICAL_EXTENSION");
+      if let Some(code) = ca_rejection(&issuer.parsed, certs_below, false) {
+        note(code);
         continue;
       }
       // A self-issued certificate the peer supplied is not a trust anchor,
@@ -4522,6 +4555,7 @@ fn node_verify_error_message(code: &str) -> Option<&'static str> {
     "CERT_NOT_YET_VALID" => Some("certificate is not yet valid"),
     "CERT_SIGNATURE_FAILURE" => Some("certificate signature failure"),
     "INVALID_PURPOSE" => Some("unsupported certificate purpose"),
+    "PATH_LENGTH_EXCEEDED" => Some("path length constraint exceeded"),
     "UNHANDLED_CRITICAL_EXTENSION" => Some("unhandled critical extension"),
     "DEPTH_ZERO_SELF_SIGNED_CERT" => Some("self-signed certificate"),
     "SELF_SIGNED_CERT_IN_CHAIN" => {
@@ -5961,10 +5995,14 @@ mod tests {
     let agent8_ca = parse_certificate(NODE_FAKE_STARTCOM_ROOT).unwrap();
     assert_eq!(agent8_ca.extensions.is_ca, Some(true));
     assert_eq!(agent8_ca.extensions.key_cert_sign, None);
-    assert!(usable_as_ca(&agent8_ca, 0));
+    assert!(usable_as_ca(&agent8_ca, 0, true));
+    // A v1 certificate configured as a trust anchor may sign; one the peer
+    // sends as an intermediate may not, since only `cA` makes an intermediate
+    // a CA.
     let v1_leaf = parse_certificate(LEAF_V1).unwrap();
     assert_eq!(v1_leaf.extensions, CertExtensions::default());
-    assert!(usable_as_ca(&v1_leaf, 0));
+    assert!(usable_as_ca(&v1_leaf, 0, true));
+    assert!(!usable_as_ca(&v1_leaf, 0, false));
   }
 
   // --- invalid chains: these must be rejected ----------------------------
@@ -6044,6 +6082,23 @@ mod tests {
     );
     assert!(
       check_chain(CHILD_OF_LEAF_V1, &[LEAF_V3], &[ROOT_CA], NOW).is_err()
+    );
+  }
+
+  #[test]
+  fn intermediate_without_basic_constraints_is_rejected() {
+    // `LEAF_V1` shares `LEAF_V3`'s subject and key, so `CHILD_OF_LEAF_V1` is
+    // validly signed by it too. A v1 certificate has no basicConstraints and
+    // therefore cannot act as an intermediate CA: `openssl verify -untrusted
+    // leaf_v1 child_of_leaf_v1` reports error 79, invalid CA certificate.
+    let leaf_v1 = parse_certificate(LEAF_V1).unwrap();
+    let child = parse_certificate(CHILD_OF_LEAF_V1).unwrap();
+    assert!(
+      signature_is_valid(&child, &leaf_v1),
+      "fixture must be genuinely signed by the v1 leaf"
+    );
+    assert!(
+      check_chain(CHILD_OF_LEAF_V1, &[LEAF_V1], &[ROOT_CA], NOW).is_err()
     );
   }
 
@@ -6265,7 +6320,8 @@ mod tests {
     let ca = parse_certificate(NAME_CONSTRAINED_CA).unwrap();
     assert!(ca.extensions.unhandled_constraint);
     assert_eq!(ca.extensions.is_ca, Some(true));
-    assert!(!usable_as_ca(&ca, 0));
+    assert!(!usable_as_ca(&ca, 0, true));
+    assert!(!usable_as_ca(&ca, 0, false));
     // The chain is genuinely signed, so only the constraint stands in the way.
     let leaf = parse_certificate(LEAF_V1_UNDER_CONSTRAINED_CA).unwrap();
     assert!(signature_is_valid(&leaf, &ca));
@@ -6342,7 +6398,8 @@ mod tests {
     let ca = parse_certificate(CLIENT_AUTH_ONLY_CA).unwrap();
     assert_eq!(ca.extensions.server_auth, Some(false));
     assert_eq!(ca.extensions.is_ca, Some(true));
-    assert!(!usable_as_ca(&ca, 0));
+    assert!(!usable_as_ca(&ca, 0, true));
+    assert!(!usable_as_ca(&ca, 0, false));
     // The chain is genuinely signed, so only the purpose stands in the way.
     let leaf = parse_certificate(LEAF_V1_UNDER_CLIENT_AUTH_CA).unwrap();
     assert_eq!(leaf.extensions, CertExtensions::default());
