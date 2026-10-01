@@ -2,6 +2,7 @@
   "name": "app",
   "version": "1.0.0",
   "dependencies": {
+    "@denotest/different-nested-dep-child": "*",
     "@denotest/esm-basic": "1.0.0"
   }
 }
