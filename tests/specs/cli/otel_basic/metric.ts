@@ -24,8 +24,11 @@ const observableCounterPromise = Promise.withResolvers<void>();
 const observableCounter = meter.createObservableCounter("observable_counter", {
   description: "Example of a ObservableCounter",
 });
-observableCounter.addCallback((res) => {
+// An async callback returns a promise that the observation loop awaits
+// (`Promise.try` + `SafePromiseAll` behavior, now driven from Rust).
+observableCounter.addCallback(async (res) => {
   res.observe(1);
+  await Promise.resolve();
   observableCounterPromise.resolve();
 });
 
@@ -64,16 +67,31 @@ const observableGaugeBatch = meter.createObservableGauge(
 );
 
 const observableBatchPromise = Promise.withResolvers<void>();
-meter.addBatchObservableCallback((observer) => {
+meter.addBatchObservableCallback(async (observer) => {
   observer.observe(observableCounter, 2);
   observer.observe(observableUpDownCounter, 2);
   observer.observe(observableGauge, 2);
+  await Promise.resolve();
   observableBatchPromise.resolve();
 }, [
   observableCounterBatch,
   observableUpDownCounterBatch,
   observableGaugeBatch,
 ]);
+
+// A removed individual callback must not be invoked: this observable has its
+// only callback removed before observation, so it records nothing and is never
+// exported (if removal failed, a `removed_observable_counter` metric would
+// appear in the output).
+const removedObservable = meter.createObservableCounter(
+  "removed_observable_counter",
+  { description: "Should never be exported, its callback is removed" },
+);
+const removedCallback = (res: { observe(value: number): void }) => {
+  res.observe(42);
+};
+removedObservable.addCallback(removedCallback);
+removedObservable.removeCallback(removedCallback);
 
 const attributes = { attribute: 1 };
 counter.add(1, attributes);
@@ -82,6 +100,22 @@ gauge.record(1, attributes);
 histogram.record(1, attributes);
 
 counter.add(1, { a: "b", c: "d", e: "f", g: "h" });
+
+// Negative values must throw for (regular) counters. This throws before any
+// recording happens, so it does not emit a metric.
+{
+  let message: string | undefined;
+  try {
+    counter.add(-1);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  if (message !== "Counter can only be incremented") {
+    throw new Error(
+      `expected counter.add(-1) to throw, got: ${message}`,
+    );
+  }
+}
 
 const timer = setTimeout(() => {}, 100000);
 
