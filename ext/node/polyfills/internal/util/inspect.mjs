@@ -25,7 +25,6 @@ const { core, primordials } = __bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
-  FunctionPrototypeCall,
   JSONStringify,
   Number,
   NumberParseFloat,
@@ -53,6 +52,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeSplit,
   SymbolFor,
+  SymbolToPrimitive,
 } = primordials;
 const {
   validateBoolean,
@@ -390,25 +390,33 @@ function hasBuiltInToString(value) {
     value = proxyTarget;
   }
 
-  // Count objects that have no `toString` function as built-in.
-  if (typeof value.toString !== "function") {
-    return true;
-  }
+  let hasOwnToString = ObjectPrototypeHasOwnProperty;
+  let hasOwnToPrimitive = ObjectPrototypeHasOwnProperty;
 
-  // The object has a own `toString` property. Thus it's not a built-in one.
-  if (
-    FunctionPrototypeCall(Object.prototype.hasOwnProperty, value, "toString")
-  ) {
+  // Count objects without `toString` and `Symbol.toPrimitive` function as built-in.
+  if (typeof value.toString !== "function") {
+    if (typeof value[SymbolToPrimitive] !== "function") {
+      return true;
+    } else if (ObjectPrototypeHasOwnProperty(value, SymbolToPrimitive)) {
+      return false;
+    }
+    hasOwnToString = returnFalse;
+  } else if (ObjectPrototypeHasOwnProperty(value, "toString")) {
+    return false;
+  } else if (typeof value[SymbolToPrimitive] !== "function") {
+    hasOwnToPrimitive = returnFalse;
+  } else if (ObjectPrototypeHasOwnProperty(value, SymbolToPrimitive)) {
     return false;
   }
 
-  // Find the object that has the `toString` property as own property in the
-  // prototype chain.
+  // Find the object that has the `toString` property or `Symbol.toPrimitive`
+  // property as own property in the prototype chain.
   let pointer = value;
   do {
     pointer = ObjectGetPrototypeOf(pointer);
   } while (
-    !FunctionPrototypeCall(Object.prototype.hasOwnProperty, pointer, "toString")
+    !hasOwnToString(pointer, "toString") &&
+    !hasOwnToPrimitive(pointer, SymbolToPrimitive)
   );
 
   // Check closer if the object is a built-in.
@@ -416,6 +424,10 @@ function hasBuiltInToString(value) {
   return descriptor !== undefined &&
     typeof descriptor.value === "function" &&
     SetPrototypeHas(builtInObjects, descriptor.value.name);
+}
+
+function returnFalse() {
+  return false;
 }
 
 const firstErrorLine = (error) =>
