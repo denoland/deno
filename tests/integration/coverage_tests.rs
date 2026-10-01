@@ -783,3 +783,51 @@ fn worker_coverage3() {
     "coverage/worker/expected3.out",
   );
 }
+
+#[test]
+fn node_worker_terminate_coverage() {
+  let context = TestContext::with_http_server();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/worker/node_terminate_main.mjs".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let raw_profile_count = std::fs::read_dir(tempdir.as_path())
+    .unwrap()
+    .filter(|entry| {
+      entry.as_ref().is_ok_and(|entry| {
+        entry.path().extension().is_some_and(|ext| ext == "json")
+      })
+    })
+    .count();
+  assert!(
+    raw_profile_count >= 2,
+    "expected coverage from the main isolate and the terminated worker, found {raw_profile_count} raw profile(s)",
+  );
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
+    .split_output()
+    .run();
+
+  assert!(output.stderr().is_empty());
+  assert_contains!(output.stdout(), "node_terminate_worker.mjs");
+  output.assert_exit_code(0);
+}
