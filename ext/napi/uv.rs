@@ -1307,6 +1307,11 @@ unsafe extern "C" fn uv_free_cpu_info(_cpu_infos: *mut c_void, _count: c_int) {
 }
 
 #[unsafe(no_mangle)]
+extern "C" fn uv_get_osfhandle(fd: c_int) -> deno_core::ResourceHandleFd {
+  uv_compat::uv_get_osfhandle(fd)
+}
+
+#[unsafe(no_mangle)]
 unsafe extern "C" fn uv_os_getpid() -> c_int {
   std::process::id() as c_int
 }

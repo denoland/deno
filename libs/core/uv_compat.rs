@@ -887,6 +887,23 @@ unsafe fn get_inner(loop_: *mut uv_loop_t) -> &'static UvLoopInner {
   unsafe { &*((*loop_).internal as *const UvLoopInner) }
 }
 
+/// Returns the OS handle borrowed from a C runtime file descriptor.
+/// The caller must keep the descriptor open and must not close the returned handle.
+pub fn uv_get_osfhandle(fd: c_int) -> crate::ResourceHandleFd {
+  #[cfg(unix)]
+  {
+    fd
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: The helper also handles invalid descriptors without invoking the
+    // CRT's aborting invalid-parameter handler. It does not transfer ownership.
+    unsafe {
+      tty::win_console::safe_get_osfhandle(fd) as crate::ResourceHandleFd
+    }
+  }
+}
+
 /// Matches libuv's `uv_guess_handle`: detects TTYs, regular files,
 /// character devices, pipes (FIFOs), TCP/UDP sockets, and Unix domain
 /// sockets (named pipes).
