@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // Set up a git repo with no tags and a conventional root commit.
+    "args": "run --allow-run --allow-read --allow-write --no-config --quiet setup.ts",
+    "output": "setup.out"
+  }, {
+    // Without a previous tag, bump-version should read the full history and
+    // include the root commit when deriving bumps.
+    "args": "bump-version --dry-run",
+    "output": "bump.out"
+  }]
+}
