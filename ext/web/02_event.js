@@ -28,6 +28,7 @@ const {
   ObjectGetPrototypeOf,
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   ReflectDefineProperty,
   SafeArrayIterator,
   SafeMap,
@@ -139,8 +140,11 @@ const _dispatched = Symbol("[[dispatched]]");
 const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
 
+// Null the prototype of a plain literal to keep it out of dictionary mode.
+const EMPTY_EVENT_INIT = ObjectFreeze(ObjectSetPrototypeOf({}, null));
+
 class Event {
-  constructor(type, eventInitDict = { __proto__: null }) {
+  constructor(type, eventInitDict = EMPTY_EVENT_INIT) {
     this[_canceledFlag] = false;
     this[_stopPropagationFlag] = false;
     this[_stopImmediatePropagationFlag] = false;
@@ -1186,7 +1190,7 @@ class ErrorEvent extends Event {
       lineno = 0,
       colno = 0,
       error,
-    } = { __proto__: null },
+    } = EMPTY_EVENT_INIT,
   ) {
     super(type, {
       bubbles: bubbles,
@@ -1255,7 +1259,7 @@ class CloseEvent extends Event {
     wasClean = false,
     code = 0,
     reason = "",
-  } = { __proto__: null }) {
+  } = EMPTY_EVENT_INIT) {
     super(type, {
       bubbles: bubbles,
       cancelable: cancelable,
@@ -1449,7 +1453,7 @@ const MessageEventPrototype = MessageEvent.prototype;
 class CustomEvent extends Event {
   #detail = null;
 
-  constructor(type, eventInitDict = { __proto__: null }) {
+  constructor(type, eventInitDict = EMPTY_EVENT_INIT) {
     super(type, eventInitDict);
     webidl.requiredArguments(
       arguments.length,
@@ -1492,7 +1496,7 @@ ReflectDefineProperty(CustomEvent.prototype, "detail", {
 // ProgressEvent could also be used in other DOM progress event emits.
 // Current use is for FileReader.
 class ProgressEvent extends Event {
-  constructor(type, eventInitDict = { __proto__: null }) {
+  constructor(type, eventInitDict = EMPTY_EVENT_INIT) {
     super(type, eventInitDict);
 
     this.lengthComputable = eventInitDict?.lengthComputable ?? false;
@@ -1541,7 +1545,7 @@ class PromiseRejectionEvent extends Event {
       composed,
       promise,
       reason,
-    } = { __proto__: null },
+    } = EMPTY_EVENT_INIT,
   ) {
     super(type, {
       bubbles: bubbles,

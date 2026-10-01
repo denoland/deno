@@ -130,7 +130,7 @@ core.registerErrorClass("GPUInternalError", GPUInternalError);
 class GPUPipelineError extends DOMException {
   #reason;
 
-  constructor(message = "", options = { __proto__: null }) {
+  constructor(message = "", options = undefined) {
     const prefix = "Failed to construct 'GPUPipelineError'";
     message = webidl.converters.DOMString(message, prefix, "Argument 1");
     options = webidl.converters.GPUPipelineErrorInit(

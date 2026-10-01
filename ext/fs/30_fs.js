@@ -85,7 +85,9 @@ const {
   Number,
   ObjectEntries,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   ObjectValues,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -96,6 +98,9 @@ const {
   TypeError,
   Uint32Array,
 } = primordials;
+
+// Null the prototype of a plain literal to keep it out of dictionary mode.
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { read, readSync, write, writeSync } = core.loadExtScript(
   "ext:deno_io/12_io.js",
@@ -169,7 +174,7 @@ function chdir(directory) {
   op_fs_chdir(pathFromURL(directory));
 }
 
-function makeTempDirSync(options = { __proto__: null }) {
+function makeTempDirSync(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_dir_sync(
     options.dir,
     options.prefix,
@@ -177,7 +182,7 @@ function makeTempDirSync(options = { __proto__: null }) {
   );
 }
 
-function makeTempDir(options = { __proto__: null }) {
+function makeTempDir(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_dir_async(
     options.dir,
     options.prefix,
@@ -185,7 +190,7 @@ function makeTempDir(options = { __proto__: null }) {
   );
 }
 
-function makeTempFileSync(options = { __proto__: null }) {
+function makeTempFileSync(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_file_sync(
     options.dir,
     options.prefix,
@@ -193,7 +198,7 @@ function makeTempFileSync(options = { __proto__: null }) {
   );
 }
 
-function makeTempFile(options = { __proto__: null }) {
+function makeTempFile(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_file_async(
     options.dir,
     options.prefix,
@@ -292,7 +297,7 @@ function realPath(path) {
 
 function removeSync(
   path,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   op_fs_remove_sync(
     pathFromURL(path),
@@ -302,7 +307,7 @@ function removeSync(
 
 async function remove(
   path,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   await op_fs_remove_async(
     pathFromURL(path),
@@ -757,7 +762,7 @@ class FsFile {
     return core.isTerminal(this.#rid);
   }
 
-  setRaw(mode, options = { __proto__: null }) {
+  setRaw(mode, options = EMPTY_OPTIONS) {
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }
@@ -883,7 +888,7 @@ async function readTextFile(path, options) {
 function writeFileSync(
   path,
   data,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   options.signal?.throwIfAborted();
   op_fs_write_file_sync(
@@ -899,7 +904,7 @@ function writeFileSync(
 async function writeFile(
   path,
   data,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   let cancelRid;
   let abortHandler;
@@ -948,7 +953,7 @@ async function writeFile(
 function writeTextFileSync(
   path,
   data,
-  options = { __proto__: null },
+  options = undefined,
 ) {
   const encoder = new TextEncoder();
   return writeFileSync(path, encoder.encode(data), options);
@@ -957,7 +962,7 @@ function writeTextFileSync(
 function writeTextFile(
   path,
   data,
-  options = { __proto__: null },
+  options = undefined,
 ) {
   if (
     ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)

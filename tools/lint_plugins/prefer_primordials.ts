@@ -262,7 +262,7 @@ export const MSG = {
   UnsafeIntrinsic: "Don't use the unsafe intrinsic",
   DefineProperty: "Use null [[prototype]] object in the define property",
   ObjectAssignInDefaultParameter:
-    "Use null [[prototype]] object in the default parameter",
+    "Don't use an object literal in the default parameter",
   Iterator: "Don't use iterator protocol directly",
   RegExp: "Don't use RegExp literal directly",
   InstanceOf: "Don't use `instanceof` operator",
@@ -273,6 +273,8 @@ export const HINT = {
   GlobalIntrinsic: "Instead use the equivalent from the `primordials` object",
   UnsafeIntrinsic: "Instead use the safe wrapper from the `primordials` object",
   NullPrototypeObjectLiteral: "Add `__proto__: null` to this object literal",
+  NullPrototypeDefaultParameter:
+    "Instead use `undefined` or a shared frozen object created with `ObjectFreeze(ObjectSetPrototypeOf({ ... }, null))` from the `primordials` object",
   SafeIterator: "Wrap a SafeIterator from the `primordials` object",
   SafeRegExp: "Wrap `SafeRegExp` from the `primordials` object",
   ObjectPattern: "Instead use the object pattern destructuring assignment",
@@ -838,7 +840,6 @@ const plugin: Deno.lint.Plugin = {
           },
 
           ObjectExpression(node) {
-            if (isNullProto(node)) return;
             const parent = node.parent;
             if (!parent) return;
 
@@ -853,7 +854,7 @@ const plugin: Deno.lint.Plugin = {
               context,
               node,
               MSG.ObjectAssignInDefaultParameter,
-              HINT.NullPrototypeObjectLiteral,
+              HINT.NullPrototypeDefaultParameter,
             );
           },
 

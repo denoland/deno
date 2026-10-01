@@ -119,8 +119,20 @@ ObjectDefineProperties(o, {
 });
   `);
   assertOk(`
-function foo(o = { __proto__: null }) {}
-function bar({ o = { __proto__: null } }) {}
+const { ObjectDefineProperty, ObjectSetPrototypeOf, SymbolToStringTag } =
+  primordials;
+ObjectDefineProperty(
+  o,
+  SymbolToStringTag,
+  ObjectSetPrototypeOf({ value: "o" }, null),
+);
+  `);
+  assertOk(`
+const { ObjectFreeze, ObjectSetPrototypeOf } = primordials;
+const EMPTY = ObjectFreeze(ObjectSetPrototypeOf({}, null));
+function foo(o = undefined) {}
+function bar(o = EMPTY) {}
+function baz({ o = EMPTY } = EMPTY) {}
   `);
   assertOk(`
 const { NumberParseInt } = primordials;
@@ -381,15 +393,30 @@ ObjectDefineProperties(o, {
     `
 function foo(o = {}) {}
 function bar({ o = {} }) {}
+function baz(o = { __proto__: null }) {}
+function qux({ o = { __proto__: null } }) {}
+const quux = ({ a } = { __proto__: null, a: 1 }) => {};
   `,
     [
       {
         message: MSG.ObjectAssignInDefaultParameter,
-        hint: HINT.NullPrototypeObjectLiteral,
+        hint: HINT.NullPrototypeDefaultParameter,
       },
       {
         message: MSG.ObjectAssignInDefaultParameter,
-        hint: HINT.NullPrototypeObjectLiteral,
+        hint: HINT.NullPrototypeDefaultParameter,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeDefaultParameter,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeDefaultParameter,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeDefaultParameter,
       },
     ],
   );

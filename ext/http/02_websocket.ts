@@ -10,6 +10,8 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
+  ObjectFreeze,
+  ObjectSetPrototypeOf,
   StringPrototypeCharCodeAt,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
@@ -19,6 +21,10 @@ const {
   Promise,
   Uint8Array,
 } = primordials;
+
+// Null the prototype of a plain literal to keep it out of dictionary mode.
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
+
 const { toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
 const {
   fromInnerResponse,
@@ -35,7 +41,7 @@ const _ws = Symbol("[[associated_ws]]");
 const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
 const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
-function upgradeWebSocket(request, options = { __proto__: null }) {
+function upgradeWebSocket(request, options = EMPTY_OPTIONS) {
   const inner = toInnerRequest(request);
   if (inner._wantsUpgrade) {
     inner._throwIfUpgraded();

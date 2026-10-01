@@ -56,7 +56,8 @@ const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 const kEnumerableProperty = ObjectCreate(null);
 kEnumerableProperty.enumerable = true;
 
-const kEmptyObject = ObjectFreeze(ObjectCreate(null));
+// Null the prototype of a plain literal to keep it out of dictionary mode.
+const kEmptyObject = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 function once(callback) {
   let called = false;

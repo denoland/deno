@@ -19,10 +19,15 @@ const {
 } = core.ops;
 const {
   ObjectDefineProperty,
+  ObjectFreeze,
+  ObjectSetPrototypeOf,
   TypeError,
   Symbol,
   SymbolFor,
 } = primordials;
+
+// Null the prototype of a plain literal to keep it out of dictionary mode.
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { Conn, Listener, validatePort } = core.loadExtScript(
   "ext:deno_net/01_net.js",
@@ -198,7 +203,7 @@ async function startTls(
     caCerts = [],
     alpnProtocols = undefined,
     unsafelyDisableHostnameVerification = false,
-  } = { __proto__: null },
+  } = EMPTY_OPTIONS,
 ) {
   return startTlsInternal(conn, {
     hostname,

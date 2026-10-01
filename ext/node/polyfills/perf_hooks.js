@@ -43,7 +43,7 @@ const { ERR_ILLEGAL_CONSTRUCTOR, ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } = core
   .loadExtScript(
     "ext:deno_node/internal/errors.ts",
   );
-const { customInspectSymbol } = core.loadExtScript(
+const { customInspectSymbol, kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 const { inspect } = core.loadExtScript(
@@ -213,7 +213,7 @@ function recordTimerifyHistogram(histogram, start) {
   histogram.record(durationNs);
 }
 
-const timerify = (fn, options = { __proto__: null }) => {
+const timerify = (fn, options = undefined) => {
   if (typeof fn !== "function") {
     throw new ERR_INVALID_ARG_TYPE("fn", "function", fn);
   }
@@ -289,7 +289,7 @@ performance.timerify = timerify;
 // TODO(bartlomieju):
 performance.markResourceTiming = () => {};
 
-function monitorEventLoopDelay(options = { __proto__: null }) {
+function monitorEventLoopDelay(options = kEmptyObject) {
   const { resolution = 10 } = options;
 
   return new EventLoopDelayHistogram(new EldHistogram(resolution));
@@ -624,7 +624,7 @@ function validateInteger(value, name, min, max) {
   return value;
 }
 
-function createHistogram(options = { __proto__: null }) {
+function createHistogram(options = kEmptyObject) {
   if (options === null || typeof options !== "object") {
     throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
   }

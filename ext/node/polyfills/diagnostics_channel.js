@@ -348,10 +348,14 @@ class TracingChannel {
     return done;
   }
 
-  traceSync(fn, context = { __proto__: null }, thisArg, ...args) {
+  traceSync(fn, context = undefined, thisArg, ...args) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
+
+    // The context is published to subscribers and mutated, so it must be a
+    // fresh object per call.
+    if (context === undefined) context = { __proto__: null };
 
     const { start, end, error } = this;
 
@@ -370,10 +374,14 @@ class TracingChannel {
     });
   }
 
-  tracePromise(fn, context = { __proto__: null }, thisArg, ...args) {
+  tracePromise(fn, context = undefined, thisArg, ...args) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
+
+    // The context is published to subscribers and mutated, so it must be a
+    // fresh object per call.
+    if (context === undefined) context = { __proto__: null };
 
     const { start, end, asyncStart, asyncEnd, error } = this;
 
@@ -418,13 +426,17 @@ class TracingChannel {
   traceCallback(
     fn,
     position = -1,
-    context = { __proto__: null },
+    context = undefined,
     thisArg,
     ...args
   ) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
+
+    // The context is published to subscribers and mutated, so it must be a
+    // fresh object per call.
+    if (context === undefined) context = { __proto__: null };
 
     const { start, end, asyncStart, asyncEnd, error } = this;
 

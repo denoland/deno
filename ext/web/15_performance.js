@@ -11,8 +11,10 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  ObjectFreeze,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   queueMicrotask,
   ReflectHas,
   Symbol,
@@ -22,6 +24,9 @@ const {
   Uint8Array,
   Uint32Array,
 } = primordials;
+
+// Null the prototype of a plain literal to keep it out of dictionary mode.
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
@@ -272,7 +277,7 @@ class PerformanceMark extends PerformanceEntry {
 
   constructor(
     name,
-    options = { __proto__: null },
+    options = undefined,
   ) {
     const prefix = "Failed to construct 'PerformanceMark'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -496,7 +501,7 @@ class PerformanceObserver {
     this[_callback] = callback;
   }
 
-  observe(options = { __proto__: null }) {
+  observe(options = EMPTY_OPTIONS) {
     webidl.assertBranded(this, PerformanceObserverPrototype);
     const prefix = "Failed to execute 'observe' on 'PerformanceObserver'";
 
@@ -697,7 +702,7 @@ class Performance extends EventTarget {
 
   mark(
     markName,
-    markOptions = { __proto__: null },
+    markOptions = undefined,
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'mark' on 'Performance'";
@@ -722,7 +727,7 @@ class Performance extends EventTarget {
 
   measure(
     measureName,
-    startOrMeasureOptions = { __proto__: null },
+    startOrMeasureOptions = EMPTY_OPTIONS,
     endMark = undefined,
   ) {
     webidl.assertBranded(this, PerformancePrototype);
