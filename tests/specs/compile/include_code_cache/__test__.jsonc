@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile --output embedded_cache --allow-write=. --include-code-cache --log-level=debug main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "args": "compile --output embedded_cache.exe --allow-write=. --include-code-cache --log-level=debug main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A verify_generation.ts",
+      "output": "code cache generation did not evaluate user code\n"
+    },
+    {
+      "args": "run -A verify.ts",
+      "output": "embedded code cache verified\n"
+    }
+  ]
+}
