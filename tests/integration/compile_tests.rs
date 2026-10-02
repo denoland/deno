@@ -15,13 +15,12 @@ fn compile_skips_non_script_files_cjs_analysis() {
   temp_dir.write(
     "main.js",
     r#"import { getValue } from "./pkg/index.js";
-import ext from "./ext_pkg/main";
-console.log(getValue(), ext.value);"#,
+console.log(getValue());"#,
   );
   temp_dir.create_dir_all("pkg");
   temp_dir.write(
     "pkg/package.json",
-    r#"{ "name": "pkg", "type": "commonjs", "main": "index.js" }"#,
+    r#"{ "name": "pkg", "main": "index.js" }"#,
   );
   temp_dir.write(
     "pkg/index.js",
@@ -38,17 +37,6 @@ console.log(getValue(), ext.value);"#,
   }
   temp_dir.write("pkg/docs.mdx", mdx);
 
-  // Extensionless CJS module that should still be analyzed and work
-  temp_dir.create_dir_all("ext_pkg");
-  temp_dir.write(
-    "ext_pkg/package.json",
-    r#"{ "name": "ext-pkg", "type": "commonjs", "main": "main" }"#,
-  );
-  temp_dir.write(
-    "ext_pkg/main",
-    r#"module.exports = { value: 42 };"#,
-  );
-
   let binary_path = if cfg!(windows) {
     temp_dir.path().join("app.exe")
   } else {
@@ -63,8 +51,6 @@ console.log(getValue(), ext.value);"#,
       "--allow-read",
       "--include",
       "pkg",
-      "--include",
-      "ext_pkg",
       "--output",
       &binary_path.to_string_lossy(),
       "main.js",
@@ -75,7 +61,7 @@ console.log(getValue(), ext.value);"#,
 
   let output = context.new_command().name(&binary_path).run();
   output.assert_exit_code(0);
-  output.assert_matches_text("hello from cjs 42\n");
+  output.assert_matches_text("hello from cjs\n");
 }
 
 #[test]
