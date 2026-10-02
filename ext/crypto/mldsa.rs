@@ -163,9 +163,6 @@ mod fips_stub {
 
 #[cfg(not(feature = "fips"))]
 mod real {
-  use super::MlDsaError;
-  use super::MlDsaPkcs8Bytes;
-  use super::MlDsaSeedBytes;
   use aws_lc_rs::signature::KeyPair;
   use aws_lc_rs::signature::UnparsedPublicKey;
   use aws_lc_rs::unstable::signature::ML_DSA_44;
@@ -179,6 +176,10 @@ mod real {
   use aws_lc_rs::unstable::signature::PqdsaVerificationAlgorithm;
   use spki::der::Encode;
   use spki::der::asn1::BitString;
+
+  use super::MlDsaError;
+  use super::MlDsaPkcs8Bytes;
+  use super::MlDsaSeedBytes;
 
   // ML-DSA OIDs (NIST CSOR), 2.16.840.1.101.3.4.3.{17,18,19}.
   const ML_DSA_44_OID: const_oid::ObjectIdentifier =

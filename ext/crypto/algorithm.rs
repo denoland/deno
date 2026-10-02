@@ -326,6 +326,19 @@ pub fn check_support_for_algorithm(
   if !SUPPORTS_OPERATIONS.contains(&operation) {
     return false;
   }
+  // ML-DSA is registered in the tables below unconditionally, but under the
+  // `fips` build the actual implementation (ext/crypto/mldsa.rs) is a stub
+  // that rejects every call with NotSupportedInFipsBuild, because the linked
+  // AWS-LC-FIPS module doesn't yet expose aws-lc-rs's unstable ML-DSA API.
+  // supports() must report real capability, not table membership, so filter
+  // it out here rather than editing every operation's static table.
+  #[cfg(feature = "fips")]
+  if algorithm_name.eq_ignore_ascii_case("ML-DSA-44")
+    || algorithm_name.eq_ignore_ascii_case("ML-DSA-65")
+    || algorithm_name.eq_ignore_ascii_case("ML-DSA-87")
+  {
+    return false;
+  }
   let registered_op = match operation {
     "encapsulateKey" | "encapsulateBits" => "encapsulate",
     "decapsulateKey" | "decapsulateBits" => "decapsulate",
