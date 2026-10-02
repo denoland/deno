@@ -258,6 +258,10 @@ pub struct DesktopFlags {
   /// identifier, and (eventually) the Windows AppUserModelID. When unset
   /// a synthetic `com.deno.desktop.<app-slug>` is generated.
   pub identifier: Option<String>,
+  /// Human-readable app name from `desktop.app.name` in `deno.json`. Used for
+  /// the Linux `.desktop` `Name=` entry. Kept separate from `output`, which
+  /// only falls back to this name when no output path is configured.
+  pub display_name: Option<String>,
   /// Custom URL schemes (deep links) to register with the OS, e.g. `["acme"]`
   /// for `acme://...` links. Sourced from `desktop.app.deepLinks` in
   /// `deno.json`. Each entry is a bare scheme with no `://`.
