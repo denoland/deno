@@ -1,0 +1,18 @@
+{
+  "tests": {
+    "check_already_formatted": {
+      "args": "fmt --check --prose-wrap never formatted.md",
+      "output": "Checked 1 file\n"
+    },
+    "fmt_stdin_preserves_blank_line": {
+      "args": "fmt --prose-wrap never --ext=md -",
+      "input": "> 1. First paragraph.\n>\n>    Second paragraph.\n",
+      "output": "> 1. First paragraph.\n>\n>    Second paragraph.\n"
+    },
+    "fmt_stdin_preserves_nested_list": {
+      "args": "fmt --ext=md -",
+      "input": "- a\n  - b\n  - c\n- d\n\n> - a\n>   - b\n>   - c\n> - d\n",
+      "output": "- a\n  - b\n  - c\n- d\n\n> - a\n>   - b\n>   - c\n> - d\n"
+    }
+  }
+}
