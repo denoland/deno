@@ -530,6 +530,7 @@ pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   }
 }
 
+const UV_TCP_IPV6ONLY: u32 = 1;
 const UV_TCP_REUSEPORT: u32 = 4;
 
 /// ### Safety
@@ -586,6 +587,17 @@ pub unsafe fn uv_tcp_bind(
     None => return UV_EINVAL,
   };
 
+  #[cfg(windows)]
+  unsafe extern "system" {
+    fn setsockopt(
+      s: usize,
+      level: c_int,
+      optname: c_int,
+      optval: *const c_void,
+      optlen: c_int,
+    ) -> c_int;
+  }
+
   // SAFETY: Caller guarantees tcp is valid and initialized.
   unsafe {
     // Match libuv: create the real socket and bind immediately rather than
@@ -602,6 +614,42 @@ pub unsafe fn uv_tcp_bind(
         Err(ref e) => return io_error_to_uv(e),
       }
     };
+
+    // Match libuv: always set IPV6_V6ONLY on IPv6 sockets from the
+    // UV_TCP_IPV6ONLY flag. The OS default differs (0 on Linux, 1 on
+    // Windows), so relying on it makes `::` IPv6-only on Windows and
+    // ignores `ipv6Only: true` on Linux.
+    if sa.is_ipv6() {
+      let on: c_int = if flags & UV_TCP_IPV6ONLY != 0 { 1 } else { 0 };
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        if libc::setsockopt(
+          socket.as_raw_fd(),
+          libc::IPPROTO_IPV6,
+          libc::IPV6_V6ONLY,
+          &on as *const c_int as *const c_void,
+          std::mem::size_of::<c_int>() as libc::socklen_t,
+        ) != 0
+        {
+          return io_error_to_uv(&std::io::Error::last_os_error());
+        }
+      }
+      // Like libuv, ignore failures on Windows (e.g. no IPv4 stack).
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawSocket;
+        const IPPROTO_IPV6: c_int = 41;
+        const IPV6_V6ONLY: c_int = 27;
+        setsockopt(
+          socket.as_raw_socket() as usize,
+          IPPROTO_IPV6,
+          IPV6_V6ONLY,
+          &on as *const c_int as *const c_void,
+          std::mem::size_of::<c_int>() as c_int,
+        );
+      }
+    }
 
     // Match libuv: on Unix, set SO_REUSEADDR before bind so TIME_WAIT
     // sockets don't block rebinding.
@@ -627,15 +675,6 @@ pub unsafe fn uv_tcp_bind(
       #[cfg(windows)]
       {
         use std::os::windows::io::AsRawSocket;
-        unsafe extern "system" {
-          fn setsockopt(
-            s: usize,
-            level: c_int,
-            optname: c_int,
-            optval: *const c_void,
-            optlen: c_int,
-          ) -> c_int;
-        }
         const SOL_SOCKET: c_int = 0xffff;
         const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
         let one: c_int = 1;
