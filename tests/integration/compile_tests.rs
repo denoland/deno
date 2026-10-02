@@ -21,7 +21,7 @@ console.log(getValue(), ext.value);"#,
   temp_dir.create_dir_all("pkg");
   temp_dir.write(
     "pkg/package.json",
-    r#"{ "name": "pkg", "main": "index.js" }"#,
+    r#"{ "name": "pkg", "type": "commonjs", "main": "index.js" }"#,
   );
   temp_dir.write(
     "pkg/index.js",
@@ -42,7 +42,7 @@ console.log(getValue(), ext.value);"#,
   temp_dir.create_dir_all("ext_pkg");
   temp_dir.write(
     "ext_pkg/package.json",
-    r#"{ "name": "ext-pkg", "main": "main" }"#,
+    r#"{ "name": "ext-pkg", "type": "commonjs", "main": "main" }"#,
   );
   temp_dir.write(
     "ext_pkg/main",
