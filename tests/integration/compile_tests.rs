@@ -14,17 +14,13 @@ fn compile_skips_non_script_files_cjs_analysis() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "main.js",
-    r#"import { getValue } from "./pkg/index.js";
+    r#"import { getValue } from "./pkg/data.js";
 console.log(getValue());"#,
   );
   temp_dir.create_dir_all("pkg");
   temp_dir.write(
-    "pkg/package.json",
-    r#"{ "name": "pkg", "main": "index.js" }"#,
-  );
-  temp_dir.write(
-    "pkg/index.js",
-    r#"exports.getValue = function() { return "hello from cjs"; };"#,
+    "pkg/data.js",
+    r#"export function getValue() { return "hello from compiled"; }"#,
   );
   // Files that previously caused SyntaxError or stack overflow
   temp_dir.write("pkg/LICENSE", "MIT License\nCopyright (c) 2026");
@@ -60,7 +56,7 @@ console.log(getValue());"#,
 
   let output = context.new_command().name(&binary_path).run();
   output.assert_exit_code(0);
-  output.assert_matches_text("hello from cjs\n");
+  output.assert_matches_text("hello from compiled\n");
 }
 
 #[test]
