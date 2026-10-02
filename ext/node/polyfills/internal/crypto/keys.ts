@@ -29,6 +29,7 @@ const {
 const {
   op_node_create_ec_jwk,
   op_node_create_ed_raw,
+  op_node_create_raw_asymmetric_key,
   op_node_create_private_key,
   op_node_create_public_key,
   op_node_create_rsa_jwk,
@@ -37,9 +38,11 @@ const {
   op_node_export_private_key_der,
   op_node_export_private_key_jwk,
   op_node_export_private_key_pem,
+  op_node_export_private_key_raw,
   op_node_export_public_key_der,
   op_node_export_public_key_jwk,
   op_node_export_public_key_pem,
+  op_node_export_public_key_raw,
   op_node_export_secret_key,
   op_node_export_secret_key_b64url,
   op_node_get_asymmetric_key_details,
@@ -386,6 +389,34 @@ function prepareAsymmetricKey(
         handle: getKeyObjectHandleFromJwk(data, ctx),
         format,
       };
+    } else if (format === "raw-public" || format === "raw-private") {
+      const isPrivateKeyInput = ctx === kConsumePrivate ||
+        ctx === kCreatePrivate;
+      if (isPrivateKeyInput && format === "raw-public") {
+        throw new ERR_INVALID_ARG_VALUE("key.format", format);
+      }
+      if (!isArrayBufferView(data) && !isAnyArrayBuffer(data)) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "key.key",
+          ["ArrayBuffer", "Buffer", "TypedArray", "DataView"],
+          data,
+        );
+      }
+      validateString(key.asymmetricKeyType, "key.asymmetricKeyType");
+      if (key.asymmetricKeyType === "ec") {
+        validateString(key.namedCurve, "key.namedCurve");
+      }
+      const keyData = getArrayBufferOrView(data, "key");
+      return {
+        // @ts-ignore __proto__ is magic
+        __proto__: null,
+        handle: op_node_create_raw_asymmetric_key(
+          keyData,
+          key.asymmetricKeyType,
+          key.namedCurve ?? null,
+          format === "raw-public",
+        ),
+      };
     }
     if (!lazyCipher().isStringOrBuffer(data)) {
       throw new ERR_INVALID_ARG_TYPE(
@@ -510,6 +541,39 @@ function parseKeyFormatAndType(
     option("format", objName),
   );
 
+  if (format === "raw-public") {
+    if (isPublic === false) {
+      throw new ERR_INVALID_ARG_VALUE(option("format", objName), format);
+    }
+    if (
+      typeStr !== undefined && typeStr !== "compressed" &&
+      typeStr !== "uncompressed"
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(option("type", objName), typeStr);
+    }
+    return {
+      // @ts-ignore __proto__ is magic
+      __proto__: null,
+      format,
+      type: typeStr ?? "uncompressed",
+    };
+  }
+
+  if (format === "raw-private") {
+    if (isPublic === true) {
+      throw new ERR_INVALID_ARG_VALUE(option("format", objName), format);
+    }
+    if (typeStr !== undefined) {
+      throw new ERR_INVALID_ARG_VALUE(option("type", objName), typeStr);
+    }
+    return {
+      // @ts-ignore __proto__ is magic
+      __proto__: null,
+      format,
+      type: undefined,
+    };
+  }
+
   const type = parseKeyType(
     typeStr,
     !isInput || format === "der",
@@ -537,6 +601,10 @@ function parseKeyFormat(
     return "pem";
   } else if (formatStr === "der") {
     return "der";
+  } else if (formatStr === "raw-private") {
+    return "raw-private";
+  } else if (formatStr === "raw-public") {
+    return "raw-public";
   }
   throw new ERR_INVALID_ARG_VALUE(optionName, formatStr);
 }
@@ -926,6 +994,17 @@ class PrivateKeyObject extends AsymmetricKeyObject {
   }
 
   export(options: any) {
+    if (
+      options?.format !== undefined &&
+      options.format !== "pem" &&
+      options.format !== "der" &&
+      (options.passphrase !== undefined || options.cipher !== undefined)
+    ) {
+      throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+        options.format,
+        "does not support encryption",
+      );
+    }
     if (options && options.format === "jwk") {
       if (
         (options as { cipher?: unknown }).cipher !== undefined ||
@@ -937,6 +1016,9 @@ class PrivateKeyObject extends AsymmetricKeyObject {
         );
       }
       return { ...op_node_export_private_key_jwk(this[kHandle]) };
+    }
+    if (options?.format === "raw-private") {
+      return Buffer.from(op_node_export_private_key_raw(this[kHandle]));
     }
     const {
       format,
@@ -1009,6 +1091,17 @@ class PublicKeyObject extends AsymmetricKeyObject {
   export(options: any) {
     if (options && options.format === "jwk") {
       return { ...op_node_export_public_key_jwk(this[kHandle]) };
+    }
+    if (options?.format === "raw-public") {
+      let compressed = false;
+      if (this.asymmetricKeyType === "ec") {
+        const type = options.type ?? "uncompressed";
+        validateOneOf(type, "options.type", ["compressed", "uncompressed"]);
+        compressed = type === "compressed";
+      }
+      return Buffer.from(
+        op_node_export_public_key_raw(this[kHandle], compressed),
+      );
     }
 
     const {
