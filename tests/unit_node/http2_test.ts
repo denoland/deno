@@ -1243,3 +1243,59 @@ Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () 
 
   await promise;
 });
+
+// Regression test for https://github.com/denoland/deno/issues/36850
+// Empty-body HEADERS (204) must still emit 'end' when listeners attach after
+// awaiting 'response'. Native UV_EOF on HEADERS END_STREAM used to fire
+// stream.read(0) before the await continuation, so the event was lost.
+Deno.test(
+  "[node/http2 client] empty-body 204 emits end after awaiting response",
+  async () => {
+    const server = http2.createServer();
+    server.on("stream", (stream) => {
+      stream.respond({ ":status": 204 });
+    });
+
+    let client: http2.ClientHttp2Session | undefined;
+    try {
+      const port = await new Promise<number>((resolve) => {
+        server.listen(0, "127.0.0.1", () => {
+          resolve((server.address() as net.AddressInfo).port);
+        });
+      });
+      client = http2.connect(`http://127.0.0.1:${port}`);
+      client.on("error", () => {});
+      const req = client.request({ ":path": "/" });
+      req.end();
+
+      const status = await new Promise<number>((resolve) => {
+        req.on("response", (headers) => {
+          resolve(headers[":status"] as number);
+        });
+      });
+      assertEquals(status, 204);
+
+      // Attach body listeners only after 'response' has been awaited, matching
+      // the streaming-consumer pattern that lost 'end' before this fix.
+      const ended = Promise.withResolvers<void>();
+      req.on("data", () => {});
+      req.on("end", () => ended.resolve());
+
+      const timeout = setTimeout(() => {
+        ended.reject(
+          new Error(
+            "did not receive 'end' within 3s after awaiting response",
+          ),
+        );
+      }, 3000);
+      try {
+        await ended.promise;
+      } finally {
+        clearTimeout(timeout);
+      }
+    } finally {
+      client?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
