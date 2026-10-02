@@ -1194,10 +1194,19 @@ async fn spawn_framework_dev_server(
   name: &str,
   cmd_args: &[String],
   cwd: &Path,
-) -> Result<(String, tokio::process::Child), AnyError> {
+) -> Result<
+  (
+    String,
+    tokio::process::Child,
+    crate::util::job_object::KillOnCloseJob,
+  ),
+  AnyError,
+> {
   use tokio::io::AsyncBufReadExt;
   use tokio::io::BufReader;
 
+  let job = crate::util::job_object::KillOnCloseJob::new()
+    .context("failed to create subprocess job object")?;
   let mut child = tokio::process::Command::new(&cmd_args[0])
     .args(&cmd_args[1..])
     .current_dir(cwd)
@@ -1207,6 +1216,9 @@ async fn spawn_framework_dev_server(
     .with_context(|| {
       format!("failed to spawn HMR dev server: {:?}", cmd_args)
     })?;
+  job
+    .assign_child(&child)
+    .context("failed to assign HMR dev server to job object")?;
 
   let stdout = child.stdout.take().ok_or_else(|| {
     deno_core::anyhow::anyhow!("failed to capture HMR dev server stdout")
@@ -1241,7 +1253,7 @@ async fn spawn_framework_dev_server(
     }
   });
 
-  Ok((url, child))
+  Ok((url, child, job))
 }
 
 /// Launch the desktop app with HMR enabled after compilation.
@@ -1361,7 +1373,7 @@ async fn run_desktop_hmr(
     && let Some(fw) = framework
     && let Some(dev_cmd) = &fw.hmr_command
   {
-    let (dev_url, child) =
+    let (dev_url, child, dev_server_job) =
       spawn_framework_dev_server(fw.name, dev_cmd, &source_abs).await?;
     log::info!(
       "{} {} HMR dev server at {}",
@@ -1370,7 +1382,7 @@ async fn run_desktop_hmr(
       dev_url,
     );
     cmd.env("DENO_DESKTOP_DEV_URL", &dev_url);
-    Some(child)
+    Some((child, dev_server_job))
   } else {
     None
   };
@@ -1474,6 +1486,8 @@ async fn run_desktop_hmr(
   };
   #[cfg(not(target_os = "macos"))]
   let status = {
+    let laufey_job = crate::util::job_object::KillOnCloseJob::new()
+      .context("failed to create LAUFEY subprocess job object")?;
     let mut child = tokio::process::Command::from(cmd)
       .kill_on_drop(true)
       .spawn()
@@ -1483,6 +1497,9 @@ async fn run_desktop_hmr(
           laufey_backend.display()
         )
       })?;
+    laufey_job
+      .assign_child(&child)
+      .context("failed to assign LAUFEY backend to job object")?;
     child
       .wait()
       .await
