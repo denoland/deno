@@ -1616,6 +1616,22 @@ async fn package_desktop_app(
 ///   AppIcon.ico         (optional)
 /// ```
 ///
+/// Embed an `.ico` into a Windows launcher `.exe` (Explorer / taskbar icon).
+fn embed_icon_in_windows_exe(exe_path: &Path, ico_path: &Path) -> Result<(), AnyError> {
+  let original_bin = std::fs::read(exe_path)
+    .with_context(|| format!("Failed to read {}", exe_path.display()))?;
+  let icon = std::fs::read(ico_path)
+    .with_context(|| format!("Failed to read {}", ico_path.display()))?;
+  let mut updated = Vec::new();
+  libsui::PortableExecutable::from(&original_bin)?
+    .set_icon(&icon)?
+    .build(&mut updated)?;
+  let tmp = exe_path.with_extension("ico.tmp");
+  std::fs::write(&tmp, &updated)?;
+  std::fs::rename(&tmp, exe_path)?;
+  Ok(())
+}
+
 /// The backend binary is renamed to `AppName.exe` so it auto-loads the
 /// co-located `AppName.dll` runtime — no `.bat` launcher is needed.
 async fn package_windows_app_dir(
@@ -1692,8 +1708,8 @@ async fn package_windows_app_dir(
     std::fs::rename(&staged_backend, &launcher_path)?;
   }
 
-  // Handle icon — drop an .ico next to the launcher. Embedding the icon
-  // into the .exe itself requires rcedit or equivalent and is out of scope.
+  // Handle icon — copy `AppIcon.ico` beside the launcher and embed it into
+  // `<app>.exe` so Explorer shows the custom icon (#36767).
   if let Some(ref icon) = desktop_flags.icon {
     let dest = app_dir.join("AppIcon.ico");
     match icon {
@@ -1719,6 +1735,10 @@ async fn package_windows_app_dir(
         convert_icon_set_to_ico(cli_options.initial_cwd(), entries, &dest)?;
       }
     }
+  }
+  let app_icon_ico = app_dir.join("AppIcon.ico");
+  if app_icon_ico.exists() {
+    embed_icon_in_windows_exe(&launcher_path, &app_icon_ico)?;
   }
 
   // Drop the deep-link registration script next to the launcher.
@@ -1875,12 +1895,19 @@ async fn package_linux_app_dir(
       "skipping .desktop file: {e} (desktop file IDs follow the same reverse-DNS rules as macOS bundle IDs)"
     );
   } else {
+    let app_icon_png = app_dir.join("AppIcon.png");
+    let icon_field = if app_icon_png.exists() {
+      let icon = app_icon_png.display().to_string().replace('\\', "/");
+      format!("Icon={icon}\n")
+    } else {
+      String::new()
+    };
     let desktop_entry = format!(
       "[Desktop Entry]\n\
        Type=Application\n\
        Name={app_name}\n\
        Exec={app_name}\n\
-       Icon=AppIcon\n\
+       {icon_field}\
        StartupWMClass={desktop_id}\n\
        Categories=Utility;\n",
     );
@@ -4605,6 +4632,12 @@ fn create_windows_msi(
     .file_name()
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
+  let app_icon_ico = app_dir.join("AppIcon.ico");
+  let msi_icon = if app_icon_ico.exists() {
+    Some(std::fs::read(&app_icon_ico)?)
+  } else {
+    None
+  };
   // deno.json `version` when configured, reduced to the numeric
   // `major.minor.build` form MSI's ProductVersion requires (a semver
   // prerelease/build suffix would fail MSI validation); the default matches
@@ -4979,6 +5012,15 @@ fn create_windows_msi(
       ],
     )?;
   }
+  if msi_icon.is_some() {
+    package.create_table(
+      "Icon",
+      vec![
+        Column::build("Name").primary_key().id_string(72),
+        Column::build("Data").binary(),
+      ],
+    )?;
+  }
   for table in ["InstallExecuteSequence", "InstallUISequence"] {
     package.create_table(
       table,
@@ -5025,9 +5067,20 @@ fn create_windows_msi(
     Value::Null,
     Value::Null,
   ]))?;
+  if msi_icon.is_some() {
+    package.insert_rows(Insert::into("Icon").row(vec![
+      Value::Str("AppIcon".to_string()),
+      Value::Binary,
+    ]))?;
+  }
   if let Some((launcher_key, launcher_comp)) = &shortcut_target {
     short_counter += 1;
     let short_name = msi_short_name(short_counter, &app_name, false);
+    let (shortcut_icon, shortcut_icon_index) = if msi_icon.is_some() {
+      (Value::Str("AppIcon".to_string()), Value::Int(0))
+    } else {
+      (Value::Null, Value::Null)
+    };
     package.insert_rows(Insert::into("Shortcut").row(vec![
       Value::Str("AppShortcut".to_string()),
       Value::Str("ProgramMenuFolder".to_string()),
@@ -5038,8 +5091,8 @@ fn create_windows_msi(
       Value::Null, // Arguments (co-located auto-load)
       Value::Null, // Description
       Value::Null, // Hotkey
-      Value::Null, // Icon_
-      Value::Null, // IconIndex
+      shortcut_icon,
+      shortcut_icon_index,
       Value::Null, // ShowCmd
       Value::Str("INSTALLDIR".to_string()), // WkDir
     ]))?;
@@ -5133,6 +5186,11 @@ fn create_windows_msi(
     use std::io::Write as _;
     let mut stream = package.write_stream("appcab")?;
     stream.write_all(&cab_bytes)?;
+  }
+  if let Some(ref icon_bytes) = msi_icon {
+    use std::io::Write as _;
+    let mut stream = package.write_stream("AppIcon")?;
+    stream.write_all(icon_bytes)?;
   }
 
   package.flush()?;
