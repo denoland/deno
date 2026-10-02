@@ -57,6 +57,9 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
     v8::callback_scope!(unsafe scope, v8_callback_info);
     let exc = v8::Local::new(scope, exc);
     scope.throw_exception(exc);
+    // Like Node, ignore the return value while an exception is pending.
+    // Addons can return an invalid napi_value after throwing.
+    return;
   }
   if let Some(value) = *value {
     rv.set(value);
