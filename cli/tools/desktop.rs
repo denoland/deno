@@ -1617,7 +1617,10 @@ async fn package_desktop_app(
 /// ```
 ///
 /// Embed an `.ico` into a Windows launcher `.exe` (Explorer / taskbar icon).
-fn embed_icon_in_windows_exe(exe_path: &Path, ico_path: &Path) -> Result<(), AnyError> {
+fn embed_icon_in_windows_exe(
+  exe_path: &Path,
+  ico_path: &Path,
+) -> Result<(), AnyError> {
   let original_bin = std::fs::read(exe_path)
     .with_context(|| format!("Failed to read {}", exe_path.display()))?;
   let icon = std::fs::read(ico_path)
@@ -5068,10 +5071,10 @@ fn create_windows_msi(
     Value::Null,
   ]))?;
   if msi_icon.is_some() {
-    package.insert_rows(Insert::into("Icon").row(vec![
-      Value::Str("AppIcon".to_string()),
-      Value::Binary,
-    ]))?;
+    package.insert_rows(
+      Insert::into("Icon")
+        .row(vec![Value::Str("AppIcon".to_string()), Value::Binary]),
+    )?;
   }
   if let Some((launcher_key, launcher_comp)) = &shortcut_target {
     short_counter += 1;
@@ -5093,7 +5096,7 @@ fn create_windows_msi(
       Value::Null, // Hotkey
       shortcut_icon,
       shortcut_icon_index,
-      Value::Null, // ShowCmd
+      Value::Null,                          // ShowCmd
       Value::Str("INSTALLDIR".to_string()), // WkDir
     ]))?;
   }
