@@ -962,10 +962,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         | MediaType::Cts
         | MediaType::Tsx => true,
         MediaType::Unknown if file_path.extension().is_none() => {
-          let file_name = file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+          let file_name =
+            file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
           !is_known_non_code_filename(file_name)
         }
         _ => false,
@@ -1984,8 +1982,12 @@ mod tests {
   fn test_bytes_contain_cjs_keywords() {
     assert!(bytes_contain_cjs_keywords(b"module.exports = 1;"));
     assert!(bytes_contain_cjs_keywords(b"exports.foo = 1;"));
-    assert!(bytes_contain_cjs_keywords(b"#!/usr/bin/env node\nconsole.log(1);"));
-    assert!(!bytes_contain_cjs_keywords(b"MIT License\nCopyright (c) 2026"));
+    assert!(bytes_contain_cjs_keywords(
+      b"#!/usr/bin/env node\nconsole.log(1);"
+    ));
+    assert!(!bytes_contain_cjs_keywords(
+      b"MIT License\nCopyright (c) 2026"
+    ));
     assert!(!bytes_contain_cjs_keywords(b"# Heading\nSome text"));
     assert!(!bytes_contain_cjs_keywords(b""));
   }

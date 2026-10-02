@@ -25,7 +25,10 @@ console.log(getValue());"#,
   // Files that previously caused SyntaxError or stack overflow
   temp_dir.write("pkg/LICENSE", "MIT License\nCopyright (c) 2026");
   temp_dir.write("pkg/README.txt", "Some text file");
-  temp_dir.write("pkg/types.d.ts", "export declare function getValue(): string;");
+  temp_dir.write(
+    "pkg/types.d.ts",
+    "export declare function getValue(): string;",
+  );
   // Large markdown list that would cause SWC recursive descent stack overflow if parsed as JS
   let mut mdx = String::new();
   for i in 0..2000 {
