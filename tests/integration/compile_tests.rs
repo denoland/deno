@@ -59,6 +59,7 @@ console.log(getValue(), ext.value);"#,
     .new_command()
     .args_vec([
       "compile",
+      "--no-check",
       "--allow-read",
       "--include",
       "pkg",
