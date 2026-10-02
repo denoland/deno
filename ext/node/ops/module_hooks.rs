@@ -16,6 +16,7 @@ use deno_error::JsErrorBox;
 struct PendingLoad {
   id: u32,
   url: String,
+  format: String,
   /// The full set of `with { ... }` import attributes for this load, so the
   /// JS load hook sees the same `context.importAttributes` Node would (not
   /// just the `type` attribute). Captured at resolve time keyed by the
@@ -217,6 +218,7 @@ impl LoaderHookRegistry {
   pub fn push_load(
     &self,
     url: String,
+    format: String,
     import_attributes: HashMap<String, String>,
   ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
   {
@@ -243,6 +245,7 @@ impl LoaderHookRegistry {
     self.pending_loads.borrow_mut().push_back(PendingLoad {
       id,
       url,
+      format,
       import_attributes,
     });
     if let Some(waker) = self.load_waker.borrow_mut().take() {
@@ -266,7 +269,7 @@ pub fn op_module_hooks_register(
   registry.hooks_active.set(has_resolve || has_load);
 }
 
-/// Poll for a pending load request. Returns `[id, url, importAttributes]` or
+/// Poll for a pending load request. Returns `[id, url, format, importAttributes]` or
 /// null. `importAttributes` is the full `with { ... }` clause from the import
 /// (e.g. `{ type: "json" }` or `{ x_loader: "css-mod" }`), serialized as an
 /// object, so the JS load hook sees the same `context.importAttributes` Node
@@ -275,7 +278,8 @@ pub fn op_module_hooks_register(
 #[serde]
 pub async fn op_module_hooks_poll_load(
   state: Rc<RefCell<OpState>>,
-) -> Result<Option<(u32, String, HashMap<String, String>)>, JsErrorBox> {
+) -> Result<Option<(u32, String, String, HashMap<String, String>)>, JsErrorBox>
+{
   let registry = state.borrow().borrow::<LoaderHookRegistry>().clone();
 
   std::future::poll_fn(|cx| {
@@ -283,6 +287,7 @@ pub async fn op_module_hooks_poll_load(
       return std::task::Poll::Ready(Ok(Some((
         req.id,
         req.url,
+        req.format,
         req.import_attributes,
       ))));
     }
