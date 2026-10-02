@@ -13,7 +13,7 @@ fn compile_skips_non_script_files_cjs_analysis() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "main.ts",
+    "main.js",
     r#"import { getValue } from "./pkg/index.js";
 import ext from "./ext_pkg/main";
 console.log(getValue(), ext.value);"#,
@@ -67,7 +67,7 @@ console.log(getValue(), ext.value);"#,
       "ext_pkg",
       "--output",
       &binary_path.to_string_lossy(),
-      "main.ts",
+      "main.js",
     ])
     .run();
   output.assert_exit_code(0);
