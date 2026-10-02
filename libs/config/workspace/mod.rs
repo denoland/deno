@@ -2578,6 +2578,9 @@ impl WorkspaceDirectory {
         .error_reporting
         .or(root_config.error_reporting),
       macos: member_config.macos.or(root_config.macos),
+      initial_window: member_config
+        .initial_window
+        .or(root_config.initial_window),
     })
   }
 
