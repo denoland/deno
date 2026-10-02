@@ -702,6 +702,25 @@ Deno.test({
 });
 
 Deno.test({
+  name: "AbortSignal.timeout() with onabort set to null",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      signal.onabort = () => console.log("Unexpected: Event fired");
+      signal.onabort = null;
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});
+
+Deno.test({
   name: "AbortSignal.timeout() with listener for a non-abort event",
   permissions: { run: true, read: true },
   fn: async () => {
