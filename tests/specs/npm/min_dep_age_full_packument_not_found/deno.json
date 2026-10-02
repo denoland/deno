@@ -1,0 +1,6 @@
+{
+  "minimumDependencyAge": "2020-01-01T00:00:00.000Z",
+  "imports": {
+    "@denotest3/gitlab-pkg": "npm:@denotest3/gitlab-pkg@1.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+min-release-age-old
+  publish dates: 0
+  modified: 2020-01-01T00:00:00.000Z
+  packument format: undefined
+min-release-age-latest
+  publish dates: 2
+  modified: undefined
+  packument format: full
