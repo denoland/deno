@@ -9,6 +9,75 @@ use util::assert_not_contains;
 use util::testdata_path;
 
 #[test]
+fn compile_skips_non_script_files_cjs_analysis() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    r#"import { getValue } from "./pkg/index.js";
+import ext from "./ext_pkg/main";
+console.log(getValue(), ext.value);"#,
+  );
+  temp_dir.create_dir_all("pkg");
+  temp_dir.write(
+    "pkg/package.json",
+    r#"{ "name": "pkg", "main": "index.js" }"#,
+  );
+  temp_dir.write(
+    "pkg/index.js",
+    r#"exports.getValue = function() { return "hello from cjs"; };"#,
+  );
+  // Files that should be skipped from CJS export analysis
+  temp_dir.write("pkg/LICENSE", "MIT License\nCopyright (c) 2026");
+  temp_dir.write("pkg/README.txt", "Some text file");
+  temp_dir.write("pkg/types.d.ts", "export declare function getValue(): string;");
+  // Large markdown list that would cause SWC recursive descent stack overflow if parsed as JS
+  let mut mdx = String::new();
+  for i in 0..2000 {
+    mdx.push_str(&format!("* item {i}\n"));
+  }
+  temp_dir.write("pkg/docs.mdx", mdx);
+
+  // Extensionless CJS module that should still be analyzed and work
+  temp_dir.create_dir_all("ext_pkg");
+  temp_dir.write(
+    "ext_pkg/package.json",
+    r#"{ "name": "ext-pkg", "main": "main" }"#,
+  );
+  temp_dir.write(
+    "ext_pkg/main",
+    r#"module.exports = { value: 42 };"#,
+  );
+
+  let binary_path = if cfg!(windows) {
+    temp_dir.path().join("app.exe")
+  } else {
+    temp_dir.path().join("app")
+  };
+
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--allow-read",
+      "--include",
+      "pkg",
+      "--include",
+      "ext_pkg",
+      "--output",
+      &binary_path.to_string_lossy(),
+      "main.ts",
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context.new_command().name(&binary_path).run();
+  output.assert_exit_code(0);
+  output.assert_matches_text("hello from cjs 42\n");
+}
+
+#[test]
 fn compile_basic() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
