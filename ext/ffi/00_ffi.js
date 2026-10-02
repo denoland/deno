@@ -31,6 +31,7 @@ const {
   op_ffi_read_i64,
   op_ffi_read_i8,
   op_ffi_read_ptr,
+  op_ffi_read_string,
   op_ffi_read_u16,
   op_ffi_read_u32,
   op_ffi_read_u64,
@@ -182,6 +183,22 @@ class UnsafePointerView {
     return op_ffi_cstr_read(
       pointer,
       offset,
+    );
+  }
+
+  getString(byteLength, offset = 0) {
+    return op_ffi_read_string(
+      this.pointer,
+      offset,
+      byteLength,
+    );
+  }
+
+  static getString(pointer, byteLength, offset = 0) {
+    return op_ffi_read_string(
+      pointer,
+      offset,
+      byteLength,
     );
   }
 
