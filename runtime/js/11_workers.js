@@ -62,6 +62,7 @@ function createWorker(
   name,
   workerType,
   closeOnIdle,
+  resourceLimits,
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -71,6 +72,7 @@ function createWorker(
     specifier,
     workerType,
     closeOnIdle,
+    resourceLimits,
   });
 }
 
@@ -153,6 +155,13 @@ class Worker extends EventTarget {
       sourceCode = "";
     }
 
+    // `deno.memoryMb` caps the worker's V8 heap (old generation). Reaching the
+    // limit terminates the worker with an `ERR_WORKER_OUT_OF_MEMORY` error.
+    let resourceLimits;
+    if (deno?.memoryMb !== undefined) {
+      resourceLimits = { maxOldGenerationSizeMb: deno.memoryMb };
+    }
+
     const id = createWorker(
       specifier,
       hasSourceCode,
@@ -161,6 +170,7 @@ class Worker extends EventTarget {
       this.#name,
       workerType,
       false,
+      resourceLimits,
     );
     this.#id = id;
     this.#pollControl();
