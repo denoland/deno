@@ -6,10 +6,8 @@
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use crate::colors;
-
 /// Taken from https://stackoverflow.com/a/76572321
-fn precision_f64(x: f64, decimals: u32) -> f64 {
+pub fn precision_f64(x: f64, decimals: u32) -> f64 {
   if x == 0. || decimals == 0 {
     0.
   } else {
@@ -20,7 +18,7 @@ fn precision_f64(x: f64, decimals: u32) -> f64 {
   }
 }
 
-fn avg_to_iter_per_s(time: f64) -> String {
+pub fn avg_to_iter_per_s(time: f64) -> String {
   let iter_per_s = precision_f64(1e9 / time, 4);
   let (decimals, fractional) = into_decimal_and_fractional_parts(iter_per_s);
   human_readable_decimal_with_fractional(decimals, fractional)
@@ -157,207 +155,6 @@ pub mod cpu {
     }
 
     String::from("unknown")
-  }
-}
-
-pub mod reporter {
-  use super::*;
-
-  #[derive(Clone, PartialEq)]
-  pub struct Error {
-    pub message: String,
-    pub stack: Option<String>,
-  }
-
-  #[derive(Clone, PartialEq)]
-  pub struct BenchmarkStats {
-    pub avg: f64,
-    pub min: f64,
-    pub max: f64,
-    pub p75: f64,
-    pub p99: f64,
-    pub p995: f64,
-  }
-
-  #[derive(Clone, PartialEq)]
-  pub struct GroupBenchmark {
-    pub name: String,
-    pub group: String,
-    pub baseline: bool,
-    pub stats: BenchmarkStats,
-  }
-
-  #[derive(Clone, PartialEq)]
-  pub struct Options {
-    size: usize,
-    pub avg: bool,
-    pub min_max: bool,
-    pub percentiles: bool,
-  }
-
-  impl Options {
-    pub fn new(names: &[&str]) -> Options {
-      Options {
-        avg: true,
-        min_max: true,
-        size: size(names),
-        percentiles: true,
-      }
-    }
-  }
-
-  pub fn size(names: &[&str]) -> usize {
-    let mut max = 9;
-
-    for name in names {
-      if max < name.len() {
-        max = name.len();
-      }
-    }
-
-    2 + max
-  }
-
-  pub fn br(options: &Options) -> String {
-    let mut s = String::new();
-
-    s.push_str(&format!("| {} |", "-".repeat(options.size)));
-
-    if options.avg {
-      s.push_str(&format!(" {} | {} |", "-".repeat(15), "-".repeat(13)));
-    }
-    if options.min_max {
-      s.push_str(&format!(" {} |", "-".repeat(21)));
-    }
-    if options.percentiles {
-      s.push_str(&format!(
-        " {} | {} | {} |",
-        "-".repeat(8),
-        "-".repeat(8),
-        "-".repeat(8)
-      ));
-    }
-
-    s
-  }
-
-  pub fn benchmark_error(n: &str, e: &Error, options: &Options) -> String {
-    let size = options.size;
-    let mut s = String::new();
-
-    s.push_str(&format!("{:<size$}", n));
-    s.push_str(&format!(" {}: {}", colors::red("error"), e.message));
-
-    if let Some(ref stack) = e.stack {
-      s.push('\n');
-
-      s.push_str(&colors::gray(stack).to_string());
-    }
-
-    s
-  }
-
-  pub fn header(options: &Options) -> String {
-    let size = options.size;
-    let mut s = String::new();
-
-    s.push_str(&format!("| {:<size$} |", "benchmark"));
-    if options.avg {
-      s.push_str(&format!(" {:<15} |", "time/iter (avg)"));
-      s.push_str(&format!(" {:>13} |", "iter/s"));
-    }
-    if options.min_max {
-      s.push_str(&format!(" {:^21} |", "(min … max)"));
-    }
-    if options.percentiles {
-      s.push_str(&format!(" {:>8} | {:>8} | {:>8} |", "p75", "p99", "p995"));
-    }
-
-    s
-  }
-
-  pub fn benchmark(
-    name: &str,
-    stats: &BenchmarkStats,
-    options: &Options,
-  ) -> String {
-    let size = options.size;
-    let mut s = String::new();
-
-    s.push_str(&format!("| {:<size$} |", name));
-
-    if options.avg {
-      s.push_str(&format!(
-        " {} |",
-        colors::yellow(&format!("{:>15}", fmt_duration(stats.avg)))
-      ));
-      s.push_str(&format!(" {:>13} |", &avg_to_iter_per_s(stats.avg)));
-    }
-    if options.min_max {
-      s.push_str(&format!(
-        " ({} … {}) |",
-        colors::cyan(format!("{:>8}", fmt_duration(stats.min))),
-        colors::magenta(format!("{:>8}", fmt_duration(stats.max)))
-      ));
-    }
-    if options.percentiles {
-      s.push_str(
-        &colors::magenta(format!(
-          " {:>8} | {:>8} | {:>8} |",
-          fmt_duration(stats.p75),
-          fmt_duration(stats.p99),
-          fmt_duration(stats.p995)
-        ))
-        .to_string(),
-      );
-    }
-
-    s
-  }
-
-  pub fn summary(benchmarks: &[GroupBenchmark]) -> String {
-    let mut s = String::new();
-    let mut benchmarks = benchmarks.to_owned();
-    benchmarks.sort_by(|a, b| a.stats.avg.partial_cmp(&b.stats.avg).unwrap());
-    let baseline = benchmarks
-      .iter()
-      .find(|b| b.baseline)
-      .unwrap_or(&benchmarks[0]);
-
-    s.push_str(&format!(
-      "{}\n  {}",
-      colors::gray("summary"),
-      colors::cyan_bold(&baseline.name)
-    ));
-
-    for b in benchmarks.iter().filter(|b| *b != baseline) {
-      let faster = b.stats.avg >= baseline.stats.avg;
-      let x_faster = precision_f64(
-        if faster {
-          b.stats.avg / baseline.stats.avg
-        } else {
-          baseline.stats.avg / b.stats.avg
-        },
-        4,
-      );
-      let diff = if x_faster > 1000. {
-        &format!("{:>9.0}", x_faster)
-      } else {
-        &format!("{:>9.2}", x_faster)
-      };
-      s.push_str(&format!(
-        "\n{}x {} than {}",
-        if faster {
-          colors::green(diff)
-        } else {
-          colors::red(diff)
-        },
-        if faster { "faster" } else { "slower" },
-        colors::cyan_bold(&b.name)
-      ));
-    }
-
-    s
   }
 }
 

@@ -56,6 +56,7 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CreateCustomWorkerError;
 
 mod mitata;
+mod render;
 mod reporters;
 
 use reporters::BenchReporter;
@@ -129,6 +130,12 @@ pub struct BenchStats {
   pub p999: f64,
   pub high_precision: bool,
   pub used_explicit_timers: bool,
+  // Raw per-iteration timings, sorted ascending and uniformly downsampled on
+  // the JS side (see `sampleCap` in 40_bench.js). Used to render the terminal
+  // distribution histogram. Skipped from `--json` output so the serialized
+  // shape stays compact.
+  #[serde(default, skip_serializing)]
+  pub samples: Vec<f64>,
 }
 
 impl BenchReport {

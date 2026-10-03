@@ -109,7 +109,9 @@ pub struct ConsoleReporter {
   group: Option<String>,
   baseline: bool,
   group_measurements: Vec<(BenchDescription, BenchStats)>,
-  options: Option<mitata::reporter::Options>,
+  // Width of the benchmark-name column for the current file, or `None` before
+  // the first plan has been reported.
+  name_width: Option<usize>,
 }
 
 impl ConsoleReporter {
@@ -117,7 +119,7 @@ impl ConsoleReporter {
     Self {
       show_output,
       group: None,
-      options: None,
+      name_width: None,
       baseline: false,
       name: String::new(),
       group_measurements: Vec::new(),
@@ -139,13 +141,9 @@ impl BenchReporter for ConsoleReporter {
     self.baseline = false;
     self.name = String::new();
     self.group_measurements.clear();
-    self.options = Some(mitata::reporter::Options::new(
+    self.name_width = Some(render::name_width(
       &plan.names.iter().map(|x| x.as_str()).collect::<Vec<&str>>(),
     ));
-
-    let options = self.options.as_mut().unwrap();
-
-    options.percentiles = true;
 
     if FIRST_PLAN
       .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
@@ -167,11 +165,12 @@ impl BenchReporter for ConsoleReporter {
       println!();
     }
 
+    let name_width = self.name_width.unwrap();
     println!(
       "{}\n\n{}\n{}",
       colors::gray(&plan.origin),
-      mitata::reporter::header(options),
-      mitata::reporter::br(options)
+      render::header(name_width),
+      render::separator(name_width)
     );
   }
 
@@ -205,7 +204,7 @@ impl BenchReporter for ConsoleReporter {
       return;
     }
 
-    let options = self.options.as_ref().unwrap();
+    let name_width = self.name_width.unwrap();
     match result {
       BenchResult::Ok(stats) => {
         let mut desc = desc.clone();
@@ -216,21 +215,9 @@ impl BenchReporter for ConsoleReporter {
           desc.baseline = false;
         }
 
-        println!(
-          "{}",
-          mitata::reporter::benchmark(
-            &desc.name,
-            &mitata::reporter::BenchmarkStats {
-              avg: stats.avg,
-              min: stats.min,
-              max: stats.max,
-              p75: stats.p75,
-              p99: stats.p99,
-              p995: stats.p995,
-            },
-            options
-          )
-        );
+        // A benchmark is a three-line block; a blank line separates it from
+        // the next so the taller layout stays readable.
+        println!("{}\n", render::benchmark(&desc.name, stats, name_width));
 
         if !stats.high_precision && stats.used_explicit_timers {
           println!(
@@ -248,16 +235,10 @@ impl BenchReporter for ConsoleReporter {
       BenchResult::Failed(js_error) => {
         println!(
           "{}",
-          mitata::reporter::benchmark_error(
+          render::benchmark_error(
             &desc.name,
-            &mitata::reporter::Error {
-              stack: None,
-              message: format_test_error(
-                js_error,
-                &TestFailureFormatOptions::default()
-              ),
-            },
-            options
+            &format_test_error(js_error, &TestFailureFormatOptions::default()),
+            name_width,
           )
         )
       }
@@ -265,36 +246,24 @@ impl BenchReporter for ConsoleReporter {
   }
 
   fn report_group_summary(&mut self) {
-    if self.options.is_none() {
+    if self.name_width.is_none() {
       return;
     }
 
     if 2 <= self.group_measurements.len()
       && (self.group.is_some() || (self.group.is_none() && self.baseline))
     {
-      println!(
-        "\n{}",
-        mitata::reporter::summary(
-          &self
-            .group_measurements
-            .iter()
-            .map(|(d, s)| mitata::reporter::GroupBenchmark {
-              name: d.name.clone(),
-              baseline: d.baseline,
-              group: d.group.as_deref().unwrap_or("").to_owned(),
-
-              stats: mitata::reporter::BenchmarkStats {
-                avg: s.avg,
-                min: s.min,
-                max: s.max,
-                p75: s.p75,
-                p99: s.p99,
-                p995: s.p995,
-              },
-            })
-            .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
-        )
-      );
+      let entries = self
+        .group_measurements
+        .iter()
+        .map(|(d, s)| render::SummaryEntry {
+          name: &d.name,
+          baseline: d.baseline,
+          avg: s.avg,
+        })
+        .collect::<Vec<render::SummaryEntry>>();
+      println!("{}\n", render::barplot(&entries));
+      println!("{}", render::summary(&entries));
     }
     println!();
 
