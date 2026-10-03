@@ -187,12 +187,12 @@ unsafe extern "C" fn deno_ffi_callback(
 
         let mut args = TaskArgs {
           cif: NonNull::from(cif),
-          result: NonNull::from(result),
+          result: NonNull::from(&mut *result),
           args,
           info: NonNull::from(info),
         };
 
-        async_work_sender.spawn_blocking(move |scope| {
+        let callback = async_work_sender.try_spawn_blocking(move |scope| {
           // We don't have a lot of choice here, so just print an unhandled exception message
           v8::tc_scope!(tc_scope, scope);
           args.run(tc_scope);
@@ -204,6 +204,17 @@ unsafe extern "C" fn deno_ffi_callback(
           // won't run automatically after the JS callback returns.
           tc_scope.perform_microtask_checkpoint();
         });
+        if callback.is_err() && !matches!(info.result, NativeType::Void) {
+          // The runtime closed before dispatch. The native call still owns its
+          // result buffer; return a zero value without entering disposed V8 or
+          // panicking across the C callback boundary. libffi supplies the size
+          // and a writable result region for this declared non-void return.
+          std::ptr::write_bytes(
+            result as *mut c_void as *mut u8,
+            0,
+            (*cif.rtype).size,
+          );
+        }
       }
     });
   }

@@ -1194,7 +1194,7 @@ pub async fn run_web_worker(
 
   // If sender is closed it means that worker has already been closed from
   // within using "globalThis.close()"
-  if internal_handle.is_terminated() {
+  if internal_handle.terminate_if_needed() {
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
     }

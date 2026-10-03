@@ -227,6 +227,12 @@ impl InnerIsolateState {
   /// after we've torn down the contexts. If the inspector is not correctly torn down, random crashes
   /// happen in tests (and possibly for users using the inspector).
   pub fn prepare_for_cleanup(&mut self) {
+    self
+      .main_realm
+      .0
+      .context_state
+      .task_spawner_factory
+      .shutdown();
     // Explicitly shut down the op driver here, just in case there are other references to it
     // that prevent it from dropping after we invalidate the state.
     self.main_realm.0.context_state.pending_ops.shutdown();
@@ -242,6 +248,12 @@ impl InnerIsolateState {
   }
 
   pub fn cleanup(&mut self) {
+    self
+      .main_realm
+      .0
+      .context_state
+      .task_spawner_factory
+      .shutdown();
     // Shut down the op driver and take the inspector before realm destroy.
     self.main_realm.0.context_state.pending_ops.shutdown();
     let inspector = self.state.inspector.take();

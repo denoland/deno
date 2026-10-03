@@ -14,6 +14,34 @@ use futures::task::AtomicWaker;
 type UnsendTask = Box<dyn FnOnce(&mut v8::PinScope) + 'static>;
 type SendTask = Box<dyn FnOnce(&mut v8::PinScope) + Send + 'static>;
 
+/// A host-owned stop request registered in the isolate's typed slots. Local
+/// execution timeouts must not clear a concurrent external termination request.
+pub struct ExternalExecutionTermination(pub Arc<AtomicBool>);
+
+struct BlockingTask<F, T> {
+  callback: Option<F>,
+  sender: Option<std::sync::mpsc::SyncSender<T>>,
+}
+
+impl<F, T> BlockingTask<F, T>
+where
+  F: FnOnce(&mut v8::PinScope) -> T,
+{
+  fn run(mut self, scope: &mut v8::PinScope) {
+    let result = self.callback.take().unwrap()(scope);
+    _ = self.sender.take().unwrap().send(result);
+  }
+}
+
+impl<F, T> Drop for BlockingTask<F, T> {
+  fn drop(&mut self) {
+    // Cancellation must finish destroying borrowed callback state before
+    // disconnecting the sender and allowing the calling thread to return.
+    drop(self.callback.take());
+    drop(self.sender.take());
+  }
+}
+
 static_assertions::assert_not_impl_any!(V8TaskSpawnerFactory: Send);
 static_assertions::assert_not_impl_any!(V8TaskSpawner: Send);
 static_assertions::assert_impl_all!(V8CrossThreadTaskSpawner: Send);
@@ -31,6 +59,7 @@ pub(crate) struct V8TaskSpawnerFactory {
   tasks: Mutex<Vec<SendTask>>,
   /// A flag we can poll without any locks.
   has_tasks: AtomicBool,
+  closed: AtomicBool,
   /// The polled waker, woken on task submission.
   waker: AtomicWaker,
   /// Mark as `!Send`. See note above.
@@ -90,11 +119,30 @@ impl V8TaskSpawnerFactory {
     Poll::Ready(tasks)
   }
 
+  pub(crate) fn shutdown(&self) {
+    let tasks = {
+      let mut queue = self.tasks.lock().unwrap();
+      self.closed.store(true, Ordering::Release);
+      self.has_tasks.store(false, Ordering::Release);
+      std::mem::take(&mut *queue)
+    };
+    // Drop on the owning runtime thread, outside the lock: same-thread tasks
+    // may own !Send values, and their destructors may submit another task.
+    drop(tasks);
+  }
+
   fn spawn(&self, task: SendTask) {
-    self.tasks.lock().unwrap().push(task);
+    let mut queue = self.tasks.lock().unwrap();
+    if self.closed.load(Ordering::Acquire) {
+      drop(queue);
+      drop(task);
+      return;
+    }
+    queue.push(task);
     // TODO(mmastrac): can we skip the mutex here?
     // Release ordering means that the writes in the above lock happen-before the atomic store
     self.has_tasks.store(true, Ordering::Release);
+    drop(queue);
     self.waker.wake();
   }
 }
@@ -195,17 +243,34 @@ impl V8CrossThreadTaskSpawner {
     F: FnOnce(&mut v8::PinScope) -> T + Send + 'a,
     T: Send + 'a,
   {
+    self
+      .try_spawn_blocking(f)
+      .expect("JavaScript runtime has stopped")
+  }
+
+  /// Like `spawn_blocking`, but returns an error when runtime shutdown cancels
+  /// the callback before it executes. This is safe for FFI callers that cannot
+  /// unwind through a native callback boundary.
+  pub fn try_spawn_blocking<'a, F, T>(
+    &self,
+    f: F,
+  ) -> Result<T, std::sync::mpsc::RecvError>
+  where
+    F: FnOnce(&mut v8::PinScope) -> T + Send + 'a,
+    T: Send + 'a,
+  {
     let (tx, rx) = std::sync::mpsc::sync_channel(0);
+    let task = BlockingTask {
+      callback: Some(f),
+      sender: Some(tx),
+    };
     let task: Box<dyn FnOnce(&mut v8::PinScope<'_, '_>) + Send> =
-      Box::new(|scope| {
-        let r = f(scope);
-        _ = tx.send(r);
-      });
+      Box::new(move |scope| task.run(scope));
     // SAFETY: We can safely transmute to the 'static lifetime because we guarantee this method will either
     // complete fully by the time it returns, deadlock or panic.
     let task: SendTask = unsafe { std::mem::transmute(task) };
     self.tasks.spawn(task);
-    rx.recv().unwrap()
+    rx.recv()
   }
 }
 
