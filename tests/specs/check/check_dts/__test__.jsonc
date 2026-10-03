@@ -1,8 +1,20 @@
 {
-  // ignored: .d.ts entrypoint not checked under skipLibCheck:true.
-  // https://github.com/denoland/deno/issues/36085
-  "ignore": true,
-  "args": "check --quiet dts/check_dts.d.ts",
-  "output": "dts/check_dts.out",
-  "exitCode": 1
+  // Each variant generates a `.deno/` under a different `skipLibCheck`, so
+  // isolate them in per-test temp dirs.
+  "tempDir": true,
+  "tests": {
+    // Aligned with tsgo: `skipLibCheck` defaults to true, so the `.d.ts`
+    // entrypoint is not type-checked and its error does not surface.
+    "default": {
+      "args": "check --quiet dts/check_dts.d.ts",
+      "output": ""
+    },
+    // With `skipLibCheck: false` the `.d.ts` entrypoint IS checked, so the error
+    // surfaces.
+    "skip_lib_check_false": {
+      "args": "check --quiet --config skip_lib_check_false.json dts/check_dts.d.ts",
+      "output": "dts/check_dts.out",
+      "exitCode": 1
+    }
+  }
 }
