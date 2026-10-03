@@ -1951,7 +1951,8 @@ dependencies = [
  "deno_tower_lsp",
  "deno_v8",
  "dhat",
- "dprint-core",
+ "dprint-core 0.67.4",
+ "dprint-core 0.69.1",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
@@ -4133,6 +4134,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dprint-core"
+version = "0.69.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67359cea061dd052fca921d3589a9ce59bc16fa23bfb9d06d5c669a1dbd23915"
+dependencies = [
+ "bumpalo",
+ "hashbrown 0.15.5",
+ "indexmap",
+ "rustc-hash 2.1.1",
+ "serde",
+ "unicode-width 0.2.2",
+]
+
+[[package]]
 name = "dprint-core-macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4149,7 +4164,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2fe735acd073034b25ca9868f49b5265ff01a831dff89a2302dbe70178ca1db"
 dependencies = [
  "anyhow",
- "dprint-core",
+ "dprint-core 0.67.4",
  "dprint-core-macros",
  "jsonc-parser",
  "serde",
@@ -4163,7 +4178,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f703cac0273eb41521f4bd89cc4848007655cd88ee2d1dc24e08aff6fa074b00"
 dependencies = [
  "anyhow",
- "dprint-core",
+ "dprint-core 0.67.4",
  "jsonc-parser",
  "serde",
  "serde_json",
@@ -4171,17 +4186,15 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.20.0"
+version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "897d39d10e75ae13b9c0f7e47ae5708d2c7117b53a34d5600714f801ca4b841e"
+checksum = "03bc1fc0793896842f8f9db856818a4ad5c8904b67cb1afb00ed682b634470a3"
 dependencies = [
- "anyhow",
- "dprint-core",
+ "dprint-core 0.69.1",
  "dprint-core-macros",
- "pulldown-cmark",
- "regex",
  "serde",
- "unicode-width 0.1.13",
+ "thiserror 2.0.12",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -4193,7 +4206,7 @@ dependencies = [
  "anyhow",
  "capacity_builder",
  "deno_ast",
- "dprint-core",
+ "dprint-core 0.67.4",
  "dprint-core-macros",
  "percent-encoding",
  "rustc-hash 2.1.1",
@@ -6392,7 +6405,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31e9266de41ab34dbeb7b0176a6430b1091f1fa7f4dd9f7ccf3e430a9c5a6789"
 dependencies = [
- "dprint-core",
+ "dprint-core 0.67.4",
 ]
 
 [[package]]
@@ -6402,7 +6415,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c964e0b1c58e6a38762c707d7b5f7a78ab4efab65d3e6c4ab2031deb8f65229e"
 dependencies = [
  "anyhow",
- "dprint-core",
+ "dprint-core 0.67.4",
  "lax-core",
  "serde",
 ]
@@ -6414,7 +6427,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6f67a7a729b68c4b8e6f45315b0777fdf9618cfd569d4551d14d0906b93306"
 dependencies = [
  "anyhow",
- "dprint-core",
+ "dprint-core 0.67.4",
  "lax-core",
  "serde",
 ]
@@ -6426,7 +6439,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2cca919c19f0e32e8a9fe410e087fc71e4a5ce7a843f939967c643e7881981f"
 dependencies = [
  "anyhow",
- "dprint-core",
+ "dprint-core 0.67.4",
  "lax-core",
  "serde",
 ]
@@ -8182,17 +8195,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5787f7cda34e3033a72192c018bc5883100330f362ef279a8cbccfce8bb4e874"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "pulldown-cmark"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4e75767fbc9d92b90e4d0c011f61358cde9513b31ef07ea3631b15ffc3b4fd"
-dependencies = [
- "bitflags 2.9.3",
- "memchr",
- "unicase",
 ]
 
 [[package]]
@@ -11013,15 +11015,6 @@ name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
-
-[[package]]
-name = "unicase"
-version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7d2d4dafb69621809a81864c9c1b864479e1235c0dd4e199924b9742439ed89"
-dependencies = [
- "version_check",
-]
 
 [[package]]
 name = "unicode-general-category"
