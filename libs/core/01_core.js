@@ -968,21 +968,48 @@
 
   const loadedScripts = { __proto__: null };
 
+  // `Deno.core.ops` is the single, canonical ops object. It is referenced (not
+  // copied) by the captured `__bootstrap` view that residual ext scripts are
+  // evaluated against, and -- once ops become lazily materialized properties --
+  // enumerating or copying it would defeat that laziness entirely.
+  //
+  // Embedders that want to expose a *reduced* ops surface to user code (Deno's
+  // `removeImportedOps()` historically did this by `delete`-ing ~940 entries in
+  // place) must therefore build a separate, smaller object instead of mutating
+  // this one. `createOpsSubset` is that blessed primitive: it is O(names), it
+  // never enumerates `ops`, and it is the single place that has to change if
+  // the backing representation of `ops` becomes lazy.
+  //
+  // Names that do not resolve to an op are skipped, so callers can pass a
+  // superset (e.g. ops that only exist in some builds) and get the same result
+  // that a filtering delete-sweep produced.
+  function createOpsSubset(names) {
+    const subset = { __proto__: null };
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      const op = ops[name];
+      if (op !== undefined) {
+        subset[name] = op;
+      }
+    }
+    return subset;
+  }
+
   // Note: the Rust side of `op_load_ext_script` (in `libs/core/modules/map.rs`)
-  // temporarily reinstalls a captured snapshot-time view of `__bootstrap`
-  // on `globalThis` for the duration of each script evaluation if
-  // `__bootstrap` isn't already on the global. Every `lazy_loaded_js`
-  // polyfill's IIFE preamble destructures `globalThis.__bootstrap` and
-  // `__bootstrap.core.ops`, but at runtime (`runtime/js/99_main.js`) the
-  // harness deletes `globalThis.__bootstrap` and `removeImportedOps()`
-  // strips most entries out of `Deno.core.ops`. The captured view (a
-  // shallow clone of `core.ops` immune to `removeImportedOps`) is
-  // registered via `op_set_captured_bootstrap` at the end of this IIFE.
-  // Doing the install in Rust means the `synthetic_esm` dispatch path
-  // (which calls `load_ext_script` directly without going through this
-  // wrapper) gets the same treatment without leaving `__bootstrap`
-  // permanently on the global (where user code can observe it via
-  // `Object.keys`).
+  // passes a captured snapshot-time view of `__bootstrap` as the argument of
+  // each script's compiled wrapper function. Every `lazy_loaded_js` polyfill's
+  // IIFE preamble destructures `__bootstrap` and `__bootstrap.core.ops`, but at
+  // runtime (`runtime/js/99_main.js`) the harness deletes
+  // `globalThis.__bootstrap`. The captured view is registered via
+  // `op_set_captured_bootstrap` at the end of this IIFE.
+  //
+  // The captured view holds `core.ops` *by reference* -- see the note next to
+  // `createOpsSubset` below for the invariant embedders must uphold to keep
+  // that sound. Passing the value in from Rust means the `synthetic_esm`
+  // dispatch path (which calls `load_ext_script` directly without going
+  // through this wrapper) gets the same treatment without leaving
+  // `__bootstrap` permanently on the global (where user code can observe it
+  // via `Object.keys`).
   function loadExtScript(specifier) {
     if (specifier in loadedScripts) {
       return loadedScripts[specifier];
@@ -1288,6 +1315,7 @@
     propNonEnumerableLazyLoaded,
     defineGlobalProperties,
     createLazyLoader,
+    createOpsSubset,
     loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,
@@ -1303,13 +1331,17 @@
   ObjectFreeze(globalThis.__bootstrap.core);
 
   // Build the snapshot-time view of __bootstrap and hand it off to Rust.
-  // The Rust `load_ext_script` (libs/core/modules/map.rs) temporarily
-  // installs this on `globalThis.__bootstrap` for each script evaluation
-  // when the live `__bootstrap` has already been deleted (i.e. after
-  // runtime bootstrap). See the comment above `loadExtScript` earlier in
-  // this file for context.
+  // The Rust `load_ext_script` (libs/core/modules/map.rs) passes this value
+  // as the `__bootstrap` argument of each script evaluation, for when the
+  // live `__bootstrap` has already been deleted (i.e. after runtime
+  // bootstrap). See the comment above `loadExtScript` earlier in this file
+  // for context.
+  //
+  // `capturedCore.ops` is the *live* ops object, not a copy: copying it here
+  // was O(total ops) on every realm and would force materialization of every
+  // op once ops become lazy properties. Embedders must not strip ops by
+  // mutating `core.ops` -- see `createOpsSubset`.
   const capturedCore = ObjectAssign({ __proto__: null }, core);
-  capturedCore.ops = ObjectAssign({ __proto__: null }, core.ops);
   const capturedBootstrap = {
     __proto__: null,
     primordials: globalThis.__bootstrap.primordials,
