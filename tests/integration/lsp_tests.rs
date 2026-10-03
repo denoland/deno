@@ -12184,6 +12184,71 @@ fn lsp_auto_import_node_modules_alias_only_configured_deps() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/36664.
+#[test(timeout = 300)]
+fn lsp_node_modules_alias_independent_of_referrer() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+      "workspace": ["member"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/package.json",
+    json!({
+      "dependencies": {
+        "a": "1.0.0",
+        "b": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("node_modules/a");
+  temp_dir.write(
+    "node_modules/a/package.json",
+    json!({
+      "name": "a",
+      "version": "1.0.0",
+      "types": "index.d.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "node_modules/a/index.d.ts",
+    "export declare class A {\n  private p;\n}\n",
+  );
+  temp_dir.create_dir_all("node_modules/b");
+  temp_dir.write(
+    "node_modules/b/package.json",
+    json!({
+      "name": "b",
+      "version": "1.0.0",
+      "types": "index.d.ts",
+      "dependencies": {
+        "a": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "node_modules/b/index.d.ts",
+    "import type { A } from 'a';\nexport declare function useA(a: A): void;\n",
+  );
+  let file = temp_dir.source_file(
+    "member/mod.ts",
+    "import { A } from 'a';\nimport { useA } from 'b';\nuseA(new A());\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/23869.
 #[test(timeout = 300)]
 fn lsp_auto_imports_remote_dts() {
