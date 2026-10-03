@@ -64,8 +64,7 @@ pub const fn op_async_result_impl() -> ::deno_core::_ops::OpDecl {
                         unsafe { deno_core::v8::CallbackScope::new(info) }
                     );
                     let mut scope = scope.init();
-                    let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                    scope.throw_exception(exception);
+                    deno_core::error::throw_op_error(&mut scope, &err);
                     return 1;
                 }
             };
@@ -88,8 +87,7 @@ pub const fn op_async_result_impl() -> ::deno_core::_ops::OpDecl {
                             unsafe { deno_core::v8::CallbackScope::new(info) }
                         );
                         let mut scope = scope.init();
-                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                        scope.throw_exception(exception);
+                        deno_core::error::throw_op_error(&mut scope, &err);
                         return 1;
                     }
                 };
