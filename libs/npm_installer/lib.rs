@@ -432,6 +432,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
+    self.ensure_no_invalid_package_name_errors()?;
     if self.npm_resolution.is_pending() {
       self.add_package_reqs(&[], caching).await
     } else {
@@ -443,6 +444,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   pub fn ensure_no_pkg_json_dep_errors(
     &self,
   ) -> Result<(), EnsurePackageJsonDepsError> {
+    if let Some(err) = self
+      .npm_install_deps_provider
+      .invalid_package_name_errors()
+      .first()
+    {
+      return Err(Box::new(err.clone()).into());
+    }
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
         deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
@@ -476,6 +484,18 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     Ok(())
   }
 
+  fn ensure_no_invalid_package_name_errors(&self) -> Result<(), JsErrorBox> {
+    if let Some(err) = self
+      .npm_install_deps_provider
+      .invalid_package_name_errors()
+      .first()
+    {
+      Err(JsErrorBox::from_err(err.clone()))
+    } else {
+      Ok(())
+    }
+  }
+
   /// Ensures that the top level `package.json` dependencies are installed.
   ///
   /// Returns `true` if the top level packages are already installed. A
@@ -483,6 +503,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, JsErrorBox> {
+    self.ensure_no_invalid_package_name_errors()?;
     if !self.top_level_install_flag.raise() {
       return Ok(true); // already did this
     }
