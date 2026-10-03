@@ -39,6 +39,7 @@ const {
   ObjectSetPrototypeOf,
   RangeError,
   SafeRegExp,
+  SharedArrayBufferPrototypeGetByteLength,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
@@ -649,9 +650,7 @@ function byteLength(string, encoding) {
       return ArrayBufferPrototypeGetByteLength(string);
     }
     if (isSharedArrayBuffer(string)) {
-      // TODO(petamoriken): add SharedArayBuffer to primordials
-      // deno-lint-ignore deno-internal/prefer-primordials
-      return string.byteLength;
+      return SharedArrayBufferPrototypeGetByteLength(string);
     }
 
     throw new codes.ERR_INVALID_ARG_TYPE(

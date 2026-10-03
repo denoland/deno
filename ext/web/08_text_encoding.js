@@ -34,8 +34,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   SymbolFor,
