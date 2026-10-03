@@ -119,7 +119,7 @@ async fn compile_inner(
       // never overwrite an existing project file.
       let entrypoint_path = dir.join(format!(
         ".deno_compile_entry_{:08x}.ts",
-        rand::thread_rng().r#gen::<u32>()
+        rand::rng().random::<u32>()
       ));
       std::fs::write(&entrypoint_path, detection.entrypoint_code)?;
       compile_flags.source_file = entrypoint_path.display().to_string();
@@ -328,7 +328,7 @@ async fn run_bundle_for_compile(
 
     let worker_path = initial_cwd.join(format!(
       ".deno_compile_worker_{:08x}.mjs",
-      rand::thread_rng().r#gen::<u32>()
+      rand::rng().random::<u32>()
     ));
     std::fs::write(&worker_path, &worker_rewrite.bytes).with_context(|| {
       format!(
@@ -355,7 +355,7 @@ async fn run_bundle_for_compile(
 
   let bundle_path = initial_cwd.join(format!(
     ".deno_compile_bundle_{:08x}.mjs",
-    rand::thread_rng().r#gen::<u32>()
+    rand::rng().random::<u32>()
   ));
   std::fs::write(&bundle_path, final_main_src.as_bytes()).with_context(
     || format!("Writing bundled entrypoint to '{}'", bundle_path.display()),
@@ -727,11 +727,8 @@ pub async fn compile_binary(
   let mut temp_filename = output_path.file_name().unwrap().to_owned();
   temp_filename.push(format!(
     ".tmp-{}",
-    faster_hex::hex_encode(
-      &rand::thread_rng().r#gen::<[u8; 8]>(),
-      &mut [0u8; 16]
-    )
-    .unwrap()
+    faster_hex::hex_encode(&rand::rng().random::<[u8; 8]>(), &mut [0u8; 16])
+      .unwrap()
   ));
   let temp_path = output_path.with_file_name(temp_filename);
 
