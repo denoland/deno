@@ -11,6 +11,125 @@ function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
 }
 
+Deno.test("worker termination stops shared-memory writes from Wasm", async () => {
+  // (module (import "env" "memory" (memory 1 1 shared))
+  //   (func (export "spin") (loop $spin
+  //     i32.const 0 i32.const 1 i32.atomic.rmw.add drop
+  //     i32.const 4 i32.atomic.load i32.eqz br_if $spin)))
+  // The second word is only a cleanup latch for a broken runtime.
+  const bytes = new Uint8Array([
+    0,
+    97,
+    115,
+    109,
+    1,
+    0,
+    0,
+    0,
+    1,
+    4,
+    1,
+    96,
+    0,
+    0,
+    2,
+    16,
+    1,
+    3,
+    101,
+    110,
+    118,
+    6,
+    109,
+    101,
+    109,
+    111,
+    114,
+    121,
+    2,
+    3,
+    1,
+    1,
+    3,
+    2,
+    1,
+    0,
+    7,
+    8,
+    1,
+    4,
+    115,
+    112,
+    105,
+    110,
+    0,
+    0,
+    10,
+    25,
+    1,
+    23,
+    0,
+    3,
+    64,
+    65,
+    0,
+    65,
+    1,
+    254,
+    30,
+    2,
+    0,
+    26,
+    65,
+    4,
+    254,
+    16,
+    2,
+    0,
+    69,
+    13,
+    0,
+    11,
+    11,
+  ]);
+  const memory = new WebAssembly.Memory({
+    initial: 1,
+    maximum: 1,
+    shared: true,
+  });
+  const words = new Int32Array(memory.buffer);
+  const url = URL.createObjectURL(
+    new Blob([
+      `onmessage = ({data}) => new WebAssembly.Instance(
+      new WebAssembly.Module(data.bytes), {env: {memory: data.memory}}
+    ).exports.spin();`,
+    ], { type: "application/javascript" }),
+  );
+  const worker = new Worker(url, { type: "module" });
+  try {
+    worker.postMessage({ bytes, memory });
+    const deadline = performance.now() + 5000;
+    while (Atomics.load(words, 0) === 0 && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(Atomics.load(words, 0) > 0, "Wasm loop must run before termination");
+    worker.terminate();
+    // Allow the native execution interruption to settle before sampling.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const counter = Atomics.load(words, 0);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assertEquals(
+      Atomics.load(words, 0),
+      counter,
+      "terminated Wasm must stop writing",
+    );
+  } finally {
+    Atomics.store(words, 1, 1);
+    worker.terminate();
+    URL.revokeObjectURL(url);
+  }
+});
+
 Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
