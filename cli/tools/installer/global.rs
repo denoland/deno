@@ -396,6 +396,7 @@ async fn install_global_compiled(
     bundle: false,
     app_name: None,
     minify: false,
+    keep_names: false,
     exclude_unused_npm: false,
     engine: Default::default(),
   };
