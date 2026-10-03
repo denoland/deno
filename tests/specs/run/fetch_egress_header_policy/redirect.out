@@ -1,0 +1,5 @@
+same-origin cdn-loop: deno;d=testhash;v=2
+same-origin authorization: Bearer not-a-real-credential
+cross-origin cdn-loop: deno;d=testhash;v=2
+cross-origin authorization: null
+cross-origin user-agent: enforced/1.0
