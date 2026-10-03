@@ -1528,6 +1528,10 @@ pub struct ConfigFileJson {
   pub catalog: Option<IndexMap<String, String>>,
   pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
 
+  /// Version requirements for the runtime, using the same shape as the
+  /// `engines` field of `package.json` (e.g. `{ "deno": ">=2.0.0" }`).
+  pub engines: Option<IndexMap<String, String>>,
+
   pub name: Option<String>,
   pub version: Option<String>,
   pub workspace: Option<Value>,
@@ -1980,6 +1984,12 @@ impl ConfigFile {
 
   pub fn is_package(&self) -> bool {
     self.json.name.is_some() && self.json.exports.is_some()
+  }
+
+  /// The `engines` version requirements declared in this config, using the
+  /// same shape as `package.json`'s `engines` field.
+  pub fn engines(&self) -> Option<&IndexMap<String, String>> {
+    self.json.engines.as_ref()
   }
 
   pub fn should_publish(&self) -> bool {
