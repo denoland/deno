@@ -574,3 +574,97 @@ fn lazy_loaded_esm_not_snapshotted_but_metadata_survives() {
     );
   }
 }
+
+/// Snapshot -> restore into `JsRuntimeForSnapshot` -> snapshot -> restore,
+/// with an extension that ships JavaScript. The second snapshot must keep the
+/// externalized sources inherited from the first, since the heap references
+/// them by external-reference index.
+#[test]
+fn will_snapshot_chained_with_extension_sources() {
+  let _snapshot_lock = super::snapshot_test_lock();
+  deno_core::extension!(
+    chained_ext,
+    esm_entry_point = "ext:chained_ext/eager.js",
+    // `eagerLater` / `later` are deliberately never called before the
+    // snapshots: V8 keeps them uncompiled and parses them from the external
+    // source string on first call, so a wrong string is detected.
+    esm = ["ext:chained_ext/eager.js" = {
+      source = "globalThis.eagerAnswer = 42; globalThis.eagerLater = function () { return 'eager-' + eagerAnswer; };"
+    }],
+    lazy_loaded_js = ["ext:chained_ext/lazy.js" = {
+      source = "(function () { const answer = 43; function later() { return 'lazy-' + answer; } return { answer, later }; })();"
+    }],
+  );
+  fn opts(snapshot: Option<&'static [u8]>) -> RuntimeOptions {
+    RuntimeOptions {
+      startup_snapshot: snapshot,
+      extensions: vec![chained_ext::init()],
+      ..Default::default()
+    }
+  }
+
+  // generation 0: evaluate both the eager module and the lazy script
+  let s1 = {
+    let mut runtime = JsRuntimeForSnapshot::new(opts(None));
+    runtime
+      .execute_script(
+        "a.js",
+        "const m = Deno.core.loadExtScript('ext:chained_ext/lazy.js');\n\
+         globalThis.later = m.later;\n\
+         globalThis.a = eagerAnswer + m.answer;",
+      )
+      .unwrap();
+    runtime.snapshot()
+  };
+  let s1: &'static [u8] = Box::leak(s1);
+  let (_, s1_sidecar) = crate::runtime::snapshot::deconstruct(s1);
+  let s1_strings = s1_sidecar.snapshot_data.external_strings;
+  assert!(
+    !s1_strings.is_empty(),
+    "S1 must carry the extension sources"
+  );
+
+  // generation 1: restore S1 into a snapshot-capable runtime and snapshot again
+  let s2 = {
+    let mut runtime = JsRuntimeForSnapshot::new(opts(Some(s1)));
+    runtime
+      .execute_script("b.js", "globalThis.b = a + 1")
+      .unwrap();
+    runtime.snapshot()
+  };
+  let s2: &'static [u8] = Box::leak(s2);
+
+  // The heap in S2 references S1's external strings by their table index, so
+  // S2's sidecar must start with exactly those strings (anything the restored
+  // runtime registered itself comes after them).
+  let (_, s2_sidecar) = crate::runtime::snapshot::deconstruct(s2);
+  let s2_strings = s2_sidecar.snapshot_data.external_strings;
+  let preview = |strings: &Vec<&[u8]>| {
+    strings
+      .iter()
+      .map(|b| {
+        String::from_utf8_lossy(b)
+          .chars()
+          .take(24)
+          .collect::<String>()
+      })
+      .collect::<Vec<_>>()
+  };
+  assert!(
+    s2_strings.len() >= s1_strings.len()
+      && s2_strings[..s1_strings.len()] == s1_strings[..],
+    "second snapshot dropped inherited sources: S1 {:?}, S2 {:?}",
+    preview(&s1_strings),
+    preview(&s2_strings),
+  );
+
+  // generation 2: restore S2, use state from both earlier generations, and
+  // compile functions from both extension sources for the first time.
+  let mut runtime = JsRuntime::new(opts(Some(s2)));
+  let value = runtime
+    .execute_script("c.js", "`${b}:${eagerLater()}:${later()}`")
+    .unwrap();
+  scope!(scope, runtime);
+  let value = v8::Local::new(scope, &value).to_rust_string_lossy(scope);
+  assert_eq!(value, "86:eager-42:lazy-43");
+}
