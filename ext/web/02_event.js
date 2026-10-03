@@ -140,7 +140,6 @@ const _dispatched = Symbol("[[dispatched]]");
 const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_EVENT_INIT = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 class Event {

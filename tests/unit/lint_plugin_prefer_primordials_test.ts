@@ -128,6 +128,22 @@ ObjectDefineProperty(
 );
   `);
   assertOk(`
+const { ObjectDefineProperty, ObjectDefineProperties, ObjectFreeze } =
+  primordials;
+const desc = { __proto__: null, value: "o" };
+const frozen = ObjectFreeze({ __proto__: null, value: "o" });
+const descs = { foo: desc, bar: { __proto__: null, value: "o" } };
+let reassignable = { value: "o" };
+ObjectDefineProperty(o, "foo", desc);
+ObjectDefineProperty(o, "bar", frozen);
+ObjectDefineProperties(o, descs);
+ObjectDefineProperty(o, "baz", reassignable);
+ObjectDefineProperty(o, "qux", getDescriptor());
+function shadowed(desc) {
+  ObjectDefineProperty(o, "quux", desc);
+}
+  `);
+  assertOk(`
 const { ObjectFreeze, ObjectSetPrototypeOf } = primordials;
 const EMPTY = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 function foo(o = undefined) {}
@@ -387,6 +403,52 @@ ObjectDefineProperties(o, {
       { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
       { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
       { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
+    ],
+  );
+  assertErr(
+    `
+const { ObjectCreate, ObjectDefineProperty, ObjectDefineProperties, ObjectFreeze } =
+  primordials;
+const desc = { value: "o" };
+const frozen = ObjectFreeze({ value: "o" });
+const alias = desc;
+const descs = { foo: desc, bar: { value: "o" } };
+ObjectDefineProperty(o, "foo", desc);
+ObjectDefineProperty(o, "bar", frozen);
+ObjectDefineProperty(o, "baz", alias);
+ObjectDefineProperty(o, "qux", ObjectFreeze({ value: "o" }));
+ObjectDefineProperties(o, descs);
+ObjectCreate(null, { foo: desc });
+  `,
+    [
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteral,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteral,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
     ],
   );
   assertErr(

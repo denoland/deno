@@ -18,7 +18,6 @@ const {
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 // Defer loading the 208 KB `06_streams.js` polyfill: the two helpers below

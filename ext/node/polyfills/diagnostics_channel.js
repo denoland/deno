@@ -353,8 +353,7 @@ class TracingChannel {
       return ReflectApply(fn, thisArg, args);
     }
 
-    // The context is published to subscribers and mutated, so it must be a
-    // fresh object per call.
+    // Subscribers may mutate the context, so it can't be shared.
     if (context === undefined) context = { __proto__: null };
 
     const { start, end, error } = this;
@@ -379,8 +378,7 @@ class TracingChannel {
       return ReflectApply(fn, thisArg, args);
     }
 
-    // The context is published to subscribers and mutated, so it must be a
-    // fresh object per call.
+    // Subscribers may mutate the context, so it can't be shared.
     if (context === undefined) context = { __proto__: null };
 
     const { start, end, asyncStart, asyncEnd, error } = this;
@@ -434,8 +432,7 @@ class TracingChannel {
       return ReflectApply(fn, thisArg, args);
     }
 
-    // The context is published to subscribers and mutated, so it must be a
-    // fresh object per call.
+    // Subscribers may mutate the context, so it can't be shared.
     if (context === undefined) context = { __proto__: null };
 
     const { start, end, asyncStart, asyncEnd, error } = this;

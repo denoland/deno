@@ -1,4 +1,4 @@
-// Null the prototype of a plain literal to keep it out of dictionary mode.// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -260,7 +260,6 @@ const {
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const defaultStatOptions = ObjectSetPrototypeOf({ bigint: false }, null);
 const defaultStatSyncOptions = ObjectSetPrototypeOf({
   bigint: false,
@@ -633,8 +632,6 @@ function readvPromise(
 
 // -- readFile --
 
-// Read on every readFile call, including absent members such as `encoding`.
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const readFileDefaultOptions = ObjectSetPrototypeOf({ flag: "r" }, null);
 
 function readFileMaybeDecode(data: Uint8Array, encoding: Encodings): string;

@@ -43,7 +43,6 @@ function getByteLength(buffer: ArrayBufferView): number {
     : TypedArrayPrototypeGetByteLength(buffer);
 }
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const validateOptionArgs = ObjectSetPrototypeOf({ nullable: true }, null);
 
 type BinaryCallback = (

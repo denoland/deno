@@ -273,6 +273,8 @@ export const HINT = {
   GlobalIntrinsic: "Instead use the equivalent from the `primordials` object",
   UnsafeIntrinsic: "Instead use the safe wrapper from the `primordials` object",
   NullPrototypeObjectLiteral: "Add `__proto__: null` to this object literal",
+  NullPrototypeObjectLiteralVariable:
+    "Add `__proto__: null` to the object literal assigned to this variable",
   NullPrototypeDefaultParameter:
     "Instead use `undefined` or a shared frozen object created with `ObjectFreeze(ObjectSetPrototypeOf({ ... }, null))` from the `primordials` object",
   SafeIterator: "Wrap a SafeIterator from the `primordials` object",
@@ -291,6 +293,7 @@ type ObjectExpression = Deno.lint.ObjectExpression;
 interface Scope {
   parent: Scope | null;
   bindings: Set<string>;
+  consts: Map<string, Node>;
   range: Deno.lint.Range;
   children: Scope[];
 }
@@ -362,6 +365,7 @@ function buildScopeTreeFixed(ast: Deno.lint.Program): Scope {
     const scope: ScopeEx = {
       parent,
       bindings: new Set(),
+      consts: new Map(),
       range,
       children: [],
       isFn,
@@ -482,6 +486,12 @@ function buildScopeTreeFixed(ast: Deno.lint.Program): Scope {
         const target = node.kind === "var" ? varTarget(scope) : scope;
         for (const decl of node.declarations) {
           addBindingPattern(target, decl.id);
+          if (
+            node.kind === "const" && decl.id.type === "Identifier" &&
+            decl.init
+          ) {
+            target.consts.set(decl.id.name, decl.init);
+          }
           if (decl.init) visit(decl.init, scope);
         }
         return;
@@ -553,6 +563,54 @@ function isShadowed(root: Scope, name: string, pos: number): boolean {
     scope = scope.parent;
   }
   return false;
+}
+
+function resolveConstInit(root: Scope, ident: Identifier): Node | null {
+  let scope: Scope | null = findScope(root, ident.range[0]);
+  while (scope) {
+    if (scope.bindings.has(ident.name)) {
+      return scope.consts.get(ident.name) ?? null;
+    }
+    scope = scope.parent;
+  }
+  return null;
+}
+
+/** Follow same-file `const` bindings and `ObjectFreeze(...)` to an object literal. */
+function resolveObjectLiteral(
+  root: Scope,
+  node: Node,
+): ObjectExpression | null {
+  const seen = new Set<Node>();
+  let cur: Node | null = node;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    switch (cur.type) {
+      case "ObjectExpression":
+        return cur;
+      case "Identifier":
+        cur = resolveConstInit(root, cur);
+        break;
+      case "TSAsExpression":
+      case "TSSatisfiesExpression":
+      case "TSNonNullExpression":
+        cur = cur.expression as Node;
+        break;
+      case "CallExpression":
+        if (
+          cur.callee.type === "Identifier" &&
+          cur.callee.name === "ObjectFreeze" &&
+          cur.arguments[0]
+        ) {
+          cur = cur.arguments[0] as Node;
+          break;
+        }
+        return null;
+      default:
+        return null;
+    }
+  }
+  return null;
 }
 
 function isNullLiteral(node: Node): boolean {
@@ -656,6 +714,25 @@ function memberPropName(
   return null;
 }
 
+function checkDescriptor(
+  ctx: Deno.lint.RuleContext,
+  root: Scope,
+  node: Node,
+): void {
+  const literal = resolveObjectLiteral(root, node);
+  if (!literal || isNullProto(literal)) return;
+  if (node.type === "Identifier") {
+    report(
+      ctx,
+      node,
+      MSG.DefineProperty,
+      HINT.NullPrototypeObjectLiteralVariable,
+    );
+  } else {
+    report(ctx, literal, MSG.DefineProperty, HINT.NullPrototypeObjectLiteral);
+  }
+}
+
 function report(
   ctx: Deno.lint.RuleContext,
   node: Node,
@@ -728,16 +805,7 @@ const plugin: Deno.lint.Plugin = {
                 (node.parent as Deno.lint.CallExpression).callee === node
               ) {
                 const arg = node.parent.arguments[2];
-                if (
-                  arg && arg.type === "ObjectExpression" && !isNullProto(arg)
-                ) {
-                  report(
-                    context,
-                    arg,
-                    MSG.DefineProperty,
-                    HINT.NullPrototypeObjectLiteral,
-                  );
-                }
+                if (arg) checkDescriptor(context, scopeRoot, arg as Node);
               }
             }
 
@@ -750,20 +818,12 @@ const plugin: Deno.lint.Plugin = {
                 (node.parent as Deno.lint.CallExpression).callee === node
               ) {
                 const arg = node.parent.arguments[1];
-                if (arg && arg.type === "ObjectExpression") {
-                  for (const prop of arg.properties) {
+                const descriptors = arg &&
+                  resolveObjectLiteral(scopeRoot, arg as Node);
+                if (descriptors) {
+                  for (const prop of descriptors.properties) {
                     if (prop.type !== "Property") continue;
-                    if (
-                      prop.value.type === "ObjectExpression" &&
-                      !isNullProto(prop.value)
-                    ) {
-                      report(
-                        context,
-                        prop.value,
-                        MSG.DefineProperty,
-                        HINT.NullPrototypeObjectLiteral,
-                      );
-                    }
+                    checkDescriptor(context, scopeRoot, prop.value as Node);
                   }
                 }
               }

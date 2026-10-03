@@ -36,7 +36,6 @@ const {
   Symbol,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { FsFile, fsFileConstructorKey } = core.loadExtScript(

@@ -17,7 +17,6 @@ const {
   SymbolDispose,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const DEFAULT_WATCH_OPTIONS = ObjectFreeze(
   ObjectSetPrototypeOf({ recursive: true }, null),
 );

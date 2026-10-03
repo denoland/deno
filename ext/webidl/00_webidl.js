@@ -100,9 +100,7 @@ const {
 // Shared empty options object used as the default for `opts` parameters in
 // converter functions, so callers that omit `opts` (the common case) don't
 // allocate a fresh `{ __proto__: null }` on every call. Converters only read
-// from `opts` -- never mutate -- so a shared frozen object is safe. It is
-// created with `ObjectSetPrototypeOf` because `{ __proto__: null }` literals
-// are dictionary-mode objects in V8, which makes every read slow.
+// from `opts` -- never mutate -- so a shared frozen object is safe.
 const EMPTY_OPTS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 function makeException(ErrorType, message, prefix, context, code = undefined) {

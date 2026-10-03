@@ -99,7 +99,6 @@ const {
   Uint32Array,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { read, readSync, write, writeSync } = core.loadExtScript(

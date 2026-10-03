@@ -365,7 +365,6 @@ class TextEncoder {
 }
 
 const encodeIntoBuf = new Uint32Array(2);
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const encodeIntoOpts = ObjectSetPrototypeOf({ allowShared: true }, null);
 
 const ENCODE_INTO_PACKED_SENTINEL = -1;

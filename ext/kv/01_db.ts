@@ -47,7 +47,6 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");

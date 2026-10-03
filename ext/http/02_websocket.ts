@@ -22,7 +22,6 @@ const {
   Uint8Array,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");

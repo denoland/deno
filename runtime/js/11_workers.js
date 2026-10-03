@@ -29,7 +29,6 @@ const {
   SymbolToStringTag,
 } = primordials;
 
-// Null the prototype of a plain literal to keep it out of dictionary mode.
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
