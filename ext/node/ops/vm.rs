@@ -81,11 +81,12 @@ mod termination_tests {
       None,
       false,
       None,
+      0,
     )
     .unwrap();
     let script = deno_core::cppgc::try_unwrap_cppgc_object::<ContextifyScript>(
       scope,
-      compiled.value.v8_value,
+      compiled.value,
     )
     .unwrap();
     assert!(
