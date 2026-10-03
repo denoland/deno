@@ -18,6 +18,28 @@ type SendTask = Box<dyn FnOnce(&mut v8::PinScope) + Send + 'static>;
 /// execution timeouts must not clear a concurrent external termination request.
 pub struct ExternalExecutionTermination(pub Arc<AtomicBool>);
 
+/// Cancel a local timeout without losing a host-owned stop request.
+/// Returns false when execution must remain terminated.
+pub fn cancel_local_execution_termination(isolate: &v8::Isolate) -> bool {
+  let externally_terminated = || {
+    isolate
+      .get_slot::<ExternalExecutionTermination>()
+      .is_some_and(|request| request.0.load(Ordering::SeqCst))
+  };
+  if externally_terminated() {
+    return false;
+  }
+  let cancelled = isolate.cancel_terminate_execution();
+  // Check after cancellation: checking first would let a host request arriving
+  // between that check and cancellation be cleared by the local timeout.
+  if externally_terminated() {
+    isolate.terminate_execution();
+    false
+  } else {
+    cancelled
+  }
+}
+
 struct BlockingTask<F, T> {
   callback: Option<F>,
   sender: Option<std::sync::mpsc::SyncSender<T>>,
@@ -266,8 +288,9 @@ impl V8CrossThreadTaskSpawner {
     };
     let task: Box<dyn FnOnce(&mut v8::PinScope<'_, '_>) + Send> =
       Box::new(move |scope| task.run(scope));
-    // SAFETY: We can safely transmute to the 'static lifetime because we guarantee this method will either
-    // complete fully by the time it returns, deadlock or panic.
+    // SAFETY: The receive cannot finish until execution completes or cancellation
+    // destroys the borrowed callback before disconnecting its sender. Thus no
+    // callback capture can outlive this call, despite the erased lifetime.
     let task: SendTask = unsafe { std::mem::transmute(task) };
     self.tasks.spawn(task);
     rx.recv()
@@ -309,10 +332,8 @@ mod tests {
       "callback must be queued before drop"
     );
     drop(runtime);
-    let stopped = receiver
-      .recv_timeout(std::time::Duration::from_millis(100))
-      .is_ok();
-    if !stopped {
+    let stopped = receiver.recv_timeout(std::time::Duration::from_millis(100));
+    if stopped.is_err() {
       // This test callback ignores its scope and captures no runtime handles,
       // so it is safe to execute solely for cleanup in a fresh runtime. The
       // broken implementation borrows its sender, so dropping it cannot wake
@@ -326,9 +347,10 @@ mod tests {
     }
     thread.join().unwrap();
     assert!(
-      stopped,
+      stopped.is_ok(),
       "runtime drop must release queued blocking callbacks"
     );
+    assert!(stopped.unwrap(), "shutdown must cancel rather than execute");
   }
 
   // https://github.com/tokio-rs/tokio/issues/6155

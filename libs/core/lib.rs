@@ -208,6 +208,7 @@ pub use crate::source_map::SourceMapper;
 pub use crate::tasks::ExternalExecutionTermination;
 pub use crate::tasks::V8CrossThreadTaskSpawner;
 pub use crate::tasks::V8TaskSpawner;
+pub use crate::tasks::cancel_local_execution_termination;
 
 // Ensure we can use op2 in deno_core without any hackery.
 extern crate self as deno_core;

@@ -742,6 +742,12 @@ impl WebWorker {
       (internal_handle, external_handle)
     };
 
+    js_runtime
+      .v8_isolate()
+      .set_slot(deno_core::ExternalExecutionTermination(
+        internal_handle.termination_signal.clone(),
+      ));
+
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
       deno_core::scope!(scope, &mut js_runtime);

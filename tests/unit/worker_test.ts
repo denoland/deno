@@ -11,6 +11,23 @@ function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
 }
 
+async function workerStopDeadline<T>(pending: PromiseLike<T>): Promise<T> {
+  let timer: number | undefined;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Worker stop timed out")),
+          5000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function terminationStopsWasm(dispose = false) {
   // (module (import "env" "memory" (memory 1 1 shared))
   //   (func (export "spin") (loop $spin
@@ -121,7 +138,7 @@ async function terminationStopsWasm(dispose = false) {
         typeof disposeWorker === "function",
         "Worker provides an execution-stop barrier",
       );
-      await disposeWorker.call(worker);
+      await workerStopDeadline(disposeWorker.call(worker));
     } else {
       // The ordinary Web API requests interruption without awaiting teardown.
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -173,7 +190,7 @@ Deno.test({
     let released = false;
     try {
       worker.postMessage({ path, buffer });
-      await reading;
+      await workerStopDeadline(reading);
       writer = Deno.openSync(path, { write: true });
       // Ensure the blocking read has entered before requesting termination.
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -189,7 +206,7 @@ Deno.test({
       );
       writer.writeSync(new Uint8Array([55]));
       released = true;
-      await disposal;
+      await workerStopDeadline(disposal);
       assertEquals(new Uint8Array(buffer)[0], 55);
     } finally {
       // Release a blocked read even when the assertion catches premature ack.
@@ -197,7 +214,7 @@ Deno.test({
         if (!released) writer.writeSync(new Uint8Array([55]));
         writer.close();
       }
-      await (disposal ?? worker[Symbol.asyncDispose]());
+      await workerStopDeadline(disposal ?? worker[Symbol.asyncDispose]());
       URL.revokeObjectURL(url);
       await Deno.remove(dir, { recursive: true });
     }

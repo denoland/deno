@@ -311,8 +311,11 @@ impl ContextifyScript {
     };
 
     if timed_out.load(Ordering::Relaxed) {
-      if scope.has_terminated() {
-        scope.cancel_terminate_execution();
+      if scope.has_terminated()
+        && !deno_core::cancel_local_execution_termination(scope)
+      {
+        scope.rethrow();
+        return None;
       }
       let message = v8::String::new(
         scope,
