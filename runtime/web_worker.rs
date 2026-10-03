@@ -258,7 +258,6 @@ impl WebWorkerInternalHandle {
 }
 
 pub struct SendableWebWorkerHandle {
-  isolate_handle: v8::IsolateHandle,
   port: MessagePort,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
@@ -269,7 +268,6 @@ pub struct SendableWebWorkerHandle {
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
   fn from(handle: SendableWebWorkerHandle) -> Self {
     WebWorkerHandle {
-      isolate_handle: handle.isolate_handle,
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
@@ -288,7 +286,6 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
 /// amounts of Arc<Mutex> and other fun stuff.
 #[derive(Clone)]
 pub struct WebWorkerHandle {
-  isolate_handle: v8::IsolateHandle,
   pub port: Rc<MessagePort>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
@@ -361,7 +358,6 @@ fn create_handles(
     maybe_main_module_blob,
   };
   let external_handle = SendableWebWorkerHandle {
-    isolate_handle,
     receiver: ctrl_rx,
     port: worker_port,
     termination_signal,
