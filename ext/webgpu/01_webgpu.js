@@ -44,11 +44,16 @@ import {
 } from "ext:core/ops";
 const {
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Symbol,
   SymbolFor,
 } = primordials;
+
+// Shared default for omitted options, which are only read. `undefined` would
+// change the error thrown for the required `reason` member.
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
@@ -130,7 +135,7 @@ core.registerErrorClass("GPUInternalError", GPUInternalError);
 class GPUPipelineError extends DOMException {
   #reason;
 
-  constructor(message = "", options = undefined) {
+  constructor(message = "", options = EMPTY_OPTIONS) {
     const prefix = "Failed to construct 'GPUPipelineError'";
     message = webidl.converters.DOMString(message, prefix, "Argument 1");
     options = webidl.converters.GPUPipelineErrorInit(
