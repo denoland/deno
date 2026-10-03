@@ -1,0 +1,9 @@
+{
+  "exports": {
+    "./benign-data": "./benign_data.ts",
+    "./blob-remote": "./blob_remote.ts",
+    "./chained-data-remote": "./chained_data_remote.ts",
+    "./data-remote": "./data_remote.ts",
+    "./resolve-data": "./resolve_data.ts"
+  }
+}
