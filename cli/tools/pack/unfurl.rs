@@ -196,17 +196,30 @@ fn unfurl_static_specifier(
   text_changes: &mut Vec<TextChange>,
   dependencies: &mut BTreeMap<String, String>,
 ) {
-  // Look up the resolved specifier from the graph to extract dependency info
-  if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer)
-    && let Some(dep) = js_module.dependencies.get(spec)
-    && let Some(resolved) = dep.maybe_code.ok()
-    && let Some((name, version)) =
-      extract_package_dependency(resolved.specifier.as_str())
-  {
-    dependencies.insert(name, version);
+  // Look up the resolved specifier from the graph
+  let resolved = graph.get(referrer).and_then(|m| match m {
+    deno_graph::Module::Js(js_module) => js_module
+      .dependencies
+      .get(spec)
+      .and_then(|dep| dep.maybe_code.ok())
+      .map(|resolved| resolved.specifier.clone()),
+    _ => None,
+  });
+
+  // Extract dependency info from resolved specifier
+  if let Some(ref resolved) = resolved {
+    if let Some((name, version)) = extract_package_dependency(resolved.as_str())
+    {
+      dependencies.insert(name, version);
+    }
   }
 
-  if let Some(rewritten) = rewrite_specifier(spec) {
+  // Try rewriting based on the original specifier (handles jsr:/npm: inline specs)
+  // or fall back to the graph-resolved specifier for bare import-map specifiers.
+  let rewritten = rewrite_specifier(spec)
+    .or_else(|| resolved.as_ref().and_then(|r| rewrite_specifier(r.as_str())));
+
+  if let Some(rewritten) = rewritten {
     let byte_range = to_range(text_info, range);
     if let Some(text_change) = specifier_text_change(
       text_info,
@@ -229,17 +242,33 @@ fn unfurl_dynamic_specifier(
 ) {
   match &dep.argument {
     DynamicArgument::String(specifier) => {
-      // Look up resolved specifier from graph for dependency extraction
-      if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer)
-        && let Some(graph_dep) = js_module.dependencies.get(specifier.as_str())
-        && let Some(resolved) = graph_dep.maybe_code.ok()
-        && let Some((name, version)) =
-          extract_package_dependency(resolved.specifier.as_str())
-      {
-        dependencies.insert(name, version);
+      // Look up resolved specifier from graph
+      let resolved = graph.get(referrer).and_then(|m| match m {
+        deno_graph::Module::Js(js_module) => js_module
+          .dependencies
+          .get(specifier.as_str())
+          .and_then(|dep| dep.maybe_code.ok())
+          .map(|resolved| resolved.specifier.clone()),
+        _ => None,
+      });
+
+      // Extract dependency info from resolved specifier
+      if let Some(ref resolved) = resolved {
+        if let Some((name, version)) =
+          extract_package_dependency(resolved.as_str())
+        {
+          dependencies.insert(name, version);
+        }
       }
 
-      if let Some(rewritten) = rewrite_specifier(specifier)
+      let rewritten = rewrite_specifier(specifier)
+        .or_else(|| {
+          resolved
+            .as_ref()
+            .and_then(|r| rewrite_specifier(r.as_str()))
+        });
+
+      if let Some(rewritten) = rewritten
         && let Some(range) = dynamic_argument_prefix_range(
           text_info,
           &dep.argument_range,
