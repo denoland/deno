@@ -2,7 +2,6 @@
 
 // deno-lint-ignore-file no-var
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 /** The global instance of {@linkcode Crypto} that provides access to the Web

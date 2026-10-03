@@ -1222,12 +1222,12 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
         .map(|_| spec)
     });
     let source: Arc<str> = match user_types_node {
-      Some(spec) => format!(
-        "/// <reference no-default-lib=\"true\"/>\n/// <reference path=\"{}\" />\n",
-        spec.as_str(),
-      )
-      .into(),
-      None => get_lazily_loaded_asset("lib.node.d.ts").unwrap_or_default().into(),
+      Some(spec) => {
+        format!("/// <reference path=\"{}\" />\n", spec.as_str(),).into()
+      }
+      None => get_lazily_loaded_asset("lib.node.d.ts")
+        .unwrap_or_default()
+        .into(),
     };
     hash = get_maybe_hash(Some(source.as_ref()), hash_data);
     media_type = MediaType::Dts;
