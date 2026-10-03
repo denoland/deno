@@ -663,28 +663,47 @@ fn process_npm_security_advisories_bulk_body(
   if package_names.contains(&"@denotest/with-vuln3".to_string()) {
     response.insert(
       "@denotest/with-vuln3".to_string(),
-      json!([get_advisory_for_with_vuln3()]),
+      json!([
+        get_advisory_for_with_vuln3(),
+        get_unfixable_advisory_for_with_vuln3()
+      ]),
+    );
+  }
+
+  if package_names.contains(&"@denotest/with-vuln4".to_string()) {
+    response.insert(
+      "@denotest/with-vuln4".to_string(),
+      json!([get_advisory_for_with_vuln4()]),
     );
   }
 
   Some(serde_json::Value::Object(response))
 }
 
+// The public npm bulk advisory endpoint only returns `id`, `url` (which
+// embeds the GHSA id), `title`, `severity`, `vulnerable_versions`, `cwe` and
+// `cvss` -- it does not return `patched_versions`. A `cves` field is included
+// here to exercise CVE-based `--ignore` matching.
 fn get_advisory_for_with_vuln1() -> serde_json::Value {
   json!({
-    "url": "https://example.com/vuln/101010",
+    "id": 1000001,
+    "url": "https://github.com/advisories/GHSA-1111-1111-1111",
     "title": "@denotest/with-vuln1 is susceptible to prototype pollution",
     "severity": "high",
     "vulnerable_versions": "<1.1.0",
-    "patched_versions": ">=1.1.0",
     "cves": ["CVE-2025-0001"],
     "cwe": ["CWE-1321"]
   })
 }
 
+// Unlike the public registry, this advisory intentionally includes
+// `patched_versions` so the registry-supplied branch keeps spec coverage: its
+// `Patched:` line shows no `(inferred)` suffix, unlike the other two which are
+// inferred from `vulnerable_versions`.
 fn get_advisory_for_with_vuln2() -> serde_json::Value {
   json!({
-    "url": "https://example.com/vuln/202020",
+    "id": 1000002,
+    "url": "https://github.com/advisories/GHSA-2222-2222-2222",
     "title": "@denotest/with-vuln2 can steal crypto keys",
     "severity": "critical",
     "vulnerable_versions": "<2.0.0",
@@ -694,14 +713,45 @@ fn get_advisory_for_with_vuln2() -> serde_json::Value {
   })
 }
 
+// Mirrors the public registry exactly: no `cves` field, so the GHSA id from
+// the URL is the only identifier available for `--ignore`.
 fn get_advisory_for_with_vuln3() -> serde_json::Value {
   json!({
-    "url": "https://example.com/vuln/303030",
+    "id": 1000003,
+    "url": "https://github.com/advisories/GHSA-3333-3333-3333",
     "title": "@denotest/with-vuln3 has security vulnerability",
     "severity": "high",
     "vulnerable_versions": "<1.1.0",
-    "patched_versions": ">=1.1.0",
-    "cves": ["CVE-2025-0003"],
+    "cwe": ["CWE-79"]
+  })
+}
+
+// `@denotest/with-vuln4` publishes 1.0.0 and 1.2.0 -- but not 1.1.0, which is
+// what this vulnerable range's exclusive upper bound infers as the fix. Covers
+// `--fix` snapping an inferred target up to a version that was really
+// published, instead of pinning one that does not exist.
+fn get_advisory_for_with_vuln4() -> serde_json::Value {
+  json!({
+    "id": 1000005,
+    "url": "https://github.com/advisories/GHSA-5555-5555-5555",
+    "title": "@denotest/with-vuln4 leaks memory",
+    "severity": "high",
+    "vulnerable_versions": "<1.1.0",
+    "cwe": ["CWE-401"]
+  })
+}
+
+// An open-ended vulnerable range with no upper bound: nothing to infer a fix
+// from, and the public registry never marks an advisory as unpatched, so this
+// is what a genuinely unfixable advisory looks like. Exercises the
+// `Info:`-only report branch and `--ignore-unfixable`.
+fn get_unfixable_advisory_for_with_vuln3() -> serde_json::Value {
+  json!({
+    "id": 1000004,
+    "url": "https://github.com/advisories/GHSA-4444-4444-4444",
+    "title": "@denotest/with-vuln3 has an unpatched vulnerability",
+    "severity": "moderate",
+    "vulnerable_versions": ">=1.0.0",
     "cwe": ["CWE-79"]
   })
 }

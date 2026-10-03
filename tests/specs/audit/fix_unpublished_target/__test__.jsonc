@@ -1,0 +1,22 @@
+{
+  // The registry omits `patched_versions`, so the fix target is inferred from
+  // the vulnerable range's exclusive upper bound (`<1.1.0` -> `>=1.1.0`). But
+  // 1.1.0 was never published -- only 1.0.0 and 1.2.0 are. `--fix` must snap
+  // the target up to 1.2.0 rather than pinning a version that cannot install.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "audit --fix",
+      "output": "audit_fix.out",
+      "exitCode": 1
+    },
+    {
+      "args": "run --allow-read verify_fix.ts",
+      "output": "verify_fix.out"
+    }
+  ]
+}

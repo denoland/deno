@@ -7,12 +7,5 @@
 │ Info:       https://github.com/advisories/GHSA-3333-3333-3333
 ╰ Actions:    update @denotest/with-vuln3 to >=1.1.0
 
-╭ @denotest/with-vuln3 has an unpatched vulnerability
-│ Severity:   moderate
-│ ID:         GHSA-4444-4444-4444
-│ Package:    @denotest/with-vuln3
-│ Vulnerable: >=1.0.0
-╰ Info:       https://github.com/advisories/GHSA-4444-4444-4444
-
 Found 2 vulnerabilities
 Severity: 0 low, 1 moderate, 1 high, 0 critical
