@@ -742,3 +742,16 @@ fn de_shallow_nesting_ok() {
     assert!(res.is_ok(), "shallow nesting should deserialize: {res:?}");
   });
 }
+
+// Unsupported value types must error via deserialize_any, not panic. Symbol
+// (unclassified) previously hit an explicit `panic!`; BigInt is now folded into
+// the same path. Both must return `Error::UnsupportedType`.
+defail!(
+  de_symbol_unsupported,
+  serde_json::Value,
+  "Symbol('x')",
+  |e| { matches!(e, Err(Error::UnsupportedType)) }
+);
+defail!(de_bigint_unsupported, serde_json::Value, "1n", |e| {
+  matches!(e, Err(Error::UnsupportedType))
+});
