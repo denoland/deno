@@ -4,8 +4,8 @@
 // This script is used to generate the @types/deno package on DefinitelyTyped.
 
 import $ from "jsr:@david/dax@0.42.0";
-import { type NamedNode, Node, Project } from "jsr:@ts-morph/ts-morph@27.0.0";
 import * as semver from "jsr:@std/semver@1.0.3";
+import { generateDenoTypesDts } from "./release/types_dts.ts";
 
 const rootDir = $.path(import.meta.dirname!).parentOrThrow();
 const definitelyTypedDir = rootDir.join(
@@ -31,55 +31,9 @@ $.logStep("Formatting...");
 await $`pnpm dprint fmt`.cwd(definitelyTypedDir);
 
 async function createDenoDtsFile() {
-  function matchesAny(text: string | undefined, patterns: string[]): boolean {
-    if (text == null) {
-      return false;
-    }
-    for (const pattern of patterns) {
-      if (text.includes(pattern)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   const text = await $`${denoExec} types`.text();
-  const project = new Project();
-  const file = project.createSourceFile(
-    definitelyTypedDir.join("index.d.ts").toString(),
-    text,
-    {
-      overwrite: true,
-    },
-  );
-
-  for (const statement of file.getStatementsWithComments()) {
-    if (Node.isCommentNode(statement)) {
-      statement.remove();
-      continue;
-    }
-    const shouldKeepNode = (namedNode: NamedNode) => {
-      return matchesAny(namedNode.getName(), [
-        "Deno",
-      ]) || namedNode.getName()?.startsWith("GPU");
-    };
-    if (Node.isVariableStatement(statement)) {
-      for (const decl of statement.getDeclarations()) {
-        if (!shouldKeepNode(decl)) {
-          decl.remove();
-        }
-      }
-    } else if (!shouldKeepNode(statement)) {
-      statement.remove();
-    }
-  }
-
-  file.insertStatements(
-    0,
-    "// Copyright 2018-2026 the Deno authors. MIT license.\n\n",
-  );
-
-  file.saveSync();
+  const dts = generateDenoTypesDts(text);
+  definitelyTypedDir.join("index.d.ts").writeTextSync(dts);
 }
 
 async function updatePkgJson() {
