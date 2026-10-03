@@ -1,0 +1,55 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_dir_none": {
+      // The subpath declaration is materialized into `files` as an absolute
+      // path, so it also resolves from the global npm cache.
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts none",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ./main.ts",
+          "output": "Check [WILDLINE]\n"
+        }
+      ]
+    },
+    "node_modules_dir_auto": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ./main.ts",
+          "output": "Check [WILDLINE]\n"
+        }
+      ]
+    },
+    "node_modules_dir_manual": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts manual",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ./main.ts",
+          "output": "Check [WILDLINE]\n"
+        }
+      ]
+    }
+  }
+}
