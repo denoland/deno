@@ -91,6 +91,7 @@ const {
   op_mark_as_untransferable,
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
+  op_node_buffer_write_utf16le,
   op_node_call_is_from_dependency,
   op_node_encoding_slice,
   op_transcode,
@@ -1329,7 +1330,19 @@ Buffer.prototype.ucs2Slice = function ucs2Slice(offset, length) {
   return decodeUtf16le(this, offset, length);
 };
 
-Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
+Buffer.prototype.ucs2Write = function ucs2Write(
+  string,
+  offset = 0,
+  length = this.length - offset,
+) {
+  if (
+    typeof string === "string" &&
+    NumberIsInteger(offset) && offset >= 0 && offset <= this.length &&
+    NumberIsInteger(length) && length >= 0
+  ) {
+    return op_node_buffer_write_utf16le(string, this, offset, length);
+  }
+  // Preserve coercion/error behavior for direct calls with non-standard args.
   return blitBuffer(
     utf16leToBytes(string, this.length - offset),
     this,
