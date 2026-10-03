@@ -170,6 +170,7 @@ Deno.test({
     });
     let writer: Deno.FsFile | undefined;
     let disposal: Promise<void> | undefined;
+    let released = false;
     try {
       worker.postMessage({ path, buffer });
       await reading;
@@ -187,12 +188,13 @@ Deno.test({
         "native shared-memory write is still pending",
       );
       writer.writeSync(new Uint8Array([55]));
+      released = true;
       await disposal;
       assertEquals(new Uint8Array(buffer)[0], 55);
     } finally {
       // Release a blocked read even when the assertion catches premature ack.
       if (writer) {
-        writer.writeSync(new Uint8Array([55]));
+        if (!released) writer.writeSync(new Uint8Array([55]));
         writer.close();
       }
       await (disposal ?? worker[Symbol.asyncDispose]());

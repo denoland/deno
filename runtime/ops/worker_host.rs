@@ -23,6 +23,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_error::JsErrorBox;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
 use deno_web::Blob;
@@ -39,7 +40,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::unbounded_channel;
 
 use crate::ops::TestingFeaturesEnabled;
-use crate::tokio_util::create_and_run_current_thread;
+use crate::tokio_util::create_and_run_worker_thread;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
@@ -105,6 +106,7 @@ struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
+  execution_stopped: Option<tokio::sync::oneshot::Receiver<()>>,
   worker_handle: WebWorkerHandle,
   worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
@@ -117,6 +119,20 @@ pub struct WorkerThread {
   ctrl_closed: bool,
   message_closed: bool,
   termination_requested: bool,
+}
+
+struct WorkerExecutionCompletion {
+  receiver: RefCell<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
+// SAFETY: This object owns only a Rust channel receiver, with no V8/cppgc
+// pointers to trace. Its receiver moves into the wait future before awaiting.
+unsafe impl deno_core::GarbageCollected for WorkerExecutionCompletion {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"WorkerExecutionCompletion"
+  }
 }
 
 impl WorkerThread {
@@ -231,6 +247,8 @@ deno_core::extension!(
   ops = [
     op_create_worker,
     op_host_terminate_worker,
+    op_host_worker_execution_stopped,
+    op_host_worker_execution_completion,
     op_host_post_message,
     op_host_recv_ctrl,
     op_host_post_message_raw,
@@ -384,6 +402,8 @@ fn op_create_worker(
   };
   let cpu_thread_handle = Arc::new(AtomicU64::new(0));
   let cpu_thread_handle_writer = cpu_thread_handle.clone();
+  let (execution_stopped_sender, execution_stopped_receiver) =
+    tokio::sync::oneshot::channel();
 
   // Spawn it
   thread_builder.spawn(move || {
@@ -429,7 +449,7 @@ fn op_create_worker(
       .await
     };
 
-    let _ = create_and_run_current_thread(fut);
+    let _ = create_and_run_worker_thread(fut);
 
     // After the worker's tokio runtime and JsRuntime/V8 isolate have been
     // dropped, ask the system allocator to release freed memory back to the
@@ -443,6 +463,10 @@ fn op_create_worker(
         libc::malloc_trim(0);
       }
     }
+    // No guest execution or native operation can touch its memory after the
+    // runtime and V8 isolate have been dropped. Channel/control closure alone
+    // occurs earlier and must not be used as this acknowledgment.
+    let _ = execution_stopped_sender.send(());
   })?;
 
   // Receive WebWorkerHandle from newly created worker
@@ -453,6 +477,7 @@ fn op_create_worker(
   })?;
 
   let worker_thread = WorkerThread {
+    execution_stopped: Some(execution_stopped_receiver),
     worker_handle: worker_handle.into(),
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
@@ -476,6 +501,41 @@ fn op_create_worker(
     .insert(worker_id, worker_thread);
 
   Ok(worker_id)
+}
+
+#[op2]
+#[cppgc]
+fn op_host_worker_execution_completion(
+  state: &mut OpState,
+  #[scoped] id: WorkerId,
+) -> Result<WorkerExecutionCompletion, JsErrorBox> {
+  // The Worker constructor takes this receiver before starting channel polls.
+  // The future then owns it independently of explicit/natural table removal.
+  let receiver = state
+    .borrow_mut::<WorkersTable>()
+    .get_mut(&id)
+    .and_then(|worker| worker.execution_stopped.take())
+    .ok_or_else(|| {
+      JsErrorBox::generic("Worker execution-stop acknowledgment unavailable")
+    })?;
+  Ok(WorkerExecutionCompletion {
+    receiver: RefCell::new(Some(receiver)),
+  })
+}
+
+#[op2]
+fn op_host_worker_execution_stopped(
+  #[cppgc] completion: &WorkerExecutionCompletion,
+) -> impl Future<Output = Result<(), JsErrorBox>> + use<> {
+  let receiver = completion.receiver.borrow_mut().take();
+  async move {
+    let receiver = receiver.ok_or_else(|| {
+      JsErrorBox::generic("Worker execution-stop acknowledgment unavailable")
+    })?;
+    receiver.await.map_err(|_| {
+      JsErrorBox::generic("Worker stopped without execution acknowledgment")
+    })
+  }
 }
 
 #[op2]

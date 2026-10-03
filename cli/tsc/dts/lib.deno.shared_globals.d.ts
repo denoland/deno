@@ -664,6 +664,11 @@ interface WorkerOptions {
  * @category Workers
  */
 interface Worker extends EventTarget {
+  /** Requests termination and waits until this worker's runtime and native
+   * operations have stopped. This also works after calling `terminate()`.
+   * Disposal can wait indefinitely for a blocked native operation.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
   /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
   onerror: ((this: Worker, e: ErrorEvent) => any) | null;
 

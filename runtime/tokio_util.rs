@@ -70,6 +70,7 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
 fn create_and_run_current_thread_inner<F, R>(
   future: F,
   metrics_enabled: bool,
+  wait_for_blocking_tasks: bool,
 ) -> R
 where
   F: std::future::Future<Output = R> + 'static,
@@ -122,11 +123,15 @@ where
   let join_handle = rt.spawn(future);
 
   let r = rt.block_on(join_handle).unwrap().into_inner();
-  // Forcefully shutdown the runtime - we're done executing JS code at this
-  // point, but there might be outstanding blocking tasks that were created and
-  // latered "unrefed". They won't terminate on their own, so we're forcing
-  // termination of Tokio runtime at this point.
-  rt.shutdown_background();
+  if wait_for_blocking_tasks {
+    // Worker disposal cannot acknowledge stopped execution while a blocking
+    // task still owns a guest/shared-memory buffer. Drop waits for those tasks.
+    drop(rt);
+  } else {
+    // The main runtime may leave unrefed blocking tasks behind when its JS
+    // event loop finishes. This path does not promise execution quiescence.
+    rt.shutdown_background();
+  }
   r
 }
 
@@ -136,7 +141,16 @@ where
   F: std::future::Future<Output = R> + 'static,
   R: Send + 'static,
 {
-  create_and_run_current_thread_inner(future, false)
+  create_and_run_current_thread_inner(future, false, false)
+}
+
+#[inline(always)]
+pub(crate) fn create_and_run_worker_thread<F, R>(future: F) -> R
+where
+  F: std::future::Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  create_and_run_current_thread_inner(future, false, true)
 }
 
 #[inline(always)]
@@ -146,5 +160,5 @@ where
   R: Send + 'static,
 {
   let metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
-  create_and_run_current_thread_inner(future, metrics_enabled)
+  create_and_run_current_thread_inner(future, metrics_enabled, false)
 }

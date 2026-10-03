@@ -10,6 +10,8 @@ const {
   op_host_recv_message,
   op_host_recv_message_sync,
   op_host_terminate_worker,
+  op_host_worker_execution_completion,
+  op_host_worker_execution_stopped,
 } = core.ops;
 const {
   ArrayPrototypeFilter,
@@ -22,6 +24,7 @@ const {
   String,
   StringPrototypeStartsWith,
   Symbol,
+  SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   SymbolToStringTag,
@@ -105,6 +108,8 @@ class Worker extends EventTarget {
   // indicating that the worker is no longer running, but there might
   // still be messages left to receive.
   #status = "RUNNING";
+  #executionStopped;
+  #executionCompletion;
 
   constructor(specifier, options = { __proto__: null }) {
     super();
@@ -163,6 +168,7 @@ class Worker extends EventTarget {
       false,
     );
     this.#id = id;
+    this.#executionCompletion = op_host_worker_execution_completion(id);
     this.#pollControl();
     this.#pollMessages();
   }
@@ -361,6 +367,14 @@ class Worker extends EventTarget {
       this.#status = "TERMINATED";
       hostTerminateWorker(this.#id);
     }
+  }
+
+  async [SymbolAsyncDispose]() {
+    this.terminate();
+    this.#executionStopped ??= op_host_worker_execution_stopped(
+      this.#executionCompletion,
+    );
+    await this.#executionStopped;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
