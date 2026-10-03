@@ -14,7 +14,11 @@ use zeromq::SocketSend;
 use zeromq::ZmqMessage;
 
 fn endpoint(addr: &str) -> String {
-  format!("tcp://{addr}")
+  if addr.contains("://") {
+    addr.to_string()
+  } else {
+    format!("tcp://{addr}")
+  }
 }
 
 fn frames_to_message(frames: &[Bytes]) -> ZmqMessage {
