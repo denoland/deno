@@ -206,7 +206,13 @@ pub fn op_close(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), ResourceError> {
-  let resource = state.borrow_mut().resource_table.take_any(rid)?;
+  let resource = {
+    let state = &mut *state.borrow_mut();
+    let resource = state.resource_table.take_any(rid)?;
+    // The rid may be handed out again, so it must not stay marked unrefed.
+    state.uv_ref(rid);
+    resource
+  };
   resource.close();
   Ok(())
 }
@@ -215,7 +221,16 @@ pub fn op_close(
 /// with the specified `rid`, this is a no-op.
 #[op2(fast)]
 pub fn op_try_close(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
-  if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
+  let resource = {
+    let state = &mut *state.borrow_mut();
+    let resource = state.resource_table.take_any(rid);
+    if resource.is_ok() {
+      // The rid may be handed out again, so it must not stay marked unrefed.
+      state.uv_ref(rid);
+    }
+    resource
+  };
+  if let Ok(resource) = resource {
     resource.close();
   }
 }
