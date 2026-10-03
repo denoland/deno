@@ -33,7 +33,9 @@ deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt", default-features = false }
-laufey = "0.7.0"
+# Pin to the run_on_ui_thread branch until littledivy/laufey#79 lands and a
+# release is cut (denoland/deno#36738).
+laufey = { git = "https://github.com/petamoriken/laufey", branch = "fix/run-on-ui-thread" }
 libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }
