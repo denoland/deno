@@ -1,8 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 
 use deno_core::OpState;
+use deno_core::error::JsError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_dotenv::parse_env_content_hook;
@@ -12,6 +17,143 @@ use node_resolver::NpmPackageFolderResolver;
 
 use crate::ExtNodeSys;
 use crate::NodeResolverRc;
+
+// === SIGINT Watchdog ===
+// Used by `internalBinding('contextify')` to detect SIGINT during script
+// evaluation (e.g. in the REPL). Reference-counted so nested start/stop
+// pairs work correctly.
+
+static SIGINT_WATCHDOG_REFCOUNT: AtomicI32 = AtomicI32::new(0);
+static SIGINT_WATCHDOG_PENDING: AtomicBool = AtomicBool::new(false);
+
+#[op2(fast)]
+pub fn op_node_start_sigint_watchdog() {
+  let prev = SIGINT_WATCHDOG_REFCOUNT.fetch_add(1, Ordering::SeqCst);
+  if prev == 0 {
+    SIGINT_WATCHDOG_PENDING.store(false, Ordering::SeqCst);
+    // Use set_interceptor so the watchdog consumes SIGINT exclusively —
+    // other listeners (test runner, Deno.addSignalListener) won't see it.
+    deno_signals::set_interceptor(
+      libc::SIGINT,
+      Some(Box::new(|| {
+        SIGINT_WATCHDOG_PENDING.store(true, Ordering::SeqCst);
+        true // consume the signal
+      })),
+    );
+  }
+}
+
+#[op2(fast)]
+pub fn op_node_stop_sigint_watchdog() -> bool {
+  let prev = SIGINT_WATCHDOG_REFCOUNT.fetch_sub(1, Ordering::SeqCst);
+  let had_pending = SIGINT_WATCHDOG_PENDING.swap(false, Ordering::SeqCst);
+  if prev == 1 {
+    deno_signals::set_interceptor(libc::SIGINT, None);
+  }
+  had_pending
+}
+
+#[op2(fast)]
+pub fn op_node_watchdog_has_pending_sigint() -> bool {
+  SIGINT_WATCHDOG_PENDING.load(Ordering::SeqCst)
+}
+
+// === setTraceSigInt ===
+// When enabled, SIGINT triggers a V8 interrupt that captures the current
+// JavaScript stack trace, prints it to stderr, then re-raises SIGINT so the
+// process terminates by the signal — matching Node's `--trace-sigint`.
+
+static SIGINT_TRACE_HANDLER_ID: Mutex<Option<u32>> = Mutex::new(None);
+
+#[op2(fast)]
+pub fn op_node_set_trace_sigint(
+  scope: &mut v8::PinScope<'_, '_>,
+  enable: bool,
+) {
+  let mut handler_id = SIGINT_TRACE_HANDLER_ID.lock().unwrap();
+  if enable {
+    if handler_id.is_some() {
+      return;
+    }
+    let isolate_handle = scope.thread_safe_handle();
+    let context = scope.get_current_context();
+    let context_global = v8::Global::new(scope, context);
+    // Intentionally leaked — the interrupt callback may fire asynchronously
+    // after a future unregister call, so we cannot safely free this.
+    let context_ptr = Box::into_raw(Box::new(context_global)) as usize;
+
+    let id = deno_signals::register(
+      libc::SIGINT,
+      true,
+      Box::new(move || {
+        isolate_handle.request_interrupt(
+          sigint_trace_interrupt_callback,
+          context_ptr as *mut std::ffi::c_void,
+        );
+      }),
+    )
+    .expect("failed to register SIGINT trace handler");
+    *handler_id = Some(id);
+  } else if let Some(id) = handler_id.take() {
+    deno_signals::unregister(libc::SIGINT, id);
+  }
+}
+
+#[allow(clippy::print_stderr, reason = "intentional stderr for SIGINT trace")]
+unsafe extern "C" fn sigint_trace_interrupt_callback(
+  isolate_ptr: v8::UnsafeRawIsolatePtr,
+  data: *mut std::ffi::c_void,
+) {
+  let mut raw_ptr = isolate_ptr;
+  // SAFETY: V8 guarantees the isolate pointer is valid during the interrupt
+  // callback and we are on the V8 thread.
+  let isolate =
+    unsafe { v8::Isolate::ref_from_raw_isolate_ptr_mut(&mut raw_ptr) };
+  // SAFETY: data points to a leaked Box<v8::Global<v8::Context>> that we
+  // allocated in op_node_set_trace_sigint. We intentionally don't free it
+  // since the process is torn down by the signal immediately after.
+  let context_global = unsafe { &*(data as *const v8::Global<v8::Context>) };
+
+  {
+    v8::scope!(scope, isolate);
+    let context = v8::Local::new(scope, context_global);
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let msg = v8::String::new(scope, "SIGINT").unwrap();
+    let exception = v8::Exception::error(scope, msg);
+    let js_error = JsError::from_v8_exception(scope, exception);
+
+    // Match Node's `--trace-sigint` output: a fixed banner followed by the
+    // current JS stack trace.
+    eprintln!(
+      "KEYBOARD_INTERRUPT: Script execution was interrupted by `SIGINT`"
+    );
+    if let Some(stack) = &js_error.stack {
+      // `stack` begins with the synthetic "Error: SIGINT" header line; drop it
+      // and print only the frames, as Node does.
+      if let Some((_, frames)) = stack.split_once('\n') {
+        eprintln!("{frames}");
+      }
+    }
+  }
+
+  // Restore default SIGINT handling and re-raise so the process is terminated
+  // *by the signal* (WIFSIGNALED, code 130) exactly like Node's `raise(SIGINT)`
+  // — not via a normal `exit(130)`, which callers observe as a clean exit.
+  if let Some(id) = SIGINT_TRACE_HANDLER_ID.lock().unwrap().take() {
+    deno_signals::unregister(libc::SIGINT, id);
+  }
+  // SAFETY: re-raising SIGINT after removing our handler; the signal-handling
+  // thread now applies the default action and tears the process down.
+  unsafe {
+    libc::raise(libc::SIGINT);
+  }
+  // The signal is delivered asynchronously by the signal thread; park here so
+  // we never resume executing JS before it terminates us.
+  loop {
+    std::thread::sleep(std::time::Duration::from_secs(3600));
+  }
+}
 
 #[repr(u32)]
 enum HandleType {
