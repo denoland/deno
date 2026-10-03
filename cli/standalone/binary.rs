@@ -1473,7 +1473,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
             let path = entry.path();
-            if !path.is_dir() {
+            let Ok(file_type) = entry.file_type() else {
+              continue;
+            };
+            if !file_type.is_dir() {
+              if file_type.is_symlink() && path.ends_with("node_modules") {
+                let path_display = path.to_string_lossy();
+                let path_display =
+                  crate::util::console::escape_terminal_control_chars(
+                    &path_display,
+                  );
+                log::warn!(
+                  "{} Skipping linked node_modules directory during automatic workspace discovery.\n    Path: {}",
+                  crate::colors::yellow("Warning"),
+                  path_display
+                );
+              }
               continue;
             }
             if path.ends_with("node_modules") {
