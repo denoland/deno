@@ -217,6 +217,55 @@ mod tests {
 
   use super::*;
 
+  #[test]
+  fn runtime_drop_releases_queued_blocking_callbacks() {
+    let runtime = crate::JsRuntime::new(Default::default());
+    let spawner = runtime
+      .op_state()
+      .borrow()
+      .borrow::<V8CrossThreadTaskSpawner>()
+      .clone();
+    let factory = spawner.tasks.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+      let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+          spawner.spawn_blocking(|_| 7)
+        }));
+      sender.send(result.is_err()).unwrap();
+    });
+    let deadline =
+      std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !factory.has_pending_tasks() && std::time::Instant::now() < deadline {
+      std::thread::yield_now();
+    }
+    assert!(
+      factory.has_pending_tasks(),
+      "callback must be queued before drop"
+    );
+    drop(runtime);
+    let stopped = receiver
+      .recv_timeout(std::time::Duration::from_millis(100))
+      .is_ok();
+    if !stopped {
+      // This test callback ignores its scope and captures no runtime handles,
+      // so it is safe to execute solely for cleanup in a fresh runtime. The
+      // broken implementation borrows its sender, so dropping it cannot wake
+      // the waiting thread.
+      let tasks = std::mem::take(&mut *factory.tasks.lock().unwrap());
+      let mut cleanup_runtime = crate::JsRuntime::new(Default::default());
+      crate::scope!(scope, &mut cleanup_runtime);
+      for task in tasks {
+        task(scope);
+      }
+    }
+    thread.join().unwrap();
+    assert!(
+      stopped,
+      "runtime drop must release queued blocking callbacks"
+    );
+  }
+
   // https://github.com/tokio-rs/tokio/issues/6155
   #[test]
   #[cfg(not(all(miri, target_os = "linux")))]
