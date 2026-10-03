@@ -313,6 +313,75 @@ async fn test_fetch_query_redirect_to_dts_is_cached() {
   );
 }
 
+#[tokio::test]
+async fn test_checksum_failure_is_not_cached() {
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  #[derive(Debug, Clone, Default)]
+  struct TestHttpClient {
+    #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
+    request_count: deno_maybe_sync::MaybeArc<AtomicUsize>,
+  }
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      _url: &Url,
+      _headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.request_count.fetch_add(1, Ordering::SeqCst);
+      let mut header_map = HeaderMap::new();
+      header_map
+        .insert("content-type", "application/typescript".parse().unwrap());
+      Ok(SendResponse::Success(
+        header_map,
+        b"rejected bytes".to_vec(),
+      ))
+    }
+  }
+
+  let client = TestHttpClient::default();
+  let request_count = client.request_count.clone();
+  let file_fetcher = create_file_fetcher(InMemorySys::default(), client);
+  let url = Url::parse("https://localhost/checksum.ts").unwrap();
+
+  let result = file_fetcher
+    .fetch_no_follow(
+      &url,
+      FetchNoFollowOptions {
+        maybe_checksum: Some(Checksum::new("not matching")),
+        ..Default::default()
+      },
+    )
+    .await;
+  match result.unwrap_err().into_kind() {
+    FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
+      assert_eq!(err.url, url);
+    }
+    err => unreachable!("{err:?}"),
+  }
+  assert_eq!(request_count.load(Ordering::SeqCst), 1);
+  assert_eq!(file_fetcher.fetch_cached(&url, 10).unwrap(), None);
+
+  match file_fetcher
+    .fetch_no_follow(&url, FetchNoFollowOptions::default())
+    .await
+    .unwrap()
+  {
+    FileOrRedirect::File(file) => {
+      assert_eq!(&*file.source, b"rejected bytes");
+    }
+    FileOrRedirect::Redirect(_) => unreachable!(),
+  }
+  assert_eq!(
+    request_count.load(Ordering::SeqCst),
+    2,
+    "checksum-rejected bytes must not be reused from cache",
+  );
+}
+
 // Regression test for https://github.com/denoland/deno/issues/25404.
 // A URL responding with 404 must be negatively cached so it's not
 // re-requested on every process start, until the entry expires or
