@@ -679,7 +679,15 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     } else if scheme == "blob" {
       strategy.handle_blob_url(url).await
     } else if scheme == "https" || scheme == "http" {
+      let cache_setting =
+        options.maybe_cache_setting.unwrap_or(&self.cache_setting);
       if !self.allow_remote {
+        if self.should_use_cache(url, cache_setting)
+          && let Some(value) = strategy
+            .handle_fetch_cached_no_follow(url, options.maybe_checksum)?
+        {
+          return Ok(value);
+        }
         Err(FetchNoFollowErrorKind::NoRemote(url.clone()).into_box())
       } else {
         self
@@ -687,7 +695,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
             strategy,
             url,
             options.maybe_accept,
-            options.maybe_cache_setting.unwrap_or(&self.cache_setting),
+            cache_setting,
             options.maybe_checksum,
             options.maybe_auth,
           )
