@@ -785,6 +785,7 @@ const internalSymbol = Symbol("Deno.internal");
 // the real `Deno.test` defined in cli/js/40_test.js.
 function noopTest() {}
 noopTest.ignore = () => {};
+noopTest.skip = noopTest.ignore;
 noopTest.only = () => {};
 noopTest.beforeAll = () => {};
 noopTest.beforeEach = () => {};

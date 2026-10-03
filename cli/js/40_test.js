@@ -702,6 +702,7 @@ function createEach(overrides) {
 test.each = createEach({ __proto__: null });
 test.only.each = createEach({ only: true });
 test.ignore.each = createEach({ ignore: true });
+test.skip = test.ignore;
 
 function getFullName(desc) {
   if ("parent" in desc) {
