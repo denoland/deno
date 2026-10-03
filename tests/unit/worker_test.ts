@@ -145,6 +145,63 @@ Deno.test("worker termination stops shared-memory writes from Wasm", () =>
 Deno.test("worker async disposal acknowledges stopped Wasm after terminate", () =>
   terminationStopsWasm(true));
 
+Deno.test({
+  name: "worker async disposal waits for native writes into shared memory",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    const dir = await Deno.makeTempDir();
+    const path = `${dir}/input`;
+    const output = await new Deno.Command("mkfifo", { args: [path] }).output();
+    assertEquals(output.code, 0);
+    const buffer = new SharedArrayBuffer(1);
+    const url = URL.createObjectURL(
+      new Blob([
+        `onmessage = async ({data}) => {
+        const file = await Deno.open(data.path, {read:true, write:true});
+        const read = file.read(new Uint8Array(data.buffer));
+        postMessage("reading");
+        await read;
+      };`,
+      ], { type: "application/javascript" }),
+    );
+    const worker = new Worker(url, { type: "module" });
+    const reading = new Promise<void>((resolve) => {
+      worker.onmessage = () => resolve();
+    });
+    let writer: Deno.FsFile | undefined;
+    let disposal: Promise<void> | undefined;
+    try {
+      worker.postMessage({ path, buffer });
+      await reading;
+      writer = Deno.openSync(path, { write: true });
+      // Ensure the blocking read has entered before requesting termination.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      let disposed = false;
+      disposal = worker[Symbol.asyncDispose]().then(() => {
+        disposed = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assertEquals(
+        disposed,
+        false,
+        "native shared-memory write is still pending",
+      );
+      writer.writeSync(new Uint8Array([55]));
+      await disposal;
+      assertEquals(new Uint8Array(buffer)[0], 55);
+    } finally {
+      // Release a blocked read even when the assertion catches premature ack.
+      if (writer) {
+        writer.writeSync(new Uint8Array([55]));
+        writer.close();
+      }
+      await (disposal ?? worker[Symbol.asyncDispose]());
+      URL.revokeObjectURL(url);
+      await Deno.remove(dir, { recursive: true });
+    }
+  },
+});
+
 Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
