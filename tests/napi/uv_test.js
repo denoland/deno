@@ -147,3 +147,83 @@ Deno.test({
     uv.test_uv_cond_broadcast();
   },
 });
+
+function uvPollTest(name, run) {
+  Deno.test({
+    name,
+    ignore: Deno.build.os === "windows",
+    fn: async () => {
+      const passed = await new Promise((resolve) => run(resolve));
+      assertEquals(passed, true);
+    },
+  });
+}
+
+Deno.test({
+  name: "napi uv poll init sets fd nonblocking",
+  ignore: Deno.build.os === "windows",
+  fn: () => uv.test_uv_poll_init_sets_nonblocking(),
+});
+
+uvPollTest("napi uv poll reports actual writable events", (done) => {
+  uv.test_uv_poll_reports_actual_writable_events(done);
+});
+
+uvPollTest("napi uv poll dispatches hangup-only readiness", (done) => {
+  uv.test_uv_poll_dispatches_hangup_only(done);
+});
+
+Deno.test({
+  name: "napi uv poll reports peer disconnect",
+  ignore: Deno.build.os !== "linux",
+  async fn() {
+    const passed = await new Promise((resolve) => {
+      uv.test_uv_poll_reports_disconnect(resolve);
+    });
+    assertEquals(passed, true);
+  },
+});
+
+uvPollTest("napi uv poll reports invalid fd error", (done) => {
+  uv.test_uv_poll_invalid_fd_reports_ebadf(done);
+});
+
+uvPollTest("napi uv poll repeats while fd remains readable", (done) => {
+  uv.test_uv_poll_repeats_while_readable(done);
+});
+
+uvPollTest("napi uv poll stop suppresses subsequent callback", (done) => {
+  uv.test_uv_poll_stop_suppresses_ready_callback(done);
+});
+
+uvPollTest("napi uv poll applies callback back-pressure", (done) => {
+  uv.test_uv_poll_does_not_flood_callbacks(done);
+});
+
+uvPollTest("napi uv poll restart replaces active watch", (done) => {
+  uv.test_uv_poll_restart_replaces_watch(done);
+});
+
+uvPollTest("napi uv poll allows one active handle per fd", (done) => {
+  uv.test_uv_poll_allows_one_active_handle_per_fd(done);
+});
+
+uvPollTest("napi uv poll close suppresses subsequent callback", (done) => {
+  uv.test_uv_poll_close_suppresses_ready_callback(done);
+});
+
+uvPollTest("napi uv poll delivers two independent fds", (done) => {
+  uv.test_uv_poll_delivers_two_fds(done);
+});
+
+uvPollTest("napi uv poll callback can stop itself", (done) => {
+  uv.test_uv_poll_self_stops(done);
+});
+
+uvPollTest("napi uv poll callback can restart itself", (done) => {
+  uv.test_uv_poll_restarts_in_callback(done);
+});
+
+uvPollTest("napi uv poll callback can close itself", (done) => {
+  uv.test_uv_poll_closes_in_callback(done);
+});

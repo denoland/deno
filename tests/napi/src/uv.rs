@@ -1,9 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#[cfg(unix)]
+use std::ffi::c_void;
+#[cfg(unix)]
+use std::fs::File;
 use std::mem::MaybeUninit;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
+#[cfg(unix)]
+use std::os::fd::OwnedFd;
 use std::ptr;
 use std::ptr::addr_of_mut;
 use std::ptr::null_mut;
+#[cfg(unix)]
+use std::sync::mpsc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -1028,6 +1040,1329 @@ extern "C" fn test_uv_cond_broadcast(
   undefined
 }
 
+#[cfg(unix)]
+extern "C" fn test_uv_poll_init_sets_nonblocking(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let mut loop_ = null_mut();
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+    let mut fds = [0; 2];
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+    let poll_fd = OwnedFd::from_raw_fd(fds[0]);
+    let _other_fd = OwnedFd::from_raw_fd(fds[1]);
+    let flags = libc::fcntl(poll_fd.as_raw_fd(), libc::F_GETFL);
+    assert_ne!(flags, -1);
+    assert_eq!(flags & libc::O_NONBLOCK, 0);
+
+    let mut poll = MaybeUninit::<libuv_sys_lite::uv_poll_t>::zeroed();
+    assert_eq!(
+      libuv_sys_lite::uv_poll_init(
+        loop_.cast(),
+        poll.as_mut_ptr(),
+        poll_fd.as_raw_fd(),
+      ),
+      0
+    );
+    let flags = libc::fcntl(poll_fd.as_raw_fd(), libc::F_GETFL);
+    assert_ne!(flags, -1);
+    assert_ne!(flags & libc::O_NONBLOCK, 0);
+    libuv_sys_lite::uv_close(poll.as_mut_ptr().cast(), None);
+  }
+
+  let mut undefined = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
+#[cfg(unix)]
+struct PollTest {
+  env: napi_env,
+  // Keeps the JavaScript completion callback alive across asynchronous work.
+  callback: napi_ref,
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  // Starts as the watchdog; unrelated fixtures may reuse it for a settle
+  // window after first stopping it.
+  timer: *mut libuv_sys_lite::uv_timer_t,
+  poll_fd: OwnedFd,
+  other_fd: OwnedFd,
+  poll_callback_count: usize,
+  closing: bool,
+  poll_closed: bool,
+  passed: bool,
+  closed_handles: usize,
+  expected_status: i32,
+  expected_events: i32,
+  expected_active: bool,
+  settle_after_callback: bool,
+}
+
+#[cfg(unix)]
+struct MultiPollTest {
+  env: napi_env,
+  callback: napi_ref,
+  first_poll: *mut libuv_sys_lite::uv_poll_t,
+  second_poll: *mut libuv_sys_lite::uv_poll_t,
+  timer: *mut libuv_sys_lite::uv_timer_t,
+  first_reader: OwnedFd,
+  first_writer: OwnedFd,
+  second_reader: OwnedFd,
+  // Keeps the helper's raw descriptor valid until its rendezvous write and
+  // acknowledgement complete during the first callback.
+  _second_writer: OwnedFd,
+  first_ready: mpsc::SyncSender<()>,
+  second_write_result: mpsc::Receiver<isize>,
+  first_callback_count: usize,
+  second_callback_count: usize,
+  first_callback_returned: bool,
+  closing: bool,
+  passed: bool,
+  closed_handles: usize,
+}
+
+#[cfg(unix)]
+unsafe fn multi_poll_test_finish(state: *mut MultiPollTest, passed: bool) {
+  unsafe {
+    // Either poll callback or the timeout may finish first. Once closing has
+    // begun, retain a late failure without scheduling duplicate closes.
+    if (*state).closing {
+      (*state).passed &= passed;
+      return;
+    }
+    (*state).closing = true;
+    (*state).passed &= passed;
+    assert_eq!(libuv_sys_lite::uv_poll_stop((*state).first_poll), 0);
+    assert_eq!(libuv_sys_lite::uv_poll_stop((*state).second_poll), 0);
+    assert_eq!(libuv_sys_lite::uv_timer_stop((*state).timer), 0);
+    libuv_sys_lite::uv_close(
+      (*state).first_poll.cast(),
+      Some(multi_poll_test_close_cb),
+    );
+    libuv_sys_lite::uv_close(
+      (*state).second_poll.cast(),
+      Some(multi_poll_test_close_cb),
+    );
+    libuv_sys_lite::uv_close(
+      (*state).timer.cast(),
+      Some(multi_poll_test_close_cb),
+    );
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn multi_poll_test_close_cb(
+  handle: *mut libuv_sys_lite::uv_handle_t,
+) {
+  unsafe {
+    let state = (*handle).data.cast::<MultiPollTest>();
+    (*state).closed_handles += 1;
+    // libuv may invoke these three close callbacks in any order. The last one
+    // owns reporting the result and freeing state after every handle closes.
+    if (*state).closed_handles != 3 {
+      return;
+    }
+
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      (*state).env,
+      (*state).callback,
+      &mut js_cb
+    ));
+    let mut global = null_mut();
+    assert_napi_ok!(napi_get_global((*state).env, &mut global));
+    let mut passed = null_mut();
+    assert_napi_ok!(napi_get_boolean(
+      (*state).env,
+      (*state).passed,
+      &mut passed
+    ));
+    let mut result = null_mut();
+    assert_napi_ok!(napi_call_function(
+      (*state).env,
+      global,
+      js_cb,
+      1,
+      &passed,
+      &mut result,
+    ));
+    assert_napi_ok!(napi_delete_reference((*state).env, (*state).callback));
+
+    let _ = Box::from_raw((*state).first_poll);
+    let _ = Box::from_raw((*state).second_poll);
+    let _ = Box::from_raw((*state).timer);
+    let _ = Box::from_raw(state);
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn multi_poll_test_timeout(
+  timer: *mut libuv_sys_lite::uv_timer_t,
+) {
+  unsafe {
+    multi_poll_test_finish((*timer).data.cast(), false);
+  }
+}
+
+#[cfg(unix)]
+unsafe fn new_multi_poll_test(
+  env: napi_env,
+  callback: napi_value,
+) -> *mut MultiPollTest {
+  unsafe {
+    let mut first_fds = [0; 2];
+    let mut second_fds = [0; 2];
+    assert_eq!(libc::pipe(first_fds.as_mut_ptr()), 0);
+    assert_eq!(libc::pipe(second_fds.as_mut_ptr()), 0);
+    let first_reader = OwnedFd::from_raw_fd(first_fds[0]);
+    let first_writer = OwnedFd::from_raw_fd(first_fds[1]);
+    let second_reader = OwnedFd::from_raw_fd(second_fds[0]);
+    let second_writer = OwnedFd::from_raw_fd(second_fds[1]);
+    let (first_ready, wait_for_first) = mpsc::sync_channel(0);
+    let (second_was_written, second_write_result) = mpsc::sync_channel(1);
+    let second_writer_fd = second_writer.as_raw_fd();
+    std::thread::spawn(move || {
+      if wait_for_first.recv().is_ok() {
+        let written = libc::write(second_writer_fd, b"x".as_ptr().cast(), 1);
+        let _ = second_was_written.send(written);
+      }
+    });
+
+    let first_poll = Box::into_raw(Box::new(MaybeUninit::<
+      libuv_sys_lite::uv_poll_t,
+    >::zeroed()))
+    .cast();
+    let second_poll = Box::into_raw(Box::new(MaybeUninit::<
+      libuv_sys_lite::uv_poll_t,
+    >::zeroed()))
+    .cast();
+    let timer = Box::into_raw(Box::new(MaybeUninit::<
+      libuv_sys_lite::uv_timer_t,
+    >::zeroed()))
+    .cast();
+    let mut loop_ = null_mut();
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+    let mut callback_ref = null_mut();
+    assert_napi_ok!(napi_create_reference(env, callback, 1, &mut callback_ref));
+    let state = Box::into_raw(Box::new(MultiPollTest {
+      env,
+      callback: callback_ref,
+      first_poll,
+      second_poll,
+      timer,
+      first_reader,
+      first_writer,
+      second_reader,
+      _second_writer: second_writer,
+      first_ready,
+      second_write_result,
+      first_callback_count: 0,
+      second_callback_count: 0,
+      first_callback_returned: false,
+      closing: false,
+      passed: true,
+      closed_handles: 0,
+    }));
+
+    assert_eq!(
+      libuv_sys_lite::uv_poll_init(
+        loop_.cast(),
+        first_poll,
+        (*state).first_reader.as_raw_fd(),
+      ),
+      0
+    );
+    assert_eq!(
+      libuv_sys_lite::uv_poll_init(
+        loop_.cast(),
+        second_poll,
+        (*state).second_reader.as_raw_fd(),
+      ),
+      0
+    );
+    assert_eq!(libuv_sys_lite::uv_timer_init(loop_.cast(), timer), 0);
+    libuv_sys_lite::uv_handle_set_data(first_poll.cast(), state.cast());
+    libuv_sys_lite::uv_handle_set_data(second_poll.cast(), state.cast());
+    libuv_sys_lite::uv_handle_set_data(timer.cast(), state.cast());
+    assert_eq!(
+      libuv_sys_lite::uv_timer_start(
+        timer,
+        Some(multi_poll_test_timeout),
+        10_000,
+        0,
+      ),
+      0
+    );
+    state
+  }
+}
+
+#[cfg(unix)]
+unsafe fn poll_test_finish(state: *mut PollTest, passed: bool) {
+  unsafe {
+    // All exit paths converge here so the watchdog and ordinary assertions use
+    // the same idempotent cleanup sequence.
+    if (*state).closing {
+      // A callback after cleanup has begun is a test failure. Preserve the
+      // failure without closing either handle twice.
+      (*state).passed &= passed;
+      return;
+    }
+    (*state).closing = true;
+    (*state).passed &= passed;
+    if !(*state).poll_closed {
+      assert_eq!(libuv_sys_lite::uv_poll_stop((*state).poll), 0);
+    }
+    assert_eq!(libuv_sys_lite::uv_timer_stop((*state).timer), 0);
+    if !(*state).poll_closed {
+      (*state).poll_closed = true;
+      libuv_sys_lite::uv_close((*state).poll.cast(), Some(poll_test_close_cb));
+    }
+    libuv_sys_lite::uv_close((*state).timer.cast(), Some(poll_test_close_cb));
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_test_close_cb(
+  handle: *mut libuv_sys_lite::uv_handle_t,
+) {
+  unsafe {
+    let state = (*handle).data.cast::<PollTest>();
+    (*state).closed_handles += 1;
+    if (*state).closed_handles != 2 {
+      return;
+    }
+
+    // Free shared state and resolve JavaScript only after both close callbacks
+    // have run.
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      (*state).env,
+      (*state).callback,
+      &mut js_cb
+    ));
+    let mut global = null_mut();
+    assert_napi_ok!(napi_get_global((*state).env, &mut global));
+    let mut passed = null_mut();
+    assert_napi_ok!(napi_get_boolean(
+      (*state).env,
+      (*state).passed,
+      &mut passed
+    ));
+    let mut result = null_mut();
+    assert_napi_ok!(napi_call_function(
+      (*state).env,
+      global,
+      js_cb,
+      1,
+      &passed,
+      &mut result,
+    ));
+    assert_napi_ok!(napi_delete_reference((*state).env, (*state).callback));
+
+    let _ = Box::from_raw((*state).poll);
+    let _ = Box::from_raw((*state).timer);
+    let _ = Box::from_raw(state);
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_test_timeout(timer: *mut libuv_sys_lite::uv_timer_t) {
+  unsafe {
+    let state = (*timer).data.cast::<PollTest>();
+    poll_test_finish(state, false);
+  }
+}
+
+#[cfg(unix)]
+unsafe fn new_poll_test(env: napi_env, callback: napi_value) -> *mut PollTest {
+  unsafe {
+    // Create the usual pipe fixture: poll its read end and write to its peer.
+    let mut fds = [0; 2];
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+    let reader = OwnedFd::from_raw_fd(fds[0]);
+    let writer = OwnedFd::from_raw_fd(fds[1]);
+    new_poll_test_with_fds(env, callback, reader, writer)
+  }
+}
+
+#[cfg(unix)]
+struct ActivePollForTeardown {
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  _reader: OwnedFd,
+  _writer: OwnedFd,
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn active_poll_for_teardown_callback(
+  _poll: *mut libuv_sys_lite::uv_poll_t,
+  _status: i32,
+  _events: i32,
+) {
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn active_poll_for_teardown_cleanup(data: *mut c_void) {
+  unsafe {
+    // NapiState::drop invalidates this Env's poll scope before calling cleanup
+    // hooks, so queued poll readiness cannot reach this bridge after the
+    // addon-owned poll storage is released below.
+    let state = Box::from_raw(data.cast::<ActivePollForTeardown>());
+    libuv_sys_lite::uv_close(state.poll.cast(), None);
+    let _ = Box::from_raw(state.poll);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_leave_active(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  unsafe {
+    let mut unref = false;
+    assert_napi_ok!(napi_get_value_bool(env, args[0], &mut unref));
+
+    let mut fds = [0; 2];
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+    let reader = OwnedFd::from_raw_fd(fds[0]);
+    let writer = OwnedFd::from_raw_fd(fds[1]);
+    let poll = Box::into_raw(Box::new(
+      MaybeUninit::<libuv_sys_lite::uv_poll_t>::zeroed(),
+    ))
+    .cast();
+    let state = Box::into_raw(Box::new(ActivePollForTeardown {
+      poll,
+      _reader: reader,
+      _writer: writer,
+    }));
+    let mut loop_ = null_mut();
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+    assert_eq!(
+      libuv_sys_lite::uv_poll_init(
+        loop_.cast(),
+        poll,
+        (*state)._reader.as_raw_fd(),
+      ),
+      0
+    );
+    libuv_sys_lite::uv_handle_set_data(poll.cast(), state.cast());
+    assert_eq!(
+      libuv_sys_lite::uv_poll_start(
+        poll,
+        libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+        Some(active_poll_for_teardown_callback),
+      ),
+      0
+    );
+    // Exercise teardown both with and without this active poll keeping the
+    // loop alive.
+    if unref {
+      libuv_sys_lite::uv_unref(poll.cast());
+    }
+    // Leave this ready poll and its storage to the environment cleanup hook.
+    assert_eq!(
+      libc::write((*state)._writer.as_raw_fd(), b"x".as_ptr().cast(), 1),
+      1
+    );
+    assert_napi_ok!(napi_add_env_cleanup_hook(
+      env,
+      Some(active_poll_for_teardown_cleanup),
+      state.cast(),
+    ));
+  }
+
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe fn new_poll_test_with_fds(
+  env: napi_env,
+  callback: napi_value,
+  poll_fd: OwnedFd,
+  other_fd: OwnedFd,
+) -> *mut PollTest {
+  unsafe {
+    // The fixture owns both descriptors until its two libuv handles finish
+    // closing, including for tests that provide sockets instead of a pipe.
+    let poll = Box::into_raw(Box::new(
+      MaybeUninit::<libuv_sys_lite::uv_poll_t>::zeroed(),
+    ))
+    .cast();
+    let timer = Box::into_raw(Box::new(MaybeUninit::<
+      libuv_sys_lite::uv_timer_t,
+    >::zeroed()))
+    .cast();
+    let mut callback_ref = null_mut();
+    assert_napi_ok!(napi_create_reference(env, callback, 1, &mut callback_ref));
+    let mut loop_ = null_mut();
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+
+    let state = Box::into_raw(Box::new(PollTest {
+      env,
+      callback: callback_ref,
+      poll,
+      timer,
+      poll_fd,
+      other_fd,
+      poll_callback_count: 0,
+      closing: false,
+      poll_closed: false,
+      passed: true,
+      closed_handles: 0,
+      expected_status: 0,
+      expected_events: 0,
+      expected_active: false,
+      settle_after_callback: false,
+    }));
+
+    assert_eq!(
+      libuv_sys_lite::uv_poll_init(
+        loop_.cast(),
+        poll,
+        (*state).poll_fd.as_raw_fd()
+      ),
+      0
+    );
+    assert_eq!(libuv_sys_lite::uv_timer_init(loop_.cast(), timer), 0);
+    libuv_sys_lite::uv_handle_set_data(poll.cast(), state.cast());
+    libuv_sys_lite::uv_handle_set_data(timer.cast(), state.cast());
+    assert_eq!(
+      // This failure-only watchdog leaves the short settle timers below
+      // unchanged while providing enough margin for loaded CI workers.
+      libuv_sys_lite::uv_timer_start(timer, Some(poll_test_timeout), 10_000, 0),
+      0
+    );
+    state
+  }
+}
+
+#[cfg(unix)]
+unsafe fn poll_test_start(
+  state: *mut PollTest,
+  events: i32,
+  callback: libuv_sys_lite::uv_poll_cb,
+) {
+  unsafe {
+    assert_eq!(
+      libuv_sys_lite::uv_poll_start((*state).poll, events, callback),
+      0
+    );
+  }
+}
+
+#[cfg(unix)]
+unsafe fn poll_test_write(state: *mut PollTest) {
+  unsafe {
+    assert_eq!(
+      libc::write((*state).other_fd.as_raw_fd(), b"x".as_ptr().cast(), 1),
+      1
+    );
+  }
+}
+
+#[cfg(unix)]
+unsafe fn poll_test_start_timer(
+  state: *mut PollTest,
+  callback: libuv_sys_lite::uv_timer_cb,
+  timeout: u64,
+) {
+  unsafe {
+    // Reuse the watchdog timer for short post-condition windows after first
+    // stopping it; this avoids introducing another handle to clean up.
+    assert_eq!(
+      libuv_sys_lite::uv_timer_start((*state).timer, callback, timeout, 0),
+      0
+    );
+  }
+}
+
+#[cfg(unix)]
+unsafe fn poll_test_expect(
+  state: *mut PollTest,
+  status: i32,
+  events: i32,
+  active: bool,
+  settle_after_callback: bool,
+) {
+  unsafe {
+    (*state).expected_status = status;
+    (*state).expected_events = events;
+    (*state).expected_active = active;
+    (*state).settle_after_callback = settle_after_callback;
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_expected_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    (*state).poll_callback_count += 1;
+    let active = libuv_sys_lite::uv_is_active(poll.cast()) != 0;
+    (*state).passed &= (*state).poll_callback_count == 1
+      && status == (*state).expected_status
+      && events == (*state).expected_events
+      && (*state).expected_active == active;
+
+    if (*state).settle_after_callback {
+      assert_eq!(libuv_sys_lite::uv_timer_stop((*state).timer), 0);
+      poll_test_start_timer(state, Some(poll_stop_settle_cb), 100);
+    } else {
+      poll_test_finish(state, (*state).passed);
+    }
+  }
+}
+
+#[cfg(unix)]
+fn poll_callback_arg(env: napi_env, info: napi_callback_info) -> napi_value {
+  // Poll tests receive one `done` Promise resolver, which the fixture retains
+  // until asynchronous cleanup has completed.
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+  args[0]
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_reports_actual_writable_events(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let mut fds = [0; 2];
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+    let reader = OwnedFd::from_raw_fd(fds[0]);
+    let writer = OwnedFd::from_raw_fd(fds[1]);
+    let state =
+      new_poll_test_with_fds(env, poll_callback_arg(env, info), writer, reader);
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    let writable = libuv_sys_lite::uv_poll_event::UV_WRITABLE.0 as i32;
+    // A pipe's write end produces POLLOUT but not POLLIN. Requesting both bits
+    // distinguishes actual readiness from the requested mask. Expecting
+    // UV_WRITABLE (2) verifies that POLLOUT (4 on supported Unix targets) is
+    // translated to the libuv value.
+    poll_test_expect(state, 0, writable, true, false);
+    poll_test_start(state, readable | writable, Some(poll_expected_cb));
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_dispatches_hangup_only(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let mut fds = [0; 2];
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+    let reader = OwnedFd::from_raw_fd(fds[0]);
+    let writer = OwnedFd::from_raw_fd(fds[1]);
+    drop(writer);
+    // poll(2) reports POLLHUP independently of the requested mask. libuv
+    // surfaces the requested readable interest so the consumer can observe EOF.
+    let placeholder: OwnedFd = File::open("/dev/null").unwrap().into();
+    let state = new_poll_test_with_fds(
+      env,
+      poll_callback_arg(env, info),
+      reader,
+      placeholder,
+    );
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    poll_test_expect(state, 0, readable, true, false);
+    poll_test_start(state, readable, Some(poll_expected_cb));
+  }
+  null_mut()
+}
+
+#[cfg(target_os = "linux")]
+extern "C" fn test_uv_poll_reports_disconnect(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let mut fds = [0; 2];
+    assert_eq!(
+      libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr(),),
+      0
+    );
+    let poll_socket = OwnedFd::from_raw_fd(fds[0]);
+    let peer_socket = OwnedFd::from_raw_fd(fds[1]);
+    let state = new_poll_test_with_fds(
+      env,
+      poll_callback_arg(env, info),
+      poll_socket,
+      peer_socket,
+    );
+    let disconnect = libuv_sys_lite::uv_poll_event::UV_DISCONNECT.0 as i32;
+    poll_test_expect(state, 0, disconnect, true, false);
+    poll_test_start(state, disconnect, Some(poll_expected_cb));
+
+    // Linux reports POLLRDHUP when the peer closes its write side. Other Unix
+    // poll backends do not guarantee an equivalent raw event, so the JavaScript
+    // test runs this production-path assertion on Linux only.
+    assert_eq!(
+      libc::shutdown((*state).other_fd.as_raw_fd(), libc::SHUT_WR),
+      0
+    );
+  }
+  null_mut()
+}
+
+#[cfg(not(target_os = "linux"))]
+extern "C" fn test_uv_poll_reports_disconnect(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut undefined = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_invalid_fd_reports_ebadf(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    // Closing an fd after uv_poll_init is invalid libuv usage, and libuv does
+    // not guarantee an error callback. This test pins a defensive property of
+    // our current poll(2) driver: when it observes POLLNVAL, the compatibility
+    // layer reports UV_EBADF once and stops the handle. A future epoll, kqueue,
+    // or other backend that silently discards closed descriptors may remove or
+    // relax this test instead of synthesizing a stronger guarantee than libuv.
+    //
+    // Replace the reader before closing it so cleanup cannot close a later
+    // descriptor that reuses the same fd.
+    let placeholder: OwnedFd = File::open("/dev/null").unwrap().into();
+    drop(std::mem::replace(&mut (*state).poll_fd, placeholder));
+    poll_test_expect(
+      state,
+      libuv_sys_lite::uv_errno_t::UV_EBADF.0,
+      0,
+      false,
+      false,
+    );
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_expected_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_level_triggered_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    (*state).passed &= status == 0 && events == readable;
+    (*state).poll_callback_count += 1;
+    // Leave the byte unread. libuv polling is level-triggered, so the same
+    // readiness must produce another callback without another uv_poll_start().
+    if (*state).poll_callback_count == 2 {
+      poll_test_finish(state, (*state).passed);
+    }
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_repeats_while_readable(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    poll_test_write(state);
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_level_triggered_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_stop_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  _status: i32,
+  _events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    // If this callback runs after uv_poll_stop(), cancellation failed.
+    (*state).passed = false;
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_stop_settle_cb(
+  timer: *mut libuv_sys_lite::uv_timer_t,
+) {
+  unsafe {
+    poll_test_finish((*timer).data.cast(), true);
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_arm_then_stop_cb(
+  timer: *mut libuv_sys_lite::uv_timer_t,
+) {
+  unsafe {
+    let state = (*timer).data.cast::<PollTest>();
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_stop_cb),
+    );
+    // Keep the loop thread occupied long enough for the poll worker to observe
+    // readiness and queue its callback. The task queue exposes no test-visible
+    // latch, so this generous scheduling window is the closest public-API
+    // approximation of a pending callback. stop must suppress that callback.
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(libuv_sys_lite::uv_poll_stop((*state).poll), 0);
+    poll_test_start_timer(state, Some(poll_stop_settle_cb), 100);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_stop_suppresses_ready_callback(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    poll_test_write(state);
+    assert_eq!(libuv_sys_lite::uv_timer_stop((*state).timer), 0);
+    poll_test_start_timer(state, Some(poll_arm_then_stop_cb), 0);
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_no_flood_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    (*state).poll_callback_count += 1;
+    if (*state).poll_callback_count != 1 {
+      // Leave cleanup to the settle timer installed by the first callback.
+      // Several callbacks may already be queued by the implementation under
+      // test, so freeing shared state here would make the test itself racy.
+      (*state).passed = false;
+      assert_eq!(libuv_sys_lite::uv_poll_stop(poll), 0);
+      return;
+    }
+
+    // Keep the loop-thread callback busy while the fd remains level-ready.
+    // A poll worker may not enqueue successors until this callback returns.
+    std::thread::sleep(Duration::from_millis(100));
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    (*state).passed = status == 0 && events == readable;
+    assert_eq!(libuv_sys_lite::uv_poll_stop(poll), 0);
+    assert_eq!(libuv_sys_lite::uv_timer_stop((*state).timer), 0);
+    poll_test_start_timer(state, Some(poll_stop_settle_cb), 100);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_does_not_flood_callbacks(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    poll_test_write(state);
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_no_flood_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn multi_poll_first_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<MultiPollTest>();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    (*state).first_callback_count += 1;
+    (*state).passed &=
+      (*state).first_callback_count == 1 && status == 0 && events == readable;
+    if (*state).first_ready.send(()).is_err() {
+      multi_poll_test_finish(state, false);
+      return;
+    }
+
+    // The helper writes only after this callback begins and acknowledges the
+    // write before it returns, proving the second descriptor is ready here.
+    // The second callback then verifies it dispatches after this flag is set.
+    if !matches!((*state).second_write_result.recv(), Ok(1)) {
+      multi_poll_test_finish(state, false);
+      return;
+    }
+    assert_eq!(libuv_sys_lite::uv_poll_stop(poll), 0);
+    (*state).first_callback_returned = true;
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn multi_poll_second_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<MultiPollTest>();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    (*state).second_callback_count += 1;
+    (*state).passed &= (*state).first_callback_returned
+      && (*state).second_callback_count == 1
+      && status == 0
+      && events == readable;
+    multi_poll_test_finish(state, (*state).passed);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_delivers_two_fds(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_multi_poll_test(env, poll_callback_arg(env, info));
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    assert_eq!(
+      libuv_sys_lite::uv_poll_start(
+        (*state).first_poll,
+        readable,
+        Some(multi_poll_first_cb),
+      ),
+      0
+    );
+    assert_eq!(
+      libuv_sys_lite::uv_poll_start(
+        (*state).second_poll,
+        readable,
+        Some(multi_poll_second_cb),
+      ),
+      0
+    );
+    assert_eq!(
+      libc::write((*state).first_writer.as_raw_fd(), b"x".as_ptr().cast(), 1,),
+      1
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_self_stop_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    (*state).poll_callback_count += 1;
+    (*state).passed &=
+      (*state).poll_callback_count == 1 && status == 0 && events == readable;
+    assert_eq!(libuv_sys_lite::uv_poll_stop(poll), 0);
+    poll_test_finish(state, (*state).passed);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_self_stops(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    poll_test_write(state);
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_self_stop_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_self_restarted_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    let writable = libuv_sys_lite::uv_poll_event::UV_WRITABLE.0 as i32;
+    (*state).poll_callback_count += 1;
+    // Two writable callbacks prove the replacement watch remains active after
+    // its first delivery.
+    (*state).passed &= (*state).poll_callback_count > 1
+      && (*state).poll_callback_count <= 3
+      && status == 0
+      && events == writable;
+    if (*state).poll_callback_count == 3 {
+      assert_eq!(libuv_sys_lite::uv_poll_stop(poll), 0);
+      poll_test_finish(state, (*state).passed);
+    }
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_self_restart_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    let writable = libuv_sys_lite::uv_poll_event::UV_WRITABLE.0 as i32;
+    (*state).poll_callback_count += 1;
+    (*state).passed &=
+      (*state).poll_callback_count == 1 && status == 0 && events == readable;
+    // Keep the original byte unread while requesting writable so the
+    // replacement runs while the original readiness remains.
+    assert_eq!(
+      libuv_sys_lite::uv_poll_start(
+        poll,
+        writable,
+        Some(poll_self_restarted_cb)
+      ),
+      0
+    );
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_restarts_in_callback(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let (client, server) = std::os::unix::net::UnixStream::pair().unwrap();
+    let state = new_poll_test_with_fds(
+      env,
+      poll_callback_arg(env, info),
+      client.into(),
+      server.into(),
+    );
+    poll_test_write(state);
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_self_restart_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_self_close_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+    (*state).poll_callback_count += 1;
+    (*state).passed &=
+      (*state).poll_callback_count == 1 && status == 0 && events == readable;
+    (*state).poll_closed = true;
+    libuv_sys_lite::uv_close(poll.cast(), Some(poll_test_close_cb));
+    poll_test_finish(state, (*state).passed);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_closes_in_callback(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    poll_test_write(state);
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_self_close_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_restarted_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  status: i32,
+  events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    let writable = libuv_sys_lite::uv_poll_event::UV_WRITABLE.0 as i32;
+    (*state).passed &= status == 0 && events == writable;
+    (*state).poll_callback_count += 1;
+    // Requiring two callbacks also proves the replacement watch remains armed.
+    if (*state).poll_callback_count == 2 {
+      poll_test_finish(state, (*state).passed);
+    }
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_stale_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  _status: i32,
+  _events: i32,
+) {
+  unsafe {
+    poll_test_finish((*poll).data.cast(), false);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_restart_replaces_watch(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let (client, server) = std::os::unix::net::UnixStream::pair().unwrap();
+    let state = new_poll_test_with_fds(
+      env,
+      poll_callback_arg(env, info),
+      client.into(),
+      server.into(),
+    );
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_stale_cb),
+    );
+    // Restarting replaces the callback and event mask atomically from the
+    // addon's perspective; callbacks belonging to the previous watch must not
+    // run. The socket is writable, while no data makes it readable.
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_WRITABLE.0 as i32,
+      Some(poll_restarted_cb),
+    );
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn duplicate_poll_close_cb(
+  handle: *mut libuv_sys_lite::uv_handle_t,
+) {
+  unsafe {
+    let _ = Box::from_raw(handle.cast::<libuv_sys_lite::uv_poll_t>());
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_allows_one_active_handle_per_fd(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    let second = Box::into_raw(Box::new(MaybeUninit::<
+      libuv_sys_lite::uv_poll_t,
+    >::zeroed()))
+    .cast();
+    let mut loop_ = null_mut();
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+    let fd = (*state).poll_fd.as_raw_fd();
+    let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
+
+    // libuv permits multiple initialized poll handles for an fd, but only one
+    // may actively poll it at a time. Exclusivity ends immediately when the
+    // active handle stops.
+    let second_init = libuv_sys_lite::uv_poll_init(loop_.cast(), second, fd);
+    if second_init != 0 {
+      // A failed init leaves the handle uninitialized, so uv_close() would not
+      // be valid. Free its storage and report the contract failure directly.
+      let _ = Box::from_raw(second);
+      poll_test_finish(state, false);
+      return null_mut();
+    }
+    libuv_sys_lite::uv_handle_set_data(second.cast(), state.cast());
+    let start_zero =
+      libuv_sys_lite::uv_poll_start((*state).poll, 0, Some(poll_stale_cb));
+    let start_zero_null = libuv_sys_lite::uv_poll_start((*state).poll, 0, None);
+    let first_start = libuv_sys_lite::uv_poll_start(
+      (*state).poll,
+      readable,
+      Some(poll_stale_cb),
+    );
+    let first_start_null =
+      libuv_sys_lite::uv_poll_start((*state).poll, readable, None);
+    let third = Box::into_raw(Box::new(
+      MaybeUninit::<libuv_sys_lite::uv_poll_t>::zeroed(),
+    ))
+    .cast();
+    let late_init = libuv_sys_lite::uv_poll_init(loop_.cast(), third, fd);
+    let conflicting_start =
+      libuv_sys_lite::uv_poll_start(second, readable, Some(poll_stale_cb));
+    let conflicting_start_zero =
+      libuv_sys_lite::uv_poll_start(second, 0, Some(poll_stale_cb));
+    let conflicting_start_zero_null =
+      libuv_sys_lite::uv_poll_start(second, 0, None);
+    let conflicting_start_null =
+      libuv_sys_lite::uv_poll_start(second, readable, None);
+    let first_stop = libuv_sys_lite::uv_poll_stop((*state).poll);
+    let second_start =
+      libuv_sys_lite::uv_poll_start(second, readable, Some(poll_stale_cb));
+    let second_stop = libuv_sys_lite::uv_poll_stop(second);
+
+    let passed = second_init == 0
+      && start_zero == 0
+      && start_zero_null == 0
+      && first_start == 0
+      && first_start_null == libuv_sys_lite::uv_errno_t::UV_EINVAL.0
+      && late_init == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && conflicting_start == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && conflicting_start_zero == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && conflicting_start_zero_null == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && conflicting_start_null == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && first_stop == 0
+      && second_start == 0
+      && second_stop == 0;
+
+    libuv_sys_lite::uv_close(second.cast(), Some(duplicate_poll_close_cb));
+    if late_init == 0 {
+      libuv_sys_lite::uv_close(third.cast(), Some(duplicate_poll_close_cb));
+    } else {
+      let _ = Box::from_raw(third);
+    }
+    poll_test_finish(state, passed);
+  }
+  null_mut()
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_after_close_cb(
+  poll: *mut libuv_sys_lite::uv_poll_t,
+  _status: i32,
+  _events: i32,
+) {
+  unsafe {
+    let state = (*poll).data.cast::<PollTest>();
+    (*state).passed = false;
+  }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn poll_arm_then_close_cb(
+  timer: *mut libuv_sys_lite::uv_timer_t,
+) {
+  unsafe {
+    let state = (*timer).data.cast::<PollTest>();
+    poll_test_start(
+      state,
+      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
+      Some(poll_after_close_cb),
+    );
+    // As in the stop test, use a generous scheduling window because the task
+    // queue exposes no test-visible latch. uv_close() must invalidate the
+    // callback expected to be in transit.
+    std::thread::sleep(Duration::from_millis(100));
+    (*state).poll_closed = true;
+    libuv_sys_lite::uv_close((*state).poll.cast(), Some(poll_test_close_cb));
+    poll_test_start_timer(state, Some(poll_stop_settle_cb), 100);
+  }
+}
+
+#[cfg(unix)]
+extern "C" fn test_uv_poll_close_suppresses_ready_callback(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    let state = new_poll_test(env, poll_callback_arg(env, info));
+    poll_test_write(state);
+    assert_eq!(libuv_sys_lite::uv_timer_stop((*state).timer), 0);
+    poll_test_start_timer(state, Some(poll_arm_then_close_cb), 0);
+  }
+  null_mut()
+}
+
+#[cfg(not(unix))]
+macro_rules! unsupported_poll_test {
+  ($name:ident) => {
+    extern "C" fn $name(
+      env: napi_env,
+      _info: napi_callback_info,
+    ) -> napi_value {
+      let mut undefined = null_mut();
+      unsafe {
+        assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+      }
+      undefined
+    }
+  };
+}
+
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_init_sets_nonblocking);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_reports_actual_writable_events);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_dispatches_hangup_only);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_invalid_fd_reports_ebadf);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_repeats_while_readable);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_stop_suppresses_ready_callback);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_does_not_flood_callbacks);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_restart_replaces_watch);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_allows_one_active_handle_per_fd);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_close_suppresses_ready_callback);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_delivers_two_fds);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_self_stops);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_restarts_in_callback);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_closes_in_callback);
+#[cfg(not(unix))]
+unsupported_poll_test!(test_uv_poll_leave_active);
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
@@ -1043,6 +2378,82 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_uv_threads", test_uv_threads),
     napi_new_property!(env, "test_uv_cond", test_uv_cond),
     napi_new_property!(env, "test_uv_cond_broadcast", test_uv_cond_broadcast),
+    napi_new_property!(
+      env,
+      "test_uv_poll_init_sets_nonblocking",
+      test_uv_poll_init_sets_nonblocking
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_reports_actual_writable_events",
+      test_uv_poll_reports_actual_writable_events
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_dispatches_hangup_only",
+      test_uv_poll_dispatches_hangup_only
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_reports_disconnect",
+      test_uv_poll_reports_disconnect
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_invalid_fd_reports_ebadf",
+      test_uv_poll_invalid_fd_reports_ebadf
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_repeats_while_readable",
+      test_uv_poll_repeats_while_readable
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_stop_suppresses_ready_callback",
+      test_uv_poll_stop_suppresses_ready_callback
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_does_not_flood_callbacks",
+      test_uv_poll_does_not_flood_callbacks
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_restart_replaces_watch",
+      test_uv_poll_restart_replaces_watch
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_allows_one_active_handle_per_fd",
+      test_uv_poll_allows_one_active_handle_per_fd
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_close_suppresses_ready_callback",
+      test_uv_poll_close_suppresses_ready_callback
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_delivers_two_fds",
+      test_uv_poll_delivers_two_fds
+    ),
+    napi_new_property!(env, "test_uv_poll_self_stops", test_uv_poll_self_stops),
+    napi_new_property!(
+      env,
+      "test_uv_poll_leave_active",
+      test_uv_poll_leave_active
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_restarts_in_callback",
+      test_uv_poll_restarts_in_callback
+    ),
+    napi_new_property!(
+      env,
+      "test_uv_poll_closes_in_callback",
+      test_uv_poll_closes_in_callback
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(
