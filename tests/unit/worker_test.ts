@@ -11,7 +11,7 @@ function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
 }
 
-Deno.test("worker termination stops shared-memory writes from Wasm", async () => {
+async function terminationStopsWasm(dispose = false) {
   // (module (import "env" "memory" (memory 1 1 shared))
   //   (func (export "spin") (loop $spin
   //     i32.const 0 i32.const 1 i32.atomic.rmw.add drop
@@ -114,8 +114,18 @@ Deno.test("worker termination stops shared-memory writes from Wasm", async () =>
     }
     assert(Atomics.load(words, 0) > 0, "Wasm loop must run before termination");
     worker.terminate();
-    // Allow the native execution interruption to settle before sampling.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    if (dispose) {
+      const disposeWorker =
+        (worker as Worker & AsyncDisposable)[Symbol.asyncDispose];
+      assert(
+        typeof disposeWorker === "function",
+        "Worker provides an execution-stop barrier",
+      );
+      await disposeWorker.call(worker);
+    } else {
+      // The ordinary Web API requests interruption without awaiting teardown.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     const counter = Atomics.load(words, 0);
     await new Promise((resolve) => setTimeout(resolve, 20));
     assertEquals(
@@ -128,7 +138,12 @@ Deno.test("worker termination stops shared-memory writes from Wasm", async () =>
     worker.terminate();
     URL.revokeObjectURL(url);
   }
-});
+}
+
+Deno.test("worker termination stops shared-memory writes from Wasm", () =>
+  terminationStopsWasm());
+Deno.test("worker async disposal acknowledges stopped Wasm after terminate", () =>
+  terminationStopsWasm(true));
 
 Deno.test(
   { permissions: { read: true } },
