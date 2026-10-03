@@ -1213,14 +1213,6 @@ impl Config {
     .unwrap_or(false)
   }
 
-  pub fn line_folding_only_capable(&self) -> bool {
-    (|| {
-      let text_document = self.client_capabilities.text_document.as_ref()?;
-      text_document.folding_range.as_ref()?.line_folding_only
-    })()
-    .unwrap_or(false)
-  }
-
   pub fn code_action_disabled_capable(&self) -> bool {
     (|| {
       let text_document = self.client_capabilities.text_document.as_ref()?;
@@ -1229,27 +1221,10 @@ impl Config {
     .unwrap_or(false)
   }
 
-  pub fn snippet_support_capable(&self) -> bool {
-    (|| {
-      let text_document = self.client_capabilities.text_document.as_ref()?;
-      let completion = text_document.completion.as_ref()?;
-      completion.completion_item.as_ref()?.snippet_support
-    })()
-    .unwrap_or(false)
-  }
-
   pub fn testing_api_capable(&self) -> bool {
     (|| {
       let experimental = self.client_capabilities.experimental.as_ref()?;
       experimental.get("testingApi")?.as_bool()
-    })()
-    .unwrap_or(false)
-  }
-
-  pub fn client_provided_organize_imports_capable(&self) -> bool {
-    (|| {
-      let experimental = self.client_capabilities.experimental.as_ref()?;
-      experimental.get("clientProvidedOrganizeImports")?.as_bool()
     })()
     .unwrap_or(false)
   }
@@ -1813,15 +1788,6 @@ impl ConfigTree {
 
   pub fn data_by_scope(&self) -> &Arc<BTreeMap<Arc<Url>, Arc<ConfigData>>> {
     &self.scopes
-  }
-
-  pub fn workspace_dir_for_specifier(
-    &self,
-    specifier: &Url,
-  ) -> Option<&WorkspaceDirectory> {
-    self
-      .data_for_specifier(specifier)
-      .map(|d| d.member_dir.as_ref())
   }
 
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
