@@ -32,6 +32,7 @@ const {
   DataViewPrototypeGetByteOffset,
   MathTrunc,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   PromiseReject,
   PromiseResolve,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
@@ -70,7 +71,7 @@ class TextDecoder {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = { __proto__: null }) {
+  constructor(label = "utf-8", options = undefined) {
     const prefix = "Failed to construct 'TextDecoder'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(
@@ -364,7 +365,8 @@ class TextEncoder {
 }
 
 const encodeIntoBuf = new Uint32Array(2);
-const encodeIntoOpts = { __proto__: null, allowShared: true };
+const encodeIntoOpts = ObjectSetPrototypeOf({ allowShared: true }, null);
+
 const ENCODE_INTO_PACKED_SENTINEL = -1;
 const ENCODE_INTO_PACKED_MULTIPLIER = 0x100000000;
 
@@ -381,7 +383,7 @@ class TextDecoderStream {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = { __proto__: null }) {
+  constructor(label = "utf-8", options = undefined) {
     const prefix = "Failed to construct 'TextDecoderStream'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(

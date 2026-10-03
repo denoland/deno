@@ -9,7 +9,6 @@ const {
   ArrayPrototypePush,
   Date,
   ObjectAssign,
-  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeIncludes,
 } = primordials;
@@ -62,11 +61,9 @@ const {
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
-const { customInspectSymbol: kInspect } = core.loadExtScript(
+const { customInspectSymbol: kInspect, kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-
-const kEmptyObject = ObjectFreeze({ __proto__: null } as any);
 
 function getFlags(options = kEmptyObject): number {
   validateObject(options, "options");
