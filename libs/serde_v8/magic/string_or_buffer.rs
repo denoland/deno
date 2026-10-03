@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(deprecated, reason = "impls for the deprecated type itself")]
 
 use std::ops::Deref;
 
@@ -8,6 +9,9 @@ use crate::Error;
 use crate::magic::transl8::impl_magic;
 
 #[derive(Debug)]
+#[deprecated(
+  note = "use a typed buffer/string instead: take JsBuffer or String, or a small FromV8 enum over the arms you accept; slated for removal"
+)]
 pub enum StringOrBuffer {
   Buffer(JsBuffer),
   String(String),
