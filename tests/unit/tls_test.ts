@@ -1330,6 +1330,73 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, net: true } },
+  async function startTlsDoesNotInheritInternalOptions() {
+    let tls: ReturnType<typeof listenTls> | undefined;
+    const original = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      "rejectUnauthorized",
+    );
+
+    Object.defineProperty(Object.prototype, "rejectUnauthorized", {
+      configurable: true,
+      value: false,
+    });
+
+    try {
+      const currentTls = listenTls();
+      tls = currentTls;
+
+      const server = (async () => {
+        const conn = await currentTls.listener.accept();
+        try {
+          await assertRejects(
+            () => conn.handshake(),
+            Deno.errors.InvalidData,
+            "received fatal alert",
+          );
+        } finally {
+          conn.close();
+        }
+      })();
+
+      const client = (async () => {
+        const tcpConn = await Deno.connect({
+          hostname: currentTls.hostname,
+          port: currentTls.port,
+        });
+        const options = Object.assign(Object.create(null), {
+          hostname: currentTls.hostname,
+        });
+        const conn = await Deno.startTls(tcpConn, options);
+        try {
+          await assertRejects(
+            () => conn.handshake(),
+            Deno.errors.InvalidData,
+            "invalid peer certificate: UnknownIssuer",
+          );
+        } finally {
+          conn.close();
+        }
+      })();
+
+      await Promise.all([server, client]);
+    } finally {
+      tls?.listener.close();
+      if (original === undefined) {
+        Reflect.deleteProperty(Object.prototype, "rejectUnauthorized");
+      } else {
+        Object.defineProperty(
+          Object.prototype,
+          "rejectUnauthorized",
+          original,
+        );
+      }
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeFailure() {
     let tls: { listener: Deno.TlsListener; port: number; hostname: string };
 
