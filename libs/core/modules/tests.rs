@@ -734,6 +734,52 @@ fn test_lazy_module_interruption_synthetic_promise_hook() {
   assert_eq!(next.to_string(), "Uncaught Error: execution terminated");
 }
 
+// An op that fails while the isolate is terminating must not replace the
+// termination with a catchable error: V8's ThrowException clears it.
+#[test]
+fn test_lazy_loader_termination_is_not_catchable() {
+  static CAUGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+  #[op2(fast)]
+  fn op_stop_lazy_loader(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  #[op2(fast)]
+  fn op_lazy_loader_caught() {
+    CAUGHT.store(true, Ordering::SeqCst);
+  }
+  deno_core::extension!(
+    stop_lazy_loader,
+    ops = [op_stop_lazy_loader, op_lazy_loader_caught]
+  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_lazy_loader::init()],
+    ..Default::default()
+  });
+  runtime.module_map().add_lazy_loaded_esm_source(
+    "ext:stop_lazy_loader/stopped.js".to_string().into(),
+    "Deno.core.ops.op_stop_lazy_loader(); while (true) {}"
+      .to_string()
+      .into(),
+  );
+  let result = runtime.execute_script(
+    "load.js",
+    r#"
+    try {
+      Deno.core.createLazyLoader("ext:stop_lazy_loader/stopped.js")();
+    } catch {
+      Deno.core.ops.op_lazy_loader_caught();
+    }
+    "#,
+  );
+  let err = result.expect_err("a stopped lazy load must stop the caller");
+  assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
+  assert!(
+    !CAUGHT.load(Ordering::SeqCst),
+    "termination reached a JS catch block"
+  );
+}
+
 // Probe for the JS-created promise path: the Torque hook caller has its own
 // catch, so check that termination still escapes it.
 #[test]
