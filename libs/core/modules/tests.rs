@@ -546,6 +546,27 @@ fn test_mods() {
 }
 
 #[test]
+fn test_lazy_loaded_esm_termination() {
+  #[op2(fast)]
+  fn op_stop_lazy_module(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_lazy_module, ops = [op_stop_lazy_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_lazy_module::init()],
+    ..Default::default()
+  });
+  let result = runtime.lazy_load_es_module_with_code(
+    "ext:stop_lazy_module/stopped.js",
+    "Deno.core.ops.op_stop_lazy_module(); while (true) {}",
+  );
+  assert!(
+    result.is_err(),
+    "interrupted lazy evaluation must return an error"
+  );
+}
+
+#[test]
 fn test_lazy_loaded_esm() {
   deno_core::extension!(test_ext, lazy_loaded_esm = [dir "modules/testdata", "lazy_loaded.js"]);
 

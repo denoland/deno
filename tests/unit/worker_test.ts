@@ -12,7 +12,7 @@ function resolveWorker(worker: string): string {
 }
 
 async function workerStopDeadline<T>(pending: PromiseLike<T>): Promise<T> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       pending,
