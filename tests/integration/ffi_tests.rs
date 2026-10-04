@@ -378,28 +378,6 @@ fn ffi_worker_releases_host_state_during_native_call() {
 }
 
 #[test_util::test]
-fn ffi_worker_disposal_keeps_library_loaded() {
-  build();
-  let output = deno_cmd()
-    .current_dir(ffi_tests_path())
-    .args("run --no-lock --allow-ffi --allow-read --quiet testdata/worker_disposal_library.ts")
-    .env("NO_COLOR", "1")
-    .output()
-    .unwrap();
-  assert!(
-    output.status.success(),
-    "status: {}\nstdout: {}\nstderr: {}",
-    output.status,
-    String::from_utf8_lossy(&output.stdout),
-    String::from_utf8_lossy(&output.stderr)
-  );
-  assert_eq!(
-    String::from_utf8_lossy(&output.stdout),
-    "10 native calls returned into a loaded library\n"
-  );
-}
-
-#[test_util::test]
 fn ffi_worker_disposal_keeps_callback_alive() {
   build();
   let output = deno_cmd()

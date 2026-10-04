@@ -859,6 +859,99 @@ extern "C" fn test_cancel_async_work(
   ptr::null_mut()
 }
 
+// An async work whose execute makes two blocking calls on a threadsafe
+// function with a queue of one, while the JS thread never drains the queue.
+// The second call stays blocked until a queued call runs or is discarded.
+
+static FULL_QUEUE_STATE: std::sync::atomic::AtomicU32 =
+  std::sync::atomic::AtomicU32::new(0);
+
+unsafe extern "C" fn full_queue_execute(_env: napi_env, data: *mut c_void) {
+  unsafe {
+    let tsfn = data as napi_threadsafe_function;
+    let first = napi_call_threadsafe_function(
+      tsfn,
+      ptr::null_mut(),
+      ThreadsafeFunctionCallMode::blocking,
+    );
+    assert_eq!(first, napi_ok);
+    FULL_QUEUE_STATE.store(1, std::sync::atomic::Ordering::SeqCst);
+    let _ = napi_call_threadsafe_function(
+      tsfn,
+      ptr::null_mut(),
+      ThreadsafeFunctionCallMode::blocking,
+    );
+    FULL_QUEUE_STATE.store(2, std::sync::atomic::Ordering::SeqCst);
+  }
+}
+
+unsafe extern "C" fn full_queue_complete(
+  _env: napi_env,
+  _status: napi_status,
+  _data: *mut c_void,
+) {
+}
+
+unsafe extern "C" fn full_queue_call_js(
+  _env: napi_env,
+  _js_callback: napi_value,
+  _context: *mut c_void,
+  _data: *mut c_void,
+) {
+}
+
+extern "C" fn test_tsfn_blocking_full_queue(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    "test_tsfn_full_queue".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut resource_name,
+  ));
+  let mut tsfn: napi_threadsafe_function = ptr::null_mut();
+  assert_napi_ok!(napi_create_threadsafe_function(
+    env,
+    ptr::null_mut(),
+    ptr::null_mut(),
+    resource_name,
+    1, // max_queue_size
+    1, // initial_thread_count
+    ptr::null_mut(),
+    None,
+    ptr::null_mut(),
+    Some(full_queue_call_js),
+    &mut tsfn,
+  ));
+  let mut async_work: napi_async_work = ptr::null_mut();
+  assert_napi_ok!(napi_create_async_work(
+    env,
+    ptr::null_mut(),
+    resource_name,
+    Some(full_queue_execute),
+    Some(full_queue_complete),
+    tsfn as *mut c_void,
+    &mut async_work,
+  ));
+  assert_napi_ok!(napi_queue_async_work(env, async_work));
+  ptr::null_mut()
+}
+
+extern "C" fn tsfn_full_queue_state(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_uint32(
+    env,
+    FULL_QUEUE_STATE.load(std::sync::atomic::Ordering::SeqCst),
+    &mut result,
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_async_work", test_async_work),
@@ -886,6 +979,12 @@ pub fn init(env: napi_env, exports: napi_value) {
     ),
     napi_new_property!(env, "test_tsfn_get_context", test_tsfn_get_context),
     napi_new_property!(env, "test_cancel_async_work", test_cancel_async_work),
+    napi_new_property!(
+      env,
+      "test_tsfn_blocking_full_queue",
+      test_tsfn_blocking_full_queue
+    ),
+    napi_new_property!(env, "tsfn_full_queue_state", tsfn_full_queue_state),
   ];
 
   assert_napi_ok!(napi_define_properties(
