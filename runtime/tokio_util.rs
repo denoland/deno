@@ -70,7 +70,6 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
 fn create_and_run_current_thread_inner<F, R>(
   future: F,
   metrics_enabled: bool,
-  wait_for_blocking_tasks: bool,
 ) -> R
 where
   F: std::future::Future<Output = R> + 'static,
@@ -123,15 +122,7 @@ where
   let join_handle = rt.spawn(future);
 
   let r = rt.block_on(join_handle).unwrap().into_inner();
-  if wait_for_blocking_tasks {
-    // Worker disposal cannot acknowledge stopped execution while a blocking
-    // task still owns a guest/shared-memory buffer. Drop waits for those tasks.
-    drop(rt);
-  } else {
-    // The main runtime may leave unrefed blocking tasks behind when its JS
-    // event loop finishes. This path does not promise execution quiescence.
-    rt.shutdown_background();
-  }
+  rt.shutdown_background();
   r
 }
 
@@ -141,16 +132,28 @@ where
   F: std::future::Future<Output = R> + 'static,
   R: Send + 'static,
 {
-  create_and_run_current_thread_inner(future, false, false)
+  create_and_run_current_thread_inner(future, false)
 }
 
 #[inline(always)]
-pub(crate) fn create_and_run_worker_thread<F, R>(future: F) -> R
+pub(crate) fn create_and_run_worker_thread<F, R>(future: F)
 where
   F: std::future::Future<Output = R> + 'static,
-  R: Send + 'static,
+  R: 'static,
 {
-  create_and_run_current_thread_inner(future, false, true)
+  let rt = create_basic_runtime();
+  // SAFETY: The future and its retained worker are polled and dropped on this
+  // thread; the executor is current-thread, just as for the main runtime.
+  let future = unsafe { MaskFutureAsSend::new(future) };
+  let retained = rt.block_on(rt.spawn(future)).unwrap().into_inner();
+  let handle = rt.handle().clone();
+  // The future has closed callback admission, releasing native callers blocked
+  // on JS. Keep the JsRuntime, callback allocations and libraries alive until
+  // every managed native call has returned, including libffi's return machinery.
+  drop(rt);
+  // Resource destructors may need a Tokio context even after its tasks stopped.
+  let _guard = handle.enter();
+  drop(retained);
 }
 
 #[inline(always)]
@@ -160,5 +163,5 @@ where
   R: Send + 'static,
 {
   let metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
-  create_and_run_current_thread_inner(future, metrics_enabled, false)
+  create_and_run_current_thread_inner(future, metrics_enabled)
 }

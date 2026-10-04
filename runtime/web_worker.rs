@@ -1144,7 +1144,7 @@ fn print_worker_error(
 // TODO(bartlomieju): run following block using "select!"
 // with terminate
 pub async fn run_web_worker(
-  mut worker: WebWorker,
+  worker: &mut WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,

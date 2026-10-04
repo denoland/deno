@@ -1946,6 +1946,20 @@ impl JsRuntime {
     }
   }
 
+  /// Stop admitting and cancel queued cross-thread callbacks without freeing
+  /// their native resources. Embedders must call this before joining native
+  /// tasks that may be blocked waiting for JavaScript, then keep this runtime
+  /// alive until those tasks have returned through their native trampolines.
+  pub fn shutdown_task_spawner(&mut self) {
+    self
+      .inner
+      .main_realm
+      .0
+      .context_state
+      .task_spawner_factory
+      .shutdown();
+  }
+
   /// Returns the runtime's op state, which can be used to maintain ops
   /// and access resources between op calls.
   pub fn op_state(&self) -> Rc<RefCell<OpState>> {

@@ -416,7 +416,7 @@ fn op_create_worker(
     //  all action done upon it should be noops
     // - newly spawned thread exits
     let fut = async move {
-      let (worker, external_handle) =
+      let (mut worker, external_handle) =
         (create_web_worker_cb.0)(CreateWebWorkerArgs {
           name: worker_name,
           worker_id,
@@ -440,16 +440,20 @@ fn op_create_worker(
       // is using `worker.internal_channels`.
       //
       // Host can already push messages and interact with worker.
-      run_web_worker(
-        worker,
+      let result = run_web_worker(
+        &mut worker,
         module_specifier,
         maybe_source_code,
         format_js_error_fn.0,
       )
-      .await
+      .await;
+      // Cancel callbacks while their libffi allocations and libraries are still
+      // alive. The executor retains this worker until native tasks have exited.
+      worker.js_runtime.shutdown_task_spawner();
+      (result, worker)
     };
 
-    let _ = create_and_run_worker_thread(fut);
+    create_and_run_worker_thread(fut);
 
     // After the worker's tokio runtime and JsRuntime/V8 isolate have been
     // dropped, ask the system allocator to release freed memory back to the
@@ -463,9 +467,9 @@ fn op_create_worker(
         libc::malloc_trim(0);
       }
     }
-    // No guest execution or native operation can touch its memory after the
-    // runtime and V8 isolate have been dropped. Channel/control closure alone
-    // occurs earlier and must not be used as this acknowledgment.
+    // This worker's JS and managed native operations have stopped. Descendant
+    // workers and native-library-owned threads are not part of this barrier.
+    // Channel/control closure happens earlier and is not an acknowledgment.
     let _ = execution_stopped_sender.send(());
   })?;
 
