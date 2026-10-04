@@ -10,7 +10,6 @@ use crate::ModuleLoadResponse;
 use crate::ModuleSource;
 use crate::ModuleSpecifier;
 use crate::error::CoreErrorKind;
-use crate::error::JsError;
 use crate::error::exception_to_err;
 use crate::modules::LazyEsmModuleLoader;
 use crate::modules::ModuleCodeString;
@@ -54,6 +53,36 @@ fn debug_assert_residual_static_table_sorted(
 }
 
 impl ModuleMap {
+  /// Evaluate a lazy module without treating an external interrupt as a Rust
+  /// invariant failure. Microtasks can execute JS and terminate the isolate too.
+  fn evaluate_lazy_module<'s, 'i>(
+    &self,
+    scope: &mut v8::PinScope<'s, 'i>,
+    module: v8::Local<'s, v8::Module>,
+  ) -> Result<(), CoreError> {
+    v8::tc_scope!(let scope, scope);
+    let value = module.evaluate(scope);
+    // Do not drain while inside a top-level evaluation: that can prematurely
+    // run TLA resume jobs before its evaluation promise is wired up.
+    if value.is_some() && !self.evaluating_top_level.get() {
+      scope.perform_microtask_checkpoint();
+    }
+    if scope.has_terminated() || scope.is_execution_terminating() {
+      scope.rethrow();
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
+    let Some(value) = value else {
+      let exception = scope.exception().unwrap();
+      return Err(exception_to_err(scope, exception, false, true).into());
+    };
+    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+    if promise.state() == v8::PromiseState::Rejected {
+      let exception = promise.result(scope);
+      return Err(exception_to_err(scope, exception, false, true).into());
+    }
+    Ok(())
+  }
+
   /// Load and evaluate an ES module provided the specifier and source code.
   ///
   /// The module should not have Top-Level Await (that is, it should be
@@ -113,27 +142,7 @@ impl ModuleMap {
     let status = module_local.get_status();
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
-    let value = module_local.evaluate(scope).unwrap();
-    // Under Explicit microtask policy, drain microtasks so the module
-    // evaluation promise resolves for synchronous modules.
-    //
-    // However, skip the checkpoint when we are inside a top-level
-    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
-    // Draining microtasks at this point can prematurely resolve
-    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
-    // resolved async ops), which prevents the module evaluation promise
-    // from settling correctly later.
-    if !self.evaluating_top_level.get() {
-      scope.perform_microtask_checkpoint();
-    }
-    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-    let result = promise.result(scope);
-    if !result.is_undefined() {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-          .into_box(),
-      );
-    }
+    self.evaluate_lazy_module(scope, module_local)?;
 
     let status = module_local.get_status();
     assert_eq!(status, v8::ModuleStatus::Evaluated);
@@ -250,18 +259,7 @@ impl ModuleMap {
     if let Some(handle) = cached_handle {
       let handle_local = v8::Local::new(scope, handle);
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-        let value = handle_local.evaluate(scope).unwrap();
-        if !self.evaluating_top_level.get() {
-          scope.perform_microtask_checkpoint();
-        }
-        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-        let result = promise.result(scope);
-        if !result.is_undefined() {
-          return Err(
-            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-              .into_box(),
-          );
-        }
+        self.evaluate_lazy_module(scope, handle_local)?;
       }
       return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
     }
@@ -269,18 +267,7 @@ impl ModuleMap {
     let module_id = self.build_synthetic_esm_module(scope, module_specifier)?;
     let handle = self.get_handle(module_id).unwrap();
     let handle_local = v8::Local::new(scope, handle);
-    let value = handle_local.evaluate(scope).unwrap();
-    if !self.evaluating_top_level.get() {
-      scope.perform_microtask_checkpoint();
-    }
-    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-    let result = promise.result(scope);
-    if !result.is_undefined() {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-          .into_box(),
-      );
-    }
+    self.evaluate_lazy_module(scope, handle_local)?;
     Ok(v8::Global::new(scope, handle_local.get_module_namespace()))
   }
 
@@ -341,18 +328,7 @@ impl ModuleMap {
       // Returning the namespace before evaluation leaves `export const`
       // bindings in the temporal dead zone, so trigger evaluation here.
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-        let value = handle_local.evaluate(scope).unwrap();
-        if !self.evaluating_top_level.get() {
-          scope.perform_microtask_checkpoint();
-        }
-        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-        let result = promise.result(scope);
-        if !result.is_undefined() {
-          return Err(
-            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-              .into_box(),
-          );
-        }
+        self.evaluate_lazy_module(scope, handle_local)?;
       }
       let module = v8::Global::new(scope, handle_local.get_module_namespace());
       return Ok(module);
@@ -486,11 +462,11 @@ impl ModuleMap {
         )))
       })?;
 
-    Ok(self.new_synthetic_module_from_exports_object(
+    self.new_synthetic_module_from_exports_object(
       scope,
       String::from(specifier),
       exports_obj,
-    ))
+    )
   }
 
   /// Convenience wrapper around `build_synthetic_esm_module` for the V8
@@ -684,15 +660,22 @@ impl ModuleMap {
     ) {
       Some(f) => f,
       None => {
-        let exception = tc_scope.exception().unwrap();
-        let err = JsError::from_v8_exception(tc_scope, exception);
+        let terminated =
+          tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+        let err = if terminated {
+          tc_scope.rethrow();
+          CoreErrorKind::ExecutionTerminated.into_box()
+        } else {
+          let exception = tc_scope.exception().unwrap();
+          exception_to_err(tc_scope, exception, false, true).into()
+        };
         self
           .data
           .borrow()
           .lazy_script_loading
           .borrow_mut()
           .remove(&ModuleName::from(specifier_str.clone()));
-        return Err(CoreErrorKind::Js(err).into_box());
+        return Err(err);
       }
     };
     // Store the freshly-compiled cache on the first run (cold), or if V8
@@ -728,15 +711,22 @@ impl ModuleMap {
       Some(value) => v8::Global::new(tc_scope, value),
       None => {
         assert!(tc_scope.has_caught());
-        let exception = tc_scope.exception().unwrap();
-        let err = JsError::from_v8_exception(tc_scope, exception);
+        let terminated =
+          tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+        let err = if terminated {
+          tc_scope.rethrow();
+          CoreErrorKind::ExecutionTerminated.into_box()
+        } else {
+          let exception = tc_scope.exception().unwrap();
+          exception_to_err(tc_scope, exception, false, true).into()
+        };
         self
           .data
           .borrow()
           .lazy_script_loading
           .borrow_mut()
           .remove(&ModuleName::from(specifier_str.clone()));
-        return Err(CoreErrorKind::Js(err).into_box());
+        return Err(err);
       }
     };
 

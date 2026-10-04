@@ -625,7 +625,13 @@ fn assert_lazy_module_interruption(path: &str, source: &'static str) {
     _ => unreachable!(),
   };
   let err = result.expect_err("interrupted module loading must fail");
-  assert!(err.to_string().contains("execution terminated"), "{err}");
+  assert!(
+    matches!(
+      err.as_kind(),
+      crate::error::CoreErrorKind::ExecutionTerminated
+    ),
+    "{err}"
+  );
   assert!(
     scope.is_execution_terminating(),
     "loader swallowed termination"
