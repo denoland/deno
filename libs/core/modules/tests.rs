@@ -848,6 +848,58 @@ fn test_lazy_dynamic_import_termination() {
   assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
 }
 
+// A host stop that V8 swallowed inside a promise hook must not surface to
+// JavaScript as a catchable error once the loader notices it.
+#[test]
+fn test_lazy_loader_host_stop_is_not_catchable() {
+  static CAUGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+  #[op2(fast)]
+  fn op_host_stop_loader(scope: &mut v8::PinScope) {
+    scope.set_slot(crate::ExternalExecutionTermination(Arc::new(
+      std::sync::atomic::AtomicBool::new(true),
+    )));
+    scope.terminate_execution();
+  }
+  #[op2(fast)]
+  fn op_host_stop_caught() {
+    CAUGHT.store(true, Ordering::SeqCst);
+  }
+  deno_core::extension!(
+    host_stop_loader,
+    ops = [op_host_stop_loader, op_host_stop_caught]
+  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![host_stop_loader::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  module_map.add_lazy_loaded_script_source(
+    "ext:host_stop_loader/backing.js".to_string().into(),
+    "(function () { Deno.core.setPromiseHooks(() => { Deno.core.ops.op_host_stop_loader(); while (true) {} }); return { value: 42 }; })()".to_string().into(),
+  );
+  module_map.add_synthetic_esm_module(
+    "node:host_stop_loader".to_string().into(),
+    "ext:host_stop_loader/backing.js".to_string().into(),
+  );
+  let result = runtime.execute_script(
+    "load.js",
+    r#"
+    try {
+      Deno.core.createLazyLoader("node:host_stop_loader")();
+    } catch {
+      Deno.core.ops.op_host_stop_caught();
+    }
+    "#,
+  );
+  let err = result.expect_err("a stopped lazy load must stop the caller");
+  assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
+  assert!(
+    !CAUGHT.load(Ordering::SeqCst),
+    "host stop reached a JS catch block"
+  );
+}
+
 // Probe for the JS-created promise path: the Torque hook caller has its own
 // catch, so check that termination still escapes it.
 #[test]
