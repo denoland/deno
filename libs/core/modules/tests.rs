@@ -780,6 +780,47 @@ fn test_lazy_loader_termination_is_not_catchable() {
   );
 }
 
+// Synchronous evaluation (used by require(esm)) must report an interrupted
+// module as terminated and leave the isolate terminating.
+#[test]
+fn test_mod_evaluate_sync_termination() {
+  #[op2(fast)]
+  fn op_stop_sync_module(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_sync_module, ops = [op_stop_sync_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_sync_module::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  deno_core::scope!(scope, runtime);
+  let id = module_map
+    .new_es_module(
+      scope,
+      false,
+      "file:///stopped.js".to_string().into(),
+      "Deno.core.ops.op_stop_sync_module(); while (true) {}"
+        .to_string()
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, id).unwrap();
+  let err = module_map
+    .mod_evaluate_sync(scope, id)
+    .expect_err("interrupted evaluation must fail");
+  assert!(
+    matches!(err.as_kind(), CoreErrorKind::ExecutionTerminated),
+    "{err}"
+  );
+  assert!(
+    scope.is_execution_terminating(),
+    "evaluation swallowed termination"
+  );
+}
+
 // Probe for the JS-created promise path: the Torque hook caller has its own
 // catch, so check that termination still escapes it.
 #[test]
