@@ -18,12 +18,16 @@ use call::op_ffi_call_nonblocking;
 use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
 pub use callback::CallbackError;
+use callback::UnsafeCallbackResource;
 use callback::op_ffi_unsafe_callback_close;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
+use deno_core::OpState;
+use deno_core::Resource;
 pub use denort_helper::DenoRtNativeAddonLoader;
 pub use denort_helper::DenoRtNativeAddonLoaderRc;
 pub use dlfcn::DlfcnError;
+use dlfcn::DynamicLibraryResource;
 use dlfcn::ForeignFunction;
 use dlfcn::op_ffi_load;
 pub use ir::IRError;
@@ -45,6 +49,40 @@ const _: () = {
 };
 
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
+
+/// Native state a runtime's managed native calls can still use after the
+/// runtime is dropped: callback closures, which own their libffi `Cif` and
+/// trampoline, and loaded libraries, which own the code being executed.
+pub struct NativeCallKeepAlive(
+  #[allow(dead_code, reason = "held only to keep resources alive")]
+  Vec<std::rc::Rc<dyn Resource>>,
+);
+
+/// Take [`NativeCallKeepAlive`] out of the resource table so the rest of the
+/// runtime can be dropped while blocking FFI calls finish. Close the runtime's
+/// task spawner first: a callback invoked after that fails to dispatch and
+/// returns a zero value through its retained `Cif`, with its leaked
+/// `CallbackInfo` still valid.
+pub fn take_native_call_keepalive(state: &mut OpState) -> NativeCallKeepAlive {
+  let rids = state
+    .resource_table
+    .names()
+    .map(|(rid, _)| rid)
+    .collect::<Vec<_>>();
+  let mut resources = Vec::new();
+  for rid in rids {
+    if let Ok(callback) =
+      state.resource_table.take::<UnsafeCallbackResource>(rid)
+    {
+      resources.push(callback as std::rc::Rc<dyn Resource>);
+    } else if let Ok(library) =
+      state.resource_table.take::<DynamicLibraryResource>(rid)
+    {
+      resources.push(library as std::rc::Rc<dyn Resource>);
+    }
+  }
+  NativeCallKeepAlive(resources)
+}
 
 deno_core::extension!(deno_ffi,
   deps = [ deno_web ],

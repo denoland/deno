@@ -82,7 +82,7 @@ unsafe impl Send for PtrSymbol {}
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Sync for PtrSymbol {}
 
-struct UnsafeCallbackResource {
+pub(crate) struct UnsafeCallbackResource {
   cancel: Rc<CancelHandle>,
   // Closure is never directly touched, but it keeps the C callback alive
   // until `close()` method is called.

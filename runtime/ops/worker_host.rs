@@ -454,10 +454,16 @@ fn op_create_worker(
         format_js_error_fn.0,
       )
       .await;
-      // Cancel callbacks while their libffi allocations and libraries are still
-      // alive. The executor retains this worker until native tasks have exited.
+      // Cancel callbacks while the isolate is alive, then keep only the FFI
+      // state managed native calls may still be using. Dropping the worker
+      // here releases its channels, locks and other resources promptly; the
+      // executor holds the keepalive until the blocking pool has drained.
       worker.js_runtime.shutdown_task_spawner();
-      (result, worker)
+      let keepalive = deno_ffi::take_native_call_keepalive(
+        &mut worker.js_runtime.op_state().borrow_mut(),
+      );
+      drop(worker);
+      (result, keepalive)
     };
 
     create_and_run_worker_thread(fut);
@@ -474,9 +480,10 @@ fn op_create_worker(
         libc::malloc_trim(0);
       }
     }
-    // This worker's JS and managed native operations have stopped. Descendant
-    // workers and native-library-owned threads are not part of this barrier.
-    // Channel/control closure happens earlier and is not an acknowledgment.
+    // This worker's JS and the native tasks in its runtime's blocking pool have
+    // stopped. Descendant workers, detached OS threads and threads owned by
+    // native libraries are not part of this barrier. The worker's channels are
+    // released earlier, when it is dropped; that is not an acknowledgment.
     let _ = execution_stopped_sender.send(());
   })?;
 
