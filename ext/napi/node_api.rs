@@ -961,11 +961,12 @@ impl Drop for QueueSlot {
     // SAFETY: Not closed, so the TsFn is still alive (see above).
     let tsfn = unsafe { &*self.tsfn.0 };
     let mut queue_size = tsfn.queue_size.lock();
-    let size = *queue_size;
     *queue_size -= 1;
-    if size == tsfn.max_queue_size {
-      tsfn.queue_cond.notify_one();
-    }
+    // Wake every waiter, not only on the full-to-not-full transition: when
+    // shutdown discards several queued calls before a woken caller runs, that
+    // caller never refills the queue, and its own discarded call would then
+    // free a slot without waking anyone else.
+    tsfn.queue_cond.notify_all();
   }
 }
 
