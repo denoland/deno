@@ -71,6 +71,13 @@ impl ModuleMap {
       scope.rethrow();
       return Err(CoreErrorKind::ExecutionTerminated.into_box());
     }
+    // V8 reports and clears a termination thrown by a promise hook that ran
+    // while C++ created a promise, so a host stop may no longer be visible
+    // above. Re-request it rather than letting the stopped module complete.
+    if crate::tasks::external_execution_termination_requested(scope) {
+      scope.terminate_execution();
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
     let Some(value) = value else {
       let exception = scope.exception().unwrap();
       return Err(exception_to_err(scope, exception, false, true).into());

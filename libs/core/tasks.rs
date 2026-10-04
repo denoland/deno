@@ -18,14 +18,22 @@ type SendTask = Box<dyn FnOnce(&mut v8::PinScope) + Send + 'static>;
 /// execution timeouts must not clear a concurrent external termination request.
 pub struct ExternalExecutionTermination(pub Arc<AtomicBool>);
 
+/// Whether the host has asked this isolate to stop. Unlike
+/// `is_execution_terminating`, this survives V8 paths that clear a thrown
+/// termination, such as a promise hook run while C++ creates a promise.
+pub(crate) fn external_execution_termination_requested(
+  isolate: &v8::Isolate,
+) -> bool {
+  isolate
+    .get_slot::<ExternalExecutionTermination>()
+    .is_some_and(|request| request.0.load(Ordering::SeqCst))
+}
+
 /// Cancel a local timeout without losing a host-owned stop request.
 /// Returns false when execution must remain terminated.
 pub fn cancel_local_execution_termination(isolate: &v8::Isolate) -> bool {
-  let externally_terminated = || {
-    isolate
-      .get_slot::<ExternalExecutionTermination>()
-      .is_some_and(|request| request.0.load(Ordering::SeqCst))
-  };
+  let externally_terminated =
+    || external_execution_termination_requested(isolate);
   if externally_terminated() {
     return false;
   }
