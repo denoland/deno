@@ -162,9 +162,7 @@ unsafe extern "C" fn deno_ffi_callback(
   )]
   unsafe {
     LOCAL_THREAD_ID.with(|s| {
-      if *s.borrow() == info.thread_id
-        && info.async_work_sender.is_closed()
-      {
+      if *s.borrow() == info.thread_id && info.async_work_sender.is_closed() {
         // The runtime has shut down and its isolate may be gone, for example
         // when a library's unload destructor calls back during worker
         // teardown. Return a zero value without entering V8.
