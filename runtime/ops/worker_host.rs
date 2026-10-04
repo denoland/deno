@@ -167,8 +167,10 @@ impl Drop for WorkerThread {
     // clients synchronously. If the worker were still executing a callback under
     // an exclusive lock (e.g. mutating a `SharedArrayBuffer` in a synchronous
     // loop), the new grantee could run concurrently with it. `terminate()`
-    // interrupts the worker's isolate, halting such a loop at its next
-    // interrupt point, before the locks are handed off below.
+    // interrupts the worker's isolate on the first stop request; if a stop was
+    // already requested, its interrupt may have been swallowed (by a promise
+    // hook run while V8 created a promise), so request it again. Either halts
+    // such a loop at its next interrupt point before the locks are handed off.
     //
     // This narrows the window but can't fully close it: the interrupt returns
     // without waiting for the isolate to stop, so a native op already in flight
@@ -176,7 +178,9 @@ impl Drop for WorkerThread {
     // still released by the resource-drop backstop when the worker's
     // `JsRuntime` drops. `Symbol.asyncDispose` waits for execution to stop.
     let handle = self.worker_handle.clone();
+    let stop = handle.stop_requester();
     handle.terminate();
+    stop.rerequest();
     if let Some(client_id) = &self.web_lock_client_id {
       deno_web::locks::cleanup_locks_for_client_id(client_id);
     }
