@@ -24,7 +24,7 @@ __attribute__((destructor)) static void on_unload(void) {
   }).output();
   if (!cc.success) throw new Error(new TextDecoder().decode(cc.stderr));
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 20; i++) {
     const worker = new Worker(
       new URL("./worker_unload_callback_worker.ts", import.meta.url).href,
       { type: "module" },
@@ -32,11 +32,11 @@ __attribute__((destructor)) static void on_unload(void) {
     const stored = new Promise<void>((resolve) => {
       worker.onmessage = () => resolve();
     });
-    worker.postMessage({ library });
+    worker.postMessage({ library, callbackFirst: i % 2 === 1 });
     await stored;
     await worker[Symbol.asyncDispose]();
   }
-  console.log("10 unload callbacks did not enter a disposed isolate");
+  console.log("20 unload callbacks did not enter a disposed isolate");
 } finally {
   await Deno.remove(dir, { recursive: true });
 }

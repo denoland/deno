@@ -396,7 +396,28 @@ fn ffi_worker_unload_callback_skips_disposed_isolate() {
   );
   assert_eq!(
     String::from_utf8_lossy(&output.stdout),
-    "10 unload callbacks did not enter a disposed isolate\n"
+    "20 unload callbacks did not enter a disposed isolate\n"
+  );
+}
+
+#[test_util::test]
+fn ffi_worker_interrupted_callback_return_conversion() {
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --quiet testdata/worker_callback_return_coercion.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "interrupted return conversion stopped safely\n"
   );
 }
 
