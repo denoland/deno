@@ -166,32 +166,16 @@ impl Drop for WorkerThread {
     // `cleanup_locks_for_client_id` re-grants the worker's held locks to other
     // clients synchronously. If the worker were still executing a callback under
     // an exclusive lock (e.g. mutating a `SharedArrayBuffer` in a synchronous
-    // loop), the new grantee could run concurrently with it, violating mutual
-    // exclusion. `terminate()` alone doesn't prevent this: it only wakes the
-    // event loop and can't interrupt synchronous JS already in flight. So when
-    // the worker actually holds a lock we're about to hand off, we first call
-    // `terminate_execution()`, which makes the worker's isolate throw a
-    // termination exception at the next interrupt point, halting any such loop
-    // and its callback continuation/microtasks before the lock is handed off.
+    // loop), the new grantee could run concurrently with it. `terminate()`
+    // interrupts the worker's isolate, halting such a loop at its next
+    // interrupt point, before the locks are handed off below.
     //
-    // The `client_holds_lock` gate matters: `terminate_execution()` can abort an
-    // in-progress synthetic module instantiation (e.g. a lazy `require` during
-    // boot, which panics on failure), so we must not force-halt a worker that
-    // has no held lock to protect. A worker that holds a lock is past boot and
-    // parked in — or synchronously looping inside — its lock callback.
-    //
-    // This narrows the window but can't fully close it: `terminate_execution()`
-    // returns without waiting for the isolate to stop, so a native op already in
-    // flight on the worker keeps running until it returns to JS, and a lock
-    // acquired between the `client_holds_lock` check and cleanup isn't halted.
-    // Any lock left held in that residual window is still released by the
-    // resource-drop backstop when the worker's `JsRuntime` drops.
+    // This narrows the window but can't fully close it: the interrupt returns
+    // without waiting for the isolate to stop, so a native op already in flight
+    // keeps running until it returns to JS. Any lock left held in that window is
+    // still released by the resource-drop backstop when the worker's
+    // `JsRuntime` drops. `Symbol.asyncDispose` waits for execution to stop.
     let handle = self.worker_handle.clone();
-    if let Some(client_id) = &self.web_lock_client_id
-      && deno_web::locks::client_holds_lock(client_id)
-    {
-      handle.terminate_execution();
-    }
     handle.terminate();
     if let Some(client_id) = &self.web_lock_client_id {
       deno_web::locks::cleanup_locks_for_client_id(client_id);

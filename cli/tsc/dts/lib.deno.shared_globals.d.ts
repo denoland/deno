@@ -666,7 +666,8 @@ interface WorkerOptions {
 interface Worker extends EventTarget {
   /** Requests termination and waits until this worker's JavaScript and the
    * native operations running in its runtime's blocking pool (such as
-   * nonblocking FFI calls and N-API async work) have stopped. Unlike
+   * nonblocking FFI calls, N-API async work and `Deno.stdin` reads) have
+   * stopped. Unlike
    * `terminate()`, which requests termination once, disposal keeps requesting
    * it until execution stops. This also works after calling `terminate()`.
    *
