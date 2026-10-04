@@ -337,6 +337,21 @@ fn ffi_callback_errors() {
 }
 
 #[test_util::test]
+fn ffi_callback_errors_with_wide_results() {
+  build();
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --unstable-ffi --quiet testdata/ffi_callback_throw_wide_results.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert!(output.status.success(), "{:?}\n{stdout}\n{stderr}", output.status);
+  assert_eq!(stdout, "isize: thrown\nusize: thrown\nstruct: thrown\n");
+}
+
+#[test_util::test]
 fn ffi_worker_disposal_keeps_callback_alive() {
   build();
   let output = deno_cmd()

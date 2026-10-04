@@ -222,6 +222,54 @@ Deno.test({
 });
 
 Deno.test(
+  "worker async disposal survives a stop swallowed by a promise hook",
+  async () => {
+    // words[0]: hook entered; words[1]: cleanup latch for a broken runtime;
+    // words[2]: the swallowed stop returned to the worker's own code.
+    const words = new Int32Array(new SharedArrayBuffer(12));
+    const url = URL.createObjectURL(
+      new Blob([
+        `import v8 from "node:v8";
+      onmessage = ({data}) => {
+        const words = new Int32Array(data);
+        let armed = true;
+        v8.promiseHooks.onInit(() => {
+          if (!armed) return;
+          armed = false;
+          Atomics.store(words, 0, 1);
+          while (Atomics.load(words, 1) === 0) {}
+        });
+        // V8 creates this promise in C++, which reports and clears a
+        // termination thrown by the hook instead of propagating it.
+        WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+        Atomics.store(words, 2, 1);
+        while (Atomics.load(words, 1) === 0) {}
+      };`,
+      ], { type: "application/javascript" }),
+    );
+    const worker = new Worker(url, { type: "module" });
+    try {
+      worker.postMessage(words.buffer);
+      const deadline = performance.now() + 5000;
+      while (Atomics.load(words, 0) === 0 && performance.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assertEquals(Atomics.load(words, 0), 1, "promise hook must be entered");
+      await workerStopDeadline(worker[Symbol.asyncDispose]());
+      assertEquals(
+        Atomics.load(words, 2),
+        1,
+        "the stop must have been swallowed by the hook",
+      );
+    } finally {
+      Atomics.store(words, 1, 1);
+      await workerStopDeadline(worker[Symbol.asyncDispose]());
+      URL.revokeObjectURL(url);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
