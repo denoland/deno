@@ -672,7 +672,9 @@ interface Worker extends EventTarget {
    *
    * Disposal can wait indefinitely for a blocked native operation. It does not
    * cover workers created by this worker, or threads started by native
-   * libraries or detached from the runtime.
+   * libraries or detached from the runtime. However a worker stops, its
+   * thread stays alive until such operations return, even when nothing
+   * awaits disposal.
    */
   [Symbol.asyncDispose](): Promise<void>;
   /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
