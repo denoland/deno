@@ -23,7 +23,6 @@ use callback::op_ffi_unsafe_callback_close;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
 use deno_core::OpState;
-use deno_core::Resource;
 pub use denort_helper::DenoRtNativeAddonLoader;
 pub use denort_helper::DenoRtNativeAddonLoaderRc;
 pub use dlfcn::DlfcnError;
@@ -53,10 +52,15 @@ pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 /// Native state a runtime's managed native calls can still use after the
 /// runtime is dropped: callback closures, which own their libffi `Cif` and
 /// trampoline, and loaded libraries, which own the code being executed.
-pub struct NativeCallKeepAlive(
+pub struct NativeCallKeepAlive {
+  // Fields drop in order: libraries first, so an unload destructor that calls
+  // a stored callback still reaches a live trampoline (which then refuses to
+  // enter the disposed isolate).
   #[allow(dead_code, reason = "held only to keep resources alive")]
-  Vec<std::rc::Rc<dyn Resource>>,
-);
+  libraries: Vec<std::rc::Rc<DynamicLibraryResource>>,
+  #[allow(dead_code, reason = "held only to keep resources alive")]
+  callbacks: Vec<std::rc::Rc<UnsafeCallbackResource>>,
+}
 
 /// Take [`NativeCallKeepAlive`] out of the resource table so the rest of the
 /// runtime can be dropped while blocking FFI calls finish. Close the runtime's
@@ -69,19 +73,23 @@ pub fn take_native_call_keepalive(state: &mut OpState) -> NativeCallKeepAlive {
     .names()
     .map(|(rid, _)| rid)
     .collect::<Vec<_>>();
-  let mut resources = Vec::new();
+  let mut libraries = Vec::new();
+  let mut callbacks = Vec::new();
   for rid in rids {
     if let Ok(callback) =
       state.resource_table.take::<UnsafeCallbackResource>(rid)
     {
-      resources.push(callback as std::rc::Rc<dyn Resource>);
+      callbacks.push(callback);
     } else if let Ok(library) =
       state.resource_table.take::<DynamicLibraryResource>(rid)
     {
-      resources.push(library as std::rc::Rc<dyn Resource>);
+      libraries.push(library);
     }
   }
-  NativeCallKeepAlive(resources)
+  NativeCallKeepAlive {
+    libraries,
+    callbacks,
+  }
 }
 
 deno_core::extension!(deno_ffi,
