@@ -1293,6 +1293,12 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       resolver_handle,
       cped_handle,
     ) {
+      // A lazily evaluated module can be interrupted. Propagate the stop
+      // instead of letting this scope swallow it.
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        tc_scope.rethrow();
+        return None;
+      }
       // Short-circuit if the module is already cached and we know it won't error.
       return Some(promise);
     }
