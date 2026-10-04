@@ -566,6 +566,120 @@ fn test_lazy_loaded_esm_termination() {
   );
 }
 
+// Each case executes JavaScript at a different stage of lazy module loading.
+// Termination must reach the caller as an error without unwinding Rust.
+fn assert_lazy_module_interruption(path: &str, source: &'static str) {
+  #[op2(fast)]
+  fn op_stop_lazy_module(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_lazy_module, ops = [op_stop_lazy_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_lazy_module::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  deno_core::scope!(scope, runtime);
+  let specifier = "ext:stop_lazy_module/stopped.js";
+  let result = match path {
+    "fresh" => module_map.lazy_load_es_module_with_code(
+      scope,
+      specifier,
+      source.to_string().into(),
+      None,
+    ),
+    "cached" | "cached_synthetic" => {
+      module_map.add_lazy_loaded_esm_source(
+        specifier.to_string().into(),
+        source.to_string().into(),
+      );
+      let id = module_map
+        .new_es_module(
+          scope,
+          false,
+          specifier.to_string().into(),
+          source.to_string().into(),
+          false,
+          None,
+        )
+        .unwrap();
+      module_map.instantiate_module(scope, id).unwrap();
+      if path == "cached" {
+        module_map.lazy_load_esm_module(scope, specifier)
+      } else {
+        module_map.lazy_load_synthetic_esm_module(scope, specifier)
+      }
+    }
+    "synthetic" => {
+      let backing = "ext:stop_lazy_module/backing.js";
+      module_map.add_lazy_loaded_script_source(
+        backing.to_string().into(),
+        source.to_string().into(),
+      );
+      module_map.add_synthetic_esm_module(
+        specifier.to_string().into(),
+        backing.to_string().into(),
+      );
+      module_map.lazy_load_synthetic_esm_module(scope, specifier)
+    }
+    _ => unreachable!(),
+  };
+  let err = result.expect_err("interrupted module loading must fail");
+  assert!(err.to_string().contains("execution terminated"), "{err}");
+  assert!(
+    scope.is_execution_terminating(),
+    "loader swallowed termination"
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_microtask() {
+  assert_lazy_module_interruption(
+    "fresh",
+    "Promise.resolve().then(() => { Deno.core.ops.op_stop_lazy_module(); while (true) {} });",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_cached() {
+  assert_lazy_module_interruption(
+    "cached",
+    "Deno.core.ops.op_stop_lazy_module(); while (true) {}",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_cached_synthetic() {
+  assert_lazy_module_interruption(
+    "cached_synthetic",
+    "Deno.core.ops.op_stop_lazy_module(); while (true) {}",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_script() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { Deno.core.ops.op_stop_lazy_module(); while (true) {} })()",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_export_getter() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { return { get value() { Deno.core.ops.op_stop_lazy_module(); while (true) {} } }; })()",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_export_keys() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { return new Proxy({}, { ownKeys() { Deno.core.ops.op_stop_lazy_module(); while (true) {} } }); })()",
+  );
+}
+
 #[test]
 fn test_lazy_loaded_esm() {
   deno_core::extension!(test_ext, lazy_loaded_esm = [dir "modules/testdata", "lazy_loaded.js"]);
