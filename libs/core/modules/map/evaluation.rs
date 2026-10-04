@@ -299,7 +299,8 @@ impl ModuleMap {
     // A promise hook run while C++ created a promise can have swallowed a host
     // stop; see `evaluate_lazy_module`.
     if crate::tasks::external_execution_termination_requested(tc_scope) {
-      tc_scope.terminate_execution();
+      crate::tasks::raise_external_execution_termination(tc_scope);
+      tc_scope.rethrow();
       return Err(CoreErrorKind::ExecutionTerminated.into_box());
     }
 

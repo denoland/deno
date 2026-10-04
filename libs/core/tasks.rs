@@ -29,6 +29,24 @@ pub(crate) fn external_execution_termination_requested(
     .is_some_and(|request| request.0.load(Ordering::SeqCst))
 }
 
+/// Re-request a host stop and make it take effect at once. A requested
+/// termination is only thrown at V8's next interrupt check, so until then a
+/// caller would report it while nothing is pending, and an op would throw a
+/// catchable error in its place. Entering a script runs that check. The
+/// request is then queued again: V8 drops a thrown termination once it
+/// unwinds to the embedder, and a host stop must also stop later entries.
+/// The caller rethrows the termination its `TryCatch` caught.
+pub(crate) fn raise_external_execution_termination(
+  scope: &mut v8::PinScope<'_, '_>,
+) {
+  scope.terminate_execution();
+  let source = v8::String::new_external_onebyte_static(scope, b"0").unwrap();
+  if let Some(script) = v8::Script::compile(scope, source, None) {
+    let _ = script.run(scope);
+  }
+  scope.terminate_execution();
+}
+
 /// Cancel a local timeout without losing a host-owned stop request.
 /// Returns false when execution must remain terminated.
 pub fn cancel_local_execution_termination(isolate: &v8::Isolate) -> bool {

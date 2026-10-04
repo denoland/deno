@@ -75,7 +75,8 @@ impl ModuleMap {
     // while C++ created a promise, so a host stop may no longer be visible
     // above. Re-request it rather than letting the stopped module complete.
     if crate::tasks::external_execution_termination_requested(scope) {
-      scope.terminate_execution();
+      crate::tasks::raise_external_execution_termination(scope);
+      scope.rethrow();
       return Err(CoreErrorKind::ExecutionTerminated.into_box());
     }
     let Some(value) = value else {
