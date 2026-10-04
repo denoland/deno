@@ -687,6 +687,14 @@ fn test_lazy_module_interruption_export_keys() {
 }
 
 #[test]
+fn test_lazy_module_interruption_synthetic_promise_hook() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { Deno.core.setPromiseHooks(() => { Deno.core.ops.op_stop_lazy_module(); while (true) {} }); return { value: 42 }; })()",
+  );
+}
+
+#[test]
 fn test_lazy_loaded_esm() {
   deno_core::extension!(test_ext, lazy_loaded_esm = [dir "modules/testdata", "lazy_loaded.js"]);
 

@@ -335,3 +335,28 @@ fn ffi_callback_errors() {
     "Illegal unhandled exception in nonblocking callback\n".repeat(3)
   );
 }
+
+#[test_util::test]
+fn ffi_worker_disposal_keeps_callback_alive() {
+  build();
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --quiet testdata/worker_disposal_callback.ts")
+    .env("NO_COLOR", "1")
+    // Make freed libffi metadata reads observable on macOS. Other platforms
+    // still exercise the actual native return path and completion assertions.
+    .env("MallocScribble", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "40 callbacks stopped safely\n"
+  );
+}
