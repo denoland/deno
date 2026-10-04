@@ -351,6 +351,7 @@ function Readable(options) {
   }
 
   this._events ??= {
+    __proto__: null,
     close: undefined,
     error: undefined,
     data: undefined,
