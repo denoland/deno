@@ -699,7 +699,10 @@ fn test_lazy_module_interruption_synthetic_promise_hook() {
     )));
     scope.terminate_execution();
   }
-  deno_core::extension!(host_stop_lazy_module, ops = [op_host_stop_lazy_module]);
+  deno_core::extension!(
+    host_stop_lazy_module,
+    ops = [op_host_stop_lazy_module]
+  );
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![host_stop_lazy_module::init()],
     ..Default::default()

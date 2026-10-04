@@ -347,7 +347,11 @@ fn ffi_callback_errors_with_wide_results() {
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
-  assert!(output.status.success(), "{:?}\n{stdout}\n{stderr}", output.status);
+  assert!(
+    output.status.success(),
+    "{:?}\n{stdout}\n{stderr}",
+    output.status
+  );
   assert_eq!(stdout, "isize: thrown\nusize: thrown\nstruct: thrown\n");
 }
 
