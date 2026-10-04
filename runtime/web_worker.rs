@@ -315,6 +315,13 @@ impl WebWorkerHandle {
     self.isolate_handle.terminate_execution();
   }
 
+  pub fn stop_requester(&self) -> WebWorkerStopRequester {
+    WebWorkerStopRequester {
+      termination_signal: self.termination_signal.clone(),
+      isolate_handle: self.isolate_handle.clone(),
+    }
+  }
+
   /// Terminate the worker
   /// This function will set the termination signal, close the message channel,
   /// and wake the worker's event loop so it can terminate.
@@ -330,6 +337,26 @@ impl WebWorkerHandle {
       self.isolate_handle.terminate_execution();
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
+    }
+  }
+}
+
+/// Repeats a worker's pending stop request from any thread. V8 reports and
+/// clears a termination thrown by a promise hook that runs while C++ creates a
+/// promise, so a caller awaiting an execution-stop acknowledgment re-requests
+/// the stop until it arrives instead of trusting a single interrupt.
+#[derive(Clone)]
+pub struct WebWorkerStopRequester {
+  termination_signal: Arc<AtomicBool>,
+  isolate_handle: v8::IsolateHandle,
+}
+
+impl WebWorkerStopRequester {
+  /// Interrupt the worker again if its stop has been requested. A no-op once
+  /// the isolate is gone.
+  pub fn rerequest(&self) {
+    if self.termination_signal.load(Ordering::SeqCst) {
+      self.isolate_handle.terminate_execution();
     }
   }
 }

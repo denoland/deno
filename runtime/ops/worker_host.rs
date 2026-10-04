@@ -44,6 +44,7 @@ use crate::tokio_util::create_and_run_worker_thread;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerStopRequester;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
@@ -123,10 +124,16 @@ pub struct WorkerThread {
 
 struct WorkerExecutionCompletion {
   receiver: RefCell<Option<tokio::sync::oneshot::Receiver<()>>>,
+  stop: WebWorkerStopRequester,
 }
 
-// SAFETY: This object owns only a Rust channel receiver, with no V8/cppgc
-// pointers to trace. Its receiver moves into the wait future before awaiting.
+/// How often a pending disposal repeats the worker's stop request.
+const STOP_REREQUEST_INTERVAL: std::time::Duration =
+  std::time::Duration::from_millis(10);
+
+// SAFETY: This object owns a Rust channel receiver and a thread-safe isolate
+// handle, with no V8/cppgc pointers to trace. Its fields are cloned or moved
+// into the wait future before awaiting.
 unsafe impl deno_core::GarbageCollected for WorkerExecutionCompletion {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -515,15 +522,19 @@ fn op_host_worker_execution_completion(
 ) -> Result<WorkerExecutionCompletion, JsErrorBox> {
   // The Worker constructor takes this receiver before starting channel polls.
   // The future then owns it independently of explicit/natural table removal.
-  let receiver = state
+  let (receiver, stop) = state
     .borrow_mut::<WorkersTable>()
     .get_mut(&id)
-    .and_then(|worker| worker.execution_stopped.take())
+    .and_then(|worker| {
+      let receiver = worker.execution_stopped.take()?;
+      Some((receiver, worker.worker_handle.stop_requester()))
+    })
     .ok_or_else(|| {
       JsErrorBox::generic("Worker execution-stop acknowledgment unavailable")
     })?;
   Ok(WorkerExecutionCompletion {
     receiver: RefCell::new(Some(receiver)),
+    stop,
   })
 }
 
@@ -532,13 +543,23 @@ fn op_host_worker_execution_stopped(
   #[cppgc] completion: &WorkerExecutionCompletion,
 ) -> impl Future<Output = Result<(), JsErrorBox>> + use<> {
   let receiver = completion.receiver.borrow_mut().take();
+  let stop = completion.stop.clone();
   async move {
-    let receiver = receiver.ok_or_else(|| {
+    let mut receiver = receiver.ok_or_else(|| {
       JsErrorBox::generic("Worker execution-stop acknowledgment unavailable")
     })?;
-    receiver.await.map_err(|_| {
-      JsErrorBox::generic("Worker stopped without execution acknowledgment")
-    })
+    // V8 can clear a stop the worker was already interrupted with, so keep
+    // requesting it until the worker acknowledges that execution has stopped.
+    loop {
+      tokio::select! {
+        result = &mut receiver => {
+          return result.map_err(|_| {
+            JsErrorBox::generic("Worker stopped without execution acknowledgment")
+          });
+        }
+        () = tokio::time::sleep(STOP_REREQUEST_INTERVAL) => stop.rerequest(),
+      }
+    }
   }
 }
 
