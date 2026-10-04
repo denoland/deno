@@ -356,6 +356,9 @@ unsafe fn do_ffi_callback(
       return;
     }
     let value = call_result.unwrap();
+    // Converting the result can run JavaScript (valueOf), which can throw or
+    // be interrupted. A failed conversion returns zero, as a failed call does,
+    // rather than panicking across the C callback boundary.
 
     match info.result {
       NativeType::Bool => {
@@ -373,9 +376,7 @@ unsafe fn do_ffi_callback(
           value.value() as f32
         } else {
           // Fallthrough, probably UB.
-          value
-            .number_value(scope)
-            .expect("Unable to deserialize result parameter.") as f32
+          value.number_value(scope).unwrap_or_default() as f32
         };
         *(result as *mut f32) = value;
       }
@@ -385,9 +386,7 @@ unsafe fn do_ffi_callback(
           value.value()
         } else {
           // Fallthrough, probably UB.
-          value
-            .number_value(scope)
-            .expect("Unable to deserialize result parameter.")
+          value.number_value(scope).unwrap_or_default()
         };
         *(result as *mut f64) = value;
       }
@@ -435,9 +434,7 @@ unsafe fn do_ffi_callback(
           value.value() as i8
         } else {
           // Fallthrough, essentially UB.
-          value
-            .int32_value(scope)
-            .expect("Unable to deserialize result parameter.") as i8
+          value.int32_value(scope).unwrap_or_default() as i8
         };
         *(result as *mut i8) = value;
       }
@@ -447,9 +444,7 @@ unsafe fn do_ffi_callback(
           value.value() as u8
         } else {
           // Fallthrough, essentially UB.
-          value
-            .uint32_value(scope)
-            .expect("Unable to deserialize result parameter.") as u8
+          value.uint32_value(scope).unwrap_or_default() as u8
         };
         *(result as *mut u8) = value;
       }
@@ -458,9 +453,7 @@ unsafe fn do_ffi_callback(
           value.value() as i16
         } else {
           // Fallthrough, essentially UB.
-          value
-            .int32_value(scope)
-            .expect("Unable to deserialize result parameter.") as i16
+          value.int32_value(scope).unwrap_or_default() as i16
         };
         *(result as *mut i16) = value;
       }
@@ -470,9 +463,7 @@ unsafe fn do_ffi_callback(
           value.value() as u16
         } else {
           // Fallthrough, essentially UB.
-          value
-            .uint32_value(scope)
-            .expect("Unable to deserialize result parameter.") as u16
+          value.uint32_value(scope).unwrap_or_default() as u16
         };
         *(result as *mut u16) = value;
       }
@@ -481,9 +472,7 @@ unsafe fn do_ffi_callback(
           value.value()
         } else {
           // Fallthrough, essentially UB.
-          value
-            .int32_value(scope)
-            .expect("Unable to deserialize result parameter.")
+          value.int32_value(scope).unwrap_or_default()
         };
         *(result as *mut i32) = value;
       }
@@ -493,9 +482,7 @@ unsafe fn do_ffi_callback(
           value.value()
         } else {
           // Fallthrough, essentially UB.
-          value
-            .uint32_value(scope)
-            .expect("Unable to deserialize result parameter.")
+          value.uint32_value(scope).unwrap_or_default()
         };
         *(result as *mut u32) = value;
       }
@@ -507,9 +494,8 @@ unsafe fn do_ffi_callback(
         } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
           *(result as *mut i64) = value.value() as i64;
         } else {
-          *(result as *mut i64) = value
-            .integer_value(scope)
-            .expect("Unable to deserialize result parameter.");
+          *(result as *mut i64) =
+            value.integer_value(scope).unwrap_or_default();
         }
       }
       NativeType::U64 | NativeType::USize => {
@@ -520,10 +506,8 @@ unsafe fn do_ffi_callback(
         } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
           *(result as *mut u64) = value.value() as u64;
         } else {
-          *(result as *mut u64) = value
-            .integer_value(scope)
-            .expect("Unable to deserialize result parameter.")
-            as u64;
+          *(result as *mut u64) =
+            value.integer_value(scope).unwrap_or_default() as u64;
         }
       }
       NativeType::Struct(_) => {
