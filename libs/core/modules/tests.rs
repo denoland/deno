@@ -686,11 +686,58 @@ fn test_lazy_module_interruption_export_keys() {
   );
 }
 
+// V8 reports and clears any exception thrown by a promise hook that runs while
+// C++ creates a promise (`NativeContext::RunPromiseHook`), including a
+// termination exception. A host stop must survive that, so this op registers
+// the sticky host request the way `WebWorker` does before terminating.
 #[test]
 fn test_lazy_module_interruption_synthetic_promise_hook() {
+  #[op2(fast)]
+  fn op_host_stop_lazy_module(scope: &mut v8::PinScope) {
+    scope.set_slot(crate::ExternalExecutionTermination(Arc::new(
+      std::sync::atomic::AtomicBool::new(true),
+    )));
+    scope.terminate_execution();
+  }
+  deno_core::extension!(host_stop_lazy_module, ops = [op_host_stop_lazy_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![host_stop_lazy_module::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  let result = {
+    deno_core::scope!(scope, runtime);
+    let backing = "ext:host_stop_lazy_module/backing.js";
+    let specifier = "ext:host_stop_lazy_module/stopped.js";
+    module_map.add_lazy_loaded_script_source(
+      backing.to_string().into(),
+      "(function () { Deno.core.setPromiseHooks(() => { Deno.core.ops.op_host_stop_lazy_module(); while (true) {} }); return { value: 42 }; })()".to_string().into(),
+    );
+    module_map.add_synthetic_esm_module(
+      specifier.to_string().into(),
+      backing.to_string().into(),
+    );
+    module_map.lazy_load_synthetic_esm_module(scope, specifier)
+  };
+  let err = result.expect_err("interrupted module loading must fail");
+  assert!(
+    matches!(err.as_kind(), CoreErrorKind::ExecutionTerminated),
+    "{err}"
+  );
+  // V8 has already cleared the thrown termination, so check the stop
+  // functionally: no further script may run.
+  let next = runtime.execute_script("next.js", "globalThis.ran = true;");
+  let next = next.expect_err("host stop was lost");
+  assert_eq!(next.to_string(), "Uncaught Error: execution terminated");
+}
+
+// Probe for the JS-created promise path: the Torque hook caller has its own
+// catch, so check that termination still escapes it.
+#[test]
+fn test_lazy_module_interruption_js_promise_hook() {
   assert_lazy_module_interruption(
-    "synthetic",
-    "(function () { Deno.core.setPromiseHooks(() => { Deno.core.ops.op_stop_lazy_module(); while (true) {} }); return { value: 42 }; })()",
+    "fresh",
+    "Deno.core.setPromiseHooks(() => { Deno.core.ops.op_stop_lazy_module(); while (true) {} }); Promise.resolve();",
   );
 }
 
