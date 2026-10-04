@@ -942,6 +942,33 @@ struct TsFn {
   is_ref: AtomicBool,
 }
 
+/// A taken slot in a threadsafe function's bounded queue. Dropping it frees the
+/// slot and wakes a caller blocked on a full queue, whether the queued call ran
+/// or runtime shutdown discarded it before it could run.
+struct QueueSlot {
+  tsfn: SendPtr<TsFn>,
+  is_closed: Arc<AtomicBool>,
+}
+
+impl Drop for QueueSlot {
+  fn drop(&mut self) {
+    // A closed TsFn has been freed. It is freed on the JS thread, where a
+    // queued call is also run or discarded; a slot dropped on the calling
+    // thread is still inside `TsFn::call`.
+    if self.is_closed.load(Ordering::Relaxed) {
+      return;
+    }
+    // SAFETY: Not closed, so the TsFn is still alive (see above).
+    let tsfn = unsafe { &*self.tsfn.0 };
+    let mut queue_size = tsfn.queue_size.lock();
+    let size = *queue_size;
+    *queue_size -= 1;
+    if size == tsfn.max_queue_size {
+      tsfn.queue_cond.notify_one();
+    }
+  }
+}
+
 impl Drop for TsFn {
   fn drop(&mut self) {
     assert!(
@@ -1085,6 +1112,10 @@ impl TsFn {
       }
       *queue_size += 1;
     }
+    let slot = (self.max_queue_size > 0).then(|| QueueSlot {
+      tsfn: SendPtr(self),
+      is_closed: self.is_closed.clone(),
+    });
 
     let is_closed = self.is_closed.clone();
     let tsfn = SendPtr(self);
@@ -1098,6 +1129,8 @@ impl TsFn {
 
     self.sender.spawn(move |scope: &mut v8::PinScope<'_, '_>| {
       let data = data.take();
+      // Free the queue slot before running the callback, as before.
+      drop(slot);
 
       // If is_closed then the TsFn struct has been freed. Don't read from
       // the tsfn pointer. We still pass the real env (not null) because:
@@ -1118,15 +1151,6 @@ impl TsFn {
         let tsfn = tsfn.take();
 
         let tsfn = unsafe { &*tsfn };
-
-        if tsfn.max_queue_size > 0 {
-          let mut queue_size = tsfn.queue_size.lock();
-          let size = *queue_size;
-          *queue_size -= 1;
-          if size == tsfn.max_queue_size {
-            tsfn.queue_cond.notify_one();
-          }
-        }
 
         let func = tsfn.func.as_ref().map(|f| v8::Local::new(scope, f));
 
