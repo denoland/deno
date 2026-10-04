@@ -377,6 +377,29 @@ fn ffi_worker_releases_host_state_during_native_call() {
   );
 }
 
+#[cfg(not(windows))]
+#[test_util::test]
+fn ffi_worker_unload_callback_skips_disposed_isolate() {
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --allow-write --allow-run --quiet testdata/worker_unload_callback.ts")
+    .env("NO_COLOR", "1")
+    .env("MallocScribble", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "10 unload callbacks did not enter a disposed isolate\n"
+  );
+}
+
 #[test_util::test]
 fn ffi_worker_disposal_keeps_callback_alive() {
   build();
