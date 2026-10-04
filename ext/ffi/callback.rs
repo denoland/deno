@@ -207,16 +207,32 @@ unsafe extern "C" fn deno_ffi_callback(
         if callback.is_err() && !matches!(info.result, NativeType::Void) {
           // The runtime closed before dispatch. The native call still owns its
           // result buffer; return a zero value without entering disposed V8 or
-          // panicking across the C callback boundary. libffi supplies the size
-          // and a writable result region for this declared non-void return.
-          std::ptr::write_bytes(
-            result as *mut c_void as *mut u8,
-            0,
-            (*cif.rtype).size,
-          );
+          // panicking across the C callback boundary.
+          zero_ffi_result(cif, result as *mut c_void);
         }
       }
     });
+  }
+}
+
+/// Zero a non-void callback's libffi return slot. libffi gives a non-struct
+/// return a slot of at least `ffi_arg` and expects small integers widened into
+/// it, so zero that whole slot rather than just the declared type's width.
+///
+/// # Safety
+///
+/// `cif` and `result` must be the ones libffi passed to the running closure.
+unsafe fn zero_ffi_result(cif: &libffi::low::ffi_cif, result: *mut c_void) {
+  // SAFETY: The caller guarantees a live cif and a writable result slot of
+  // the size computed from it.
+  unsafe {
+    let rtype = &*cif.rtype;
+    let size = if rtype.type_ == libffi::raw::FFI_TYPE_STRUCT {
+      rtype.size
+    } else {
+      rtype.size.max(std::mem::size_of::<libffi::low::ffi_arg>())
+    };
+    ptr::write_bytes(result as *mut u8, 0, size);
   }
 }
 
@@ -324,46 +340,12 @@ unsafe fn do_ffi_callback(
     let call_result = func.call(scope, recv.into(), &params);
 
     if call_result.is_none() {
-      // JS function threw an exception. Set the return value to zero and return.
-      // The exception continue propagating up the call chain when the event loop
-      // resumes.
-      match info.result {
-        NativeType::Bool => {
-          *(result as *mut bool) = false;
-        }
-        NativeType::U32 | NativeType::I32 => {
-          // zero is equal for signed and unsigned alike
-          *(result as *mut u32) = 0;
-        }
-        NativeType::F32 => {
-          *(result as *mut f32) = 0.0;
-        }
-        NativeType::F64 => {
-          *(result as *mut f64) = 0.0;
-        }
-        NativeType::U8 | NativeType::I8 => {
-          // zero is equal for signed and unsigned alike
-          *(result as *mut u8) = 0;
-        }
-        NativeType::U16 | NativeType::I16 => {
-          // zero is equal for signed and unsigned alike
-          *(result as *mut u16) = 0;
-        }
-        NativeType::Pointer
-        | NativeType::Buffer
-        | NativeType::Function
-        | NativeType::U64
-        | NativeType::I64 => {
-          *(result as *mut usize) = 0;
-        }
-        NativeType::Void => {
-          // nop
-        }
-        _ => {
-          unreachable!();
-        }
-      };
-
+      // JS function threw an exception, or the isolate is terminating. Set the
+      // return value to zero and return; an exception continues propagating up
+      // the call chain when the event loop resumes.
+      if !matches!(info.result, NativeType::Void) {
+        zero_ffi_result(cif, result);
+      }
       return;
     }
     let value = call_result.unwrap();
