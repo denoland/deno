@@ -952,6 +952,107 @@ extern "C" fn tsfn_full_queue_state(
   result
 }
 
+// Two callers blocked on a full queue of two: shutdown must wake both.
+
+static MULTI_WAITER_STATE: std::sync::atomic::AtomicU32 =
+  std::sync::atomic::AtomicU32::new(0);
+
+unsafe extern "C" fn multi_waiter_fill_execute(
+  _env: napi_env,
+  data: *mut c_void,
+) {
+  unsafe {
+    let tsfn = data as napi_threadsafe_function;
+    for _ in 0..2 {
+      assert_eq!(
+        napi_call_threadsafe_function(
+          tsfn,
+          ptr::null_mut(),
+          ThreadsafeFunctionCallMode::blocking,
+        ),
+        napi_ok
+      );
+    }
+    MULTI_WAITER_STATE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let _ = napi_call_threadsafe_function(
+      tsfn,
+      ptr::null_mut(),
+      ThreadsafeFunctionCallMode::blocking,
+    );
+  }
+}
+
+unsafe extern "C" fn multi_waiter_second_execute(
+  _env: napi_env,
+  data: *mut c_void,
+) {
+  unsafe {
+    while MULTI_WAITER_STATE.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+      std::thread::yield_now();
+    }
+    MULTI_WAITER_STATE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let _ = napi_call_threadsafe_function(
+      data as napi_threadsafe_function,
+      ptr::null_mut(),
+      ThreadsafeFunctionCallMode::blocking,
+    );
+  }
+}
+
+extern "C" fn test_tsfn_blocking_full_queue_two_waiters(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    "test_tsfn_two_waiters".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut resource_name,
+  ));
+  let mut tsfn: napi_threadsafe_function = ptr::null_mut();
+  assert_napi_ok!(napi_create_threadsafe_function(
+    env,
+    ptr::null_mut(),
+    ptr::null_mut(),
+    resource_name,
+    2, // max_queue_size
+    2, // initial_thread_count
+    ptr::null_mut(),
+    None,
+    ptr::null_mut(),
+    Some(full_queue_call_js),
+    &mut tsfn,
+  ));
+  for execute in [multi_waiter_fill_execute, multi_waiter_second_execute] {
+    let mut async_work: napi_async_work = ptr::null_mut();
+    assert_napi_ok!(napi_create_async_work(
+      env,
+      ptr::null_mut(),
+      resource_name,
+      Some(execute),
+      Some(full_queue_complete),
+      tsfn as *mut c_void,
+      &mut async_work,
+    ));
+    assert_napi_ok!(napi_queue_async_work(env, async_work));
+  }
+  ptr::null_mut()
+}
+
+extern "C" fn tsfn_two_waiters_state(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_uint32(
+    env,
+    MULTI_WAITER_STATE.load(std::sync::atomic::Ordering::SeqCst),
+    &mut result,
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_async_work", test_async_work),
@@ -985,6 +1086,12 @@ pub fn init(env: napi_env, exports: napi_value) {
       test_tsfn_blocking_full_queue
     ),
     napi_new_property!(env, "tsfn_full_queue_state", tsfn_full_queue_state),
+    napi_new_property!(
+      env,
+      "test_tsfn_blocking_full_queue_two_waiters",
+      test_tsfn_blocking_full_queue_two_waiters
+    ),
+    napi_new_property!(env, "tsfn_two_waiters_state", tsfn_two_waiters_state),
   ];
 
   assert_napi_ok!(napi_define_properties(

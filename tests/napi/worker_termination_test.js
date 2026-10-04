@@ -47,7 +47,7 @@ Deno.test("napi external buffer finalizer runs after worker termination", async 
   await new Promise((r) => setTimeout(r, 100));
 });
 
-Deno.test("napi worker disposal releases a blocked threadsafe call", async () => {
+async function disposeWithBlockedThreadsafeCalls(scenario) {
   const worker = new Worker(
     new URL("./worker_termination_worker.js", import.meta.url),
     { type: "module" },
@@ -59,7 +59,7 @@ Deno.test("napi worker disposal releases a blocked threadsafe call", async () =>
   message = new Promise((resolve) => {
     worker.onmessage = (e) => resolve(e.data);
   });
-  worker.postMessage("block_tsfn_queue");
+  worker.postMessage(scenario);
   assertEquals(await message, "blocked");
 
   // Disposal joins the worker's blocking pool, where the execute callback is
@@ -78,4 +78,14 @@ Deno.test("napi worker disposal releases a blocked threadsafe call", async () =>
   } finally {
     clearTimeout(timer);
   }
-});
+}
+
+Deno.test(
+  "napi worker disposal releases a blocked threadsafe call",
+  () => disposeWithBlockedThreadsafeCalls("block_tsfn_queue"),
+);
+
+Deno.test(
+  "napi worker disposal releases every blocked threadsafe call",
+  () => disposeWithBlockedThreadsafeCalls("block_tsfn_queue_two_waiters"),
+);
