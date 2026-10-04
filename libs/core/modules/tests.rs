@@ -821,6 +821,33 @@ fn test_mod_evaluate_sync_termination() {
   );
 }
 
+// A stop while dynamic import() lazily evaluates a module must leave the
+// isolate terminating rather than unwrap a failed promise rejection inside
+// V8's extern "C" import callback.
+#[test]
+fn test_lazy_dynamic_import_termination() {
+  #[op2(fast)]
+  fn op_stop_dynamic_import(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_dynamic_import, ops = [op_stop_dynamic_import]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_dynamic_import::init()],
+    ..Default::default()
+  });
+  runtime.module_map().add_lazy_loaded_esm_source(
+    "node:stop_dynamic_import".to_string().into(),
+    "Deno.core.ops.op_stop_dynamic_import(); while (true) {}"
+      .to_string()
+      .into(),
+  );
+  // As a worker's first `import("node:...")` of a lazily loaded built-in.
+  let result = runtime
+    .execute_script("import.js", r#"import("node:stop_dynamic_import");"#);
+  let err = result.expect_err("a stopped dynamic import must stop the caller");
+  assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
+}
+
 // Probe for the JS-created promise path: the Torque hook caller has its own
 // catch, so check that termination still escapes it.
 #[test]
