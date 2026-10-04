@@ -162,7 +162,16 @@ unsafe extern "C" fn deno_ffi_callback(
   )]
   unsafe {
     LOCAL_THREAD_ID.with(|s| {
-      if *s.borrow() == info.thread_id {
+      if *s.borrow() == info.thread_id
+        && info.async_work_sender.is_closed()
+      {
+        // The runtime has shut down and its isolate may be gone, for example
+        // when a library's unload destructor calls back during worker
+        // teardown. Return a zero value without entering V8.
+        if !matches!(info.result, NativeType::Void) {
+          zero_ffi_result(cif, result as *mut c_void);
+        }
+      } else if *s.borrow() == info.thread_id {
         // Call from main thread. If this callback is being triggered due to a
         // function call coming from Deno itself, then this callback will build
         // ontop of that stack.

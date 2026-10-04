@@ -278,6 +278,12 @@ impl V8CrossThreadTaskSpawner {
       .expect("JavaScript runtime has stopped")
   }
 
+  /// Whether the runtime has shut down this spawner. After that its isolate
+  /// may already be gone, so callers must not enter it.
+  pub fn is_closed(&self) -> bool {
+    self.tasks.closed.load(Ordering::Acquire)
+  }
+
   /// Like `spawn_blocking`, but returns an error when runtime shutdown cancels
   /// the callback before it executes. This is safe for FFI callers that cannot
   /// unwind through a native callback boundary.
