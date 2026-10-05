@@ -337,6 +337,8 @@ mod tests {
 
   use super::*;
 
+  // Needs a real V8 isolate, which Miri cannot run.
+  #[cfg(not(miri))]
   #[test]
   fn runtime_drop_releases_queued_blocking_callbacks() {
     let runtime = crate::JsRuntime::new(Default::default());

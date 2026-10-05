@@ -7,7 +7,7 @@ function startNativeSleep(library: string) {
     sleep_blocking: { parameters: ["u64"], result: "void", nonblocking: true },
   });
   // Still running in the worker's blocking pool when the worker goes away.
-  void dylib.symbols.sleep_blocking(5000n);
+  void dylib.symbols.sleep_blocking(10000n);
 }
 
 if (parentPort) {

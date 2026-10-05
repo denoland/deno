@@ -19,8 +19,8 @@ const workerUrl = new URL(
   "./worker_release_during_native_call_worker.ts",
   import.meta.url,
 );
-// The worker's native call sleeps for 5000ms.
-const PROMPT_MS = 2000;
+// The worker's native call sleeps for 10000ms; leave room for slow CI.
+const PROMPT_MS = 5000;
 
 function report(name: string, start: number) {
   const elapsed = performance.now() - start;
@@ -50,14 +50,14 @@ if (Deno.args[0] === "close-child") {
         "--allow-ffi",
         "--allow-read",
         "--quiet",
-        new URL(import.meta.url).pathname,
+        import.meta.filename!,
         "close-child",
       ],
     }).output();
     if (!status.success) throw new Error("close child failed");
-    // The child also pays process startup; the native call is 5000ms.
+    // The child also pays process startup; the native call is 10000ms.
     const elapsed = performance.now() - start;
-    console.log(`web close: ${elapsed < 4000 ? "prompt" : "delayed"}`);
+    console.log(`web close: ${elapsed < 8000 ? "prompt" : "delayed"}`);
   }
 
   {
