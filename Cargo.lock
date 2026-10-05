@@ -3043,6 +3043,7 @@ dependencies = [
  "async-trait",
  "aws-lc-rs",
  "base64 0.22.1",
+ "chrono",
  "deno_cache_dir",
  "deno_error",
  "deno_npm",

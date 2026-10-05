@@ -7,7 +7,7 @@ const { core, primordials } = __bootstrap;
 const { AssertionError } = core.loadExtScript(
   "ext:deno_node/internal/assert/assertion_error.js",
 );
-const { innerOk } = core.loadExtScript(
+const { innerFail, innerOk } = core.loadExtScript(
   "ext:deno_node/internal/assert/utils.ts",
 );
 const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
@@ -103,7 +103,7 @@ Assert.prototype.fail = fail;
 // Duplicate of the `ok` function below so we don't inherit
 // the extra assigned properties from `assert` function later on.
 Assert.prototype.ok = function ok(...args) {
-  innerOk(ok, args.length, ...new SafeArrayIterator(args));
+  innerOk(ok, ...new SafeArrayIterator(args));
 };
 Assert.prototype.equal = equal;
 Assert.prototype.notEqual = notEqual;
@@ -122,23 +122,8 @@ Assert.prototype.ifError = ifError;
 Assert.prototype.match = match;
 Assert.prototype.doesNotMatch = doesNotMatch;
 
-function innerFail(obj) {
-  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, obj.message)) {
-    throw obj.message;
-  }
-
-  throw new AssertionError({
-    actual: obj.actual,
-    expected: obj.expected,
-    message: obj.message,
-    operator: obj.operator,
-    stackStartFn: obj.stackStartFn,
-    diff: obj.diff,
-  });
-}
-
 function assert(...args) {
-  innerOk(ok, args.length, ...new SafeArrayIterator(args));
+  innerOk(ok, ...new SafeArrayIterator(args));
 }
 const ok = assert;
 
@@ -192,7 +177,7 @@ function compareExceptionKey(
     innerFail({
       actual,
       expected,
-      message,
+      message: [message],
       operator: fn.name,
       stackStartFn: fn,
       diff: this?.[kOptions]?.diff,
@@ -428,7 +413,7 @@ function expectsError(
       actual: undefined,
       expected: error,
       operator: stackStartFn.name,
-      message: `Missing expected ${fnType}${details}`,
+      message: [`Missing expected ${fnType}${details}`],
       stackStartFn,
       diff: this?.[kOptions]?.diff,
     });
@@ -488,8 +473,10 @@ function expectsNoError(
       actual,
       expected: error,
       operator: stackStartFn.name,
-      message: `Got unwanted ${fnType}${details}\n` +
+      message: [
+        `Got unwanted ${fnType}${details}\n` +
         `Actual message: "${actual?.message}"`,
+      ],
       stackStartFn,
       diff: this?.[kOptions]?.diff,
     });
@@ -514,7 +501,7 @@ function doesNotThrow(
 function equal(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -537,7 +524,7 @@ function equal(
 function notEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -558,7 +545,7 @@ function notEqual(
 function strictEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -579,7 +566,7 @@ function strictEqual(
 function notStrictEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -600,7 +587,7 @@ function notStrictEqual(
 function partialDeepStrictEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -620,7 +607,7 @@ function partialDeepStrictEqual(
 function deepEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -641,7 +628,7 @@ function deepEqual(
 function notDeepEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -662,7 +649,7 @@ function notDeepEqual(
 function deepStrictEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -683,7 +670,7 @@ function deepStrictEqual(
 function notDeepStrictEqual(
   actual,
   expected,
-  message,
+  ...message
 ) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "expected");
@@ -773,47 +760,51 @@ function internalMatch(
     typeof string !== "string" ||
     RegExpPrototypeExec(regexp, string) !== null !== matchFn
   ) {
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, message)) {
-      throw message;
-    }
+    // if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, message)) {
+    //   throw message;
+    // }
 
-    const generatedMessage = !message;
+    // const generatedMessage = !message;
+    const generatedMessage = message.length === 0;
 
     // 'The input was expected to not match the regular expression ' +
-    message ||= typeof string !== "string"
+    // message ||= typeof string !== "string"
+    message[0] ||= typeof string !== "string"
       ? 'The "string" argument must be of type string. Received type ' +
         `${typeof string} (${inspect(string)})`
       : (matchFn
         ? "The input did not match the regular expression "
         : "The input was expected to not match the regular expression ") +
         `${inspect(regexp)}. Input:\n\n${inspect(string)}\n`;
-    const err = new AssertionError({
+    // const err = new AssertionError({
+    innerFail({
       actual: string,
       expected: regexp,
       message,
       operator: fn.name,
       stackStartFn: fn,
       diff: this?.[kOptions]?.diff,
+      generatedMessage,
     });
-    err.generatedMessage = generatedMessage;
-    throw err;
+    // err.generatedMessage = generatedMessage;
+    // throw err;
   }
 }
 
-function match(string, regexp, message) {
+function match(string, regexp, ...message) {
   internalMatch(string, regexp, message, match);
 }
 
 function doesNotMatch(
   string,
   regexp,
-  message,
+  ...message
 ) {
   internalMatch(string, regexp, message, doesNotMatch);
 }
 
 function strict(...args) {
-  innerOk(strict, args.length, ...new SafeArrayIterator(args));
+  innerOk(strict, ...new SafeArrayIterator(args));
 }
 
 async function rejects(
