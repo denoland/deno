@@ -61,38 +61,35 @@ struct FsEventsResource {
   id: u64,
   /// The (path, recursive_mode) pairs this resource registered. Tracked so the
   /// shared watcher unwatches them when the last interested resource closes.
-  watched: Vec<(PathBuf, RecursiveMode)>,
+  /// Emptied by [`FsEventsResource::release_watches`].
+  watched: Mutex<Vec<(PathBuf, RecursiveMode)>>,
   /// Set by the watcher callback when the event queue overflowed and events
   /// were dropped; drained by `op_fs_events_poll`, which surfaces the loss as
   /// a `flag: "rescan"` event.
   overflowed: Arc<AtomicBool>,
 }
 
-impl Resource for FsEventsResource {
-  fn name(&self) -> Cow<'_, str> {
-    "fsEvents".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
-}
-
-impl Drop for FsEventsResource {
-  fn drop(&mut self) {
-    // Remove this resource's sender from the shared dispatch list so the
-    // watcher callback stops trying to deliver events to a dead channel.
-    self.inner.senders.lock().retain(|ws| ws.id != self.id);
-
-    // Reference-count the underlying watches: only unwatch when no other
-    // resource still depends on this path. Without this, calling
-    // `Deno.watchFs(path)` repeatedly leaks watches in the shared
-    // `RecommendedWatcher` — on Windows each leaked watch registers a
-    // separate `ReadDirectoryChangesW` request, so the next watcher created
-    // for the same path receives every event N times.
+impl FsEventsResource {
+  /// Reference-count the underlying watches: only unwatch when no other
+  /// resource still depends on this path. Without this, calling
+  /// `Deno.watchFs(path)` repeatedly leaks watches in the shared
+  /// `RecommendedWatcher` — on Windows each leaked watch registers a
+  /// separate `ReadDirectoryChangesW` request, so the next watcher created
+  /// for the same path receives every event N times.
+  ///
+  /// This runs on close and not only on drop: an in-flight
+  /// `op_fs_events_poll` keeps a closed resource alive, and a watcher opened
+  /// for the same path in the meantime would see a stale count and skip
+  /// `watch()`, so it would never get events if the path was recreated (see
+  /// denoland/deno#36937). It only releases once.
+  fn release_watches(&self) {
+    let watched = std::mem::take(&mut *self.watched.lock());
+    if watched.is_empty() {
+      return;
+    }
     let mut watched_paths = self.inner.watched_paths.lock();
     let mut watcher = self.inner.watcher.lock();
-    for (path, mode) in &self.watched {
+    for (path, mode) in &watched {
       let key = (path.clone(), *mode);
       let Some(count) = watched_paths.get_mut(&key) else {
         continue;
@@ -105,6 +102,27 @@ impl Drop for FsEventsResource {
         let _ = watcher.unwatch(path);
       }
     }
+  }
+}
+
+impl Resource for FsEventsResource {
+  fn name(&self) -> Cow<'_, str> {
+    "fsEvents".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+    self.release_watches();
+  }
+}
+
+impl Drop for FsEventsResource {
+  fn drop(&mut self) {
+    // Remove this resource's sender from the shared dispatch list so the
+    // watcher callback stops trying to deliver events to a dead channel.
+    self.inner.senders.lock().retain(|ws| ws.id != self.id);
+
+    self.release_watches();
   }
 }
 
@@ -531,6 +549,15 @@ fn op_fs_events_open(
     }
   }
 
+  open_fs_events_resource(state, resolved_paths, ignore_paths, recursive)
+}
+
+fn open_fs_events_resource(
+  state: &mut OpState,
+  resolved_paths: Vec<PathBuf>,
+  ignore_paths: Vec<PathBuf>,
+  recursive: bool,
+) -> Result<ResourceId, FsEventsError> {
   let (sender, receiver) =
     mpsc::channel::<Result<FsEvent, NotifyError>>(FS_EVENT_QUEUE_CAPACITY);
   let overflowed = Arc::new(AtomicBool::new(false));
@@ -588,7 +615,7 @@ fn op_fs_events_open(
     cancel: Default::default(),
     inner,
     id,
-    watched,
+    watched: Mutex::new(watched),
     overflowed,
   };
   let rid = state.resource_table.add(resource);
@@ -649,7 +676,12 @@ async fn op_fs_events_poll(
         Err(_) => break,
       }
     }
-    let paths = resource.watched.iter().map(|(p, _)| p.clone()).collect();
+    let paths = resource
+      .watched
+      .lock()
+      .iter()
+      .map(|(p, _)| p.clone())
+      .collect();
     return Ok(Some(FsEvent {
       kind: "any",
       paths,
@@ -761,5 +793,53 @@ mod tests {
       }
       kind => panic!("expected Io error, got {kind:?}"),
     }
+  }
+
+  // https://github.com/denoland/deno/issues/36937
+  //
+  // A watcher that is closed while `op_fs_events_poll` still holds the
+  // resource is only dropped once that poll returns. The watch must be
+  // released on close, otherwise a watcher opened for the same path right
+  // after the close sees a stale count and skips `watch()`, which leaves it
+  // without events when the path was recreated in between.
+  #[test]
+  fn closing_a_resource_releases_its_watch_while_it_is_still_referenced() {
+    let dir = test_util::TempDir::new();
+    let path = normalize_watch_path(dir.path().to_path_buf());
+    let key = (path.clone(), RecursiveMode::NonRecursive);
+
+    let mut state = OpState::new(None);
+    let open = |state: &mut OpState| {
+      open_fs_events_resource(state, vec![path.clone()], vec![], false).unwrap()
+    };
+
+    let rid = open(&mut state);
+    let inner = state.borrow::<WatcherState>().inner.clone();
+    assert_eq!(inner.watched_paths.lock().get(&key), Some(&1));
+
+    // `op_fs_events_poll` holds the resource across its await.
+    let in_flight_poll =
+      state.resource_table.get::<FsEventsResource>(rid).unwrap();
+    state
+      .resource_table
+      .take::<FsEventsResource>(rid)
+      .unwrap()
+      .close();
+    assert_eq!(inner.watched_paths.lock().get(&key), None);
+
+    let second_rid = open(&mut state);
+    assert_eq!(inner.watched_paths.lock().get(&key), Some(&1));
+
+    // The first resource is dropped late, and must not release the watch of
+    // the second one.
+    drop(in_flight_poll);
+    assert_eq!(inner.watched_paths.lock().get(&key), Some(&1));
+
+    state
+      .resource_table
+      .take::<FsEventsResource>(second_rid)
+      .unwrap()
+      .close();
+    assert_eq!(inner.watched_paths.lock().get(&key), None);
   }
 }
