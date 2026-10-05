@@ -1,0 +1,40 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -Ldebug main.ts",
+      "output": "[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.ts[WILDCARD]"
+    },
+    {
+      "args": "run -Ldebug main.ts",
+      "output": "[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.ts[WILDCARD]"
+    },
+    {
+      "args": "run main.ts",
+      "envs": {
+        "DENO_COVERAGE_DIR": "cov_env"
+      },
+      "output": "done\n"
+    },
+    {
+      "args": "run --coverage=cov_flag main.ts",
+      "output": "done\n"
+    },
+    {
+      "args": "test --coverage=cov_test main_test.ts",
+      "output": "[WILDCARD]ok | 1 passed[WILDCARD]"
+    },
+    {
+      "args": "coverage --detailed cov_env",
+      "output": "coverage.out"
+    },
+    {
+      "args": "coverage --detailed cov_flag",
+      "output": "coverage.out"
+    },
+    {
+      "args": "coverage --detailed cov_test",
+      "output": "coverage.out"
+    }
+  ]
+}
