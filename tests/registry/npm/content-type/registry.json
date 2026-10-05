@@ -1,0 +1,72 @@
+{
+  "name": "content-type",
+  "description": "Create and parse HTTP Content-Type header",
+  "dist-tags": {
+    "latest": "2.1.0"
+  },
+  "versions": {
+    "2.1.0": {
+      "name": "content-type",
+      "version": "2.1.0",
+      "author": {
+        "name": "Douglas Christopher Wilson",
+        "email": "doug@somethingdoug.com"
+      },
+      "license": "MIT",
+      "_id": "content-type@2.1.0",
+      "bugs": {
+        "url": "https://github.com/jshttp/content-type/issues"
+      },
+      "dist": {
+        "shasum": "d9389c43c0a8cf6a355db464d21e07092a40493a",
+        "tarball": "http://localhost:4260/content-type/content-type-2.1.0.tgz",
+        "fileCount": 6,
+        "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==",
+        "unpackedSize": 23136
+      },
+      "main": "./dist/index.js",
+      "type": "commonjs",
+      "engines": {
+        "node": ">=18"
+      },
+      "exports": "./dist/index.js",
+      "funding": {
+        "url": "https://opencollective.com/express",
+        "type": "opencollective"
+      },
+      "gitHead": "8c2fedda8b40bd519c3ca49cc2a80aebaa1446e3",
+      "scripts": {
+        "test": "ts-scripts test",
+        "bench": "vitest bench",
+        "build": "ts-scripts build",
+        "specs": "ts-scripts specs",
+        "format": "ts-scripts format",
+        "prepare": "ts-scripts install && npm run build"
+      },
+      "typings": "./dist/index.d.ts",
+      "repository": {
+        "url": "git+https://github.com/jshttp/content-type.git",
+        "type": "git"
+      },
+      "ts-scripts": {
+        "dist": [
+          "dist"
+        ],
+        "project": [
+          "tsconfig.build.json"
+        ]
+      },
+      "_npmVersion": "11.17.0",
+      "description": "Create and parse HTTP Content-Type header",
+      "directories": {},
+      "_nodeVersion": "26.5.1",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "vitest": "^3.2.4",
+        "typescript": "^5.7.3",
+        "@vitest/coverage-v8": "^3.0.5",
+        "@borderless/ts-scripts": "^0.15.0"
+      }
+    }
+  }
+}
