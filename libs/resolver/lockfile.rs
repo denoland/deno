@@ -686,11 +686,8 @@ async fn try_read_node_modules_lockfile<TSys: LockfileSys>(
       return None;
     }
   };
-  log::debug!(
-    "Seeded '{}' from '{}'",
-    deno_lock_path.display(),
-    path.display()
-  );
+  // let the user know the lockfile wasn't freshly resolved from the registry
+  log::info!("Seeded deno.lock from {}", path.display());
   // not marked as changed so that the resolution isn't pending, which
   // would cause the packages to be re-resolved from the registry
   lockfile.has_content_changed = false;
