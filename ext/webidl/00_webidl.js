@@ -58,6 +58,7 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectIs,
+  ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
@@ -77,8 +78,6 @@ const {
   SetPrototypeClear,
   SetPrototypeDelete,
   SetPrototypeAdd,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeToWellFormed,
@@ -100,7 +99,7 @@ const {
 // converter functions, so callers that omit `opts` (the common case) don't
 // allocate a fresh `{ __proto__: null }` on every call. Converters only read
 // from `opts` -- never mutate -- so a shared frozen object is safe.
-const EMPTY_OPTS = ObjectFreeze({ __proto__: null });
+const EMPTY_OPTS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 function makeException(ErrorType, message, prefix, context, code = undefined) {
   const err = new ErrorType(
