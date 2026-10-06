@@ -529,6 +529,108 @@ Deno.test("[node/fs] fchmodSync works", {
   Deno.removeSync(tempFile);
 });
 
+Deno.test({
+  name: "[node/fs] fd metadata ops require write permission",
+  ignore: Deno.build.os === "windows",
+  permissions: { read: true, write: true, run: [Deno.execPath()] },
+  async fn() {
+    const dir = Deno.makeTempDirSync();
+    const target = join(dir, "target.txt");
+    const script = join(dir, "fd_metadata.mjs");
+    const originalTime = new Date(123_456_789_000);
+    const decoder = new TextDecoder();
+
+    try {
+      writeFileSync(target, "data");
+      chmodSync(target, 0o600);
+      Deno.utimeSync(target, originalTime, originalTime);
+      writeFileSync(
+        script,
+        `
+import {
+  closeSync,
+  fchmod,
+  fchmodSync,
+  fchown,
+  fchownSync,
+  futimes,
+  futimesSync,
+  openSync,
+} from "node:fs";
+
+const fd = openSync(Deno.args[0], "r");
+const uid = 0;
+const gid = 0;
+
+function report(name, err) {
+  console.log(
+    name + ":" + (err?.name ?? "ok") + ":" +
+      String(err?.message ?? "").includes("--allow-write")
+  );
+}
+
+function reportSync(name, fn) {
+  try {
+    fn();
+    report(name, undefined);
+  } catch (err) {
+    report(name, err);
+  }
+}
+
+await new Promise((resolve) =>
+  fchmod(fd, 0o777, (err) => {
+    report("fchmod", err);
+    resolve();
+  })
+);
+reportSync("fchmodSync", () => fchmodSync(fd, 0o777));
+await new Promise((resolve) =>
+  fchown(fd, uid, gid, (err) => {
+    report("fchown", err);
+    resolve();
+  })
+);
+reportSync("fchownSync", () => fchownSync(fd, uid, gid));
+await new Promise((resolve) =>
+  futimes(fd, new Date(1), new Date(1), (err) => {
+    report("futimes", err);
+    resolve();
+  })
+);
+reportSync("futimesSync", () =>
+  futimesSync(fd, new Date(1), new Date(1))
+);
+closeSync(fd);
+`,
+      );
+
+      const { code, stdout, stderr } = await new Deno.Command(
+        Deno.execPath(),
+        {
+          args: ["run", `--allow-read=${target}`, script, target],
+          stdout: "piped",
+          stderr: "piped",
+        },
+      ).output();
+      const stdoutText = decoder.decode(stdout);
+      assertEquals(code, 0, decoder.decode(stderr));
+      assert(stdoutText.includes("fchmod:NotCapable:true"));
+      assert(stdoutText.includes("fchmodSync:NotCapable:true"));
+      assert(stdoutText.includes("fchown:NotCapable:true"));
+      assert(stdoutText.includes("fchownSync:NotCapable:true"));
+      assert(stdoutText.includes("futimes:NotCapable:true"));
+      assert(stdoutText.includes("futimesSync:NotCapable:true"));
+
+      const stat = Deno.statSync(target);
+      assertEquals((stat.mode ?? 0) & 0o777, 0o600);
+      assertEquals(stat.mtime?.getTime(), originalTime.getTime());
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  },
+});
+
 Deno.test("[node/fs/promises] lchown works", {
   ignore: Deno.build.os === "windows",
 }, async () => {
