@@ -36,7 +36,9 @@ const {
   WeakRefPrototypeDeref,
 } = primordials;
 
-const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const { callbackify } = core.loadExtScript(
   "ext:deno_node/_util/_util_callbackify.js",
 );
@@ -217,9 +219,7 @@ function deprecate(
   fn,
   msg,
   code,
-  { modifyPrototype = true } = {
-    __proto__: null,
-  },
+  { modifyPrototype = true } = kEmptyObject,
 ) {
   // Note: `process` is loaded lazily on first invocation of `deprecated`,
   // not here. Loading it eagerly during `deprecate()` is enough to deadlock
@@ -328,7 +328,7 @@ const kDefaultMaxCallStackSizeToCapture = 200;
  */
 function getCallSites(
   frameCount = 10,
-  options = { __proto__: null },
+  options = undefined,
 ) {
   validateNumber(
     frameCount,

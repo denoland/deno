@@ -775,7 +775,7 @@ class NodeWorker extends EventEmitter {
     }
   };
 
-  postMessage(message, transferOrOptions = { __proto__: null }) {
+  postMessage(message, transferOrOptions = undefined) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     if (this.#status !== "RUNNING") return;
