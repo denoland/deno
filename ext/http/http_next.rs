@@ -1099,6 +1099,17 @@ where
     }
   }
 
+  fn poll_body_peer_closed(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<bool, HttpNextError>> {
+    match self.conn.poll_body_peer_closed_with(cx, &mut self.scratch) {
+      Poll::Ready(Ok(closed)) => Poll::Ready(Ok(closed)),
+      Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+
   fn poll_finish_response(
     &mut self,
     cx: &mut Context<'_>,
@@ -1675,7 +1686,7 @@ where
       )));
     };
     conn.scratch.ensure_read_capacity(this.limit);
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+    if let Poll::Ready(Ok(true)) = conn.poll_body_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
         raw_h1_request_body_unavailable(),
@@ -1715,7 +1726,7 @@ where
     };
     let buf_len = this.buf.as_ref().unwrap().len();
     conn.scratch.ensure_read_capacity(buf_len);
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+    if let Poll::Ready(Ok(true)) = conn.poll_body_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
         raw_h1_request_body_unavailable(),

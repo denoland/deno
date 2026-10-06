@@ -1,5 +1,14 @@
 {
-  "args": "run -A main.ts",
-  "output": "main.out",
-  "exitCode": 0
+  "tests": {
+    "body_read_resumes": {
+      "args": "run -A main.ts",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    "disconnect_cancels_response": {
+      "args": "run -A disconnect.ts",
+      "output": "disconnect.out",
+      "exitCode": 0
+    }
+  }
 }
