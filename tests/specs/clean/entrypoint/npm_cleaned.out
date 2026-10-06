@@ -18,6 +18,7 @@
 --- node_modules
 ---- @denotest
 ----- add
+-- deno.lock
 -- node_modules
 - @denotest
 -- add (symlink)
