@@ -346,6 +346,12 @@ impl<I> SharedConn<I> {
     self.io
   }
 
+  /// Forget the parked request body reader, e.g. when its read is dropped
+  /// before completing, so `poll_peer_closed_with` polls the socket again.
+  pub fn clear_body_read_waker(&mut self) {
+    self.body_read_waker = None;
+  }
+
   pub fn into_upgrade_parts(self) -> (I, Vec<u8>) {
     (self.io, self.buffered)
   }
@@ -1461,15 +1467,17 @@ where
     cx: &mut Context<'_>,
     scratch: &mut SharedScratch,
   ) -> Poll<Result<bool, Error>> {
+    // A request body read on another task is parked on the socket. The socket
+    // keeps a single read waker, so polling it here would replace the reader's
+    // waker with ours and the reader would never be woken again once the
+    // response is done. Leave the socket to the reader: it sees EOF itself.
+    if self.body_read_waker.is_some() {
+      return Poll::Pending;
+    }
     let read = ready!(poll_read_into_scratch(&mut self.io, cx, scratch))?;
     if read != 0 {
       self.buffered.extend_from_slice(&scratch.read_buf[..read]);
       cx.waker().wake_by_ref();
-      // These bytes may belong to a request body still being read on another
-      // task; wake it so it drains `buffered` instead of stalling.
-      if let Some(waker) = self.body_read_waker.take() {
-        waker.wake();
-      }
     }
     Poll::Ready(Ok(read == 0))
   }
@@ -1944,12 +1952,12 @@ mod tests {
     Ok(())
   }
 
-  // The response writer's `poll_peer_closed_with` reads whatever is on the
-  // socket, which can be request-body bytes. A body read parked at that moment
-  // must be woken so it drains them from `buffered` instead of stalling with
-  // its bytes stranded there.
+  // The response writer's `poll_peer_closed_with` must not poll the socket
+  // while a body read is parked on it: the socket keeps a single read waker, so
+  // the writer would take the reader's place and the reader would never be
+  // woken again once the writer stops polling.
   #[tokio::test]
-  async fn shared_conn_peer_closed_poll_wakes_parked_body_read()
+  async fn shared_conn_peer_closed_poll_leaves_parked_body_read()
   -> TestResult<()> {
     struct WakeFlag(std::sync::atomic::AtomicBool);
 
@@ -1998,8 +2006,8 @@ mod tests {
         .is_pending()
     );
 
-    // The response writer polls for a client disconnect, which registers its
-    // own waker with the socket in place of the parked reader's.
+    // The response writer polls for a client disconnect while the read is
+    // parked; it must leave the socket to the reader.
     let writer_flag = std::sync::Arc::new(WakeFlag(false.into()));
     let writer_waker = std::task::Waker::from(writer_flag.clone());
     let mut writer_cx = Context::from_waker(&writer_waker);
@@ -2010,16 +2018,11 @@ mod tests {
     );
     assert!(!flag.0.load(std::sync::atomic::Ordering::SeqCst));
 
-    // The rest of the body arrives: only the response writer is woken, and the
-    // bytes it reads land in `buffered` rather than in the parked read.
+    // The rest of the body arrives: the parked reader is woken for it.
     client.write_all(b"tes!!!").await?;
     tokio::task::yield_now().await;
-    assert!(writer_flag.0.load(std::sync::atomic::Ordering::SeqCst));
-    let peer_closed = conn.poll_peer_closed_with(&mut writer_cx, &mut scratch);
-    assert!(matches!(peer_closed, Poll::Ready(Ok(false))));
-    // Without waking the reader here it would park forever with its bytes
-    // stranded in `buffered`.
     assert!(flag.0.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(!writer_flag.0.load(std::sync::atomic::Ordering::SeqCst));
 
     let chunk = std::future::poll_fn(|cx| {
       conn.poll_read_body_chunk_with(cx, &mut scratch, |chunk| chunk.to_vec())

@@ -1633,6 +1633,28 @@ struct RawH1RequestBodyReadByob<I> {
   buf: Option<BufMutView>,
 }
 
+// A read dropped while parked (e.g. cancelled) must not leave its waker
+// behind: the response writer skips its peer-close check while one is set.
+fn clear_raw_h1_body_read_waker<I>(body: &RawH1RequestBody<I>) {
+  if let Ok(mut conn) = body.conn.try_borrow_mut()
+    && let Some(conn) = conn.as_mut()
+  {
+    conn.conn.clear_body_read_waker();
+  }
+}
+
+impl<I> Drop for RawH1RequestBodyRead<I> {
+  fn drop(&mut self) {
+    clear_raw_h1_body_read_waker(&self.body);
+  }
+}
+
+impl<I> Drop for RawH1RequestBodyReadByob<I> {
+  fn drop(&mut self) {
+    clear_raw_h1_body_read_waker(&self.body);
+  }
+}
+
 impl<I> Future for RawH1RequestBodyRead<I>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
