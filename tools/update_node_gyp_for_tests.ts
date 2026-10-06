@@ -19,48 +19,69 @@ if (!version) {
 
 version = version.startsWith("v") ? version : "v" + version;
 
-const response = await fetch(
-  `https://nodejs.org/dist/${version}/node-${version}-headers.tar.gz`,
-);
+const assetsDir = "./tests/testdata/assets/node-gyp";
 
-if (!response.body) {
-  throw new Error("expected response body");
+async function download(url: string): Promise<ReadableStream<Uint8Array>> {
+  const response = await fetch(url);
+  if (!response.ok || !response.body) {
+    throw new Error(`failed to download ${url}: ${response.status}`);
+  }
+  return response.body;
 }
 
-const temp = await Deno.makeTempDir();
+function writeTarGz(
+  cwd: string,
+  entries: string[],
+  outFile: string,
+): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  create({ cwd }, entries)
+    .pipe(createGzip())
+    .pipe(createWriteStream(outFile))
+    .on("close", () => resolve())
+    .on("error", reject);
+  return promise;
+}
 
-const p = Promise.withResolvers<void>();
-Readable.fromWeb(response.body).pipe(
-  extract({
-    cwd: temp,
-  }),
-).once("close", (_r) => {
-  p.resolve();
-});
+// The headers tarball, minus the bundled OpenSSL headers which are large and
+// unused by the tests.
+{
+  const temp = await Deno.makeTempDir();
+  const body = await download(
+    `https://nodejs.org/dist/${version}/node-${version}-headers.tar.gz`,
+  );
 
-await p.promise;
+  const extracted = Promise.withResolvers<void>();
+  // deno-lint-ignore no-explicit-any
+  Readable.fromWeb(body as any)
+    .pipe(extract({ cwd: temp }))
+    .once("close", () => extracted.resolve());
+  await extracted.promise;
 
-await Deno.remove(join(temp, `node-${version}`, "include", "node", "openssl"), {
-  recursive: true,
-});
+  await Deno.remove(
+    join(temp, `node-${version}`, "include", "node", "openssl"),
+    { recursive: true },
+  );
 
-const stream = create({
-  // file: `./node-${version}-headers.tar.gz`,
-  // sync: true,
-  onWriteEntry(entry) {
-    if (entry.path.startsWith(temp.slice(1))) {
-      entry.path = entry.path.slice(temp.length);
-    }
-  },
-}, [join(temp, `node-${version}`)]);
+  await writeTarGz(
+    temp,
+    [`node-${version}`],
+    `${assetsDir}/node-${version}-headers.tar.gz`,
+  );
+}
 
-const gzip = createGzip();
-const fsStream = createWriteStream(
-  `./tests/testdata/assets/node-gyp/node-${version}-headers.tar.gz`,
-);
-const p2 = Promise.withResolvers<void>();
-stream.pipe(gzip).pipe(fsStream).on("close", (_) => {
-  p2.resolve();
-});
+// `node.lib` for the Windows targets, which node-gyp links against.
+for (const platform of ["win-x64", "win-arm64"]) {
+  const temp = await Deno.makeTempDir();
+  const body = await download(
+    `https://nodejs.org/dist/${version}/${platform}/node.lib`,
+  );
+  using file = await Deno.create(join(temp, "node.lib"));
+  await body.pipeTo(file.writable, { preventClose: true });
 
-await p2.promise;
+  await writeTarGz(
+    temp,
+    ["node.lib"],
+    `${assetsDir}/${version}__${platform}__node.lib.tar.gz`,
+  );
+}

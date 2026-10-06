@@ -62,6 +62,7 @@ const {
   StringPrototypeIncludes,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
   Symbol,
   SymbolAsyncDispose,
   TypeError,
@@ -860,7 +861,11 @@ function mapToCallback(context, callback, onError) {
       const reqHeaders = op_http_get_request_headers(req);
       const headers: [key: string, value: string][] = [];
       for (let i = 0; i < reqHeaders.length; i += 2) {
-        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+        // HTTP/1 header names arrive as sent; propagators expect lowercase.
+        ArrayPrototypePush(headers, [
+          StringPrototypeToLowerCase(reqHeaders[i]),
+          reqHeaders[i + 1],
+        ]);
       }
       let activeContext = ContextManager.active();
       for (const propagator of new SafeArrayIterator(otelState.PROPAGATORS)) {

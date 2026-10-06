@@ -496,7 +496,7 @@ pub(crate) fn generate_dispatch_fast(
     generator_state.needs_scope = true;
 
     gs_quote!(generator_state(opctx, scope, opstate) =>
-    (if #opctx.enable_stack_trace {
+    (if #opctx.enable_stack_trace() {
       let stack_trace_msg = deno_core::v8::String::empty(&mut #scope);
       let stack_trace_error = deno_core::v8::Exception::error(&mut #scope, stack_trace_msg.into());
       let js_error = deno_core::error::JsError::from_v8_exception(&mut #scope, stack_trace_error);
@@ -512,7 +512,7 @@ pub(crate) fn generate_dispatch_fast(
     if generator_state.needs_opstate || generator_state.needs_stack_trace {
       generator_state.needs_opctx = true;
       gs_quote!(generator_state(opctx, opstate) =>
-        (let #opstate = &#opctx.state;)
+        (let #opstate = #opctx.state();)
       )
     } else {
       quote!()
@@ -791,18 +791,18 @@ fn map_v8_fastcall_arg_to_arg(
     }
     Arg::Ref(RefType::Ref, Special::OpState) => {
       *needs_opctx = true;
-      quote!(let #arg_ident = &::std::cell::RefCell::borrow(&#opctx.state);)
+      quote!(let #arg_ident = &::std::cell::RefCell::borrow(#opctx.state());)
     }
     Arg::Ref(RefType::Mut, Special::OpState) => {
       *needs_opctx = true;
-      quote!(let #arg_ident = &mut ::std::cell::RefCell::borrow_mut(&#opctx.state);)
+      quote!(let #arg_ident = &mut ::std::cell::RefCell::borrow_mut(#opctx.state());)
     }
     Arg::Ref(_, Special::HandleScope) => {
       unreachable!()
     }
     Arg::RcRefCell(Special::OpState) => {
       *needs_opctx = true;
-      quote!(let #arg_ident = #opctx.state.clone();)
+      quote!(let #arg_ident = #opctx.state().clone();)
     }
     Arg::Ref(RefType::Ref, Special::JsRuntimeState) => {
       *needs_js_runtime_state = true;

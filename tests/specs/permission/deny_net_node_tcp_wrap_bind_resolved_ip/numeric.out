@@ -1,0 +1,4 @@
+PASS: numeric 2130706433 denied
+PASS: hex 0x7f000001 denied
+PASS: bind6 numeric 2130706433 denied
+PASS: bind6 hex 0x7f000001 denied

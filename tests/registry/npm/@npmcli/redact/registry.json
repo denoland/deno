@@ -1,0 +1,80 @@
+{
+  "name": "@npmcli/redact",
+  "description": "Redact sensitive npm information from output",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "@npmcli/redact",
+      "version": "4.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "@npmcli/redact@4.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/redact/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "timeout": 120
+      },
+      "dist": {
+        "shasum": "c91121e02b7559a997614a2c1057cd7fc67608c4",
+        "tarball": "http://localhost:4260/@npmcli/redact/redact-4.0.0.tgz",
+        "fileCount": 9,
+        "integrity": "sha512-gOBg5YHMfZy+TfHArfVogwgfBeQnKbbGo3pSUyK/gSI0AVu+pEiDVcKlQb0D8Mg1LNRZILZ6XG8I5dJ4KuAd9Q==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@npmcli%2fredact@4.0.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 16850
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "exports": {
+        ".": "./lib/index.js",
+        "./server": "./lib/server.js",
+        "./package.json": "./package.json"
+      },
+      "gitHead": "a65b0db65c09c060a5b1c1a6ad354faf85575e04",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/redact.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.6.2",
+      "description": "Redact sensitive npm information from output",
+      "directories": {},
+      "templateOSS": {
+        "publish": true,
+        "version": "4.27.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.20.0",
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.10",
+        "@npmcli/template-oss": "4.27.1",
+        "@npmcli/eslint-config": "^5.0.0"
+      }
+    }
+  }
+}

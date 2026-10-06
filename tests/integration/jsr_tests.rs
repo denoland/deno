@@ -50,7 +50,8 @@ fn fast_check_cache() {
 
   // modify the file in the vendor folder
   let vendor_dir = temp_dir.path().join("vendor");
-  let pkg_dir = vendor_dir.join("http_127.0.0.1_4250/@denotest/add/1.0.0/");
+  let pkg_dir =
+    vendor_dir.join("http_127.0.0.1_port_4250/@denotest/add/1.0.0/");
   pkg_dir
     .join("mod.ts")
     .append("\nexport * from './other.ts';");

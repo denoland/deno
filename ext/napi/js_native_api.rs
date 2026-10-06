@@ -3973,14 +3973,18 @@ fn napi_create_dataview<'s>(
     return napi_invalid_arg;
   };
 
-  if byte_length + byte_offset > buffer.byte_length() {
+  if byte_offset
+    .checked_add(byte_length)
+    .is_none_or(|end| end > buffer.byte_length())
+  {
     unsafe {
-      return napi_throw_range_error(
+      napi_throw_range_error(
           env,
           c"ERR_NAPI_INVALID_DATAVIEW_ARGS".as_ptr(),
           c"byte_offset + byte_length should be less than or equal to the size in bytes of the array passed in".as_ptr(),
         );
     }
+    return napi_pending_exception;
   }
 
   v8::callback_scope!(unsafe scope, env.context());

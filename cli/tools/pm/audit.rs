@@ -21,7 +21,6 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util;
 use crate::http_util::HttpClient;
-use crate::http_util::HttpClientProvider;
 use crate::util::console::escape_terminal_control_chars;
 
 struct FixableAction {
@@ -45,7 +44,7 @@ pub async fn audit(
   let snapshot = npm_resolver.resolution().snapshot();
 
   let npm_url = &factory.npmrc()?.default_config.registry_url;
-  let http_provider = HttpClientProvider::new(None, None);
+  let http_provider = factory.http_client_provider();
   let http_client = http_provider
     .get_or_create()
     .context("Failed to create HTTP client")?;

@@ -4,7 +4,7 @@
 [WILDCARD]--- jsr_http1.ts.js
 [WILDCARD]--- jsr_http2.ts.js
 -- http
---- 127.0.0.1_PORT4250
+--- 127.0.0.1_port_4250
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/mod.ts ([WILDLINE])
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts ([WILDLINE])
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts ([WILDLINE])
@@ -12,7 +12,7 @@
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/fail.ts ([WILDLINE])
 [WILDCARD]- remote
 -- http
---- 127.0.0.1_PORT4250
+--- 127.0.0.1_port_4250
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/mod.ts ([WILDLINE])
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts ([WILDLINE])
 ---- http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts ([WILDLINE])

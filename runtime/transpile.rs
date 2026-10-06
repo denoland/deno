@@ -144,7 +144,11 @@ fn minify_source_with_rolldown(
       std::env::temp_dir().join("deno_snapshot_rolldown_minify_source.js");
     std::fs::write(
       &path,
-      r#"import { minifySync } from "npm:rolldown/experimental";
+      // Keep this version pinned: the minifier's output ends up in release
+      // stack traces (e.g. `at Worker.#pollControl (ext:runtime/...)`), and
+      // rolldown 1.2.8 started mangling private class members with no way to
+      // opt out, which breaks spec tests asserting on those frames.
+      r#"import { minifySync } from "npm:rolldown@1.2.7/experimental";
 
 const filename = Deno.args[0] ?? "source.js";
 const source = await new Response(Deno.stdin.readable).text();
