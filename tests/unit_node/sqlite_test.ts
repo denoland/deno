@@ -276,6 +276,19 @@ Deno.test("[node/sqlite] StatementSync blob are Uint8Array", () => {
   assert(row["cast('test' as blob)"] instanceof Uint8Array);
 });
 
+Deno.test("[node/sqlite] StatementSync TEXT keeps embedded NUL", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE t (value TEXT) STRICT");
+  db.prepare("INSERT INTO t VALUES (?), (?)").run("a\0b", "");
+
+  const rows = db.prepare("SELECT value, hex(value) AS hex FROM t").all();
+  assertStrictEquals(rows.length, 2);
+  assertStrictEquals(rows[0].value, "a\0b");
+  assertStrictEquals(rows[0].hex, "610062");
+  assertStrictEquals(rows[1].value, "");
+  db.close();
+});
+
 Deno.test({
   name: "[node/sqlite] sqlite permissions",
   permissions: { read: false, write: false },
