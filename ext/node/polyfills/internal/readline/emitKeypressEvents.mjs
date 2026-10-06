@@ -56,8 +56,11 @@ const ESCAPE_CODE_TIMEOUT = 500;
  * accepts a readable Stream instance and makes it emit "keypress" events
  */
 
-function emitKeypressEvents(stream, iface = { __proto__: null }) {
+function emitKeypressEvents(stream, iface = undefined) {
   if (stream[KEYPRESS_DECODER]) return;
+
+  // `iface` is mutated below, so allocate a fresh object only when omitted.
+  if (iface === undefined) iface = { __proto__: null };
 
   stream[KEYPRESS_DECODER] = new StringDecoder("utf8");
 
