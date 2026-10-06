@@ -137,7 +137,16 @@ Deno.test(function urlHostnameParsing() {
     assertEquals(URL.parse(input), null);
     assertEquals(URL.canParse(input), false);
   }
-  assertThrows(() => new URL("https://xn--/"), TypeError, "Invalid URL");
+  // whatwg/url#914: an all-ASCII domain whose Unicode ToASCII step fails (a
+  // bogus `xn--` label) is accepted as the lowercased host as-is in non-strict
+  // mode rather than throwing.
+  assertEquals(new URL("https://xn--/").hostname, "xn--");
+  assertEquals(
+    new URL("https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com").hostname,
+    "xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com",
+  );
+  // A forbidden domain code point (here `#`, percent-decoded) is still fatal.
+  assertThrows(() => new URL("https://ex%23ample.com/"), TypeError);
 
   // Special query percent-encoding.
   assertEquals(new URL("http://host/?'").href, "http://host/?%27");
