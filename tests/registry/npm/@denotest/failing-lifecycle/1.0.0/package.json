@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/failing-lifecycle",
+  "version": "1.0.0",
+  "scripts": {
+    "install": "echo deliberate failure && exit 1"
+  }
+}

@@ -14,6 +14,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -175,6 +176,58 @@ pub fn member_dep_init_cwds(
     .collect()
 }
 
+/// Resolves workspace packages' `optionalDependencies` to the top-level
+/// packages that are in the resolution only because of such entries, e.g.
+/// added with `deno add --save-optional`.
+pub(crate) struct WorkspaceOptionalDeps<'a> {
+  snapshot: &'a NpmResolutionSnapshot,
+  /// Versions that another top-level requirement resolves to, such as one
+  /// from code or a deno.json import.
+  required_nvs: HashSet<&'a PackageNv>,
+}
+
+impl<'a> WorkspaceOptionalDeps<'a> {
+  pub fn new(
+    snapshot: &'a NpmResolutionSnapshot,
+    workspace_pkgs: &[crate::package_json::InstallWorkspacePkg],
+  ) -> Self {
+    let optional_reqs = workspace_pkgs
+      .iter()
+      .flat_map(|pkg| pkg.optional_deps.iter().map(|(_, req)| req))
+      .collect::<HashSet<_>>();
+    let required_nvs = snapshot
+      .package_reqs()
+      .iter()
+      .filter(|(req, _)| !optional_reqs.contains(req))
+      .map(|(_, nv)| nv)
+      .collect();
+    Self {
+      snapshot,
+      required_nvs,
+    }
+  }
+
+  /// Adds edges for the workspace package's optional dependencies to
+  /// `dependencies`, returning their names.
+  pub fn add_edges(
+    &self,
+    workspace_pkg: &crate::package_json::InstallWorkspacePkg,
+    dependencies: &mut HashMap<StackString, NpmPackageId>,
+  ) -> HashSet<StackString> {
+    let mut optional_dependencies = HashSet::new();
+    for (alias, req) in &workspace_pkg.optional_deps {
+      if let Some(nv) = self.snapshot.package_reqs().get(req)
+        && !self.required_nvs.contains(nv)
+        && let Ok(pkg) = self.snapshot.resolve_package_from_deno_module(nv)
+      {
+        dependencies.insert(alias.clone(), pkg.id.clone());
+        optional_dependencies.insert(alias.clone());
+      }
+    }
+    optional_dependencies
+  }
+}
+
 pub fn has_lifecycle_scripts(
   sys: &impl FsMetadata,
   extra: &NpmPackageExtraInfo,
@@ -326,6 +379,58 @@ pub fn is_running_lifecycle_script(sys: &impl sys_traits::EnvVar) -> bool {
   sys.env_var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
 }
 
+/// Finds packages whose lifecycle script failures must fail the install.
+/// Only explicit optional dependency edges break required reachability. Optional
+/// peer metadata can also describe an ordinary required dependency, so it cannot
+/// safely be used here to ignore a failure.
+///
+/// Top-level packages are required, except those that a workspace package
+/// (`additional_packages`) depends on optionally, which are only required when
+/// reachable through a required edge. Workspace packages only have optional
+/// edges to versions that no other top-level requirement resolves to (see
+/// `WorkspaceOptionalDeps`).
+pub fn required_lifecycle_script_packages<'a>(
+  snapshot: &'a NpmResolutionSnapshot,
+  additional_packages: &'a [&'a NpmResolutionPackage],
+) -> HashSet<&'a PackageNv> {
+  let additional_pkg_by_id: HashMap<_, _> = additional_packages
+    .iter()
+    .map(|pkg| (&pkg.id, *pkg))
+    .collect();
+  let workspace_optional_deps: HashSet<_> = additional_packages
+    .iter()
+    .flat_map(|pkg| {
+      pkg
+        .optional_dependencies
+        .iter()
+        .filter_map(|name| pkg.dependencies.get(name))
+    })
+    .collect();
+  let mut pending: Vec<_> = snapshot
+    .top_level_packages()
+    .filter(|id| !workspace_optional_deps.contains(id))
+    .chain(additional_packages.iter().map(|pkg| &pkg.id))
+    .collect();
+  let mut visited = HashSet::new();
+  let mut required = HashSet::new();
+  while let Some(id) = pending.pop() {
+    if !visited.insert(id) {
+      continue;
+    }
+    // Peer-dependent copies share lifecycle script execution with the base NV.
+    required.insert(&id.nv);
+    if let Some(pkg) = snapshot
+      .package_from_id(id)
+      .or_else(|| additional_pkg_by_id.get(id).copied())
+    {
+      pending.extend(pkg.dependencies.iter().filter_map(|(name, id)| {
+        (!pkg.optional_dependencies.contains(name)).then_some(id)
+      }));
+    }
+  }
+  required
+}
+
 /// Groups packages with lifecycle scripts into topological layers using
 /// Kahn's algorithm. Packages in the same layer have no inter-dependencies
 /// (considering only packages that have lifecycle scripts), so they can
@@ -449,6 +554,7 @@ fn find_transitive_script_deps<'a>(
 #[cfg(test)]
 mod tests {
   use std::collections::HashMap;
+  use std::collections::HashSet;
   use std::path::PathBuf;
 
   use deno_npm::NpmPackageId;
@@ -458,10 +564,14 @@ mod tests {
   use deno_npm::resolution::SerializedNpmResolutionSnapshot;
   use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
   use deno_semver::StackString;
+  use deno_semver::package::PackageNv;
   use deno_semver::package::PackageReq;
 
   use super::PackageWithScript;
+  use super::WorkspaceOptionalDeps;
   use super::compute_lifecycle_script_layers;
+  use super::required_lifecycle_script_packages;
+  use crate::package_json::InstallWorkspacePkg;
 
   fn pkg_id(s: &str) -> NpmPackageId {
     NpmPackageId::from_serialized(s).unwrap()
@@ -677,5 +787,187 @@ mod tests {
     let layers = compute_lifecycle_script_layers(&pkgs, &snapshot, &[]);
     assert_eq!(layers.len(), 1);
     assert!(layers[0].is_empty());
+  }
+
+  fn required_names(
+    snapshot: &NpmResolutionSnapshot,
+    additional: &[&NpmResolutionPackage],
+  ) -> Vec<String> {
+    let mut names = required_lifecycle_script_packages(snapshot, additional)
+      .into_iter()
+      .map(|nv| nv.to_string())
+      .collect::<Vec<_>>();
+    names.sort();
+    names
+  }
+
+  #[test]
+  fn required_scripts_optional_subtree_and_shared_path() {
+    let mut root = pkg("root@1.0.0", &[("alias", "optional@1.0.0")]);
+    root.optional_dependencies.insert("alias".into());
+    let optional = pkg("optional@1.0.0", &[("child", "child@1.0.0")]);
+    // A cycle below the optional edge must not make either package required.
+    let child = pkg("child@1.0.0", &[("parent", "optional@1.0.0")]);
+    let snapshot = make_snapshot(
+      &[("root@1", "root@1.0.0")],
+      vec![root.clone(), optional.clone(), child.clone()],
+    );
+    assert_eq!(required_names(&snapshot, &[]), ["root@1.0.0"]);
+
+    // An ordinary path to the same child makes its entire required cycle fatal.
+    root
+      .dependencies
+      .insert("child".into(), pkg_id("child@1.0.0"));
+    let snapshot =
+      make_snapshot(&[("root@1", "root@1.0.0")], vec![root, optional, child]);
+    assert_eq!(
+      required_names(&snapshot, &[]),
+      ["child@1.0.0", "optional@1.0.0", "root@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_peer_copies_share_nv() {
+    let root = pkg("root@1.0.0", &[("child", "child@1.0.0_peer@1.0.0")]);
+    let snapshot = make_snapshot(
+      &[("root@1", "root@1.0.0")],
+      vec![
+        root,
+        pkg("child@1.0.0", &[]),
+        pkg("child@1.0.0_peer@1.0.0", &[("peer", "peer@1.0.0")]),
+        pkg("peer@1.0.0", &[]),
+      ],
+    );
+    assert_eq!(
+      required_names(&snapshot, &[]),
+      ["child@1.0.0", "peer@1.0.0", "root@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_workspace_roots() {
+    let snapshot = make_snapshot(&[], vec![pkg("child@1.0.0", &[])]);
+    let workspace =
+      resolution_pkg("workspace@1.0.0", &[("other", "other@1.0.0")], true);
+    let mut other = resolution_pkg(
+      "other@1.0.0",
+      &[("child", "child@1.0.0"), ("workspace", "workspace@1.0.0")],
+      false,
+    );
+    other.optional_dependencies.insert("workspace".into());
+    assert_eq!(
+      required_names(&snapshot, &[&workspace, &other]),
+      ["child@1.0.0", "other@1.0.0", "workspace@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_optional_peer_metadata_is_conservative() {
+    let mut root = pkg("root@1.0.0", &[("child", "child@1.0.0")]);
+    // The snapshot may carry this metadata even when child is also an ordinary
+    // dependency, or when there was no corresponding peer dependency declaration.
+    root.optional_peer_dependencies.insert("child".into());
+    let snapshot = make_snapshot(
+      &[("root@1", "root@1.0.0")],
+      vec![root, pkg("child@1.0.0", &[])],
+    );
+    assert_eq!(
+      required_names(&snapshot, &[]),
+      ["child@1.0.0", "root@1.0.0"]
+    );
+  }
+
+  #[test]
+  fn required_scripts_workspace_optional_top_level() {
+    // e.g. added with `deno add --save-optional`
+    let snapshot = make_snapshot(
+      &[("optional@1", "optional@1.0.0"), ("other@1", "other@1.0.0")],
+      vec![
+        pkg("optional@1.0.0", &[("child", "child@1.0.0")]),
+        pkg("child@1.0.0", &[]),
+        pkg("other@1.0.0", &[]),
+      ],
+    );
+    let mut workspace = resolution_pkg(
+      "workspace@1.0.0",
+      &[("optional", "optional@1.0.0")],
+      false,
+    );
+    workspace.optional_dependencies.insert("optional".into());
+    assert_eq!(
+      required_names(&snapshot, &[&workspace]),
+      ["other@1.0.0", "workspace@1.0.0"]
+    );
+
+    // A regular dependency from another member makes it required.
+    let member =
+      resolution_pkg("member@1.0.0", &[("optional", "optional@1.0.0")], false);
+    assert_eq!(
+      required_names(&snapshot, &[&workspace, &member]),
+      [
+        "child@1.0.0",
+        "member@1.0.0",
+        "optional@1.0.0",
+        "other@1.0.0",
+        "workspace@1.0.0"
+      ]
+    );
+  }
+
+  #[test]
+  fn workspace_optional_deps_only_match_optional_top_level_reqs() {
+    let snapshot = make_snapshot(
+      &[
+        ("added@^1.0.0", "added@1.0.0"),
+        ("both@1.0.0", "both@1.0.0"),
+        ("both@^1.0.0", "both@1.0.0"),
+        ("imported@1.0.0", "imported@1.0.0"),
+        ("shared@1", "shared@1.0.0"),
+        ("shared@1.0.0", "shared@1.0.0"),
+      ],
+      vec![
+        pkg("added@1.0.0", &[]),
+        pkg("both@1.0.0", &[]),
+        pkg("imported@1.0.0", &[("transitive", "transitive@1.0.0")]),
+        pkg("shared@1.0.0", &[]),
+        pkg("transitive@1.0.0", &[]),
+      ],
+    );
+    let req = |s| PackageReq::from_str(s).unwrap();
+    let workspace_pkg =
+      |nv: &str, optional_deps: Vec<(StackString, PackageReq)>| {
+        InstallWorkspacePkg {
+          nv: PackageNv::from_str(nv).unwrap(),
+          target_dir: PathBuf::from("/workspace"),
+          is_root: false,
+          scripts: Default::default(),
+          deps: Vec::new(),
+          optional_deps,
+        }
+      };
+    let workspace_pkgs = [
+      workspace_pkg(
+        "root@1.0.0",
+        vec![
+          ("added".into(), req("added@^1.0.0")),
+          ("both".into(), req("both@1.0.0")),
+          // in the resolution only through other requirements
+          ("imported".into(), req("imported@^1.0.0")),
+          ("transitive".into(), req("transitive@^1.0.0")),
+          // `shared@1` also requires this version
+          ("shared".into(), req("shared@1.0.0")),
+        ],
+      ),
+      workspace_pkg("member@1.0.0", vec![("both".into(), req("both@^1.0.0"))]),
+    ];
+    let optional_deps = WorkspaceOptionalDeps::new(&snapshot, &workspace_pkgs);
+    let mut dependencies = HashMap::new();
+    let optional =
+      optional_deps.add_edges(&workspace_pkgs[0], &mut dependencies);
+    assert_eq!(optional, HashSet::from(["added".into(), "both".into()]));
+    assert_eq!(
+      dependencies,
+      deps(&[("added", "added@1.0.0"), ("both", "both@1.0.0")])
+    );
   }
 }
