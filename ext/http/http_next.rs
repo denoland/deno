@@ -1099,6 +1099,17 @@ where
     }
   }
 
+  fn poll_body_peer_closed(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<bool, HttpNextError>> {
+    match self.conn.poll_body_peer_closed_with(cx, &mut self.scratch) {
+      Poll::Ready(Ok(closed)) => Poll::Ready(Ok(closed)),
+      Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+
   fn poll_finish_response(
     &mut self,
     cx: &mut Context<'_>,
@@ -1633,6 +1644,28 @@ struct RawH1RequestBodyReadByob<I> {
   buf: Option<BufMutView>,
 }
 
+// A read dropped while parked (e.g. cancelled) must not leave its waker
+// behind: the response writer skips its peer-close check while one is set.
+fn clear_raw_h1_body_read_waker<I>(body: &RawH1RequestBody<I>) {
+  if let Ok(mut conn) = body.conn.try_borrow_mut()
+    && let Some(conn) = conn.as_mut()
+  {
+    conn.conn.clear_body_read_waker();
+  }
+}
+
+impl<I> Drop for RawH1RequestBodyRead<I> {
+  fn drop(&mut self) {
+    clear_raw_h1_body_read_waker(&self.body);
+  }
+}
+
+impl<I> Drop for RawH1RequestBodyReadByob<I> {
+  fn drop(&mut self) {
+    clear_raw_h1_body_read_waker(&self.body);
+  }
+}
+
 impl<I> Future for RawH1RequestBodyRead<I>
 where
   I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -1653,7 +1686,7 @@ where
       )));
     };
     conn.scratch.ensure_read_capacity(this.limit);
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+    if let Poll::Ready(Ok(true)) = conn.poll_body_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
         raw_h1_request_body_unavailable(),
@@ -1693,7 +1726,7 @@ where
     };
     let buf_len = this.buf.as_ref().unwrap().len();
     conn.scratch.ensure_read_capacity(buf_len);
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+    if let Poll::Ready(Ok(true)) = conn.poll_body_peer_closed(cx) {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
         raw_h1_request_body_unavailable(),
