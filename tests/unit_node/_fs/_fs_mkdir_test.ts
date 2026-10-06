@@ -46,6 +46,74 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "[node/fs] mkdirSync recursive path with dot segment",
+  fn: async () => {
+    const tempDir = await Deno.makeTempDir();
+    try {
+      const normalizedTarget = path.join(tempDir, "a", "b", "c");
+      const target = normalizedTarget + path.SEPARATOR + "." + path.SEPARATOR;
+      assert(target.endsWith(`${path.SEPARATOR}.${path.SEPARATOR}`));
+      const firstCreated = mkdirSync(target, { recursive: true });
+
+      assert(existsSync(normalizedTarget));
+      assert(firstCreated);
+      assert(existsSync(firstCreated));
+    } finally {
+      await Deno.remove(tempDir, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/fs] mkdirSync recursive path preserves parent segment",
+  fn: async () => {
+    const tempDir = await Deno.makeTempDir();
+    try {
+      const lexicalParent = path.join(tempDir, "a");
+      const target = lexicalParent + path.SEPARATOR + ".." +
+        path.SEPARATOR + "b" + path.SEPARATOR + "c" + path.SEPARATOR + ".";
+      mkdirSync(target, { recursive: true });
+
+      assert(existsSync(target));
+      if (Deno.build.os !== "windows") {
+        assert(existsSync(lexicalParent));
+      }
+    } finally {
+      await Deno.remove(tempDir, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/fs] mkdir recursive callback path with dot segment",
+  fn: async () => {
+    const tempDir = await Deno.makeTempDir();
+    try {
+      const normalizedTarget = path.join(tempDir, "a", "b", "c");
+      const target = normalizedTarget + path.SEPARATOR + "." + path.SEPARATOR;
+      assert(target.endsWith(`${path.SEPARATOR}.${path.SEPARATOR}`));
+      const firstCreated = await new Promise<string | undefined>(
+        (resolve, reject) => {
+          mkdir(target, { recursive: true }, (err, path) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve(path);
+          });
+        },
+      );
+
+      assert(existsSync(normalizedTarget));
+      assert(firstCreated);
+      assert(existsSync(firstCreated));
+    } finally {
+      await Deno.remove(tempDir, { recursive: true });
+    }
+  },
+});
+
 Deno.test("[std/node/fs] mkdir callback isn't called twice if error is thrown", async () => {
   const tempDir = await Deno.makeTempDir();
   const subdir = path.join(tempDir, "subdir");
