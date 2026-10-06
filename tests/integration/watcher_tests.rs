@@ -199,7 +199,8 @@ where
 
 fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
-  child.kill().unwrap();}
+  child.kill().unwrap();
+}
 
 struct KillOnDropDenoChild(Option<DenoChild>);
 
