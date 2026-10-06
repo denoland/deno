@@ -1,0 +1,39 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Proves the npm build side-effects cache (issue #16164) for the default
+    // isolated (`.deno`) node_modules linker: a package's build script runs the
+    // first time, and a later install with the same global cache reuses the
+    // built output instead of re-running the script.
+    "reuses_built_output": {
+      "steps": [
+        {
+          // First install: the `postinstall` script runs (note the
+          // "running 'postinstall' script" line) and writes `message.js` into
+          // the package directory. That output is snapshotted into the global
+          // side-effects cache. Importing the package then prints the result.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Wipe the local node_modules so the next install must re-link the
+          // package from scratch, simulating a second project that shares the
+          // same global cache.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // Second install: the built output is restored from the global cache,
+          // so the 'postinstall' script does NOT run again (the
+          // "running 'postinstall' script" line is absent), yet the build
+          // output is present (the import still prints "postinstall works").
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-simple main.js",
+          "output": "cached_run.out"
+        }
+      ]
+    }
+  }
+}
