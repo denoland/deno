@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // yarn.lock locks @denotest/different-nested-dep and the package it
+      // depends on, but package.json only declares the former. Only declared
+      // dependencies may become specifiers in the seeded deno.lock; otherwise
+      // the transitive package is installed as a top-level dependency (and,
+      // for example, treated as required even when it is optional).
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
+    },
+    {
+      // The transitive package still resolves through its dependent.
+      "args": "run --cached-only main.js",
+      "output": "1\n"
+    }
+  ]
+}
