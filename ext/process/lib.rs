@@ -344,6 +344,11 @@ pub struct EmptyNpmProcessStateProvider;
 
 impl NpmProcessStateProvider for EmptyNpmProcessStateProvider {}
 
+/// Marks a runtime whose child processes must not outlive the runtime, even
+/// when JavaScript calls `unref()`. File-watcher runs use this because a
+/// restart ends the current run but keeps the watcher process alive.
+pub struct KillUnrefedChildrenOnDrop;
+
 deno_core::extension!(
   deno_process,
   ops = [
