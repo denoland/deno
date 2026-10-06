@@ -110,7 +110,7 @@ impl NpmCacheDir {
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
     let mut dir = self.registry_folder(registry_url);
-    if name.to_lowercase() != name {
+    if name.to_lowercase() != name || !is_safe_package_name_path(name) {
       let encoded_name = mixed_case_package_name_encode(name);
       // Using the encoded directory may have a collision with an actual package name
       // so prefix it with an underscore since npm packages can't start with that
@@ -202,6 +202,63 @@ impl NpmCacheDir {
       version: version.to_string(),
       copy_index,
     })
+  }
+}
+
+fn is_safe_package_name_path(name: &str) -> bool {
+  fn is_safe_component(value: &str, is_scope: bool) -> bool {
+    // Windows device names remain reserved when followed by an extension.
+    let stem = value.split('.').next().unwrap_or(value);
+    let is_windows_device_name = !is_scope
+      && matches!(
+        stem,
+        "con"
+          | "prn"
+          | "aux"
+          | "nul"
+          | "com1"
+          | "com2"
+          | "com3"
+          | "com4"
+          | "com5"
+          | "com6"
+          | "com7"
+          | "com8"
+          | "com9"
+          | "lpt1"
+          | "lpt2"
+          | "lpt3"
+          | "lpt4"
+          | "lpt5"
+          | "lpt6"
+          | "lpt7"
+          | "lpt8"
+          | "lpt9"
+      );
+
+    !value.is_empty()
+      && value != "."
+      && value != ".."
+      && !value.ends_with('.')
+      && !is_windows_device_name
+      && value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+          || matches!(
+            byte,
+            b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+          )
+      })
+  }
+
+  if let Some(scoped_name) = name.strip_prefix('@') {
+    let Some((scope, package)) = scoped_name.split_once('/') else {
+      return false;
+    };
+    !package.contains('/')
+      && is_safe_component(scope, true)
+      && is_safe_component(package, false)
+  } else {
+    !name.contains('/') && is_safe_component(name, false)
   }
 }
 
@@ -367,6 +424,61 @@ mod test {
         .join("registry.npmjs.org")
         .join("_ib2hs4dfomxuuu2pjy")
         .join("2.1.5"),
+    );
+  }
+
+  #[test]
+  fn should_confine_unsafe_package_names() {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let root_dir = if cfg!(windows) {
+      PathBuf::from("C:\\cache")
+    } else {
+      PathBuf::from("/cache")
+    };
+    sys.fs_create_dir_all(&root_dir).unwrap();
+    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+    let cache =
+      NpmCacheDir::new(&sys, root_dir.clone(), vec![registry_url.clone()]);
+    let registry_dir = root_dir.join("registry.npmjs.org");
+
+    for name in [
+      ".",
+      "..",
+      "../other/package",
+      "..\\other\\package",
+      "/absolute",
+      "C:\\absolute",
+      "C:relative",
+      "package/name",
+      "package//name",
+      "@scope/../package",
+      "MiXeD/../package",
+      "package.",
+      "@scope./package",
+      "@scope/package.",
+      "con",
+      "con.txt",
+      "nul",
+      "lpt1",
+    ] {
+      assert_eq!(
+        cache.package_name_folder(name, &registry_url),
+        registry_dir.join(format!("_{}", mixed_case_package_name_encode(name))),
+        "{name}",
+      );
+    }
+
+    assert_eq!(
+      cache.package_name_folder("package", &registry_url),
+      registry_dir.join("package"),
+    );
+    assert_eq!(
+      cache.package_name_folder("@scope/package", &registry_url),
+      registry_dir.join("@scope").join("package"),
+    );
+    assert_eq!(
+      cache.package_name_folder("@con/package", &registry_url),
+      registry_dir.join("@con").join("package"),
     );
   }
 

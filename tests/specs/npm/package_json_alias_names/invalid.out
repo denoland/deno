@@ -1,0 +1,5 @@
+error: Failed to install 'alias'
+    at [WILDCARD]/package.json
+
+Caused by:
+    Invalid npm package name '../outside'
