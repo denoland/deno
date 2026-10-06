@@ -2038,7 +2038,9 @@ fn op_spawn_child_unref(
   #[smi] rid: ResourceId,
 ) -> Result<(), deno_core::error::ResourceError> {
   let resource = state.resource_table.get::<ChildResource>(rid)?;
-  resource.kill_on_drop.set(false);
+  if !state.has::<KillUnrefedChildrenOnDrop>() {
+    resource.kill_on_drop.set(false);
+  }
   Ok(())
 }
 
