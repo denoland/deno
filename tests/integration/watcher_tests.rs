@@ -212,8 +212,6 @@ impl Drop for KillOnDropDenoChild {
   }
 }
 
-
-
 fn child_lines(
   child: &mut std::process::Child,
 ) -> (
