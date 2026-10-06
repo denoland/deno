@@ -1,0 +1,7 @@
+{
+  "name": "shtool",
+  "version": "1.0.0",
+  "bin": {
+    "shtool": "./tool.sh"
+  }
+}

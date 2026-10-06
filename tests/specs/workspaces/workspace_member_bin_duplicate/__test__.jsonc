@@ -1,0 +1,25 @@
+// Two workspace members declaring the same `bin` name. Only one of them can
+// own the root `node_modules/.bin` entry and which one is essentially
+// arbitrary (the greatest `<name>@<version>` wins the depth sort's tiebreak),
+// so `deno install` warns instead of resolving it silently. npm hard-errors
+// here; a warning keeps an otherwise fine workspace installable.
+//
+// No network access is required — the workspace contains only local members.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]Warning Multiple workspace members declare a \"dup\" bin: dup-a, dup-b. Only \"dup-b\" will be linked into node_modules/.bin.[WILDCARD]"
+    },
+    {
+      // `deno task` re-links `node_modules` too, but the warning is gated on
+      // the install path — the absence of a leading `[WILDCARD]` here is what
+      // asserts it isn't re-printed ahead of every task's output.
+      "args": "task dup",
+      "output": "task.out"
+    }
+  ]
+}
