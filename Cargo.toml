@@ -241,9 +241,9 @@ http-body = "1.0"
 http-body-util = "0.1.2"
 httparse = "1.8.0"
 httpdate = "1.0.3"
-hyper = { version = "1.6.0", features = ["full"] }
+hyper = { version = "1.11.1", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
-hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
+hyper-util = { version = "0.1.21", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 idna = "1.0.3"
 ignore = "0.4"
 import_map = { version = "0.25.0", features = ["ext"] }
