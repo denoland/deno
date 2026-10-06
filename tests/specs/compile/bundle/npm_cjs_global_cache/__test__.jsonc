@@ -1,0 +1,25 @@
+{
+  // No package.json/install step: this exercises managed npm packages loaded
+  // from the global cache, where referenced paths do not contain a
+  // `node_modules` component.
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --bundle --no-check --output out npm:@denotest/esm-import-cjs-default",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./out",
+    "args": [],
+    "output": "run.out"
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --no-check --output out.exe npm:@denotest/esm-import-cjs-default",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./out.exe",
+    "args": [],
+    "output": "run.out"
+  }]
+}
