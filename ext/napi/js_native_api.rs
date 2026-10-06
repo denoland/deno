@@ -3973,7 +3973,10 @@ fn napi_create_dataview<'s>(
     return napi_invalid_arg;
   };
 
-  if byte_length + byte_offset > buffer.byte_length() {
+  if byte_offset
+    .checked_add(byte_length)
+    .is_none_or(|end| end > buffer.byte_length())
+  {
     unsafe {
       napi_throw_range_error(
           env,
