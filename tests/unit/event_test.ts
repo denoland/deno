@@ -155,6 +155,12 @@ Deno.test(function inspectEvent() {
     // check a substring because one property is a timestamp
     `Event {\n  bubbles: false,\n  cancelable: false,`,
   );
+
+  class SubclassedEvent extends Event {}
+  assertStringIncludes(
+    Deno.inspect(SubclassedEvent.prototype),
+    "bubbles: [Getter]",
+  );
 });
 
 Deno.test(function removeEventListenerWithEmptyObjectOptions() {
