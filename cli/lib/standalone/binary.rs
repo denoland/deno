@@ -18,6 +18,11 @@ use crate::args::UnstableConfig;
 
 pub const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 
+/// Internal hand-off used only by the temporary standalone executable that
+/// `deno compile --include-code-cache` launches during compilation.
+pub const CODE_CACHE_GENERATION_ENV_VAR: &str =
+  "DENO_INTERNAL_CODE_CACHE_GENERATION_PATH";
+
 pub trait DenoRtDeserializable<'a>: Sized {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)>;
 }
@@ -78,6 +83,8 @@ pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
   pub code_cache_key: Option<u64>,
+  #[serde(default)]
+  pub code_cache_generation: bool,
   pub permissions: PermissionsOptions,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
