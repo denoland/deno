@@ -20,6 +20,37 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[util] format %s with Symbol.toPrimitive",
+  fn() {
+    const own = {
+      [Symbol.toPrimitive]: (hint: string) => `hint: ${hint}`,
+    };
+    assertEquals(util.format("%s", own), "hint: string");
+
+    class Base {
+      [Symbol.toPrimitive]() {
+        return "inherited";
+      }
+    }
+    class Derived extends Base {}
+    assertEquals(util.format("%s", new Derived()), "inherited");
+
+    const nullProto = Object.create(null);
+    nullProto[Symbol.toPrimitive] = () => "null prototype";
+    assertEquals(util.format("%s", nullProto), "null prototype");
+
+    // Built-in Symbol.toPrimitive is formatted like inspect.
+    const date = new Date("2023-10-01T00:00:00Z");
+    assertEquals(util.format("%s", date), util.inspect(date));
+    // A non-callable Symbol.toPrimitive is not used.
+    assertEquals(
+      util.format("%s", { [Symbol.toPrimitive]: 1 }),
+      "{ Symbol(Symbol.toPrimitive): 1 }",
+    );
+  },
+});
+
+Deno.test({
   name: "[util] inspect.custom",
   fn() {
     assertEquals(util.inspect.custom, Symbol.for("nodejs.util.inspect.custom"));
