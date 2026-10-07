@@ -9,6 +9,7 @@ var details,
   total_samples,
   known_font_width;
 var orig_height, detailsEl, matchedEl, update_for_resize;
+var caption = "Frame width = time on CPU";
 function init(evt) {
   detailsEl = document.getElementById("details");
   details = detailsEl.firstChild;
@@ -37,6 +38,9 @@ function init(evt) {
     var svgWidth = svg.width.baseVal.value;
     searchbtn.attributes.x.value = svgWidth - xpad;
     matchedEl.attributes.x.value = svgWidth - xpad;
+    if (unzoombtn) unzoombtn.attributes.x.value = svgWidth - xpad - 96;
+    var invfo = document.getElementById("invert_fo");
+    if (invfo) invfo.attributes.x.value = svgWidth - xpad - 200;
     // Height: use viewport height if larger than content
     var vh = window.innerHeight;
     var h = Math.max(orig_height, vh);
@@ -79,7 +83,7 @@ window.addEventListener("mouseover", function (e) {
 }, false);
 window.addEventListener("mouseout", function (e) {
   var target = find_group(e.target);
-  if (target) details.nodeValue = "\u00a0";
+  if (target) details.nodeValue = caption;
 }, false);
 window.addEventListener("keydown", function (e) {
   if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
