@@ -1802,6 +1802,76 @@ Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
   await promise;
 });
 
+// Fails within the timeout rather than hanging the whole test run, which is
+// what an unclosed idle connection would otherwise do.
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  const { promise: timeout, reject } = Promise.withResolvers<never>();
+  const id = setTimeout(() => reject(new Error(message)), 4000);
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(id));
+}
+
+Deno.test("[node/http] server.close() closes a connection that sent no request", async () => {
+  const server = http.createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+
+  // Wait for the server to actually accept. Without this the connection can
+  // still be in the accept queue when close() runs, in which case closing the
+  // listener alone resets it and the test passes for the wrong reason.
+  const accepted = once(server, "connection");
+  const socket = net.connect(port, "127.0.0.1");
+  socket.on("error", () => {});
+  await once(socket, "connect");
+  await accepted;
+
+  const closed = Promise.all([once(server, "close"), once(socket, "close")]);
+  server.close();
+  await withTimeout(closed, "server.close() left the idle connection open");
+});
+
+Deno.test("[node/http] server.close() keeps a connection mid-request open", async () => {
+  // headersTimeout would otherwise abort the deliberately incomplete request
+  // below before the test gets to finish it.
+  const server = http.createServer(
+    { headersTimeout: 0, requestTimeout: 0 },
+    (_req, res) => res.end("done"),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+
+  const accepted = once(server, "connection");
+  const socket = net.connect(port, "127.0.0.1");
+  socket.on("error", () => {});
+  // The socket stays paused without a data listener, and a paused socket never
+  // reaches "close" no matter what the server does.
+  let response = "";
+  socket.on("data", (chunk) => response += chunk);
+  await once(socket, "connect");
+  await accepted;
+
+  // A request is on the wire but its headers are incomplete, so this
+  // connection is not idle and close() must leave it alone. The parser
+  // consumes the socket handle directly, so there is no server-side "data"
+  // event to await - give the bytes a beat to be parsed instead.
+  socket.write("GET / HTTP/1.1\r\nHost: localhost\r\n");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const serverClosed = once(server, "close");
+  const socketClosed = once(socket, "close");
+  server.close();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert(!socket.destroyed, "connection with a pending request was closed");
+
+  // Finishing the request lets the server drain and close normally.
+  socket.write("Connection: close\r\n\r\n");
+  await withTimeout(socketClosed, "pending request was never answered");
+  await withTimeout(serverClosed, "server did not close after draining");
+  assertStringIncludes(response, "200 OK");
+  assertStringIncludes(response, "done");
+});
+
 Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
   let interval: NodeJS.Timeout;
   const server = http.createServer((req, res) => {
