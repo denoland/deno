@@ -294,7 +294,9 @@ fn deno_test_call(
 
   match prop_chain {
     ["", "Deno", "test"] => Some((true, None)),
-    ["Deno", "test", "ignore"] => Some((true, Some(TestToggleKind::Ignore))),
+    ["Deno", "test", "ignore" | "skip"] => {
+      Some((true, Some(TestToggleKind::Ignore)))
+    }
     ["Deno", "test", "only"] => Some((true, Some(TestToggleKind::Only))),
     _ => None,
   }
@@ -410,6 +412,9 @@ mod tests {
   #[test]
   fn test_modifier_test_disable_action() {
     let actions = collect(r#"Deno.test.ignore("name", () => {});"#, 0, 15);
+    assert_eq!(action_texts(&actions), vec![("Unignore test", "Deno.test")]);
+
+    let actions = collect(r#"Deno.test.skip("name", () => {});"#, 0, 15);
     assert_eq!(action_texts(&actions), vec![("Unignore test", "Deno.test")]);
   }
 }

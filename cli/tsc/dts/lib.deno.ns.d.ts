@@ -1227,6 +1227,9 @@ declare namespace Deno {
     /** Shorthand property for ignoring a particular test case. */
     ignore: TestIgnore;
 
+    /** Alias for {@linkcode DenoTest.ignore}. */
+    skip: TestIgnore;
+
     /** Shorthand property for focusing a particular test case. */
     only: TestOnly;
 
