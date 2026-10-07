@@ -1300,7 +1300,7 @@ fn wait_for_start(
 
     let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
 
-    std::env::set_current_dir(&cmd.cwd)?;
+    deno_runtime::deno_fs::set_current_dir(&cmd.cwd)?;
 
     for (k, v) in cmd.env {
       // SAFETY: We're doing this before any threads are created.
