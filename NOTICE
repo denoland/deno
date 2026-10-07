@@ -38,14 +38,8 @@ defaults to true for clang builds. Setting it to false in rusty_v8's .gn
 compiles the routines out without changing behavior. Upstream V8 removed
 them in May 2026; v8 crate 152.0.0 and later do not contain them.
 
-This file can be deleted when both of the following hold:
-
-  - Deno builds without the routines, either by upgrading to v8 crate
-    152.0.0 or later (https://github.com/denoland/deno/pull/36665) or by
-    building with v8_use_libm_trig_functions = false; and
-  - every Deno release, Docker image or other distribution built with the
-    v8 crate through 150.4.0 that is still offered for download has its
-    own copy of this notice attached.
+This file can be deleted once Deno upgrades to v8 crate 152.0.0 or later
+(https://github.com/denoland/deno/pull/36665).
 
 ==========================================================================
 
