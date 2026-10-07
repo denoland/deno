@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile --allow-net --output out main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "commandName": "./out",
+      "args": [],
+      "output": "main.out"
+    }
+  ]
+}
