@@ -1656,6 +1656,15 @@ class NodeTestContext {
 }
 
 let currentSuite = null;
+const kSuite = Symbol("kSuite");
+
+function getCurrentSuite() {
+  const ctx = getCurrentTestContext();
+  if (ctx && ctx[kSuite]) {
+    return ctx[kSuite];
+  }
+  return currentSuite;
+}
 
 // AsyncLocalStorage holding the NodeTestContext whose body is currently
 // executing, or null when no test body is on the stack. Set by
@@ -2020,14 +2029,22 @@ function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite, tags) {
       suiteNodeContext,
       parentSuite,
     );
+    suiteNodeContext[kSuite] = suite;
     try {
-      // Run the suite body in the suite's context so `getTestContext()` inside
-      // it (and any synchronously-registered hook bodies) observes the suite.
-      runInTestContext(suiteNodeContext, () => fn(suiteNodeContext));
-    } finally {
-      currentSuite = prevSuite;
-    }
-    try {
+      try {
+        // Run the suite body in the suite's context so `getTestContext()` inside
+        // it (and any synchronously-registered hook bodies) observes the suite.
+        const ret = runInTestContext(
+          suiteNodeContext,
+          () => fn(suiteNodeContext),
+        );
+        if (isThenable(ret)) {
+          await ret;
+        }
+      } finally {
+        currentSuite = prevSuite;
+        suiteNodeContext[kSuite] = null;
+      }
       // Suite-level before()/after() hooks run in the suite's context and
       // receive it as their argument, matching Node.
       for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
@@ -2086,8 +2103,9 @@ function test(name, options, fn, overrides) {
   if (isTapMode()) {
     return queueTapTest(name, options, fn, overrides);
   }
-  if (currentSuite) {
-    return currentSuite.addTest(name, options, fn, overrides);
+  const activeSuite = getCurrentSuite();
+  if (activeSuite) {
+    return activeSuite.addTest(name, options, fn, overrides);
   }
   // A top-level `test()` called from inside another test's body becomes a
   // subtest of that test, matching Node. Without this it would fall through to
@@ -2124,8 +2142,9 @@ function suite(name, options, fn, overrides) {
   if (isTapMode()) {
     return queueTapSuite(name, options, fn, overrides);
   }
-  if (currentSuite) {
-    return currentSuite.addSuite(name, options, fn, overrides);
+  const activeSuite = getCurrentSuite();
+  if (activeSuite) {
+    return activeSuite.addSuite(name, options, fn, overrides);
   }
   return prepareDenoTestForSuite(name, options, fn, overrides);
 }
@@ -2159,8 +2178,9 @@ function before(fn, _options) {
     scheduleTapRun();
     return;
   }
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
+  const activeSuite = getCurrentSuite();
+  if (activeSuite) {
+    ArrayPrototypePush(activeSuite.beforeAllHooks, fn);
     return;
   }
   ArrayPrototypePush(rootBeforeHooks, fn);
@@ -2180,8 +2200,9 @@ function after(fn, _options) {
     scheduleTapRun();
     return;
   }
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.afterAllHooks, fn);
+  const activeSuite = getCurrentSuite();
+  if (activeSuite) {
+    ArrayPrototypePush(activeSuite.afterAllHooks, fn);
     return;
   }
   ArrayPrototypePush(rootAfterHooks, fn);
@@ -2191,8 +2212,9 @@ function beforeEach(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("beforeEach() requires a function argument");
   }
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.beforeEachHooks, fn);
+  const activeSuite = getCurrentSuite();
+  if (activeSuite) {
+    ArrayPrototypePush(activeSuite.beforeEachHooks, fn);
     return;
   }
   ArrayPrototypePush(rootBeforeEachHooks, fn);
@@ -2202,8 +2224,9 @@ function afterEach(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("afterEach() requires a function argument");
   }
-  if (currentSuite) {
-    ArrayPrototypePush(currentSuite.afterEachHooks, fn);
+  const activeSuite = getCurrentSuite();
+  if (activeSuite) {
+    ArrayPrototypePush(activeSuite.afterEachHooks, fn);
     return;
   }
   ArrayPrototypePush(rootAfterEachHooks, fn);
