@@ -1,0 +1,6 @@
+{
+  "name": "@repro/middle",
+  "version": "0.0.1",
+  "exports": "./src/index.ts",
+  "links": ["../core"]
+}
