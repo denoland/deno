@@ -47,6 +47,7 @@ use signature::hazmat::PrehashSigner;
 use signature::hazmat::PrehashVerifier;
 
 mod algorithm;
+mod awslc_sign_verify;
 mod crypto;
 mod crypto_key;
 mod decrypt;
@@ -312,6 +313,9 @@ pub(crate) fn sign_key_sync(
   args: SignArg,
   data: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
+  if let Some(signature) = awslc_sign_verify::try_sign(&key, &args, data)? {
+    return Ok(signature);
+  }
   {
     let algorithm = args.algorithm;
 
@@ -528,6 +532,9 @@ pub(crate) fn verify_key_sync(
   args: VerifyArg,
   data: &[u8],
 ) -> Result<bool, CryptoError> {
+  if let Some(valid) = awslc_sign_verify::try_verify(&key, &args, data) {
+    return Ok(valid);
+  }
   {
     let algorithm = args.algorithm;
 
