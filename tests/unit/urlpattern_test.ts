@@ -49,6 +49,36 @@ Deno.test(function urlPatternFromInit() {
   assert(pattern.test({ pathname: "/foo/x" }));
 });
 
+Deno.test(function urlPatternNamedGroupMatchingWholeComponent() {
+  // https://github.com/denoland/deno/issues/28247
+  const pattern = new URLPattern({ hostname: ":domain(.*)", pathname: "/foo" });
+  // A failed match leaves a partially filled result object that the next
+  // exec() call reuses.
+  assertEquals(
+    pattern.exec({ hostname: "example.com", pathname: "/bar" }),
+    null,
+  );
+
+  const match = pattern.exec({ hostname: "localhost", pathname: "/foo" });
+  assert(match);
+  assertEquals(match.hostname.groups, { domain: "localhost" });
+  // Unnamed wildcard groups keep the "0" key.
+  assertEquals(match.search.groups, { "0": "" });
+});
+
+Deno.test(function urlPatternNamedGroupsMatchingWholeComponentsFromString() {
+  // https://github.com/denoland/deno/issues/28247
+  const pattern = new URLPattern(
+    ":protocol://:domain(.*)::port?/:locale(de)?/:path(.*)?",
+  );
+  const match = pattern.exec("https://localhost:5173/de");
+  assert(match);
+  assertEquals(match.protocol.groups, { protocol: "https" });
+  assertEquals(match.hostname.groups, { domain: "localhost" });
+  assertEquals(match.port.groups, { port: "5173" });
+  assertEquals(match.pathname.groups.locale, "de");
+});
+
 Deno.test(function urlPatternWithPrototypePollution() {
   const originalExec = RegExp.prototype.exec;
   try {
