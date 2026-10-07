@@ -23,6 +23,7 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::tokio_util;
 
 use super::ConfiguredRules;
@@ -30,6 +31,7 @@ use super::plugins;
 use super::plugins::PluginHostProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
+use crate::sys::CliSys;
 use crate::util::fs::specifier_from_file_path;
 use crate::util::text_encoding::Utf16Map;
 
@@ -227,8 +229,20 @@ impl CliLinter {
 
     if fix_iterations > 0 {
       // everything looks good and the file still parses, so write it out
-      std::fs::write(file_path, source.text().as_bytes())
-        .context("Failed writing fix to file.")?;
+      let mut perms = crate::cache::CACHE_PERM;
+      #[cfg(unix)]
+      if let Ok(metadata) = std::fs::metadata(file_path) {
+        use std::os::unix::fs::PermissionsExt;
+        perms = metadata.permissions().mode();
+      }
+
+      atomic_write_file_with_retries(
+        &CliSys::default(),
+        file_path,
+        source.text().as_bytes(),
+        perms,
+      )
+      .context("Failed writing fix to file.")?;
     }
 
     Ok((source, diagnostics))
