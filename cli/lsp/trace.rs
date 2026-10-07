@@ -139,8 +139,6 @@ mod stub_tracing {
   pub trait SpanExt {
     #[allow(dead_code)]
     fn set_parent(&self, _context: Context);
-
-    fn context(&self) -> Context;
   }
   #[derive(Debug, Clone)]
   pub struct Span {}
@@ -148,24 +146,7 @@ mod stub_tracing {
   impl SpanExt for Span {
     #[allow(dead_code)]
     fn set_parent(&self, _context: Context) {}
-
-    fn context(&self) -> Context {
-      Context {}
-    }
   }
-
-  impl Span {
-    pub fn entered(self) -> EnteredSpan {
-      EnteredSpan {}
-    }
-
-    pub fn current() -> Self {
-      Self {}
-    }
-  }
-
-  #[derive(Debug)]
-  pub struct EnteredSpan {}
 
   #[derive(Clone, Debug)]
   pub struct Context {}
