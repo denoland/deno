@@ -13,11 +13,9 @@ const WORKER2 = getCodeBlobUrl(`
   console.log("Worker 2");
   self.postMessage(undefined);
 
-  // We sleep synchronously for slightly under 2 seconds in order to make sure
-  // that worker 1 has closed, and that this worker's thread finishes normally
-  // rather than being killed (which happens 2 seconds after calling terminate).
+  // Keep module evaluation blocked long enough for terminate() to interrupt it.
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1800);
-  console.log("Finished sleeping in worker 2");
+  console.log("Worker 2 was not terminated");
 `);
 
 const WORKER1 = getCodeBlobUrl(`
@@ -27,11 +25,16 @@ const WORKER1 = getCodeBlobUrl(`
   worker.addEventListener("message", () => {
     console.log("Terminating");
     worker.terminate();
+    self.postMessage(undefined);
     self.close();
   });
 `);
 
-new Worker(WORKER1, { type: "module" });
+const worker = new Worker(WORKER1, { type: "module" });
 
-// Don't kill the process before worker 2 is finished.
+await new Promise((resolve) => {
+  worker.addEventListener("message", resolve, { once: true });
+});
+
+// Keep the process alive long enough to observe a missed interrupt.
 setTimeout(() => {}, 3000);
