@@ -988,12 +988,32 @@ fn open_for_stat_windows(
       fallback.custom_flags(reparse_flag);
       fallback.open(path).map_err(|_| err)
     }
+    // `CreateFile` returns `ERROR_CANT_ACCESS_FILE` for reparse points it
+    // cannot resolve on its own, such as the app execution aliases that
+    // Microsoft Store apps install in `%LOCALAPPDATA%\Microsoft\WindowsApps`
+    // (only `CreateProcess` knows how to follow those). Open them without
+    // following the reparse point so they behave like regular files.
+    // See https://github.com/denoland/deno/issues/18598.
+    Err(err)
+      if reparse_flag == 0
+        && err.raw_os_error() == Some(ERROR_CANT_ACCESS_FILE) =>
+    {
+      let mut fallback = fs::OpenOptions::new();
+      fallback.access_mode(0);
+      fallback.custom_flags(
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+      );
+      fallback.open(path).map_err(|_| err)
+    }
     Err(err) => Err(err),
   }
 }
 
 #[cfg(windows)]
 const ERROR_INVALID_FUNCTION: i32 = 1;
+
+#[cfg(windows)]
+const ERROR_CANT_ACCESS_FILE: i32 = 1920;
 
 fn statfs(path: &Path, bigint: bool) -> FsResult<FsStatFs> {
   #[cfg(unix)]
@@ -1131,7 +1151,55 @@ fn exists(path: &Path) -> bool {
 }
 
 fn realpath(path: &Path) -> FsResult<PathBuf> {
-  Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
+  #[cfg(windows)]
+  {
+    match path.canonicalize() {
+      Ok(path) => Ok(deno_path_util::strip_unc_prefix(path)),
+      // `canonicalize` follows reparse points, which fails for the ones
+      // `CreateFile` cannot resolve (see `open_for_stat_windows`). Resolve
+      // those to themselves, like any other regular file.
+      Err(err) if err.raw_os_error() == Some(ERROR_CANT_ACCESS_FILE) => {
+        let file = open_for_stat_windows(path, true).map_err(|_| err)?;
+        let path = final_path_of_windows(&file)?;
+        Ok(deno_path_util::strip_unc_prefix(path))
+      }
+      Err(err) => Err(err.into()),
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
+  }
+}
+
+/// Gets the canonical path of an already opened file.
+#[cfg(windows)]
+fn final_path_of_windows(file: &fs::File) -> io::Result<PathBuf> {
+  use std::ffi::OsString;
+  use std::os::windows::ffi::OsStringExt;
+  use std::os::windows::io::AsRawHandle;
+
+  use windows_sys::Win32::Storage::FileSystem::GetFinalPathNameByHandleW;
+
+  let handle = file.as_raw_handle();
+  let mut buf = vec![0u16; 512];
+  loop {
+    // SAFETY: `handle` is a valid file handle and `buf` holds `buf.len()`
+    // UTF-16 code units.
+    let len = unsafe {
+      GetFinalPathNameByHandleW(handle, buf.as_mut_ptr(), buf.len() as u32, 0)
+    } as usize;
+    if len == 0 {
+      return Err(io::Error::last_os_error());
+    }
+    // on success the length excludes the NUL terminator, otherwise it is the
+    // required buffer size including it
+    if len < buf.len() {
+      buf.truncate(len);
+      return Ok(PathBuf::from(OsString::from_wide(&buf)));
+    }
+    buf.resize(len, 0);
+  }
 }
 
 fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
