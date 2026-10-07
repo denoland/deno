@@ -102,9 +102,12 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    // Deprecated: `request.signal` in Deno.serve no longer aborts on
+    // successfully completed requests by default, so this flag is a no-op
+    // kept only for backwards compatibility.
     name: "no-legacy-abort",
-    help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
-    show_in_help: true,
+    help_text: "Deprecated. `request.signal` in Deno.serve no longer aborts on successfully completed requests, so this flag has no effect.",
+    show_in_help: false,
     kind: UnstableFeatureKind::Runtime,
     env_var: None,
   },
