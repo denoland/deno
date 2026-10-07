@@ -183,6 +183,7 @@ const inspectDefaultOptions = {
   compact: 3,
   sorted: false,
   getters: false,
+  numericSeparator: false,
 
   // node only
   maxArrayLength: 100,
