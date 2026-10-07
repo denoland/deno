@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // the postinstall script runs `npm run create-message`, which must
+    // resolve against the package's own package.json scripts and not the
+    // surrounding project's config (#35742)
+    "args": "install --allow-scripts",
+    "output": "install.out"
+  }, {
+    "args": "run -A main.mjs",
+    "output": "run.out"
+  }]
+}
