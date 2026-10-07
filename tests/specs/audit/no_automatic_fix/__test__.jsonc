@@ -1,0 +1,26 @@
+{
+  // `@denotest/with-vuln1` is installed twice: 1.0.0 directly (vulnerable) and
+  // 1.1.0 as a transitive dep of `@denotest/using-vuln1-patched` (patched).
+  // The advisory still applies, but the derived fix target is not newer than
+  // the newest installed copy, so the downgrade guard produces no action and
+  // the report must say so instead of pointing at `--fix`.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "audit",
+      "output": "audit.out",
+      "exitCode": 1
+    },
+    {
+      // No action was derived, so `--fix` has nothing to apply and must not
+      // claim otherwise.
+      "args": "audit --fix",
+      "output": "audit.out",
+      "exitCode": 1
+    }
+  ]
+}
