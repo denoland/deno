@@ -26,8 +26,8 @@ The complete source code of Deno and rusty_v8, sufficient to modify these
 routines and rebuild and relink Deno, is available at
 https://github.com/denoland/deno and https://github.com/denoland/rusty_v8.
 
-Note for maintainers: this section is undesirable. It exists only because
-V8 compiled LGPL code into an MIT-licensed project, and it can be removed
+Note for maintainers: this file is undesirable. It exists only because V8
+compiled LGPL code into an MIT-licensed project, and it can be deleted
 when both of the following hold:
 
   - Deno builds with a v8 crate of version 152.0.0 or later (upstream V8
