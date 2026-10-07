@@ -2029,10 +2029,12 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
-      // Allow rules must use the exact spelling. macOS volumes may be either
-      // case-sensitive or case-insensitive, and folding here would broaden an
-      // allow rule on a case-sensitive volume.
-      (Host::UnixSocket(a), Host::UnixSocket(b)) => a == b,
+      // Directory grants cover sockets under that path, same as --allow-read.
+      // Path::starts_with is component-bounded, so /tmp/app does not
+      // match /tmp/app-evil.sock. Allow rules must use the exact spelling:
+      // macOS volumes may be case-sensitive, and folding here would broaden
+      // an allow rule on a case-sensitive volume.
+      (Host::UnixSocket(a), Host::UnixSocket(b)) => b.starts_with(a),
       (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
     }
@@ -2045,9 +2047,9 @@ impl QueryDescriptor for NetDescriptor {
     match (&other.0, &self.0) {
       // Deny rules conservatively fold socket paths on platforms whose usual
       // filesystems are case-insensitive, preventing a case-variant spelling
-      // from bypassing the rule.
+      // from bypassing the rule. Directory rules cover sockets under them.
       (Host::UnixSocket(a), Host::UnixSocket(b)) => {
-        comparison_path(a) == comparison_path(b)
+        comparison_path(b).starts_with(comparison_path(a))
       }
       _ => self.matches_allow(other),
     }
@@ -4917,11 +4919,13 @@ impl PermissionsContainer {
   ///
   /// `path` must already be resolved to an absolute path (typically by the
   /// caller's earlier `check_open` pass). Matched lexically against
-  /// `--allow-net=unix:<absolute-path>` rules. Both sides are lexically
-  /// normalized (`.`/`..` components removed; rules at parse time, the query
-  /// path by `check_open`), but symlinks are deliberately not resolved,
-  /// mirroring `check_open`'s symlink-location semantics: a rule scopes the
-  /// socket *location*, not the inode it points at.
+  /// `--allow-net=unix:<absolute-path>` rules. A directory grant also matches
+  /// sockets under that directory (`Path::starts_with`, component bounded).
+  /// Both sides are lexically normalized (`.`/`..` components removed; rules
+  /// at parse time, the query path by `check_open`), but symlinks are
+  /// deliberately not resolved, mirroring `check_open`'s symlink-location
+  /// semantics: a rule scopes the socket *location*, not the inode it points
+  /// at.
   ///
   /// Abstract socket paths (Linux, leading NUL) are not absolute, so they
   /// cannot be expressed as a scoped `unix:` rule and are only reachable via
@@ -8554,6 +8558,36 @@ mod tests {
         "'{input}'"
       );
     }
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn test_unix_socket_directory_grant_matches_children() {
+    let grant =
+      NetDescriptor(Host::UnixSocket(PathBuf::from("/tmp/app")), None);
+    let child =
+      NetDescriptor(Host::UnixSocket(PathBuf::from("/tmp/app/abc.sock")), None);
+    let nested = NetDescriptor(
+      Host::UnixSocket(PathBuf::from("/tmp/app/nested/x.sock")),
+      None,
+    );
+    let exact =
+      NetDescriptor(Host::UnixSocket(PathBuf::from("/tmp/app")), None);
+    let sibling = NetDescriptor(
+      Host::UnixSocket(PathBuf::from("/tmp/app-evil.sock")),
+      None,
+    );
+    let other =
+      NetDescriptor(Host::UnixSocket(PathBuf::from("/tmp/other.sock")), None);
+    assert!(child.matches_allow(&grant));
+    assert!(nested.matches_allow(&grant));
+    assert!(exact.matches_allow(&grant));
+    assert!(!sibling.matches_allow(&grant));
+    assert!(!other.matches_allow(&grant));
+    // A child grant does not cover the parent path.
+    assert!(!grant.matches_allow(&child));
+    assert!(child.matches_deny(&grant));
+    assert!(!sibling.matches_deny(&grant));
   }
 
   #[cfg(windows)]
