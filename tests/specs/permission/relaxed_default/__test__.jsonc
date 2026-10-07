@@ -1,0 +1,54 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
+    "RELAXED_TEST_VAR": "hello"
+  },
+  "tests": {
+    "profile_default": {
+      // gate on, no flags: read anywhere, write under cwd and temp, env allowed,
+      // write outside both denied naming --allow-write
+      "args": "run --quiet profile.ts",
+      "output": "profile.out"
+    },
+    "net_denied": {
+      // net stays gated: fetch denied naming --allow-net
+      "args": "run --quiet net.ts",
+      "output": "net.out"
+    },
+    "explicit_flag_opts_out": {
+      // an explicit --allow-net flag disables the profile entirely, so a cwd
+      // write now fails
+      "args": "run --quiet --allow-net opt_out.ts",
+      "output": "opt_out.out"
+    },
+    "deny_write_composes": {
+      // --deny-* composes on top of the profile (deny wins)
+      "args": "run --quiet --deny-write=sub deny_write.ts",
+      "output": "deny_write.out"
+    },
+    "allow_all": {
+      // -A allows everything, unchanged
+      "args": "run --quiet -A allow_all.ts",
+      "output": "allow_all.out"
+    },
+    "gate_off": {
+      // gate off: byte-for-byte today's deny-by-default behavior
+      "args": "run --quiet gate_off.ts",
+      "envs": { "DENO_UNSTABLE_RELAXED_PERMISSIONS": "0" },
+      "output": "gate_off.out"
+    },
+    "worker_inherits": {
+      // a worker with default permissions inherits the profile: reads anywhere
+      // but cannot fetch
+      "args": "run --quiet worker_main.ts",
+      "output": "worker.out"
+    },
+    "chdir_does_not_widen": {
+      // the write grant is the cwd at process start; Deno.chdir does not widen it
+      "if": "unix",
+      "args": "run --quiet chdir.ts",
+      "output": "chdir.out"
+    }
+  }
+}
