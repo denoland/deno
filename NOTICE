@@ -28,16 +28,14 @@ https://github.com/denoland/deno and https://github.com/denoland/rusty_v8.
 
 Note for maintainers: this section is undesirable. It exists only because
 V8 compiled LGPL code into an MIT-licensed project, and it can be removed
-when all of the following hold:
+when both of the following hold:
 
   - Deno builds with a v8 crate of version 152.0.0 or later (upstream V8
     removed third_party/glibc in May 2026), or with the GN argument
-    v8_use_libm_trig_functions = false;
-  - no Deno release, Docker image or other distribution built with the
-    v8 crate through 150.4.0 is still offered for download without a copy
-    of this notice attached to it; and
-  - the copies of this notice attached to those older distributions stay
-    in place.
+    v8_use_libm_trig_functions = false; and
+  - every Deno release, Docker image or other distribution built with the
+    v8 crate through 150.4.0 that is still offered for download has its
+    own copy of this notice attached.
 
 ==========================================================================
 
