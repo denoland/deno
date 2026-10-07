@@ -343,6 +343,31 @@ declare module "worker_threads" {
          */
         stackSizeMb?: number | undefined;
     }
+    interface CPUProfileOptions {
+        /**
+         * Requested sampling interval in milliseconds.
+         * @default 0
+         */
+        sampleInterval?: number | undefined;
+        /**
+         * Maximum number of samples to retain.
+         * @default 4294967295
+         */
+        maxBufferSize?: number | undefined;
+    }
+    /**
+     * A handle to an in-progress CPU profile started via {@link Worker.startCpuProfile}.
+     */
+    interface CPUProfileHandle {
+        /**
+         * Stops collecting the profile, then returns a `Promise` that fulfills
+         * with the profile data as a JSON string (the Chrome DevTools Protocol
+         * `Profiler.Profile` shape). Calling `stop()` more than once returns the
+         * same promise.
+         */
+        stop(): Promise<string>;
+        [Symbol.asyncDispose](): Promise<void>;
+    }
     /**
      * The `Worker` class represents an independent JavaScript execution thread.
      * Most Node.js APIs are available inside of it.
@@ -515,6 +540,16 @@ declare module "worker_threads" {
          * @since v24.0.0
          */
         getHeapStatistics(): Promise<HeapInfo>;
+        /**
+         * Starts a CPU profile on the worker thread and returns a `Promise` that
+         * resolves to a handle. Call `handle.stop()` to stop profiling and obtain
+         * the collected V8 CPU profile.
+         *
+         * If the Worker thread is no longer running, the returned `Promise` is
+         * rejected with an `ERR_WORKER_NOT_RUNNING` error.
+         * @since v24.7.0
+         */
+        startCpuProfile(options?: CPUProfileOptions): Promise<CPUProfileHandle>;
         /**
          * Calls `worker.terminate()` when the dispose scope is exited.
          *
