@@ -1,0 +1,5 @@
+[WILDCARD]ua enforced: true
+x-strip removed: true
+x-def respected: true
+ua enforced: true
+x-def defaulted: true

@@ -1,0 +1,2 @@
+zero-arg handler: deno;d=testhash;v=2, deno;d=testhash;v=2
+one-arg handler: deno;d=testhash;v=2, deno;d=testhash;v=2
