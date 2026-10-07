@@ -3,10 +3,13 @@ Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/quiet.ts
 
-| benchmark       | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
-| --------------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
-| console.log     | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| console.error   | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| console.info    | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| console.warn    | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-
+benchmark[WILDLINE]
+[WILDLINE]
+console.log[WILDLINE]
+[WILDCARD]
+console.error[WILDLINE]
+[WILDCARD]
+console.info[WILDLINE]
+[WILDCARD]
+console.warn[WILDLINE]
+[WILDCARD]
