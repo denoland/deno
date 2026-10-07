@@ -308,12 +308,12 @@ fn format_markdown(
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let markdown_config = get_resolved_markdown_config(fmt_options);
-  dprint_plugin_markdown::format_text(
+  Ok(dprint_plugin_markdown::format_text(
     file_text,
     &markdown_config,
     move |tag, text, line_width| {
       let tag = tag.to_lowercase();
-      if matches!(
+      let result: Result<Option<String>, AnyError> = if matches!(
         tag.as_str(),
         "ts"
           | "tsx"
@@ -396,9 +396,12 @@ fn format_markdown(
         }
       } else {
         Ok(None)
-      }
+      };
+      result.map_err(|err| {
+        dprint_plugin_markdown::FormatError::CodeBlock(err.into())
+      })
     },
-  )
+  )?)
 }
 
 /// Formats JSON and JSONC using the rules provided by .deno()
@@ -1526,18 +1529,20 @@ fn get_resolved_markdown_config(
 
   if let Some(new_line_kind) = options.new_line_kind {
     builder.new_line_kind(match new_line_kind {
-      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::Auto => {
+        dprint_core_markdown::configuration::NewLineKind::Auto
+      }
       NewLineKind::CarriageReturnLineFeed => {
-        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        dprint_core_markdown::configuration::NewLineKind::CarriageReturnLineFeed
       }
       NewLineKind::LineFeed => {
-        dprint_core::configuration::NewLineKind::LineFeed
+        dprint_core_markdown::configuration::NewLineKind::LineFeed
       }
       NewLineKind::System => {
         if cfg!(windows) {
-          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+          dprint_core_markdown::configuration::NewLineKind::CarriageReturnLineFeed
         } else {
-          dprint_core::configuration::NewLineKind::LineFeed
+          dprint_core_markdown::configuration::NewLineKind::LineFeed
         }
       }
     });
