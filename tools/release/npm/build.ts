@@ -6,6 +6,7 @@ import $ from "jsr:@david/dax@^0.42.0";
 // @ts-types="npm:@types/decompress@4.2.7"
 import decompress from "npm:decompress@4.2.1";
 import { parseArgs } from "@std/cli/parse-args";
+import { generateDenoTypesDts } from "../types_dts.ts";
 
 interface Package {
   zipFileName: string;
@@ -151,6 +152,9 @@ if (!args["publish-only"]) {
         libc: pkg.libc == null ? undefined : [pkg.libc],
       });
     }
+
+    // setup the @deno/types package (types for the Deno namespace)
+    await setupTypesPackage();
   }
 }
 
@@ -171,6 +175,14 @@ if (args.publish || args["publish-only"]) {
     await $`cd ${pkgDir} && npm publish --provenance --access public`;
   }
 
+  $.logStep(`Publishing @deno/types...`);
+  if (await checkPackagePublished("@deno/types")) {
+    $.logLight("  Already published.");
+  } else {
+    const typesDir = scopeDir.join("types");
+    await $`cd ${typesDir} && npm publish --provenance --access public`;
+  }
+
   $.logStep(`Publishing deno...`);
   await $`cd ${denoDir} && npm publish --provenance --access public`;
 }
@@ -178,6 +190,85 @@ if (args.publish || args["publish-only"]) {
 function getPackageNameNoScope(name: Package) {
   const libc = name.libc == null ? "" : `-${name.libc}`;
   return `${name.os}-${name.cpu}${libc}`;
+}
+
+// Builds the `@deno/types` package: type definitions for the `Deno` namespace
+// extracted from `deno types`. See https://github.com/denoland/deno/issues/22192
+async function setupTypesPackage() {
+  $.logStep(`Setting up @deno/types...`);
+  const pkgDir = scopeDir.join("types");
+  await $`mkdir -p ${pkgDir}`;
+
+  // use the previously extracted binary matching the current platform to emit
+  // the declarations so they match the version being published
+  const platformPkg = getCurrentPlatformPackage();
+  const platformPkgDir = scopeDir.join(getPackageNameNoScope(platformPkg));
+  const denoExe = platformPkgDir.join(
+    platformPkg.os === "win32" ? "deno.exe" : "deno",
+  );
+  if (platformPkg.os !== "win32") {
+    await $`chmod +x ${denoExe}`;
+  }
+
+  const typesOutput = await $`${denoExe} types`.text();
+  const dtsPath = pkgDir.join("deno.d.ts");
+  dtsPath.writeTextSync(generateDenoTypesDts(typesOutput));
+
+  // guard against `deno types` output drift breaking the extraction
+  await $`${denoExe} check ${dtsPath}`;
+
+  pkgDir.join("README.md").writeTextSync(
+    `# @deno/types
+
+TypeScript type definitions for the [\`Deno\`](https://docs.deno.com/api/deno/)
+namespace, for use when writing Deno code that is type checked with \`tsc\`
+instead of \`deno check\`.
+
+Reference the types from a module with:
+
+\`\`\`ts
+/// <reference types="@deno/types" />
+
+const contents = await Deno.readTextFile("./mod.ts");
+\`\`\`
+
+The \`Deno\` namespace references DOM and Node.js types, so make sure \`"dom"\`
+is in the \`lib\` array and \`@types/node\` is installed (it is pulled in as a
+dependency of this package).
+`,
+  );
+  pkgDir.join("package.json").writeJsonPrettySync({
+    "name": "@deno/types",
+    "version": version,
+    "description": "TypeScript type definitions for the Deno namespace.",
+    "types": "deno.d.ts",
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/denoland/deno.git",
+    },
+    "author": "the Deno authors",
+    "license": "MIT",
+    "bugs": {
+      "url": "https://github.com/denoland/deno/issues",
+    },
+    "homepage": "https://deno.com",
+    // the Deno namespace references `node:net` and `NodeJS.*` types
+    "dependencies": {
+      "@types/node": "*",
+    },
+  });
+}
+
+function getCurrentPlatformPackage() {
+  const os = Deno.build.os === "windows" ? "win32" : Deno.build.os;
+  const cpu = Deno.build.arch === "aarch64" ? "arm64" : "x64";
+  const pkg = packages.find((p) => p.os === os && p.cpu === cpu);
+  if (pkg == null) {
+    throw new Error(
+      `Could not find a package for the current platform: ${os} ${cpu}`,
+    );
+  }
+  return pkg;
 }
 
 function resolveVersion() {
