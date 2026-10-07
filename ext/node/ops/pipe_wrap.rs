@@ -14,11 +14,11 @@ use std::rc::Rc;
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::ensure_uv_loop;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvConnect;
-use deno_core::uv_compat::UvLoop;
 use deno_core::uv_compat::UvStream;
 use deno_core::v8;
 use deno_net::check_unix_socket_path;
@@ -194,8 +194,9 @@ impl Drop for PipeWrap {
 
 impl PipeWrap {
   fn new(pipe_type: PipeType, op_state: &mut OpState) -> Self {
-    let loop_ =
-      &**op_state.borrow::<Box<UvLoop>>() as *const UvLoop as *mut UvLoop;
+    // The uv loop is created lazily, so this is one of the sites that
+    // brings it into existence.
+    let loop_ = ensure_uv_loop(op_state).expect("uv loop unavailable");
     let ipc = pipe_type == PipeType::Ipc;
     let pipe = OwnedPtr::from_box(Box::new(uv_compat::new_pipe(ipc)));
     // SAFETY: loop_ and pipe are valid pointers for uv_pipe_init.
