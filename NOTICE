@@ -28,9 +28,10 @@ https://github.com/denoland/deno and https://github.com/denoland/rusty_v8.
 
 Note for maintainers: this file is undesirable. It exists only because V8
 compiles LGPL code into an MIT-licensed project. The glibc routines are in
-the binary but are never executed: V8 calls them only when the runtime
-flag --use-libm-trig-functions is set, which defaults to off and which Deno
-does not set, so Math.sin and Math.cos use V8's own implementations.
+the binary but are not used: V8 calls them only when the runtime flag
+--use-libm-trig-functions is set. It defaults to off and Deno never sets
+it, so Math.sin and Math.cos use V8's own implementations unless a user
+passes the flag explicitly with --v8-flags.
 
 The code is linked because V8's GN argument v8_use_libm_trig_functions
 defaults to true for clang builds. Setting it to false in rusty_v8's .gn
