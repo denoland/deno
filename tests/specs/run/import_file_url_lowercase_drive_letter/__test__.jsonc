@@ -1,0 +1,23 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/35846:
+  // importing a `file:` URL with a lowercased drive letter (as produced by
+  // node tools that build file URLs from a lowercased cwd) must still
+  // resolve bare specifiers from package.json dependencies and workspace
+  // member import maps. On non-Windows systems there is no drive letter, so
+  // the URL is imported unchanged and the test trivially passes.
+  "tempDir": true,
+  "tests": {
+    "lowercase_drive_letter_import": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read main.js",
+          "output": "main.out"
+        }
+      ]
+    }
+  }
+}
