@@ -14,17 +14,17 @@ Public License, version 2.1 or later; the full text follows below.
 
 The files are third_party/glibc/src/sysdeps/ieee754/dbl-64/{s_sin.c,
 branred.c, branred.h, dla.h, endian.h, mydefs.h, sincostab.c, trig.h,
-usncs.h} in V8. Their source, as built into Deno, is available at
+usncs.h} in V8 and are unmodified by Deno. Their source is available from
+the V8 project, for example at V8 15.0.245.2:
 
-  https://github.com/denoland/v8/tree/ac1e23989121713ca642f6650b34deff7b686896/third_party/glibc
+  https://chromium.googlesource.com/v8/v8/+/refs/tags/15.0.245.2/third_party/glibc
 
 and upstream at https://sourceware.org/git/?p=glibc.git (revision
 4e21c2075193e406a92c0d1cb091a7c804fda4d9).
 
-The complete source code of Deno, rusty_v8 and V8, sufficient to modify
-these routines and rebuild and relink Deno, is available at
-https://github.com/denoland/deno, https://github.com/denoland/rusty_v8
-and https://github.com/denoland/v8.
+The complete source code of Deno and rusty_v8, sufficient to modify these
+routines and rebuild and relink Deno, is available at
+https://github.com/denoland/deno and https://github.com/denoland/rusty_v8.
 
 ==========================================================================
 
