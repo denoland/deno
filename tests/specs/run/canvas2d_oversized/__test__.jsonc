@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --allow-read --unstable-canvas2d canvas2d_oversized.js",
+  "output": "canvas2d_oversized.out"
+}

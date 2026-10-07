@@ -1,0 +1,1 @@
+await Deno.registerLocalFonts();
