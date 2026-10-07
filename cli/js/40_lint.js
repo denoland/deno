@@ -512,6 +512,12 @@ function installPlugin(plugin, specifier) {
   return {
     name: plugin.name,
     ruleNames: Object.keys(plugin.rules),
+    // Names of rules that declare a graph-aware hook. Declaring
+    // `createGraphRule` is what opts the `deno lint` run into building and
+    // handing over the module graph.
+    graphRuleNames: Object.keys(plugin.rules).filter(
+      (name) => typeof plugin.rules[name].createGraphRule === "function",
+    ),
   };
 }
 
@@ -1245,6 +1251,11 @@ export function runPluginsForFile(fileName, serializedAst) {
         continue;
       }
 
+      // Graph-only rules (no per-file `create`) are handled in the graph phase.
+      if (typeof rule.create !== "function") {
+        continue;
+      }
+
       const ruleCtx = new Context(ctx, id, fileName);
       const visitor = rule.create(ruleCtx);
 
@@ -1590,10 +1601,118 @@ function _dump(ctx) {
   }
 }
 
+/**
+ * Read-only view of a resolved module, handed to a graph rule.
+ * @implements {Deno.lint.LintModule}
+ */
+class GraphModule {
+  /** @param {*} raw */
+  constructor(raw) {
+    this.specifier = raw.specifier;
+    this.mediaType = raw.mediaType;
+    this.dependencies = raw.dependencies;
+    this.exports = raw.exports;
+  }
+}
+
+/**
+ * Read-only view of the resolved module graph, handed to a graph rule.
+ * @implements {Deno.lint.LintModuleGraph}
+ */
+class GraphView {
+  /** @param {*} raw */
+  constructor(raw) {
+    this.roots = raw.roots;
+    /** @type {GraphModule[]} */
+    this.modules = raw.modules.map((m) => new GraphModule(m));
+    /** @type {Map<string, GraphModule>} */
+    this.#bySpecifier = new Map();
+    for (const m of this.modules) {
+      this.#bySpecifier.set(m.specifier, m);
+    }
+  }
+
+  #bySpecifier;
+
+  /** @param {string} specifier */
+  module(specifier) {
+    return this.#bySpecifier.get(specifier);
+  }
+}
+
+/**
+ * The context handed to a `createGraphRule` hook.
+ * @implements {Deno.lint.GraphRuleContext}
+ */
+class GraphRuleContext {
+  /**
+   * @param {GraphView} graph
+   * @param {string} id
+   * @param {any[]} sink Collected reports, drained by Rust.
+   */
+  constructor(graph, id, sink) {
+    this.graph = graph;
+    this.id = id;
+    this.#sink = sink;
+  }
+
+  #sink;
+
+  /** @param {Deno.lint.GraphDiagnostic} data */
+  report(data) {
+    if (typeof data.specifier !== "string") {
+      throw new Error("`specifier` must be provided when a graph rule reports");
+    }
+    const range = data.range ? data.range : [0, 0];
+    this.#sink.push({
+      specifier: data.specifier,
+      id: this.id,
+      message: data.message,
+      hint: data.hint ?? "",
+      start: range[0],
+      end: range[1],
+    });
+  }
+}
+
+/**
+ * Runs the graph-aware phase: for every enabled rule that declares a
+ * `createGraphRule` hook, invoke it once with a read-only graph view.
+ * Called by Rust after the per-file phase (see plugins.rs).
+ * @param {string} graphJson JSON-serialized `LintModuleGraph`.
+ * @returns {any[]} Collected reports, converted to diagnostics by Rust.
+ */
+export function runGraphRules(graphJson) {
+  const raw = JSON.parse(graphJson);
+  const graph = new GraphView(raw);
+  const sink = [];
+
+  for (let i = 0; i < state.plugins.length; i++) {
+    const plugin = state.plugins[i];
+    for (const name of Object.keys(plugin.rules)) {
+      const rule = plugin.rules[name];
+      if (typeof rule.createGraphRule !== "function") continue;
+
+      const id = `${plugin.name}/${name}`;
+      if (state.ignoredRules.has(id)) continue;
+
+      const ctx = new GraphRuleContext(graph, id, sink);
+      try {
+        rule.createGraphRule(ctx);
+      } catch (err) {
+        throw new Error(`Graph rule "${id}" errored`, { cause: err });
+      }
+    }
+  }
+
+  return sink;
+}
+
 // These are captured by Rust and called when plugins need to be loaded
 // or run.
 internals.installPlugins = installPlugins;
 internals.runPluginsForFile = runPluginsForFile;
+internals.runGraphRules = runGraphRules;
 internals.resetState = resetState;
 
 /**
