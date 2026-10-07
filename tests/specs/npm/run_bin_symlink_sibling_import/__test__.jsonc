@@ -1,0 +1,19 @@
+// Regression test for https://github.com/denoland/deno/issues/35545.
+{
+  "tempDir": true,
+  "if": "unix",
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": ""
+    },
+    {
+      "args": "run -A .bin/cli",
+      "output": "ok\n"
+    },
+    {
+      "args": "run -A pkg/bin/cli.js",
+      "output": "ok\n"
+    }
+  ]
+}
