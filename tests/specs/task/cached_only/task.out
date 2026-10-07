@@ -1,0 +1,2 @@
+Task run-cached deno run --cached-only main.ts
+hello

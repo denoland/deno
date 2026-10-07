@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "run-cached": "deno run --cached-only main.ts"
+  },
+  "imports": {
+    "@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+  }
+}
