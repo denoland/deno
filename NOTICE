@@ -27,12 +27,21 @@ routines and rebuild and relink Deno, is available at
 https://github.com/denoland/deno and https://github.com/denoland/rusty_v8.
 
 Note for maintainers: this file is undesirable. It exists only because V8
-compiled LGPL code into an MIT-licensed project, and it can be deleted
-when both of the following hold:
+compiles LGPL code into an MIT-licensed project. The glibc routines are in
+the binary but are never executed: V8 calls them only when the runtime
+flag --use-libm-trig-functions is set, which defaults to off and which Deno
+does not set, so Math.sin and Math.cos use V8's own implementations.
 
-  - Deno builds with a v8 crate of version 152.0.0 or later (upstream V8
-    removed third_party/glibc in May 2026), or with the GN argument
-    v8_use_libm_trig_functions = false; and
+The code is linked because V8's GN argument v8_use_libm_trig_functions
+defaults to true for clang builds. Setting it to false in rusty_v8's .gn
+compiles the routines out without changing behavior. Upstream V8 removed
+them in May 2026; v8 crate 152.0.0 and later do not contain them.
+
+This file can be deleted when both of the following hold:
+
+  - Deno builds without the routines, either by upgrading to v8 crate
+    152.0.0 or later (https://github.com/denoland/deno/pull/36665) or by
+    building with v8_use_libm_trig_functions = false; and
   - every Deno release, Docker image or other distribution built with the
     v8 crate through 150.4.0 that is still offered for download has its
     own copy of this notice attached.
