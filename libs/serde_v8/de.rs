@@ -157,7 +157,6 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
           self.deserialize_f64(visitor)
         }
       }
-      ValueType::BigInt => Err(Error::UnsupportedType),
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
@@ -167,6 +166,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
         magic::v8slice::V8Slice::from_v8(&mut *self.scope, self.input)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
+      ValueType::Unsupported => Err(Error::UnsupportedType),
     }
   }
 

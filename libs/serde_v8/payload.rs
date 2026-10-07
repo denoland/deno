@@ -9,12 +9,12 @@ pub enum ValueType {
   Null,
   Bool,
   Number,
-  BigInt,
   String,
   Array,
   ArrayBuffer,
   ArrayBufferView,
   Object,
+  Unsupported,
 }
 
 impl ValueType {
@@ -27,8 +27,6 @@ impl ValueType {
       return Self::String;
     } else if v.is_array() {
       return Self::Array;
-    } else if v.is_big_int() {
-      return Self::BigInt;
     } else if v.is_array_buffer() {
       return Self::ArrayBuffer;
     } else if v.is_array_buffer_view() {
@@ -38,6 +36,6 @@ impl ValueType {
     } else if v.is_null_or_undefined() {
       return Self::Null;
     }
-    panic!("serde_v8: unknown ValueType for v8::Value")
+    Self::Unsupported
   }
 }
