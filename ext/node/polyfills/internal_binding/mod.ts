@@ -1,6 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
+import {
+  op_node_start_sigint_watchdog,
+  op_node_stop_sigint_watchdog,
+  op_node_watchdog_has_pending_sigint,
+} from "ext:core/ops";
 const {
   Error,
   MathFloor,
@@ -90,7 +95,11 @@ const modules = {
   "cares_wrap": caresWrap,
   config: {},
   constants,
-  contextify: {},
+  contextify: {
+    startSigintWatchdog: op_node_start_sigint_watchdog,
+    stopSigintWatchdog: op_node_stop_sigint_watchdog,
+    watchdogHasPendingSigint: op_node_watchdog_has_pending_sigint,
+  },
   credentials: {},
   crypto,
   errors: {},
