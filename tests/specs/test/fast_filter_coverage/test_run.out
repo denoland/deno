@@ -1,0 +1,10 @@
+running 1 test from ./match_test.ts
+match ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed | 1 filtered out ([WILDCARD])
+
+| File      | Branch % | Function % | Line % |
+| --------- | -------- | ---------- | ------ |
+| lib_a.ts  |    100.0 |      100.0 |  100.0 |
+| lib_b.ts  |    100.0 |      100.0 |  100.0 |
+| All files |    100.0 |      100.0 |  100.0 |

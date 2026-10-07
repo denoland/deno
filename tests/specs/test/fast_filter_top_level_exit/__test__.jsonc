@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "test --no-check --filter match .",
+  "exitCode": 1,
+  "output": "main.out"
+}
