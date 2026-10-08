@@ -115,6 +115,86 @@ fn publish_rejects_invalid_identities_before_authentication() {
 }
 
 #[test]
+fn publish_rejects_reachable_self_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let root = context.temp_dir().path();
+  root
+    .join("deno.json")
+    .write_json(&json!({ "workspace": ["pkg", "other"] }));
+  for (directory, name) in [("pkg", "@foo/pkg"), ("other", "@foo/pkg-extra")] {
+    let directory = root.join(directory);
+    directory.create_dir_all();
+    directory.join("deno.json").write_json(&json!({
+      "name": name,
+      "version": "1.0.0",
+      "license": "MIT",
+      "exports": { ".": "./mod.ts", "./value": "./value.ts" },
+      "imports": { "self": "jsr:@foo/pkg@1/value" },
+    }));
+    directory
+      .join("mod.ts")
+      .write("export { value } from './value.ts';");
+    directory
+      .join("value.ts")
+      .write("export const value = 42; export type Value = number;");
+  }
+  let package = root.join("pkg");
+  package
+    .join("internal.ts")
+    .write("export { value } from 'self';");
+  for (source, exit_code) in [
+    ("export { value } from 'jsr:@foo/pkg@1/value';", 1),
+    ("export { value } from 'self';", 1),
+    ("export type { Value } from 'self';", 1),
+    ("await import('self'); export const value = 42;", 1),
+    (
+      "// @deno-types='self'\nexport { value } from './value.ts';",
+      1,
+    ),
+    ("export { value } from './internal.ts';", 1),
+    ("export { value } from './value.ts';", 0),
+    (
+      "/** Example: `import { value } from 'self';` */\nexport { value } from './value.ts';",
+      0,
+    ),
+    ("export { value } from 'jsr:@foo/pkg-extra@1/value';", 0),
+  ] {
+    package.join("mod.ts").write(source);
+    let output = context.new_command().args("publish --dry-run").run();
+    output.assert_exit_code(exit_code);
+    if exit_code == 1 {
+      assert_contains!(
+        output.combined_output(),
+        "Package '@foo/pkg' cannot import itself"
+      );
+      assert_contains!(
+        output.combined_output(),
+        "Use a relative import instead."
+      );
+    } else {
+      assert_contains!(output.combined_output(), "Dry run complete");
+    }
+  }
+
+  package.join("deno.json").write_json(&json!({
+    "name": "@foo/pkg",
+    "version": "1.0.0",
+    "license": "MIT",
+    "exports": { ".": "./mod.js", "./value": "./value.ts" },
+    "imports": { "self": "jsr:@foo/pkg@1/value" },
+  }));
+  package.join("mod.js").write(
+    "/// <reference types='jsr:@foo/pkg@1/value' />\nexport const value = 42;",
+  );
+  let output = context.new_command().args("publish --dry-run").run();
+  output.assert_exit_code(1);
+  assert_contains!(
+    output.combined_output(),
+    "Package '@foo/pkg' cannot import itself"
+  );
+}
+
+#[test]
 fn provenance() {
   TestContextBuilder::new()
     .use_http_server()

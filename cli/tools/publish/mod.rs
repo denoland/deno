@@ -168,6 +168,7 @@ pub async fn publish(
     GraphDiagnosticsCollector::new(
       cli_factory.npm_resolver().await?.clone(),
       parsed_source_cache.clone(),
+      cli_factory.workspace_resolver().await?.clone(),
     ),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
