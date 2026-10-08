@@ -124,13 +124,17 @@ pub async fn prepare_inputs(
     plugin_handler
       .prepare_module_load(&resolved_entrypoints)
       .await?;
+    bail_if_entrypoint_failed(
+      &plugin_handler.module_graph_container.graph(),
+      &resolved_entrypoints,
+    )?;
 
     let roots = resolve_roots(
       resolved_entrypoints,
       init_cwd,
       npm_resolver,
       node_resolver,
-    );
+    )?;
     plugin_handler.prepare_module_load(&roots).await?;
     let graph = plugin_handler.module_graph_container.graph();
     let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
@@ -196,8 +200,12 @@ pub async fn prepare_inputs(
 
     // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
+    bail_if_entrypoint_failed(
+      &plugin_handler.module_graph_container.graph(),
+      &script_entry_urls,
+    )?;
     let roots =
-      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
+      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver)?;
     let _ = plugin_handler.prepare_module_load(&roots).await;
     for url in roots {
       entries.push(("".into(), url.into()));
@@ -1246,6 +1254,13 @@ impl EsbuildBundler {
   }
 }
 
+fn with_minimum_dependency_age_hint(mut message: String) -> String {
+  if let Some(hint) = crate::maybe_minimum_dependency_age_hint(&message) {
+    message.push_str(&hint);
+  }
+  message
+}
+
 fn message_to_error(
   message: &esbuild_client::protocol::Message,
   current_dir: &Path,
@@ -1407,6 +1422,11 @@ enum BundleErrorKind {
   ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[error(transparent)]
   PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
+  /// A module-graph load failure (for example an npm package excluded by
+  /// `--min-dep-age`) that should be shown instead of a secondary resolve
+  /// error or esbuild's "Do not know how to load path".
+  #[error("{0}")]
+  Graph(String),
   #[error(transparent)]
   ResolveReqWithSubPath(#[from] deno_resolver::npm::ResolveReqWithSubPathError),
   #[error(transparent)]
@@ -1841,6 +1861,11 @@ pub enum BundleLoadErrorKind {
   #[error("Prepare module load error")]
   PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
 
+  /// A module-graph load failure surfaced while loading a bundle input.
+  #[class(generic)]
+  #[error("{0}")]
+  Graph(String),
+
   #[class(generic)]
   #[error("Package.json load error")]
   PackageJsonLoadError(#[from] node_resolver::errors::PackageJsonLoadError),
@@ -1905,6 +1930,27 @@ fn looks_like_bare_specifier(specifier: &str) -> bool {
     // a drive-letter absolute path is correctly treated as not bare here. Don't
     // "simplify" this away or Windows absolute paths regress into the fallback.
     && Url::parse(specifier).is_err()
+}
+
+/// Load error recorded for `raw_specifier` while the module graph was built.
+///
+/// Checked for the specifier itself (an `npm:` or `jsr:` entrypoint) and for
+/// an import resolved from `referrer`.
+fn module_graph_load_error(
+  graph: &ModuleGraph,
+  raw_specifier: &str,
+  referrer: &Url,
+) -> Option<String> {
+  if let Ok(url) = Url::parse(raw_specifier)
+    && let Err(err) = graph.try_get(&url)
+  {
+    return Some(err.to_string());
+  }
+  let deno_graph::Module::Js(module) = graph.get(referrer)? else {
+    return None;
+  };
+  let specifier = module.dependencies.get(raw_specifier)?.get_code()?;
+  graph.try_get(specifier).err().map(|err| err.to_string())
 }
 
 fn maybe_ignorable_resolution_error(
@@ -2051,7 +2097,16 @@ impl DenoPluginHandler {
     );
 
     match result {
-      Ok(specifier) => Ok(Some(file_path_or_url(specifier)?)),
+      Ok(specifier) => {
+        // `resolve_with_graph` treats an error slot as missing and hands back
+        // the original `jsr:`/`https:` URL. esbuild then reports
+        // "Do not know how to load path" because nothing can load it. The
+        // graph already has the real failure (min-dep-age, registry, ...).
+        if let Err(err) = graph.try_get(&specifier) {
+          return Err(BundleErrorKind::Graph(err.to_string()).into());
+        }
+        Ok(Some(file_path_or_url(specifier)?))
+      }
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
         // The graph may record an unmapped-bare-specifier error for a referrer
@@ -2089,6 +2144,14 @@ impl DenoPluginHandler {
           // we return None here because this lets esbuild choose to ignore the failure
           // for fallible imports/requires
           return Ok(None);
+        }
+        // An npm req that failed during graph build (every matching version
+        // excluded by the minimum dependency age) is not in the snapshot, so
+        // resolution reports "Could not find constraint". Prefer the graph's
+        // error, which names the age filter.
+        if let Some(message) = module_graph_load_error(&graph, path, &referrer)
+        {
+          return Err(BundleErrorKind::Graph(message).into());
         }
         Err(BundleErrorKind::Resolver(e).into())
       }
@@ -2479,8 +2542,14 @@ impl DenoPluginHandler {
     BundleLoadError,
   > {
     let graph = self.module_graph_container.graph();
-    let Some(module) = graph.get(specifier) else {
-      return Ok(None);
+    let module = match graph.try_get(specifier) {
+      Ok(Some(module)) => module,
+      Ok(None) => return Ok(None),
+      // Same failure mode as resolve: the module never landed in the graph,
+      // so returning `None` makes esbuild say "Do not know how to load path".
+      Err(err) => {
+        return Err(BundleLoadErrorKind::Graph(err.to_string()).into());
+      }
     };
     let (specifier, media_type, loader) = match module {
       deno_graph::Module::Js(js_module) => (
@@ -2630,12 +2699,42 @@ fn is_html_entrypoint(url: &Url) -> bool {
   url.scheme() == "file" && url.path().to_ascii_lowercase().ends_with(".html")
 }
 
+/// Surface a module-graph load failure for an entrypoint before later steps
+/// try to turn that specifier into a file and panic or hide the cause.
+///
+/// `prepare_module_load` skips graph validation for the bundler, so an npm
+/// package excluded by `--min-dep-age` stays as an error slot. Resolving its
+/// package folder then fails with "package not in the snapshot" (or panics).
+fn bail_if_entrypoint_failed(
+  graph: &ModuleGraph,
+  entrypoints: &[Url],
+) -> Result<(), AnyError> {
+  for url in entrypoints {
+    match graph.try_get(url) {
+      Err(err) => {
+        deno_core::anyhow::bail!("{err}");
+      }
+      Ok(None) if matches!(url.scheme(), "npm" | "jsr") => {
+        if let Err(err) = &graph.npm_dep_graph_result {
+          deno_core::anyhow::bail!("{err}");
+        }
+        if let Some(err) = graph.module_errors().find(|e| e.specifier() == url)
+        {
+          deno_core::anyhow::bail!("{err}");
+        }
+      }
+      _ => {}
+    }
+  }
+  Ok(())
+}
+
 fn resolve_roots(
   entrypoints: Vec<Url>,
   cwd: &Path,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
-) -> Vec<Url> {
+) -> Result<Vec<Url>, AnyError> {
   let mut roots = Vec::with_capacity(entrypoints.len());
 
   for url in entrypoints {
@@ -2643,8 +2742,7 @@ fn resolve_roots(
       Ok(v) => {
         let referrer = ModuleSpecifier::from_directory_path(cwd).unwrap();
         let package_folder = npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
-          .unwrap();
+          .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)?;
         let Ok(node_resolver::BinValue::JsFile(main_module)) =
           node_resolver.resolve_binary_export(&package_folder, v.sub_path())
         else {
@@ -2658,7 +2756,7 @@ fn resolve_roots(
     roots.push(root)
   }
 
-  roots
+  Ok(roots)
 }
 
 /// Ensure that an Esbuild binary for the current os/arch is downloaded
@@ -2776,14 +2874,14 @@ fn handle_esbuild_errors_and_warnings(
       log::error!(
         "{}: {}",
         deno_terminal::colors::red_bold("error"),
-        format_message(&error, init_cwd)
+        with_minimum_dependency_age_hint(format_message(&error, init_cwd))
       );
       continue;
     }
     log::error!(
       "{}: {}",
       deno_terminal::colors::red_bold("error"),
-      format_message(error, init_cwd)
+      with_minimum_dependency_age_hint(format_message(error, init_cwd))
     );
   }
 
