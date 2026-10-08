@@ -278,7 +278,7 @@ function clearImmediate(immediate: Immediate) {
 async function* setIntervalAsync(
   after: number,
   value: number,
-  options: { signal?: AbortSignal; ref?: boolean } = { __proto__: null },
+  options: { signal?: AbortSignal; ref?: boolean } = kEmptyObject,
 ) {
   validateObject(options, "options");
 

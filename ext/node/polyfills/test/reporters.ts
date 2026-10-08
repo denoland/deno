@@ -199,7 +199,7 @@ async function* junit(source) {
 }
 
 class SpecReporter extends getTransform() {
-  constructor(options = { __proto__: null }) {
+  constructor(options = undefined) {
     super(ObjectAssign({ writableObjectMode: true }, options));
   }
 
@@ -224,7 +224,7 @@ class SpecReporter extends getTransform() {
 }
 
 class LcovReporter extends getTransform() {
-  constructor(options = { __proto__: null }) {
+  constructor(options = undefined) {
     super(ObjectAssign({ writableObjectMode: true }, options));
   }
 

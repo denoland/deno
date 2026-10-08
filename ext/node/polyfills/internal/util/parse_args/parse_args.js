@@ -45,6 +45,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/util/parse_args/utils.js");
 
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_PARSE_ARGS_INVALID_OPTION_VALUE,
@@ -328,7 +329,7 @@ function argsToTokens(args, options) {
   return tokens;
 }
 
-const parseArgs = (config = { __proto__: null }) => {
+const parseArgs = (config = kEmptyObject) => {
   const args = objectGetOwn(config, "args") ?? getMainArgs();
   const strict = objectGetOwn(config, "strict") ?? true;
   const allowPositionals = objectGetOwn(config, "allowPositionals") ?? !strict;
