@@ -62,8 +62,8 @@ function retainActiveDependent(dependentSignal) {
   for (const weakRef of new SafeSetIterator(sources)) {
     const sourceSignal = WeakRefPrototypeDeref(weakRef);
     if (sourceSignal === undefined) continue;
-    sourceSignal[activeDependents] ??= new SafeSet();
-    SetPrototypeAdd(sourceSignal[activeDependents], dependentSignal);
+    const dependents = sourceSignal[activeDependents] ??= new SafeSet();
+    SetPrototypeAdd(dependents, dependentSignal);
   }
 }
 
@@ -74,8 +74,10 @@ function releaseActiveDependent(dependentSignal) {
   }
   for (const weakRef of new SafeSetIterator(sources)) {
     const sourceSignal = WeakRefPrototypeDeref(weakRef);
-    if (sourceSignal !== undefined && sourceSignal[activeDependents]) {
-      SetPrototypeDelete(sourceSignal[activeDependents], dependentSignal);
+    if (sourceSignal === undefined) continue;
+    const dependents = sourceSignal[activeDependents];
+    if (dependents) {
+      SetPrototypeDelete(dependents, dependentSignal);
     }
   }
 }
@@ -247,7 +249,10 @@ class AbortSignal extends EventTarget {
   }
 
   [remove](algorithm) {
-    this[abortAlgos] && SetPrototypeDelete(this[abortAlgos], algorithm);
+    const algos = this[abortAlgos];
+    if (algos) {
+      SetPrototypeDelete(algos, algorithm);
+    }
     if (!hasAbortAlgorithms(this) && listenerCount(this, "abort") === 0) {
       releaseActiveDependent(this);
     }
@@ -287,14 +292,17 @@ class AbortSignal extends EventTarget {
     if (listenerCount(this, "abort") > 0) {
       if (this[timerId] !== null) {
         core.refTimer(this[timerId]);
-      } else if (this[sourceSignals] !== null) {
-        retainActiveDependent(this);
-        for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
-          const sourceSignal = WeakRefPrototypeDeref(weakRef);
-          if (sourceSignal === undefined) continue;
-          if (sourceSignal[timerId] !== null) {
-            // For timer sources, also keep the event loop alive.
-            core.refTimer(sourceSignal[timerId]);
+      } else {
+        const sources = this[sourceSignals];
+        if (sources !== null) {
+          retainActiveDependent(this);
+          for (const weakRef of new SafeSetIterator(sources)) {
+            const sourceSignal = WeakRefPrototypeDeref(weakRef);
+            if (sourceSignal === undefined) continue;
+            if (sourceSignal[timerId] !== null) {
+              // For timer sources, also keep the event loop alive.
+              core.refTimer(sourceSignal[timerId]);
+            }
           }
         }
       }
@@ -306,36 +314,36 @@ class AbortSignal extends EventTarget {
     if (listenerCount(this, "abort") === 0) {
       if (this[timerId] !== null) {
         core.unrefTimer(this[timerId]);
-      } else if (this[sourceSignals] !== null) {
-        // Listeners are gone. An abort algorithm still needs the backref.
-        if (!hasAbortAlgorithms(this)) {
-          releaseActiveDependent(this);
-        }
-        for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
-          const sourceSignal = WeakRefPrototypeDeref(weakRef);
-          if (sourceSignal === undefined) continue;
-          if (sourceSignal[timerId] !== null) {
-            // Timer source: stop refing the event loop only if no other
-            // dependent of this timer still has listeners.
-            let allInactive = true;
-            if (sourceSignal[dependentSignals] !== null) {
-              for (
-                const depRef of new SafeSetIterator(
-                  sourceSignal[dependentSignals],
-                )
-              ) {
-                const dep = WeakRefPrototypeDeref(depRef);
-                if (
-                  dep !== undefined && dep !== this &&
-                  listenerCount(dep, "abort") > 0
-                ) {
-                  allInactive = false;
-                  break;
+      } else {
+        const sources = this[sourceSignals];
+        if (sources !== null) {
+          // Listeners are gone. An abort algorithm still needs the backref.
+          if (!hasAbortAlgorithms(this)) {
+            releaseActiveDependent(this);
+          }
+          for (const weakRef of new SafeSetIterator(sources)) {
+            const sourceSignal = WeakRefPrototypeDeref(weakRef);
+            if (sourceSignal === undefined) continue;
+            if (sourceSignal[timerId] !== null) {
+              // Timer source: stop refing the event loop only if no other
+              // dependent of this timer still has listeners.
+              let allInactive = true;
+              const deps = sourceSignal[dependentSignals];
+              if (deps !== null) {
+                for (const depRef of new SafeSetIterator(deps)) {
+                  const dep = WeakRefPrototypeDeref(depRef);
+                  if (
+                    dep !== undefined && dep !== this &&
+                    listenerCount(dep, "abort") > 0
+                  ) {
+                    allInactive = false;
+                    break;
+                  }
                 }
               }
-            }
-            if (allInactive) {
-              core.unrefTimer(sourceSignal[timerId]);
+              if (allInactive) {
+                core.unrefTimer(sourceSignal[timerId]);
+              }
             }
           }
         }
