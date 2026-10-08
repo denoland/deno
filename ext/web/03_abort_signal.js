@@ -55,12 +55,11 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 // `dependentSignals` stores a WeakRef. A GC before the source aborts drops
 // the dependent, and the abort never arrives.
 function retainActiveDependent(dependentSignal) {
-  if (dependentSignal[sourceSignals] === null) {
+  const sources = dependentSignal[sourceSignals];
+  if (sources === null) {
     return;
   }
-  for (
-    const weakRef of new SafeSetIterator(dependentSignal[sourceSignals])
-  ) {
+  for (const weakRef of new SafeSetIterator(sources)) {
     const sourceSignal = WeakRefPrototypeDeref(weakRef);
     if (sourceSignal === undefined) continue;
     sourceSignal[activeDependents] ??= new SafeSet();
@@ -69,12 +68,11 @@ function retainActiveDependent(dependentSignal) {
 }
 
 function releaseActiveDependent(dependentSignal) {
-  if (dependentSignal[sourceSignals] === null) {
+  const sources = dependentSignal[sourceSignals];
+  if (sources === null) {
     return;
   }
-  for (
-    const weakRef of new SafeSetIterator(dependentSignal[sourceSignals])
-  ) {
+  for (const weakRef of new SafeSetIterator(sources)) {
     const sourceSignal = WeakRefPrototypeDeref(weakRef);
     if (sourceSignal !== undefined && sourceSignal[activeDependents]) {
       SetPrototypeDelete(sourceSignal[activeDependents], dependentSignal);
