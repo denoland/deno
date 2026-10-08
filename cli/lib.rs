@@ -794,7 +794,9 @@ const MINIMUM_DEPENDENCY_AGE_MARKER: &str = "minimum dependency date";
 
 /// If `error_string` is a resolution failure caused by the minimum dependency
 /// age safeguard, returns a note explaining the setting and how to override it.
-fn maybe_minimum_dependency_age_hint(error_string: &str) -> Option<String> {
+pub(crate) fn maybe_minimum_dependency_age_hint(
+  error_string: &str,
+) -> Option<String> {
   if !error_string.contains(MINIMUM_DEPENDENCY_AGE_MARKER) {
     return None;
   }
