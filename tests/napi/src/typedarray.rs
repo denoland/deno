@@ -209,6 +209,68 @@ extern "C" fn test_create_float16(
   typedarray
 }
 
+/// Call napi_create_typedarray with the given type/length/byte_offset over a
+/// 16 byte buffer: it throws a RangeError, returns napi_pending_exception and
+/// leaves the result unset.
+/// Returns [status, exception pending, result set] after clearing the error.
+fn create_typedarray_out_of_range(
+  env: napi_env,
+  ty: i32,
+  length: usize,
+  byte_offset: usize,
+) -> napi_value {
+  let mut ab: napi_value = ptr::null_mut();
+  let mut ab_data: *mut c_void = ptr::null_mut();
+  assert_napi_ok!(napi_create_arraybuffer(env, 16, &mut ab_data, &mut ab));
+
+  let mut ta: napi_value = ptr::null_mut();
+  let status = unsafe {
+    napi_create_typedarray(env, ty, length, ab, byte_offset, &mut ta)
+  };
+
+  let mut is_pending = false;
+  let mut exception: napi_value = ptr::null_mut();
+  unsafe {
+    napi_is_exception_pending(env, &mut is_pending);
+    napi_get_and_clear_last_exception(env, &mut exception);
+  }
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_array_with_length(env, 3, &mut result));
+  let mut value: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, status, &mut value));
+  assert_napi_ok!(napi_set_element(env, result, 0, value));
+  assert_napi_ok!(napi_get_boolean(env, is_pending, &mut value));
+  assert_napi_ok!(napi_set_element(env, result, 1, value));
+  assert_napi_ok!(napi_get_boolean(env, !ta.is_null(), &mut value));
+  assert_napi_ok!(napi_set_element(env, result, 2, value));
+  result
+}
+
+/// Test napi_create_typedarray past the end of the buffer.
+extern "C" fn test_typedarray_out_of_range(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  create_typedarray_out_of_range(env, TypedarrayType::uint8_array, 32, 0)
+}
+
+/// Test napi_create_typedarray where length * element size overflows usize.
+/// 2^62 elements of 4 bytes each is 2^64, which wraps to 0: without a checked
+/// multiply the bounds check reads it as in range and forwards the bogus
+/// length to V8.
+extern "C" fn test_typedarray_overflow(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  create_typedarray_out_of_range(
+    env,
+    TypedarrayType::uint32_array,
+    1usize << 62,
+    0,
+  )
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_external", test_external),
@@ -216,6 +278,16 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_is_buffer", test_is_buffer),
     napi_new_property!(env, "test_typedarray_type", test_typedarray_type),
     napi_new_property!(env, "test_create_float16", test_create_float16),
+    napi_new_property!(
+      env,
+      "test_typedarray_out_of_range",
+      test_typedarray_out_of_range
+    ),
+    napi_new_property!(
+      env,
+      "test_typedarray_overflow",
+      test_typedarray_overflow
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(
