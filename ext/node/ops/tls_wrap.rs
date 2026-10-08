@@ -2149,14 +2149,8 @@ impl TLSWrap {
       // the record stream (Node.js / OpenSSL treats a 0-byte
       // SSL_write the same way).
       //
-      // Complete the write synchronously. `LastWriteWasAsync` is sticky
-      // across ops; a previous body write leaves it set, and this path
-      // never schedules `oncomplete`. JS then waits forever. HTTP
-      // `res.end()` sends this empty chunk when the socket still has
-      // buffered bytes (a one-chunk `fs.ReadStream` range piped into an
-      // `https.Server` response). The missing `finish` event keeps the
-      // first response on the socket, so the next keep-alive request is
-      // parsed and never answered.
+      // Finish this write in this turn. Otherwise the response never emits
+      // `finish`, and the next request on the connection is never answered.
       let state_global = &op_state.borrow::<StreamBaseState>().array;
       let state_array = v8::Local::new(scope, state_global);
       state_array.set_index(
