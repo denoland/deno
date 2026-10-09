@@ -23,6 +23,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_error::JsErrorBox;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
 use deno_web::Blob;
@@ -39,10 +40,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::unbounded_channel;
 
 use crate::ops::TestingFeaturesEnabled;
-use crate::tokio_util::create_and_run_current_thread;
+use crate::tokio_util::create_and_run_worker_thread;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerStopRequester;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
@@ -105,6 +107,7 @@ struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
+  execution_stopped: Option<tokio::sync::oneshot::Receiver<()>>,
   worker_handle: WebWorkerHandle,
   worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
@@ -117,6 +120,26 @@ pub struct WorkerThread {
   ctrl_closed: bool,
   message_closed: bool,
   termination_requested: bool,
+}
+
+struct WorkerExecutionCompletion {
+  receiver: RefCell<Option<tokio::sync::oneshot::Receiver<()>>>,
+  stop: WebWorkerStopRequester,
+}
+
+/// How often a pending disposal repeats the worker's stop request.
+const STOP_REREQUEST_INTERVAL: std::time::Duration =
+  std::time::Duration::from_millis(10);
+
+// SAFETY: This object owns a Rust channel receiver and a thread-safe isolate
+// handle, with no V8/cppgc pointers to trace. Its fields are cloned or moved
+// into the wait future before awaiting.
+unsafe impl deno_core::GarbageCollected for WorkerExecutionCompletion {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"WorkerExecutionCompletion"
+  }
 }
 
 impl WorkerThread {
@@ -143,33 +166,21 @@ impl Drop for WorkerThread {
     // `cleanup_locks_for_client_id` re-grants the worker's held locks to other
     // clients synchronously. If the worker were still executing a callback under
     // an exclusive lock (e.g. mutating a `SharedArrayBuffer` in a synchronous
-    // loop), the new grantee could run concurrently with it, violating mutual
-    // exclusion. `terminate()` alone doesn't prevent this: it only wakes the
-    // event loop and can't interrupt synchronous JS already in flight. So when
-    // the worker actually holds a lock we're about to hand off, we first call
-    // `terminate_execution()`, which makes the worker's isolate throw a
-    // termination exception at the next interrupt point, halting any such loop
-    // and its callback continuation/microtasks before the lock is handed off.
+    // loop), the new grantee could run concurrently with it. `terminate()`
+    // interrupts the worker's isolate on the first stop request; if a stop was
+    // already requested, its interrupt may have been swallowed (by a promise
+    // hook run while V8 created a promise), so request it again. Either halts
+    // such a loop at its next interrupt point before the locks are handed off.
     //
-    // The `client_holds_lock` gate matters: `terminate_execution()` can abort an
-    // in-progress synthetic module instantiation (e.g. a lazy `require` during
-    // boot, which panics on failure), so we must not force-halt a worker that
-    // has no held lock to protect. A worker that holds a lock is past boot and
-    // parked in — or synchronously looping inside — its lock callback.
-    //
-    // This narrows the window but can't fully close it: `terminate_execution()`
-    // returns without waiting for the isolate to stop, so a native op already in
-    // flight on the worker keeps running until it returns to JS, and a lock
-    // acquired between the `client_holds_lock` check and cleanup isn't halted.
-    // Any lock left held in that residual window is still released by the
-    // resource-drop backstop when the worker's `JsRuntime` drops.
+    // This narrows the window but can't fully close it: the interrupt returns
+    // without waiting for the isolate to stop, so a native op already in flight
+    // keeps running until it returns to JS. Any lock left held in that window is
+    // still released by the resource-drop backstop when the worker's
+    // `JsRuntime` drops. `Symbol.asyncDispose` waits for execution to stop.
     let handle = self.worker_handle.clone();
-    if let Some(client_id) = &self.web_lock_client_id
-      && deno_web::locks::client_holds_lock(client_id)
-    {
-      handle.terminate_execution();
-    }
+    let stop = handle.stop_requester();
     handle.terminate();
+    stop.rerequest();
     if let Some(client_id) = &self.web_lock_client_id {
       deno_web::locks::cleanup_locks_for_client_id(client_id);
     }
@@ -231,6 +242,8 @@ deno_core::extension!(
   ops = [
     op_create_worker,
     op_host_terminate_worker,
+    op_host_worker_execution_stopped,
+    op_host_worker_execution_completion,
     op_host_post_message,
     op_host_recv_ctrl,
     op_host_post_message_raw,
@@ -384,6 +397,8 @@ fn op_create_worker(
   };
   let cpu_thread_handle = Arc::new(AtomicU64::new(0));
   let cpu_thread_handle_writer = cpu_thread_handle.clone();
+  let (execution_stopped_sender, execution_stopped_receiver) =
+    tokio::sync::oneshot::channel();
 
   // Spawn it
   thread_builder.spawn(move || {
@@ -396,7 +411,7 @@ fn op_create_worker(
     //  all action done upon it should be noops
     // - newly spawned thread exits
     let fut = async move {
-      let (worker, external_handle) =
+      let (mut worker, external_handle) =
         (create_web_worker_cb.0)(CreateWebWorkerArgs {
           name: worker_name,
           worker_id,
@@ -420,16 +435,26 @@ fn op_create_worker(
       // is using `worker.internal_channels`.
       //
       // Host can already push messages and interact with worker.
-      run_web_worker(
-        worker,
+      let result = run_web_worker(
+        &mut worker,
         module_specifier,
         maybe_source_code,
         format_js_error_fn.0,
       )
-      .await
+      .await;
+      // Cancel callbacks while the isolate is alive, then keep only the FFI
+      // state managed native calls may still be using. Dropping the worker
+      // here releases its channels, locks and other resources promptly; the
+      // executor holds the keepalive until the blocking pool has drained.
+      worker.js_runtime.shutdown_task_spawner();
+      let keepalive = deno_ffi::take_native_call_keepalive(
+        &mut worker.js_runtime.op_state().borrow_mut(),
+      );
+      drop(worker);
+      (result, keepalive)
     };
 
-    let _ = create_and_run_current_thread(fut);
+    create_and_run_worker_thread(fut);
 
     // After the worker's tokio runtime and JsRuntime/V8 isolate have been
     // dropped, ask the system allocator to release freed memory back to the
@@ -443,6 +468,11 @@ fn op_create_worker(
         libc::malloc_trim(0);
       }
     }
+    // This worker's JS and the native tasks in its runtime's blocking pool have
+    // stopped. Descendant workers, detached OS threads and threads owned by
+    // native libraries are not part of this barrier. The worker's channels are
+    // released earlier, when it is dropped; that is not an acknowledgment.
+    let _ = execution_stopped_sender.send(());
   })?;
 
   // Receive WebWorkerHandle from newly created worker
@@ -453,6 +483,7 @@ fn op_create_worker(
   })?;
 
   let worker_thread = WorkerThread {
+    execution_stopped: Some(execution_stopped_receiver),
     worker_handle: worker_handle.into(),
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
@@ -476,6 +507,55 @@ fn op_create_worker(
     .insert(worker_id, worker_thread);
 
   Ok(worker_id)
+}
+
+#[op2]
+#[cppgc]
+fn op_host_worker_execution_completion(
+  state: &mut OpState,
+  #[scoped] id: WorkerId,
+) -> Result<WorkerExecutionCompletion, JsErrorBox> {
+  // The Worker constructor takes this receiver before starting channel polls.
+  // The future then owns it independently of explicit/natural table removal.
+  let (receiver, stop) = state
+    .borrow_mut::<WorkersTable>()
+    .get_mut(&id)
+    .and_then(|worker| {
+      let receiver = worker.execution_stopped.take()?;
+      Some((receiver, worker.worker_handle.stop_requester()))
+    })
+    .ok_or_else(|| {
+      JsErrorBox::generic("Worker execution-stop acknowledgment unavailable")
+    })?;
+  Ok(WorkerExecutionCompletion {
+    receiver: RefCell::new(Some(receiver)),
+    stop,
+  })
+}
+
+#[op2]
+fn op_host_worker_execution_stopped(
+  #[cppgc] completion: &WorkerExecutionCompletion,
+) -> impl Future<Output = Result<(), JsErrorBox>> + use<> {
+  let receiver = completion.receiver.borrow_mut().take();
+  let stop = completion.stop.clone();
+  async move {
+    let mut receiver = receiver.ok_or_else(|| {
+      JsErrorBox::generic("Worker execution-stop acknowledgment unavailable")
+    })?;
+    // V8 can clear a stop the worker was already interrupted with, so keep
+    // requesting it until the worker acknowledges that execution has stopped.
+    loop {
+      tokio::select! {
+        result = &mut receiver => {
+          return result.map_err(|_| {
+            JsErrorBox::generic("Worker stopped without execution acknowledgment")
+          });
+        }
+        () = tokio::time::sleep(STOP_REREQUEST_INTERVAL) => stop.rerequest(),
+      }
+    }
+  }
 }
 
 #[op2]

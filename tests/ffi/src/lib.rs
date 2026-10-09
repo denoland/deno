@@ -608,3 +608,28 @@ pub unsafe extern "C" fn create_mixed(
 pub extern "C" fn print_mixed(mixed: Mixed) {
   println!("{mixed:?}");
 }
+
+#[repr(C)]
+pub struct CallbackResult {
+  values: [u64; 4],
+}
+
+/// # Safety
+/// `progress` points to six shared atomic words kept alive until this call
+/// returns. `callback` remains live for the duration of this managed call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn callback_during_worker_disposal(
+  callback: extern "C" fn() -> CallbackResult,
+  progress: *const std::sync::atomic::AtomicU32,
+) {
+  use std::sync::atomic::Ordering;
+  // Signal entry into the managed native call, not completion of queueing the
+  // callback. The Worker remains in a synchronous loop until terminated.
+  unsafe { &*progress }.store(1, Ordering::SeqCst);
+  let result = callback();
+  for (i, value) in result.values.into_iter().enumerate() {
+    unsafe { &*progress.add(i + 2) }
+      .store(u32::from(value != 0), Ordering::SeqCst);
+  }
+  unsafe { &*progress.add(1) }.store(1, Ordering::SeqCst);
+}

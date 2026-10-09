@@ -262,7 +262,12 @@ impl ModuleMap {
       return Err(CoreErrorKind::TLA.into_box());
     }
 
-    let Some(value) = module.evaluate(tc_scope) else {
+    let value = module.evaluate(tc_scope);
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      tc_scope.rethrow();
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
+    let Some(value) = value else {
       let exception = tc_scope.exception().unwrap();
       return Err(
         CoreErrorKind::Js(JsError::from_v8_exception(tc_scope, exception))
@@ -285,6 +290,18 @@ impl ModuleMap {
     // (checked above), so its promise settles without a checkpoint.
     if !self.evaluating_top_level.get() {
       tc_scope.perform_microtask_checkpoint();
+    }
+
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      tc_scope.rethrow();
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
+    // A promise hook run while C++ created a promise can have swallowed a host
+    // stop; see `evaluate_lazy_module`.
+    if crate::tasks::external_execution_termination_requested(tc_scope) {
+      crate::tasks::raise_external_execution_termination(tc_scope);
+      tc_scope.rethrow();
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
     }
 
     if let Some(exception) = tc_scope.exception() {

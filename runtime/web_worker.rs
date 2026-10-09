@@ -315,6 +315,13 @@ impl WebWorkerHandle {
     self.isolate_handle.terminate_execution();
   }
 
+  pub fn stop_requester(&self) -> WebWorkerStopRequester {
+    WebWorkerStopRequester {
+      termination_signal: self.termination_signal.clone(),
+      isolate_handle: self.isolate_handle.clone(),
+    }
+  }
+
   /// Terminate the worker
   /// This function will set the termination signal, close the message channel,
   /// and wake the worker's event loop so it can terminate.
@@ -325,8 +332,31 @@ impl WebWorkerHandle {
     self.port.disentangle();
 
     if schedule_termination {
+      // A running script or Wasm function may never yield to the event loop.
+      // Interrupt execution from the caller before waking the loop for cleanup.
+      self.isolate_handle.terminate_execution();
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
+    }
+  }
+}
+
+/// Repeats a worker's pending stop request from any thread. V8 reports and
+/// clears a termination thrown by a promise hook that runs while C++ creates a
+/// promise, so a caller awaiting an execution-stop acknowledgment re-requests
+/// the stop until it arrives instead of trusting a single interrupt.
+#[derive(Clone)]
+pub struct WebWorkerStopRequester {
+  termination_signal: Arc<AtomicBool>,
+  isolate_handle: v8::IsolateHandle,
+}
+
+impl WebWorkerStopRequester {
+  /// Interrupt the worker again if its stop has been requested. A no-op once
+  /// the isolate is gone.
+  pub fn rerequest(&self) {
+    if self.termination_signal.load(Ordering::SeqCst) {
+      self.isolate_handle.terminate_execution();
     }
   }
 }
@@ -739,6 +769,12 @@ impl WebWorker {
       (internal_handle, external_handle)
     };
 
+    js_runtime
+      .v8_isolate()
+      .set_slot(deno_core::ExternalExecutionTermination(
+        internal_handle.termination_signal.clone(),
+      ));
+
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
       deno_core::scope!(scope, &mut js_runtime);
@@ -1135,7 +1171,7 @@ fn print_worker_error(
 // TODO(bartlomieju): run following block using "select!"
 // with terminate
 pub async fn run_web_worker(
-  mut worker: WebWorker,
+  worker: &mut WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -1191,7 +1227,7 @@ pub async fn run_web_worker(
 
   // If sender is closed it means that worker has already been closed from
   // within using "globalThis.close()"
-  if internal_handle.is_terminated() {
+  if internal_handle.terminate_if_needed() {
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
     }
