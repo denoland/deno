@@ -1429,7 +1429,7 @@ function percentDecode(input: Uint8Array): Uint8Array {
  */
 function fileURLToPathBuffer(
   path: string | URL,
-  options: { windows?: boolean } = { __proto__: null },
+  options: { windows?: boolean } | undefined = undefined,
 ) {
   const windows = options?.windows;
   if (typeof path === "string") path = new URL(path);
@@ -1608,7 +1608,7 @@ function encodePathChars(
  */
 function pathToFileURL(
   filepath: string,
-  options: { windows?: boolean } = { __proto__: null },
+  options: { windows?: boolean } | undefined = undefined,
 ): URL {
   validateString(filepath, "path");
   const windows = options?.windows;
