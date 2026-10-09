@@ -19,6 +19,7 @@ const {
   executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 const {
   ObjectDefineProperties,
@@ -147,7 +148,7 @@ class AsyncLocalStorage {
   enabled = false;
 
   constructor(
-    options: { defaultValue?: unknown; name?: string } = { __proto__: null },
+    options: { defaultValue?: unknown; name?: string } = kEmptyObject,
   ) {
     validateObject(options, "options");
     this.#defaultValue = options.defaultValue;
