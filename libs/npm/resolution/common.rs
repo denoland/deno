@@ -460,6 +460,90 @@ impl<'a> NpmPackageVersionResolver<'a> {
     }
   }
 
+  /// Resolve an automatically installed peer against all its required ranges.
+  /// If the ranges conflict, keep the usual first requirement's resolution so
+  /// peer resolution can report the existing unmet-peer diagnostics.
+  pub(super) fn resolve_peer_package_version_info(
+    &self,
+    version_reqs: &[&VersionReq],
+  ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
+    let preferred = self
+      .resolve_best_package_version_info(version_reqs[0], std::iter::empty())?;
+    if version_reqs.len() == 1 {
+      return Ok(preferred);
+    }
+
+    // Resolve tags once, including the minimum dependency age fallback. Do not
+    // combine range text: that changes the meaning of unions and prereleases.
+    let ranges = version_reqs
+      .iter()
+      .filter(|req| req.tag().is_none())
+      .collect::<Vec<_>>();
+    let tagged_versions = version_reqs
+      .iter()
+      .filter(|req| req.tag().is_some())
+      .map(|req| {
+        self
+          .resolve_best_package_version_info(req, std::iter::empty())
+          .ok()
+          .map(|info| &info.version)
+      })
+      .collect::<Vec<_>>();
+    let matches_all = |version: &Version, linked: bool| {
+      tagged_versions
+        .iter()
+        .all(|tagged| tagged.is_some_and(|tagged| tagged == version))
+        && ranges.iter().all(|req| {
+          if linked {
+            self
+              .link_version_req_satisfies(req, version)
+              .unwrap_or(false)
+          } else {
+            req.matches(version)
+          }
+        })
+    };
+
+    // Linked packages retain precedence, including their prerelease handling.
+    if let Some(linked) = self.link_packages
+      && let Some(info) = linked
+        .iter()
+        .filter(|info| matches_all(&info.version, true))
+        .max_by(|a, b| a.version.cmp(&b.version))
+    {
+      return Ok(info);
+    }
+    if matches_all(&preferred.version, false) {
+      return Ok(preferred);
+    }
+
+    // Keep the usual preference for latest, even when a linked package that
+    // satisfied only the first range was initially preferred.
+    if self.info.name != "@types/node"
+      && let Ok(latest) = self.tag_to_version_info("latest")
+      && matches_all(&latest.version, false)
+    {
+      self.check_trust_policy(latest)?;
+      return Ok(latest);
+    }
+    let common_version = self
+      .info
+      .versions
+      .keys()
+      .filter(|version| {
+        self.matches_newest_dependency_date(version)
+          && matches_all(version, false)
+      })
+      .max();
+    if let Some(version) = common_version {
+      let info = self.info.versions.get(version).unwrap();
+      self.check_trust_policy(info)?;
+      Ok(info)
+    } else {
+      Ok(preferred)
+    }
+  }
+
   fn get_resolved_package_version_and_info(
     &self,
     version_req: &VersionReq,
@@ -790,6 +874,161 @@ mod test {
       overrides: Default::default(),
       trust_policy: Default::default(),
     }
+  }
+
+  fn resolve_peer_version(
+    info: &NpmPackageInfo,
+    resolver: &NpmVersionResolver,
+    reqs: &[&str],
+  ) -> Result<Version, NpmPackageVersionResolutionError> {
+    let reqs = reqs
+      .iter()
+      .map(|req| VersionReq::parse_from_npm(req).unwrap())
+      .collect::<Vec<_>>();
+    resolver
+      .get_for_package(info)
+      .resolve_peer_package_version_info(&reqs.iter().collect::<Vec<_>>())
+      .map(|info| info.version.clone())
+  }
+
+  fn peer_package_info(versions: &[&str]) -> NpmPackageInfo {
+    NpmPackageInfo {
+      name: "test".into(),
+      versions: versions
+        .iter()
+        .map(|text| (version(text), version_info(text)))
+        .collect::<HashMap<_, _>>()
+        .into(),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn peer_version_range_intersection() {
+    let info = peer_package_info(&["1.0.0", "2.0.0", "3.0.0", "4.0.0"]);
+    for (reqs, expected) in [
+      (vec!["*", "1"], "1.0.0"),
+      (vec![">=1 <4", ">=2 <5", "<3"], "2.0.0"),
+      (vec!["1 || 3", "2 || 3", "*"], "3.0.0"),
+      // No common version: retain the first range's usual resolution.
+      (vec!["1 || 2", "2 || 3", "1 || 3"], "2.0.0"),
+    ] {
+      assert_eq!(
+        resolve_peer_version(&info, &Default::default(), &reqs).unwrap(),
+        version(expected)
+      );
+    }
+    let info = peer_package_info(&["1.0.0", "2.0.0-rc.1", "2.0.0-rc.2"]);
+    assert_eq!(
+      resolve_peer_version(
+        &info,
+        &Default::default(),
+        &[">=2.0.0-rc.1 <2.0.0", "2.0.0-rc.1"]
+      )
+      .unwrap(),
+      version("2.0.0-rc.1")
+    );
+  }
+
+  #[test]
+  fn peer_version_preserves_latest_and_tags() {
+    let mut info = peer_package_info(&["1.0.0", "1.5.0", "2.0.0"]);
+    info.dist_tags.insert("latest".into(), version("1.0.0"));
+    info.dist_tags.insert("stable".into(), version("1.5.0"));
+    assert_eq!(
+      resolve_peer_version(&info, &Default::default(), &["*", "1"]).unwrap(),
+      version("1.0.0")
+    );
+    for reqs in [["1", "stable"], ["stable", "1"]] {
+      assert_eq!(
+        resolve_peer_version(&info, &Default::default(), &reqs).unwrap(),
+        version("1.5.0")
+      );
+    }
+  }
+
+  #[test]
+  fn peer_version_preserves_link_precedence() {
+    let mut info = peer_package_info(&["1.0.0", "1.5.0", "2.0.0"]);
+    info.dist_tags.insert("latest".into(), version("1.0.0"));
+    for (linked, reqs, expected) in [
+      (vec!["1.0.0", "2.0.0"], vec!["*", "1"], "1.0.0"),
+      // An incompatible linked version must not hide the lower latest tag.
+      (vec!["2.0.0"], vec!["*", "1"], "1.0.0"),
+      (
+        vec!["1.0.0-beta", "2.0.0"],
+        vec!["*", "^1.0.0-0"],
+        "1.0.0-beta",
+      ),
+    ] {
+      let resolver = NpmVersionResolver {
+        link_packages: Arc::new(HashMap::from([(
+          "test".into(),
+          linked.into_iter().map(version_info).collect(),
+        )])),
+        ..Default::default()
+      };
+      assert_eq!(
+        resolve_peer_version(&info, &resolver, &reqs).unwrap(),
+        version(expected)
+      );
+    }
+  }
+
+  #[test]
+  fn peer_version_preserves_minimum_dependency_age() {
+    let mut info = peer_package_info(&["1.0.0", "1.5.0", "2.0.0"]);
+    info
+      .time
+      .insert(version("1.0.0"), date("2025-01-01T00:00:00Z"));
+    info
+      .time
+      .insert(version("1.5.0"), date("2025-06-01T00:00:00Z"));
+    info
+      .time
+      .insert(version("2.0.0"), date("2025-02-01T00:00:00Z"));
+    let resolver = resolver_with_newest_dependency_date("2025-05-01T00:00:00Z");
+    assert_eq!(
+      resolve_peer_version(&info, &resolver, &["*", "1"]).unwrap(),
+      version("1.0.0")
+    );
+    info.dist_tags.insert("stable".into(), version("1.5.0"));
+    assert_eq!(
+      resolve_peer_version(&info, &resolver, &["*", "stable"]).unwrap(),
+      version("1.0.0")
+    );
+  }
+
+  #[test]
+  fn peer_version_preserves_trust_policy() {
+    let mut info = peer_package_info(&["1.0.0", "1.5.0", "2.0.0"]);
+    for (text, published) in [
+      ("1.0.0", "2025-01-01T00:00:00Z"),
+      ("1.5.0", "2025-02-01T00:00:00Z"),
+      ("2.0.0", "2025-03-01T00:00:00Z"),
+    ] {
+      info.time.insert(version(text), date(published));
+    }
+    for text in ["1.0.0", "2.0.0"] {
+      info.versions.insert(
+        version(text),
+        serde_json::from_value(serde_json::json!({
+          "version": text,
+          "_npmUser": { "approver": {} }
+        }))
+        .unwrap(),
+      );
+    }
+    let resolver = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    assert!(
+      matches!(resolve_peer_version(&info, &resolver, &["*", "1"]), Err(NpmPackageVersionResolutionError::TrustPolicyDowngrade { version: rejected, .. }) if rejected == version("1.5.0"))
+    );
   }
 
   #[test]
