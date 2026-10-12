@@ -156,8 +156,9 @@ fn op_node_load_env_file(
     .map_err(DotEnvLoadErr::Permission)?;
 
   let contents = fs.read_text_file_lossy_sync(&path)?;
-  // Strip a leading UTF-8 BOM from the file so it doesn't end up in the
-  // first key. `util.parseEnv()` takes a string and keeps it, like Node.
+  // Unlike Node, strip a leading UTF-8 BOM so it doesn't end up in the first
+  // key, consistent with `--env-file`. `util.parseEnv()` takes a string and
+  // keeps it, like Node.
   let contents = contents.strip_prefix('\u{feff}').unwrap_or(&contents);
   let process_env = deno_os::ProcessEnvGuard::lock();
   parse_env_content_hook(contents, &mut |key, value| {
