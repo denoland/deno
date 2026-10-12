@@ -156,8 +156,11 @@ fn op_node_load_env_file(
     .map_err(DotEnvLoadErr::Permission)?;
 
   let contents = fs.read_text_file_lossy_sync(&path)?;
+  // Strip a leading UTF-8 BOM from the file so it doesn't end up in the
+  // first key. `util.parseEnv()` takes a string and keeps it, like Node.
+  let contents = contents.strip_prefix('\u{feff}').unwrap_or(&contents);
   let process_env = deno_os::ProcessEnvGuard::lock();
-  parse_env_content_hook(&contents, &mut |key, value| {
+  parse_env_content_hook(contents, &mut |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
       &key[..null_pos]
