@@ -109,11 +109,9 @@ fn remote_lock_integrity_bytes<'a>(
   maybe_content_type: Option<&str>,
   content: &'a [u8],
 ) -> Cow<'a, [u8]> {
-  use std::sync::Arc;
-
   use deno_media_type::MediaType;
-  use deno_media_type::encoding::DecodedArcSourceDetailKind;
-  use deno_media_type::encoding::decode_arc_source_detail;
+  use deno_media_type::encoding::BOM_CHAR;
+  use deno_media_type::encoding::convert_to_utf8;
   use deno_media_type::encoding::detect_charset;
   use deno_media_type::resolve_media_type_and_charset_from_content_type;
 
@@ -143,14 +141,18 @@ fn remote_lock_integrity_bytes<'a>(
   }
 
   let charset = maybe_charset.unwrap_or_else(|| detect_charset(url, content));
-  match decode_arc_source_detail(charset, Arc::<[u8]>::from(content)) {
-    Ok(detail) => match detail.kind {
-      DecodedArcSourceDetailKind::Unchanged => Cow::Borrowed(content),
-      DecodedArcSourceDetailKind::Changed
-      | DecodedArcSourceDetailKind::OnlyUtf8Bom => {
-        Cow::Owned(detail.text.as_bytes().to_vec())
-      }
+  // Mirrors `decode_arc_source_detail` without requiring `std::sync::Arc`.
+  match convert_to_utf8(content, charset) {
+    Ok(Cow::Borrowed(text)) => match text.strip_prefix(BOM_CHAR) {
+      Some(stripped) => Cow::Owned(stripped.as_bytes().to_vec()),
+      None => Cow::Borrowed(content),
     },
+    Ok(Cow::Owned(mut text)) => {
+      if text.starts_with(BOM_CHAR) {
+        text.drain(..BOM_CHAR.len_utf8());
+      }
+      Cow::Owned(text.into_bytes())
+    }
     // If decoding fails, fall back to the raw bytes (previous behaviour).
     Err(_) => Cow::Borrowed(content),
   }
