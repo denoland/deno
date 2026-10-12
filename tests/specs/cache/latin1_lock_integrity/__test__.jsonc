@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "frozen_ok_after_charset_decode": {
+      "steps": [
+        {
+          "args": "cache --allow-import --lock=deno.lock http://127.0.0.1:4545/encoding/iso-8859-1.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "cache --allow-import --frozen --lock=deno.lock http://127.0.0.1:4545/encoding/iso-8859-1.ts",
+          "output": "[WILDCARD]"
+        }
+      ]
+    }
+  }
+}

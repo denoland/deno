@@ -25,7 +25,7 @@ chrono = { workspace = true, default-features = false, features = ["std"], optio
 data-url = { workspace = true, optional = true }
 deno_error = { workspace = true, features = ["url"] }
 deno_maybe_sync.workspace = true
-deno_media_type.workspace = true
+deno_media_type = { workspace = true, features = ["decoding"] }
 deno_path_util.workspace = true
 http = { workspace = true, optional = true }
 log.workspace = true
