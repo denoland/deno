@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "entry": "npm:@denotest/subpath-declarations@1.0.0/default",
+    "fixture": "npm:@denotest/subpath-declarations@1.0.0",
+    "unused": "npm:@denotest/subpath-declarations@1.0.0/private"
+  }
+}

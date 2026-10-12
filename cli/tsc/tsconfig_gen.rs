@@ -184,6 +184,7 @@ pub fn generate_tsconfig(
   member_paths: &Map<String, Value>,
   jsr_packages_dir: &Path,
   npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_subpath_types: &BTreeMap<String, Option<PathBuf>>,
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
@@ -193,8 +194,12 @@ pub fn generate_tsconfig(
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
   std::fs::create_dir_all(&types_dir)?;
-  let no_types_shims =
-    no_types_npm_shims(project_root, deno_imports, npm_package_paths);
+  let no_types_shims = no_types_npm_shims(
+    project_root,
+    deno_imports,
+    npm_package_paths,
+    npm_subpath_types,
+  );
   // When the effective `lib` includes `dom`, the web-platform globals come from
   // the stock `dom` lib, so emit only the `Deno` namespace to avoid colliding
   // with it (the userland `"lib": ["deno.ns", "dom"]` pattern).
@@ -230,6 +235,7 @@ pub fn generate_tsconfig(
     member_paths,
     jsr_packages_dir,
     npm_package_paths,
+    npm_subpath_types,
     npm_project_references,
     node_types_root,
     excludes,
@@ -765,6 +771,7 @@ fn build_tsconfig(
   member_paths: &Map<String, Value>,
   jsr_packages_dir: &Path,
   npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_subpath_types: &BTreeMap<String, Option<PathBuf>>,
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
@@ -809,8 +816,12 @@ fn build_tsconfig(
   }
 
   // Generate "paths" for npm: and jsr: specifiers only
-  let mut specifier_paths =
-    generate_npm_paths(project_root, deno_imports, npm_package_paths);
+  let mut specifier_paths = generate_npm_paths(
+    project_root,
+    deno_imports,
+    npm_package_paths,
+    npm_subpath_types,
+  );
   let jsr_paths =
     generate_jsr_paths(project_root, jsr_packages_dir, deno_imports);
   specifier_paths.extend(jsr_paths);
@@ -1121,13 +1132,14 @@ fn package_ships_no_types(pkg_dir: &Path) -> bool {
 
 /// Shorthand `declare module` lines for imported npm packages that ship no
 /// resolvable types, so stock tsc treats them as `any` (like Deno) instead of
-/// reporting TS7016. Only bare (non-subpath) imports of materialized packages
-/// that `package_ships_no_types` confirms are untyped are shimmed; their `paths`
-/// entries are skipped (see `generate_npm_paths`) so tsc uses these ambients.
+/// reporting TS7016. Subpaths are shimmed only after the Node resolver confirms
+/// they are exported but untyped; their `paths` entries are skipped so tsc uses
+/// these ambients.
 fn no_types_npm_shims(
   project_root: &Path,
   deno_imports: Option<&Value>,
   npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_subpath_types: &BTreeMap<String, Option<PathBuf>>,
 ) -> Vec<String> {
   let mut shims: Vec<String> = Vec::new();
   let Some(imports) = deno_imports.and_then(|v| v.as_object()) else {
@@ -1145,7 +1157,16 @@ fn no_types_npm_shims(
     else {
       continue;
     };
-    if npm_ref.sub_path().is_some() {
+    if let Some(sub) = npm_ref.sub_path() {
+      if matches!(npm_subpath_types.get(target_str), Some(None)) {
+        for spec in [
+          format!("npm:{}/{sub}", npm_ref.req().name),
+          target_str.to_string(),
+          alias.clone(),
+        ] {
+          shims.push(format!("declare module {spec:?};"));
+        }
+      }
       continue;
     }
     let pkg_name = npm_ref.req().name.to_string();
@@ -1175,6 +1196,7 @@ fn generate_npm_paths(
   project_root: &Path,
   deno_imports: Option<&Value>,
   npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_subpath_types: &BTreeMap<String, Option<PathBuf>>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
 
@@ -1215,29 +1237,19 @@ fn generate_npm_paths(
       let alias_needs_mapping = is_global_cache || alias != &pkg_name;
       match npm_ref.sub_path() {
         Some(sub) => {
-          // `npm:preact/compat`: resolve through the package's `exports` to a
-          // concrete .d.ts (relative, to avoid TS5090). Fall back to the naive
-          // subpath under the package dir when exports can't be read (e.g. the
-          // package isn't materialized yet). Key both the version-less scheme
-          // (`npm:preact/compat`) and the exact specifier as written, plus the
-          // source-written alias form when the alias is renamed.
-          let rel = if is_global_cache {
-            resolve_package_types_entry_path(&pkg_dir, &format!("./{sub}"))
-              .unwrap_or_else(|| pkg_dir.join(sub))
-              .to_string_lossy()
-              .replace('\\', "/")
-          } else {
-            resolve_jsr_types_entry(&pkg_dir, &format!("./{sub}"))
-              .unwrap_or_else(|| format!("../node_modules/{pkg_name}/{sub}"))
+          // Mapping directly to JS bypasses TypeScript's sibling declaration
+          // probing. Use Deno's resolved declaration, including wildcard and
+          // conditional exports, without bypassing exports on failure.
+          let Some(Some(types_path)) = npm_subpath_types.get(target_str) else {
+            continue;
           };
-          paths
-            .entry(format!("npm:{pkg_name}/{sub}"))
-            .or_insert_with(|| json!([&rel]));
-          paths
-            .entry(target_str.to_string())
-            .or_insert_with(|| json!([&rel]));
+          let rel = types_path.to_string_lossy().replace('\\', "/");
+          // Concrete graph imports take precedence over the root package's
+          // enumerated export mappings, which may still point at JS or globs.
+          paths.insert(format!("npm:{pkg_name}/{sub}"), json!([&rel]));
+          paths.insert(target_str.to_string(), json!([&rel]));
           if alias_needs_mapping {
-            paths.entry(alias.clone()).or_insert_with(|| json!([&rel]));
+            paths.insert(alias.clone(), json!([&rel]));
           }
         }
         None => {
@@ -2226,8 +2238,12 @@ interface AlsoKeep {
       "express": "npm:express@4",
       "@mylib/foo": "npm:@mylib/foo@1",
     });
-    let paths =
-      generate_npm_paths(dir.path(), Some(&imports), &BTreeMap::new());
+    let paths = generate_npm_paths(
+      dir.path(),
+      Some(&imports),
+      &BTreeMap::new(),
+      &BTreeMap::new(),
+    );
 
     // Should have npm: prefixed keys only
     assert!(paths.contains_key("npm:chalk"));
@@ -2259,8 +2275,12 @@ interface AlsoKeep {
     // No node_modules on disk -> nothing to map (avoids dangling paths).
     let dir = tempfile::tempdir().unwrap();
     let imports = json!({ "chalk": "npm:chalk@5" });
-    let paths =
-      generate_npm_paths(dir.path(), Some(&imports), &BTreeMap::new());
+    let paths = generate_npm_paths(
+      dir.path(),
+      Some(&imports),
+      &BTreeMap::new(),
+      &BTreeMap::new(),
+    );
     assert!(paths.is_empty());
   }
 
@@ -2274,8 +2294,12 @@ interface AlsoKeep {
     let npm_package_paths =
       BTreeMap::from([("npm:chalk@5".to_string(), pkg_dir.clone())]);
 
-    let paths =
-      generate_npm_paths(project.path(), Some(&imports), &npm_package_paths);
+    let paths = generate_npm_paths(
+      project.path(),
+      Some(&imports),
+      &npm_package_paths,
+      &BTreeMap::new(),
+    );
     let expected = json!([pkg_dir.to_string_lossy().replace('\\', "/")]);
     assert_eq!(paths.get("chalk"), Some(&expected));
     assert_eq!(paths.get("npm:chalk"), Some(&expected));
@@ -2290,8 +2314,12 @@ interface AlsoKeep {
       "@std/assert": "jsr:@std/assert@1",
       "chalk": "npm:chalk@5",
     });
-    let paths =
-      generate_npm_paths(dir.path(), Some(&imports), &BTreeMap::new());
+    let paths = generate_npm_paths(
+      dir.path(),
+      Some(&imports),
+      &BTreeMap::new(),
+      &BTreeMap::new(),
+    );
 
     assert!(paths.contains_key("npm:chalk"));
     // jsr specifiers should not appear in npm paths; every key is npm:-scheme
@@ -2365,14 +2393,19 @@ interface AlsoKeep {
 
   #[test]
   fn test_generate_npm_paths_empty_imports() {
-    let paths =
-      generate_npm_paths(Path::new("/tmp/project"), None, &BTreeMap::new());
+    let paths = generate_npm_paths(
+      Path::new("/tmp/project"),
+      None,
+      &BTreeMap::new(),
+      &BTreeMap::new(),
+    );
     assert!(paths.is_empty());
 
     let imports = json!({});
     let paths = generate_npm_paths(
       Path::new("/tmp/project"),
       Some(&imports),
+      &BTreeMap::new(),
       &BTreeMap::new(),
     );
     assert!(paths.is_empty());
@@ -2390,6 +2423,7 @@ interface AlsoKeep {
       &BTreeMap::new(),
       &Map::new(),
       Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
       &BTreeMap::new(),
       &[],
       None,
@@ -2417,6 +2451,7 @@ interface AlsoKeep {
       &BTreeMap::new(),
       &Map::new(),
       Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
       &BTreeMap::new(),
       &[],
       None,
@@ -2449,6 +2484,7 @@ interface AlsoKeep {
       &Map::new(),
       Path::new("/tmp/project/node_modules/@jsr"),
       &BTreeMap::new(),
+      &BTreeMap::new(),
       &[],
       None,
       &[],
@@ -2477,6 +2513,7 @@ interface AlsoKeep {
       &BTreeMap::new(),
       &Map::new(),
       Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
       &BTreeMap::new(),
       &references,
       None,
@@ -2514,6 +2551,7 @@ interface AlsoKeep {
       &BTreeMap::new(),
       &Map::new(),
       Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
       &BTreeMap::new(),
       &[],
       None,

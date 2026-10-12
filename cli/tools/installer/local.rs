@@ -418,6 +418,7 @@ pub async fn sync_types_command(
   // paths, preserving the contextual resolution that a node_modules tree
   // would normally provide.
   let npm_resolver = factory.npm_resolver().await?.clone();
+  let node_resolver = factory.node_resolver().await?;
 
   // Deno's *resolved* compiler options for the project root. These fold in
   // Deno's source-kind defaults (deno.json vs tsconfig.json) and CLI overrides
@@ -466,6 +467,7 @@ pub async fn sync_types_command(
     &graph_specifiers,
     &local_wasm_modules,
     &npm_resolver,
+    node_resolver,
     factory.npmrc()?,
     resolved_compiler_options.as_ref(),
     manage_root_tsconfig,

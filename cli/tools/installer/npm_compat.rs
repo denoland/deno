@@ -28,9 +28,12 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 use flate2::read::GzDecoder;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClient;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 
 /// The `@types/node` version installed for projects that don't bring their own.
@@ -295,6 +298,7 @@ pub async fn setup_npm_compat(
   graph_specifiers: &[String],
   local_wasm_modules: &[(Url, String)],
   npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
   npmrc: &ResolvedNpmRc,
   resolved_compiler_options: Option<&Value>,
   manage_root_tsconfig: bool,
@@ -380,6 +384,13 @@ pub async fn setup_npm_compat(
   // project, so duplicate versions and peer-dependency copies remain distinct.
   let npm_cache_projects =
     generate_npm_cache_projects(project_root, deno_imports, npm_resolver)?;
+  let npm_subpath_types = resolve_npm_subpath_types(
+    project_root,
+    &combined_imports,
+    &npm_cache_projects.package_paths,
+    graph_specifiers,
+    node_resolver,
+  )?;
   let use_global_cache_layout = npm_resolver
     .as_managed()
     .is_some_and(|managed| managed.root_node_modules_path().is_none());
@@ -512,6 +523,7 @@ pub async fn setup_npm_compat(
     &member_paths,
     &jsr_packages_dir,
     &npm_cache_projects.package_paths,
+    &npm_subpath_types,
     &npm_cache_projects.references,
     node_types.type_root.as_deref(),
     &excludes,
@@ -520,6 +532,80 @@ pub async fn setup_npm_compat(
   )?;
 
   Ok(installed)
+}
+
+/// Resolve concrete npm subpaths with the same exports and declaration rules
+/// as Deno's module resolver. A present `None` denotes an exported JS module
+/// without declarations; an absent entry must not get a filesystem fallback.
+fn resolve_npm_subpath_types(
+  project_root: &Path,
+  imports: &Value,
+  package_paths: &BTreeMap<String, PathBuf>,
+  graph_specifiers: &[String],
+  node_resolver: &CliNodeResolver,
+) -> Result<BTreeMap<String, Option<PathBuf>>, AnyError> {
+  let mut resolved = BTreeMap::new();
+  for (alias, target) in imports.as_object().into_iter().flatten() {
+    let Some(target) = target.as_str().filter(|s| s.starts_with("npm:")) else {
+      continue;
+    };
+    let Ok(npm_ref) =
+      deno_semver::npm::NpmPackageReqReference::from_str(target)
+    else {
+      continue;
+    };
+    let Some(subpath) = npm_ref.sub_path() else {
+      continue;
+    };
+    if resolved.contains_key(target) {
+      continue;
+    }
+    let package_dir = package_paths.get(target).cloned().unwrap_or_else(|| {
+      project_root
+        .join("node_modules")
+        .join(npm_ref.req().name.as_str())
+    });
+    if !package_dir.exists() {
+      continue;
+    }
+    let result = node_resolver.resolve_package_subpath_from_deno_module(
+      &package_dir,
+      Some(subpath),
+      None,
+      ResolutionMode::Import,
+      NodeResolutionKind::Types,
+    );
+    match result {
+      Ok(path) => {
+        resolved.insert(target.to_string(), Some(path.into_path()?));
+      }
+      Err(err) if err.as_types_not_found().is_some() => {
+        // Only shim an untyped subpath when execution resolution also accepts
+        // it. This cannot turn a null or non-exported subpath into an `any`.
+        let execution = node_resolver.resolve_package_subpath_from_deno_module(
+          &package_dir,
+          Some(subpath),
+          None,
+          ResolutionMode::Import,
+          NodeResolutionKind::Execution,
+        );
+        match execution {
+          Ok(_) => {
+            resolved.insert(target.to_string(), None);
+          }
+          Err(err) if graph_specifiers.contains(alias) => {
+            return Err(err.into());
+          }
+          Err(_) => {}
+        }
+      }
+      Err(err) if graph_specifiers.contains(alias) => return Err(err.into()),
+      // An unused import-map entry should not fail discovery. Leave invalid
+      // exports unmapped instead of inventing a path inside the package.
+      Err(_) => {}
+    }
+  }
+  Ok(resolved)
 }
 
 /// Resolve a bare specifier (import-map alias, possibly with a subpath) against
@@ -881,6 +967,7 @@ fn generate_deno_tsconfig(
   member_paths: &serde_json::Map<String, Value>,
   jsr_packages_dir: &Path,
   npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_subpath_types: &BTreeMap<String, Option<PathBuf>>,
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
@@ -900,6 +987,7 @@ fn generate_deno_tsconfig(
     member_paths,
     jsr_packages_dir,
     npm_package_paths,
+    npm_subpath_types,
     npm_project_references,
     node_types_root,
     excludes,
