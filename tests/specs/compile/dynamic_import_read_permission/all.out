@@ -1,0 +1,4 @@
+allowed/data.json loaded {"value":"allowed"}
+outside/secret.json loaded {"secret":"outside"}
+outside/mod.ts loaded "outside module"
+outside/worker.ts loaded "outside worker"

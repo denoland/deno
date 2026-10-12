@@ -291,7 +291,7 @@ class MessagePort extends _MessagePortBase {
    * @param {any} message
    * @param {object[] | StructuredSerializeOptions} transferOrOptions
    */
-  postMessage(message, transferOrOptions = { __proto__: null }) {
+  postMessage(message, transferOrOptions = undefined) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);

@@ -29,6 +29,7 @@ const {
   validateString,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 const {
   ArrayPrototypePush,
@@ -64,7 +65,6 @@ function sleep(ms) {
 const kMaxWrite = 16 * 1024;
 const kContentModeBuffer = "buffer";
 const kContentModeUtf8 = "utf8";
-const kNullPrototype = { __proto__: null };
 
 class Utf8Stream extends EventEmitter {
   #len = 0;
@@ -100,7 +100,7 @@ class Utf8Stream extends EventEmitter {
   #fsWrite;
   #fs;
 
-  constructor(options = kNullPrototype) {
+  constructor(options = kEmptyObject) {
     validateObject(options, "options");
     let { fd } = options;
     const {

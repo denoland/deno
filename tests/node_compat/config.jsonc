@@ -222,10 +222,7 @@
     "parallel/test-assert-myers-diff.js": {},
     "parallel/test-assert-partial-deep-equal.js": {},
     "parallel/test-assert-typedarray-deepequal.js": {},
-    "parallel/test-assert.js": {
-      "ignore": true,
-      "reason": "Node 26 assert: function/printf-style error-message arguments not yet implemented"
-    },
+    "parallel/test-assert.js": {},
     "parallel/test-als-defaultvalue-original.js": {},
     "parallel/test-async-hooks-close-during-destroy.js": {
       "windows": false,

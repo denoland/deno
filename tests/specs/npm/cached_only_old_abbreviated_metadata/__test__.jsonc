@@ -15,6 +15,13 @@
       // as acceptable.
       "args": "run --no-lock --cached-only --minimum-dependency-age=1440 main.ts",
       "output": "ok\n"
+    },
+    {
+      // Without --cached-only, the old cache entry has no `modified` date to
+      // know if the abbreviated install manifest is enough, so the full
+      // packument is fetched.
+      "args": "run --no-lock --minimum-dependency-age=1440 main.ts",
+      "output": "Download http://localhost:4260/@denotest%2fesm-basic (full packument)\nok\n"
     }
   ]
 }
