@@ -109,12 +109,13 @@ fn remote_lock_integrity_bytes<'a>(
   maybe_content_type: Option<&str>,
   content: &'a [u8],
 ) -> Cow<'a, [u8]> {
+  use std::sync::Arc;
+
   use deno_media_type::MediaType;
   use deno_media_type::encoding::DecodedArcSourceDetailKind;
   use deno_media_type::encoding::decode_arc_source_detail;
   use deno_media_type::encoding::detect_charset;
   use deno_media_type::resolve_media_type_and_charset_from_content_type;
-  use std::sync::Arc;
 
   let (media_type, maybe_charset) =
     resolve_media_type_and_charset_from_content_type(url, maybe_content_type);
