@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "many_concurrent_locks": {
+      // Regression test for #22504: acquiring more than 32 file locks
+      // should not prevent other file operations from completing.
+      "args": "run --allow-read --allow-write main.ts",
+      "output": "main.out"
+    },
+    "unlock_waits_for_pending_lock": {
+      "args": "run --allow-read --allow-write unlock_ordering.ts",
+      "output": "unlock_ordering.out"
+    }
+  }
+}

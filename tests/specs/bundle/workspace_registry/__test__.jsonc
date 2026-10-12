@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "envs": {
+    "HOME": "$PWD/../",
+    "USERPROFILE": "$PWD\\..\\",
+    "NPM_CONFIG_REGISTRY": ""
+  },
+  "cwd": "project",
+  "tests": {
+    "workspace_registry_only_applies_to_project_dependencies": {
+      "steps": [
+        {
+          "args": "run --quiet main.ts",
+          "output": "42\n"
+        },
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "bundle.out"
+        },
+        {
+          "args": "run --quiet out.js",
+          "output": "42\n"
+        }
+      ]
+    }
+  }
+}

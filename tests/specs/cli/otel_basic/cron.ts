@@ -10,10 +10,12 @@ let count = 0;
 const { promise, resolve } = Promise.withResolvers<void>();
 const ac = new AbortController();
 
+// Runs twice: a handler must not leave its span in the ambient context, so the
+// second `deno.cron` span must be a root span rather than a child of the first.
 const c = Deno.cron("test-cron", "*/20 * * * *", { signal: ac.signal }, () => {
   tracer.startActiveSpan("inner span", (span) => {
     count++;
-    if (count >= 1) {
+    if (count >= 2) {
       resolve();
     }
     span.end();

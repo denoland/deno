@@ -59,6 +59,82 @@
       },
       "directories": {},
       "_hasShrinkwrap": false
+    },
+    "0.7.3": {
+      "name": "iconv-lite",
+      "version": "0.7.3",
+      "author": {
+        "name": "Alexander Shtuchkin",
+        "email": "ashtuchkin@gmail.com"
+      },
+      "license": "MIT",
+      "_id": "iconv-lite@0.7.3",
+      "bugs": {
+        "url": "https://github.com/pillarjs/iconv-lite/issues"
+      },
+      "dist": {
+        "shasum": "84ee12f963e7de50bc01a13e160a078b3b0f415f",
+        "tarball": "http://localhost:4260/iconv-lite/iconv-lite-0.7.3.tgz",
+        "fileCount": 27,
+        "integrity": "sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==",
+        "unpackedSize": 344185
+      },
+      "main": "./lib/index.js",
+      "browser": {
+        "stream": false
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "funding": {
+        "url": "https://opencollective.com/express",
+        "type": "opencollective"
+      },
+      "gitHead": "43694e28291d3b0cb3a452c77be40c4fd3a4bd85",
+      "scripts": {
+        "lint": "eslint",
+        "test": "mocha --reporter spec --check-leaks --grep .",
+        "test:ci": "nyc --exclude test --reporter=lcovonly --reporter=text npm test",
+        "typegen": "node generation/gen-typings.js",
+        "lint:fix": "eslint --fix",
+        "test:cov": "nyc --exclude test --reporter=html --reporter=text npm test",
+        "test:tap": "mocha --reporter tap --check-leaks --grep .",
+        "test:webpack": "npm pack && mv iconv-lite-*.tgz test/webpack/iconv-lite.tgz && cd test/webpack && npm install && npm run test && rm iconv-lite.tgz",
+        "test:typescript": "tsc && attw --pack",
+        "test:performance": "node --allow-natives-syntax performance/index.js"
+      },
+      "typings": "./lib/index.d.ts",
+      "repository": {
+        "url": "git+https://github.com/pillarjs/iconv-lite.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.13.0",
+      "description": "Convert character encodings in pure javascript.",
+      "directories": {},
+      "_nodeVersion": "24.16.0",
+      "dependencies": {
+        "safer-buffer": ">= 2.1.2 < 3.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "nyc": "^14.1.1",
+        "async": "^3.2.0",
+        "errto": "^0.2.1",
+        "iconv": "^2.3.5",
+        "mocha": "^6.2.2",
+        "unorm": "^1.6.0",
+        "eslint": "^9.0.0",
+        "semver": "^6.3.0",
+        "request": "^2.88.2",
+        "bench-node": "^0.10.0",
+        "typescript": "~5.9.2",
+        "@types/node": "^24.0.12",
+        "expect-type": "^1.2.0",
+        "neostandard": "^0.12.0",
+        "@arethetypeswrong/cli": "^0.18.4",
+        "@stylistic/eslint-plugin": "^5.1.0",
+        "@stylistic/eslint-plugin-js": "^4.1.0"
+      }
     }
   },
   "author": {

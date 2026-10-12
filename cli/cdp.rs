@@ -325,10 +325,12 @@ pub struct ScriptParsed {
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
-  /// Start character index.
+  /// Start offset, in UTF-16 code units as V8 reports it, which a scalar-value
+  /// offset into the source only matches while the source stays inside the
+  /// Basic Multilingual Plane.
   #[serde(rename = "startOffset")]
   pub start_char_offset: usize,
-  /// End character index.
+  /// End offset, in the same units as `start_char_offset`.
   #[serde(rename = "endOffset")]
   pub end_char_offset: usize,
   pub count: i64,

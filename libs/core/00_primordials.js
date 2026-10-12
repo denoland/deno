@@ -83,11 +83,13 @@
 
   function copyAccessor(dest, prefix, key, { enumerable, get, set }) {
     ReflectDefineProperty(dest, `${prefix}Get${key}`, {
+      __proto__: null,
       value: uncurryThis(get),
       enumerable,
     });
     if (set !== undefined) {
       ReflectDefineProperty(dest, `${prefix}Set${key}`, {
+        __proto__: null,
         value: uncurryThis(set),
         enumerable,
       });
@@ -102,9 +104,10 @@
         copyAccessor(dest, prefix, newKey, desc);
       } else {
         const name = `${prefix}${newKey}`;
-        ReflectDefineProperty(dest, name, desc);
+        ReflectDefineProperty(dest, name, { __proto__: null, ...desc });
         if (varargsMethods.includes(name)) {
           ReflectDefineProperty(dest, `${name}Apply`, {
+            __proto__: null,
             // `src` is bound as the `this` so that the static `this` points
             // to the object it was defined on,
             // e.g.: `ArrayOfApply` gets a `this` of `Array`:
@@ -128,9 +131,10 @@
         }
 
         const name = `${prefix}${newKey}`;
-        ReflectDefineProperty(dest, name, desc);
+        ReflectDefineProperty(dest, name, { __proto__: null, ...desc });
         if (varargsMethods.includes(name)) {
           ReflectDefineProperty(dest, `${name}Apply`, {
+            __proto__: null,
             value: applyBind(value, src),
           });
         }
@@ -140,6 +144,9 @@
 
   function copyPrototype(src, dest, prefix) {
     for (const key of ReflectOwnKeys(src)) {
+      if (key === "constructor") {
+        continue;
+      }
       const newKey = getNewKey(key);
       const desc = ReflectGetOwnPropertyDescriptor(src, key);
       if ("get" in desc) {
@@ -151,9 +158,10 @@
         }
 
         const name = `${prefix}${newKey}`;
-        ReflectDefineProperty(dest, name, desc);
+        ReflectDefineProperty(dest, name, { __proto__: null, ...desc });
         if (varargsMethods.includes(name)) {
           ReflectDefineProperty(dest, `${name}Apply`, {
+            __proto__: null,
             value: applyBind(value),
           });
         }
@@ -329,11 +337,35 @@
     return SafeIterator;
   };
 
-  const SafeArrayIterator = createSafeIterator(
-    primordials.ArrayPrototypeSymbolIterator,
-    primordials.ArrayIteratorPrototypeNext,
-  );
+  class SafeArrayIterator {
+    #array;
+    #done = false;
+    #index = 0;
+    constructor(array) {
+      this.#array = array;
+    }
+    next() {
+      if (this.#done) {
+        return { value: undefined, done: true };
+      }
+      const array = this.#array;
+      const index = this.#index;
+      if (index >= array.length) {
+        this.#done = true;
+        return { value: undefined, done: true };
+      }
+      this.#index = index + 1;
+      return { value: array[index], done: false };
+    }
+    [SymbolIterator]() {
+      return this;
+    }
+  }
+  ObjectSetPrototypeOf(SafeArrayIterator.prototype, null);
+  ObjectFreeze(SafeArrayIterator.prototype);
+  ObjectFreeze(SafeArrayIterator);
   primordials.SafeArrayIterator = SafeArrayIterator;
+
   primordials.SafeSetIterator = createSafeIterator(
     primordials.SetPrototypeSymbolIterator,
     primordials.SetIteratorPrototypeNext,
@@ -353,7 +385,10 @@
         ReflectDefineProperty(
           dest,
           key,
-          ReflectGetOwnPropertyDescriptor(src, key),
+          {
+            __proto__: null,
+            ...ReflectGetOwnPropertyDescriptor(src, key),
+          },
         );
       }
     });
@@ -382,7 +417,10 @@
               return new SafeIterator(this);
             };
           }
-          ReflectDefineProperty(safe.prototype, key, desc);
+          ReflectDefineProperty(safe.prototype, key, {
+            __proto__: null,
+            ...desc,
+          });
         }
       });
     } else {
@@ -589,6 +627,7 @@
   // Create getter and setter for `queueMicrotask`, it hasn't been bound yet.
   let queueMicrotask = undefined;
   ObjectDefineProperty(primordials, "queueMicrotask", {
+    __proto__: null,
     get() {
       return queueMicrotask;
     },
@@ -598,6 +637,56 @@
       throw new Error("queueMicrotask is already defined");
     }
     queueMicrotask = value;
+  };
+
+  // Create getter and setter for `SharedArrayBuffer`, it hasn't been bound yet.
+  // Defer copying prototype methods until first access so isolates with a tight
+  // heap limit do not OOM during 01_core.js.
+  let sharedArrayBufferConstructor = undefined;
+  let sharedArrayBufferPrimordials = undefined;
+  function ensureSharedArrayBufferPrimordials() {
+    if (sharedArrayBufferPrimordials !== undefined) {
+      return;
+    }
+    if (sharedArrayBufferConstructor === undefined) {
+      return;
+    }
+    const dest = { __proto__: null };
+    dest.SharedArrayBuffer = sharedArrayBufferConstructor;
+    copyPropsRenamed(sharedArrayBufferConstructor, dest, "SharedArrayBuffer");
+    copyPrototype(
+      sharedArrayBufferConstructor.prototype,
+      dest,
+      "SharedArrayBufferPrototype",
+    );
+    sharedArrayBufferPrimordials = dest;
+  }
+  [
+    "SharedArrayBuffer",
+    "SharedArrayBufferLength",
+    "SharedArrayBufferName",
+    "SharedArrayBufferPrototype",
+    "SharedArrayBufferGetSymbolSpecies",
+    "SharedArrayBufferPrototypeGetByteLength",
+    "SharedArrayBufferPrototypeGetGrowable",
+    "SharedArrayBufferPrototypeGetMaxByteLength",
+    "SharedArrayBufferPrototypeSlice",
+    "SharedArrayBufferPrototypeGrow",
+    "SharedArrayBufferPrototypeSymbolToStringTag",
+  ].forEach((name) => {
+    ObjectDefineProperty(primordials, name, {
+      __proto__: null,
+      get() {
+        ensureSharedArrayBufferPrimordials();
+        return sharedArrayBufferPrimordials[name];
+      },
+    });
+  });
+  primordials.setSharedArrayBuffer = (value) => {
+    if (sharedArrayBufferConstructor !== undefined) {
+      throw new Error("SharedArrayBuffer is already defined");
+    }
+    sharedArrayBufferConstructor = value;
   };
 
   // Renaming from `eval` is necessary because otherwise it would perform direct

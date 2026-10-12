@@ -245,6 +245,25 @@ Deno.test(function textDecoderSharedInt32Array() {
   assertEquals(actual, "ABCDEFGH");
 });
 
+Deno.test(function textDecoderSharedOffsetView() {
+  const ab = new SharedArrayBuffer(6);
+  const dataView = new DataView(ab);
+  const charCodeA = "A".charCodeAt(0);
+  for (let i = 0; i < ab.byteLength; i++) {
+    dataView.setUint8(i, charCodeA + i);
+  }
+  // A byteOffset/byteLength view over shared memory must be snapshotted from
+  // the selected range only.
+  assertEquals(new TextDecoder().decode(new Uint8Array(ab, 2, 2)), "CD");
+  assertEquals(new TextDecoder().decode(new DataView(ab, 1, 3)), "BCD");
+});
+
+Deno.test(function textDecoderSharedMultibyte() {
+  const ab = new SharedArrayBuffer(2);
+  new Uint8Array(ab).set([0xc2, 0xa9]); // UTF-8 "©"
+  assertEquals(new TextDecoder().decode(new Uint8Array(ab)), "©");
+});
+
 Deno.test(function toStringShouldBeWebCompatibility() {
   const encoder = new TextEncoder();
   assertEquals(encoder.toString(), "[object TextEncoder]");

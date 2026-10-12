@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      // `deno_dir/` is a genuine npm cache written by Deno 2.8.2 (see
+      // registry.json: abbreviated install manifest without the `time`
+      // field, and predating the `_deno.packumentFormat` marker). Under
+      // the default minimumDependencyAge policy (24h) with --cached-only,
+      // this cache must be usable as-is instead of failing while trying to
+      // re-fetch the full packument over the network (which --cached-only
+      // forbids). The resolver already treats a missing publish timestamp
+      // as acceptable.
+      "args": "run --no-lock --cached-only --minimum-dependency-age=1440 main.ts",
+      "output": "ok\n"
+    },
+    {
+      // Without --cached-only, the old cache entry has no `modified` date to
+      // know if the abbreviated install manifest is enough, so the full
+      // packument is fetched.
+      "args": "run --no-lock --minimum-dependency-age=1440 main.ts",
+      "output": "Download http://localhost:4260/@denotest%2fesm-basic (full packument)\nok\n"
+    }
+  ]
+}

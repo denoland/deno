@@ -11,6 +11,9 @@ const {
 const {
   ArrayBufferIsView,
   Boolean,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   Error,
   FunctionPrototypeCall,
   MathFloor,
@@ -26,7 +29,9 @@ const {
   TypeError,
   TypeErrorPrototype,
   TypedArrayPrototypeAt,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   Uint8Array,
 } = primordials;
 const {
@@ -80,6 +85,7 @@ const {
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
+  isTypedArray,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const { ERR_CRYPTO_INVALID_STATE, ERR_CRYPTO_UNKNOWN_CIPHER } = core
   .loadExtScript(
@@ -100,6 +106,33 @@ function getTransform() {
 }
 
 const FastBuffer = Buffer[SymbolSpecies];
+
+function getArrayBufferViewParts(
+  view: ArrayBufferView,
+): { buffer: ArrayBufferLike; byteOffset: number; byteLength: number } {
+  if (isTypedArray(view)) {
+    return {
+      buffer: TypedArrayPrototypeGetBuffer(view as Uint8Array),
+      byteOffset: TypedArrayPrototypeGetByteOffset(view as Uint8Array),
+      byteLength: TypedArrayPrototypeGetByteLength(view as Uint8Array),
+    };
+  }
+  return {
+    buffer: DataViewPrototypeGetBuffer(view as DataView),
+    byteOffset: DataViewPrototypeGetByteOffset(view as DataView),
+    byteLength: DataViewPrototypeGetByteLength(view as DataView),
+  };
+}
+
+function getArrayBufferViewByteLength(view: ArrayBufferView): number {
+  const { byteLength } = getArrayBufferViewParts(view);
+  return byteLength;
+}
+
+function toFastBufferView(view: ArrayBufferView): Buffer {
+  const { buffer, byteOffset, byteLength } = getArrayBufferViewParts(view);
+  return new FastBuffer(buffer, byteOffset, byteLength);
+}
 
 function opensslError(code: string, reason: string): NodeError {
   const err = new NodeError(code, reason);
@@ -317,10 +350,13 @@ Cipheriv.prototype.update = function (
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
+  } else {
+    buf = toFastBufferView(data);
   }
+  const inputByteLength = getArrayBufferViewByteLength(buf);
 
   // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
-  if (buf.length >= 2 ** 31 - 1) {
+  if (inputByteLength >= 2 ** 31 - 1) {
     throw new Error("Trying to add data in unsupported state");
   }
 
@@ -343,8 +379,10 @@ Cipheriv.prototype.update = function (
 
   let output: Buffer;
   if (!this._needsBlockCache) {
-    output = Buffer.allocUnsafe(buf.length);
-    op_node_cipheriv_encrypt(this._context, buf, output);
+    output = new FastBuffer(inputByteLength);
+    if (!op_node_cipheriv_encrypt(this._context, buf, output)) {
+      throw new Error("Trying to add data in unsupported state");
+    }
 
     if (outputEncoding !== "buffer") {
       return this._decoder!.write(output);
@@ -359,8 +397,10 @@ Cipheriv.prototype.update = function (
   if (input === null) {
     output = Buffer.alloc(0);
   } else {
-    output = Buffer.allocUnsafe(input.length);
-    op_node_cipheriv_encrypt(this._context, input, output);
+    output = new FastBuffer(input.length);
+    if (!op_node_cipheriv_encrypt(this._context, input, output)) {
+      throw new Error("Trying to add data in unsupported state");
+    }
   }
 
   if (outputEncoding !== "buffer") {
@@ -400,11 +440,15 @@ class BlockModeCache {
     this.#lastChunkIsNonZero = lastChunkIsNotZero;
   }
 
-  add(data: Uint8Array) {
+  add(data: ArrayBufferView) {
+    const { buffer, byteOffset, byteLength } = getArrayBufferViewParts(data);
     const cache = this.cache;
-    this.cache = new Uint8Array(cache.length + data.length);
+    this.cache = new Uint8Array(cache.length + byteLength);
     this.cache.set(cache);
-    this.cache.set(data, cache.length);
+    this.cache.set(
+      new Uint8Array(buffer, byteOffset, byteLength),
+      cache.length,
+    );
   }
 
   /** Gets the chunk of the length of largest multiple of blockSize.
@@ -641,10 +685,13 @@ Decipheriv.prototype.update = function (
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
+  } else {
+    buf = toFastBufferView(data);
   }
+  const inputByteLength = getArrayBufferViewByteLength(buf);
 
   // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
-  if (buf.length >= 2 ** 31 - 1) {
+  if (inputByteLength >= 2 ** 31 - 1) {
     throw new Error("Trying to add data in unsupported state");
   }
 
@@ -667,8 +714,10 @@ Decipheriv.prototype.update = function (
 
   let output;
   if (!this._needsBlockCache) {
-    output = Buffer.allocUnsafe(buf.length);
-    op_node_decipheriv_decrypt(this._context, buf, output);
+    output = new FastBuffer(inputByteLength);
+    if (!op_node_decipheriv_decrypt(this._context, buf, output)) {
+      throw new Error("Trying to add data in unsupported state");
+    }
 
     if (outputEncoding !== "buffer") {
       return this._decoder!.write(output);
@@ -683,7 +732,9 @@ Decipheriv.prototype.update = function (
     output = Buffer.alloc(0);
   } else {
     output = new FastBuffer(input.length);
-    op_node_decipheriv_decrypt(this._context, input, output);
+    if (!op_node_decipheriv_decrypt(this._context, input, output)) {
+      throw new Error("Trying to add data in unsupported state");
+    }
   }
 
   if (outputEncoding !== "buffer") {

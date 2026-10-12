@@ -18,9 +18,9 @@ use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
 use crate::args::CliOptions;
-use crate::args::FileFlagsExt;
 use crate::args::Flags;
 use crate::args::PackFlags;
+use crate::args::resolve_file_patterns;
 use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
 use crate::sys::CliSys;
@@ -290,7 +290,7 @@ fn collect_graph_modules(
   let mut paths = Vec::new();
 
   // Create file patterns from pack_flags
-  let file_patterns = pack_flags.files.as_file_patterns(package_dir)?;
+  let file_patterns = resolve_file_patterns(&pack_flags.files, package_dir)?;
 
   for module in graph.modules() {
     if let Module::Js(js_module) = module {
@@ -462,7 +462,7 @@ fn collect_asset_files(
   // The `--ignore`/`--exclude` CLI flags filter graph modules in
   // `collect_graph_modules`; apply the same patterns to assets so e.g.
   // `pack --ignore=tests/**` also drops asset files under `tests/`.
-  let cli_patterns = pack_flags.files.as_file_patterns(&package_dir)?;
+  let cli_patterns = resolve_file_patterns(&pack_flags.files, &package_dir)?;
 
   // Absolute paths that are already represented elsewhere in the tarball
   // and must not be packed again as raw assets.

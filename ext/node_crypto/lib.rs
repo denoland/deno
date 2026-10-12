@@ -1643,7 +1643,7 @@ fn gen_prime(
     let prime = primes::Prime::generate_with_options(size, safe, add, rem)?;
     Ok(prime.0.to_bytes_be().into())
   } else {
-    Ok(primes::Prime::generate(size).0.to_bytes_be().into())
+    Ok(primes::Prime::generate(size)?.0.to_bytes_be().into())
   }
 }
 
@@ -1658,6 +1658,11 @@ pub enum GeneratePrimeError {
   #[class("ERR_OUT_OF_RANGE")]
   #[error("prime generation failed: no suitable prime found in range")]
   OutOfRange,
+  // Node surfaces OpenSSL's error here verbatim, as a plain `Error` with no
+  // `code`, so match the message rather than inventing an `ERR_` code.
+  #[class(generic)]
+  #[error("error:01800076:bignum routines::bits too small")]
+  BitsTooSmall,
   #[class(generic)]
   #[error(transparent)]
   JoinError(#[from] tokio::task::JoinError),
@@ -1669,6 +1674,9 @@ impl From<primes::GeneratePrimeError> for GeneratePrimeError {
       primes::GeneratePrimeError::InvalidAdd => GeneratePrimeError::InvalidAdd,
       primes::GeneratePrimeError::InvalidRem => GeneratePrimeError::InvalidRem,
       primes::GeneratePrimeError::OutOfRange => GeneratePrimeError::OutOfRange,
+      primes::GeneratePrimeError::BitsTooSmall => {
+        GeneratePrimeError::BitsTooSmall
+      }
     }
   }
 }
@@ -1799,17 +1807,11 @@ pub fn op_node_diffie_hellman(
       AsymmetricPrivateKey::X448(private),
       AsymmetricPublicKey::X448(public),
     ) => {
-      let mut scalar_bytes = [0u8; 57];
-      scalar_bytes[..56].copy_from_slice(&private[..56]);
-      let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
-        &scalar_bytes.into(),
-      );
-      let point = ed448_goldilocks::MontgomeryPoint(*public);
-      let shared = &point * &scalar;
-      if shared.0.iter().all(|b| *b == 0) {
+      let shared = deno_crypto_provider::x448::x448(private, public);
+      if shared.iter().all(|b| *b == 0) {
         return Err(DiffieHellmanError::FailedDuringDerivation);
       }
-      shared.0.to_vec().into_boxed_slice()
+      shared.to_vec().into_boxed_slice()
     }
     (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
       // Compare DH parameters by integer value, not byte encoding,

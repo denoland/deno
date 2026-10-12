@@ -48,8 +48,11 @@
 (function () {
 "use strict";
 const { core, primordials } = __bootstrap;
-const { op_node_idna_domain_to_ascii, op_node_idna_domain_to_unicode } =
-  core.ops;
+const {
+  op_node_idna_to_ascii,
+  op_node_idna_domain_to_ascii,
+  op_node_idna_domain_to_unicode,
+} = core.ops;
 const {
   ArrayPrototypePush,
   SafeArrayIterator,
@@ -116,8 +119,25 @@ const ucs2 = {
 };
 
 /**
- *  Converts a domain to ASCII as per the IDNA spec
- *  Returns an empty string if the domain is invalid
+ *  Converts a domain to ASCII as per the IDNA spec (UTS #46 ToASCII).
+ *  Returns an empty string if the domain is invalid.
+ *
+ *  This is Node's `internal/idna` `toASCII`, used by `node:dns` and `node:tls`.
+ *  Prefer it over `domainToASCII` anywhere a hostname is on its way to a
+ *  resolver: it does not truncate, percent-decode or normalize the host.
+ */
+function toASCII(domain: string) {
+  return op_node_idna_to_ascii(domain);
+}
+
+/**
+ *  Converts a domain to ASCII the way the WHATWG URL host parser does.
+ *  Returns an empty string if the domain is invalid.
+ *
+ *  This is Node's `url.domainToASCII`, and is deliberately stricter than
+ *  `toASCII`: it terminates the host at `/`, `\`, `?` or `#`, strips ASCII
+ *  tab/newline, percent-decodes, normalizes IPv4/IPv6 literals and rejects
+ *  forbidden host code points.
  */
 function domainToASCII(domain: string) {
   return op_node_idna_domain_to_ascii(domain);
@@ -131,6 +151,7 @@ function domainToUnicode(domain: string) {
 }
 
 return {
+  toASCII,
   domainToASCII,
   domainToUnicode,
   ucs2,

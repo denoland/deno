@@ -15,6 +15,7 @@ const {
   Int8Array,
   MathMin,
   NumberPOSITIVE_INFINITY,
+  NumberPrototypeToString,
   SafeRegExp,
   StringPrototypeCharCodeAt,
   StringPrototypeIndexOf,
@@ -24,6 +25,7 @@ const {
   StringPrototypeTrim,
   StringPrototypeTrimStart,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetLength,
   TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
@@ -41,16 +43,23 @@ function base64ToBytes(str: string) {
   try {
     return forgivingBase64Decode(str);
   } catch {
-    // Convert base64url characters to standard base64 before cleaning,
-    // so that the padding logic in base64clean works correctly.
-    str = StringPrototypeReplaceAll(
-      StringPrototypeReplaceAll(str, "-", "+"),
-      "_",
-      "/",
-    );
-    str = base64clean(str);
-    return forgivingBase64Decode(str);
+    return base64CleanToBytes(str);
   }
+}
+
+// Node's cleaning semantics for dirty base64 input. Callers that already
+// know the input is invalid (a -1 op sentinel) come here directly, skipping
+// base64ToBytes' first decode attempt, which would always throw.
+function base64CleanToBytes(str: string) {
+  // Convert base64url characters to standard base64 before cleaning,
+  // so that the padding logic in base64clean works correctly.
+  str = StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(str, "-", "+"),
+    "_",
+    "/",
+  );
+  str = base64clean(str);
+  return forgivingBase64Decode(str);
 }
 
 const INVALID_BASE64_RE = new SafeRegExp(/[^+/0-9A-Za-z-_]/g);
@@ -134,6 +143,17 @@ function hexToBytes(str: string) {
     : TypedArrayPrototypeSubarray(byteArray, 0, i);
 }
 
+// JS fallback for when native Uint8Array.prototype.toHex is unavailable.
+function bytesToHex(bytes: Uint8Array) {
+  const length = TypedArrayPrototypeGetLength(bytes);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    const b = bytes[i];
+    out += (b < 0x10 ? "0" : "") + NumberPrototypeToString(b, 16);
+  }
+  return out;
+}
+
 function utf16leToBytes(str: string, units?: number) {
   // If units is defined, round it to even values for 16 byte "steps"
   // and use it as an upper bound value for our string byte array's length.
@@ -162,8 +182,10 @@ function utf16leToBytes(str: string, units?: number) {
 
 return {
   asciiToBytes,
+  base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
+  bytesToHex,
   hexToBytes,
   utf16leToBytes,
   unhexTable,

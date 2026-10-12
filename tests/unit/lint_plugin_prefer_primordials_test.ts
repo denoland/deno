@@ -119,8 +119,36 @@ ObjectDefineProperties(o, {
 });
   `);
   assertOk(`
-function foo(o = { __proto__: null }) {}
-function bar({ o = { __proto__: null } }) {}
+const { ObjectDefineProperty, ObjectSetPrototypeOf, SymbolToStringTag } =
+  primordials;
+ObjectDefineProperty(
+  o,
+  SymbolToStringTag,
+  ObjectSetPrototypeOf({ value: "o" }, null),
+);
+  `);
+  assertOk(`
+const { ObjectDefineProperty, ObjectDefineProperties, ObjectFreeze } =
+  primordials;
+const desc = { __proto__: null, value: "o" };
+const frozen = ObjectFreeze({ __proto__: null, value: "o" });
+const descs = { foo: desc, bar: { __proto__: null, value: "o" } };
+let reassignable = { value: "o" };
+ObjectDefineProperty(o, "foo", desc);
+ObjectDefineProperty(o, "bar", frozen);
+ObjectDefineProperties(o, descs);
+ObjectDefineProperty(o, "baz", reassignable);
+ObjectDefineProperty(o, "qux", getDescriptor());
+function shadowed(desc) {
+  ObjectDefineProperty(o, "quux", desc);
+}
+  `);
+  assertOk(`
+const { ObjectFreeze, ObjectSetPrototypeOf } = primordials;
+const EMPTY = ObjectFreeze(ObjectSetPrototypeOf({}, null));
+function foo(o = undefined) {}
+function bar(o = EMPTY) {}
+function baz({ o = EMPTY } = EMPTY) {}
   `);
   assertOk(`
 const { NumberParseInt } = primordials;
@@ -379,17 +407,78 @@ ObjectDefineProperties(o, {
   );
   assertErr(
     `
+const { ObjectCreate, ObjectDefineProperty, ObjectDefineProperties, ObjectFreeze } =
+  primordials;
+const desc = { value: "o" };
+const frozen = ObjectFreeze({ value: "o" });
+const alias = desc;
+const descs = { foo: desc, bar: { value: "o" } };
+ObjectDefineProperty(o, "foo", desc);
+ObjectDefineProperty(o, "bar", frozen);
+ObjectDefineProperty(o, "baz", alias);
+ObjectDefineProperty(o, "qux", ObjectFreeze({ value: "o" }));
+ObjectDefineProperties(o, descs);
+ObjectCreate(null, { foo: desc });
+  `,
+    [
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteral,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteral,
+      },
+      {
+        message: MSG.DefineProperty,
+        hint: HINT.NullPrototypeObjectLiteralVariable,
+      },
+    ],
+  );
+  assertErr(
+    `
 function foo(o = {}) {}
 function bar({ o = {} }) {}
+function baz(o = { __proto__: null }) {}
+function qux({ o = { __proto__: null } }) {}
+const quux = ({ a } = { __proto__: null, a: 1 }) => {};
   `,
     [
       {
         message: MSG.ObjectAssignInDefaultParameter,
-        hint: HINT.NullPrototypeObjectLiteral,
+        hint: HINT.NullPrototypeDefaultParameter,
       },
       {
         message: MSG.ObjectAssignInDefaultParameter,
-        hint: HINT.NullPrototypeObjectLiteral,
+        hint: HINT.NullPrototypeDefaultParameter,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeDefaultParameter,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeDefaultParameter,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeDefaultParameter,
       },
     ],
   );

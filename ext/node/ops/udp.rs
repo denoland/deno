@@ -135,6 +135,14 @@ pub fn op_node_udp_join_multi_v4(
     .transpose()?
     .unwrap_or(Ipv4Addr::UNSPECIFIED);
 
+  let port = resource.socket.local_addr()?.port();
+  deno_net::check_multicast_membership_permission(
+    state.borrow_mut::<PermissionsContainer>(),
+    std::net::IpAddr::V4(addr),
+    port,
+    "dgram.addMembership()",
+  )?;
+
   resource.socket.join_multicast_v4(addr, iface)?;
   Ok(())
 }
@@ -274,6 +282,13 @@ pub fn op_node_udp_join_multi_v6(
 
   let addr = Ipv6Addr::from_str(address)?;
   let iface = resolve_ipv6_interface(interface_addr.as_deref())?;
+  let port = resource.socket.local_addr()?.port();
+  deno_net::check_multicast_membership_permission(
+    state.borrow_mut::<PermissionsContainer>(),
+    std::net::IpAddr::V6(addr),
+    port,
+    "dgram.addMembership()",
+  )?;
   resource.socket.join_multicast_v6(&addr, iface)?;
   Ok(())
 }

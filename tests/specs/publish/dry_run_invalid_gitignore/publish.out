@@ -1,0 +1,9 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+Warning: skipping invalid .gitignore pattern at [WILDCARD].gitignore:2: error parsing glob '[': unclosed character class; missing ']'
+Simulating publish of @scope/pkg@1.0.0 with files:
+   [WILDCARD]deno.json (94B)
+   [WILDCARD]mod.ts (24B)
+   [WILDCARD]published.txt (10B)
+Success Dry run complete

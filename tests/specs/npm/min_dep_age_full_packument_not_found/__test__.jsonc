@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      // `@denotest3/gitlab-pkg` is on a registry that only serves metadata to
+      // requests with the npm `Accept` header, so the full packument that
+      // minimumDependencyAge wants can't be fetched and the abbreviated
+      // install manifest is used instead
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      // the cached abbreviated install manifest is still used after trying
+      // to upgrade it to the full packument again
+      "args": "run --no-lock main.ts",
+      "output": "[WILDCARD]ok\n"
+    },
+    {
+      "args": "run --no-lock --reload main.ts",
+      "output": "[WILDCARD]ok\n"
+    }
+  ]
+}

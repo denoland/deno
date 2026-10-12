@@ -1017,6 +1017,7 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
 }
 
 const kEventsGetter = {
+  __proto__: null,
   get() {
     const data = this[eventTargetData];
     if (!data) {

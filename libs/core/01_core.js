@@ -15,7 +15,9 @@
     ObjectFromEntries,
     ObjectKeys,
     ObjectHasOwn,
+    ReflectOwnKeys,
     setQueueMicrotask,
+    setSharedArrayBuffer,
     SafeMap,
     SafeWeakMap,
     StringPrototypeSlice,
@@ -63,6 +65,7 @@
     op_lazy_load_esm,
     op_load_ext_script,
     op_set_captured_bootstrap,
+    op_get_shared_array_buffer_constructor,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -830,6 +833,7 @@
 
   function propWritable(value) {
     return {
+      __proto__: null,
       value,
       writable: true,
       enumerable: true,
@@ -839,6 +843,7 @@
 
   function propNonEnumerable(value) {
     return {
+      __proto__: null,
       value,
       writable: true,
       enumerable: false,
@@ -848,6 +853,7 @@
 
   function propReadOnly(value) {
     return {
+      __proto__: null,
       value,
       enumerable: true,
       writable: false,
@@ -857,6 +863,7 @@
 
   function propGetterOnly(getter) {
     return {
+      __proto__: null,
       get: getter,
       set() {},
       enumerable: true,
@@ -873,11 +880,13 @@
 
   function propWritableLazyLoaded(getter, loadFn) {
     const desc = {
+      __proto__: null,
       get() {
         return getter(loadFn());
       },
       set(v) {
         ObjectDefineProperty(this, desc[lazyNameSym], {
+          __proto__: null,
           value: v,
           writable: true,
           enumerable: true,
@@ -893,6 +902,7 @@
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
     const desc = {
+      __proto__: null,
       get() {
         return getter(loadFn());
       },
@@ -904,6 +914,7 @@
         // set creates a new enumerable own data property on the receiver.
         if (ObjectHasOwn(this, name)) {
           ObjectDefineProperty(this, name, {
+            __proto__: null,
             value: v,
             writable: true,
             enumerable: false,
@@ -911,6 +922,7 @@
           });
         } else {
           ObjectDefineProperty(this, name, {
+            __proto__: null,
             value: v,
             writable: true,
             enumerable: true,
@@ -928,15 +940,21 @@
   // Like `Object.defineProperties`, but also stamps the property name into any
   // lazy-loaded descriptors so their setters can target the correct receiver.
   function defineGlobalProperties(target, props) {
-    const keys = ObjectKeys(props);
+    const safeProps = { __proto__: null };
+    const keys = ReflectOwnKeys(props);
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
       const desc = props[key];
-      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
-        desc[lazyNameSym] = key;
+      if (desc !== null && typeof desc === "object") {
+        if (ObjectHasOwn(desc, lazyNameSym)) {
+          desc[lazyNameSym] = key;
+        }
+        safeProps[key] = { __proto__: null, ...desc };
+      } else {
+        safeProps[key] = desc;
       }
     }
-    ObjectDefineProperties(target, props);
+    ObjectDefineProperties(target, safeProps);
   }
 
   function createLazyLoader(specifier) {
@@ -1305,4 +1323,9 @@
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });
   setQueueMicrotask(queueMicrotask);
+  // SharedArrayBuffer may be hidden from the global (V8 per-context flag).
+  // Use it when present so startup does not cross the op boundary.
+  const SharedArrayBuffer = globalThis.SharedArrayBuffer ??
+    op_get_shared_array_buffer_constructor();
+  setSharedArrayBuffer(SharedArrayBuffer);
 })(globalThis);

@@ -2406,6 +2406,26 @@ Deno.test("inspector_node_runtime_api_url", async () => {
   );
 });
 
+Deno.test("inspector_node_open_requires_sys_permission", async () => {
+  const script =
+    'import inspector from "node:inspector"; inspector.open(0, "127.0.0.1", false); console.log("opened"); inspector.close();';
+  const scriptUrl = `data:application/javascript,${encodeURIComponent(script)}`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "--no-config", "--quiet", "--allow-net", scriptUrl],
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const { success, stdout, stderr } = await command.output();
+  assert(!success);
+  assertEquals(new TextDecoder().decode(stdout), "");
+  assertStringIncludes(
+    new TextDecoder().decode(stderr),
+    'Requires sys access to "inspector"',
+  );
+});
+
 // Regression test for https://github.com/denoland/deno/issues/30176.
 // `console.group(label)` must emit a paired `log` event so Chrome DevTools
 // renders the label inside the group container; otherwise the group appears

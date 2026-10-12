@@ -2805,6 +2805,7 @@ impl OptionsParser {
     let mut errors = Vec::new();
     let mut options = PerProcessOptions::default();
     let mut synthetic_args = Vec::new();
+    let mut had_double_dash = false;
 
     // The args does not contain the executable name, so we do not need to skip it.
     let mut i = 0;
@@ -2830,6 +2831,7 @@ impl OptionsParser {
       }
 
       if arg == "--" {
+        had_double_dash = true;
         break;
       }
 
@@ -3063,6 +3065,7 @@ impl OptionsParser {
         options,
         remaining_args: args,
         v8_args,
+        had_double_dash,
       })
     } else {
       Err(errors)
@@ -3075,6 +3078,7 @@ pub struct ParseResult {
   pub options: PerProcessOptions,
   pub remaining_args: Vec<String>,
   pub v8_args: Vec<String>,
+  pub had_double_dash: bool,
 }
 
 /// Parse NODE_OPTIONS environment variable
@@ -3233,6 +3237,7 @@ pub fn wrap_eval_code(source_code: &str) -> String {
 /// `cli/args/flags.rs` enforces this. See #35591.
 const DENO_SUBCOMMANDS: &[&str] = &[
   "add",
+  "approve-builds",
   "approve-scripts",
   "audit",
   "bench",
@@ -3267,6 +3272,7 @@ const DENO_SUBCOMMANDS: &[&str] = &[
   "publish",
   "remove",
   "repl",
+  "rm",
   "run",
   "sandbox",
   "serve",
@@ -3449,6 +3455,17 @@ pub fn resolve_run_entrypoint(
   }
 }
 
+fn append_remaining_args(
+  deno_args: &mut Vec<String>,
+  remaining_args: Vec<String>,
+  had_double_dash: bool,
+) {
+  if had_double_dash && !remaining_args.is_empty() {
+    deno_args.push("--".to_string());
+  }
+  deno_args.extend(remaining_args);
+}
+
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,
@@ -3460,7 +3477,8 @@ pub fn translate_to_deno_args(
 
   // Check if the args already look like Deno args (e.g., from vitest workers)
   // If the first remaining arg is a Deno subcommand, pass through unchanged.
-  if let Some(first_arg) = parsed_args.remaining_args.first()
+  if !parsed_args.had_double_dash
+    && let Some(first_arg) = parsed_args.remaining_args.first()
     && is_deno_subcommand(first_arg)
   {
     let mut deno_args = parsed_args.remaining_args;
@@ -3538,7 +3556,11 @@ pub fn translate_to_deno_args(
     }
     deno_args.push("task".to_string());
     deno_args.push(opts.run.clone());
-    deno_args.extend(parsed_args.remaining_args);
+    append_remaining_args(
+      deno_args,
+      parsed_args.remaining_args,
+      parsed_args.had_double_dash,
+    );
     return result;
   }
 
@@ -3649,7 +3671,11 @@ pub fn translate_to_deno_args(
     }
 
     add_common_flags(deno_args, &parsed_args, env_opts);
-    deno_args.extend(parsed_args.remaining_args);
+    append_remaining_args(
+      deno_args,
+      parsed_args.remaining_args,
+      parsed_args.had_double_dash,
+    );
     return result;
   }
 
@@ -3722,7 +3748,11 @@ pub fn translate_to_deno_args(
   }
 
   // Add the script and remaining args
-  deno_args.extend(parsed_args.remaining_args);
+  append_remaining_args(
+    deno_args,
+    parsed_args.remaining_args,
+    parsed_args.had_double_dash,
+  );
 
   result
 }
@@ -4656,6 +4686,7 @@ mod tests {
     let result = parse_args(svec!["--", "--version"]).unwrap();
     // --version after -- should be treated as a script name, not an option
     assert!(!result.options.print_version);
+    assert!(result.had_double_dash);
     assert_eq!(result.remaining_args, svec!["--version"]);
   }
 
@@ -4664,6 +4695,7 @@ mod tests {
     let result =
       parse_args(svec!["--no-warnings", "--", "script.js", "--help"]).unwrap();
     assert!(!result.options.per_isolate.per_env.warnings);
+    assert!(result.had_double_dash);
     assert_eq!(result.remaining_args, svec!["script.js", "--help"]);
   }
 
@@ -5395,6 +5427,47 @@ mod tests {
     assert_eq!(
       translate_passthrough(svec!["add", "npm:foo"]),
       svec!["add", "npm:foo"]
+    );
+  }
+
+  #[test]
+  fn double_dash_disables_deno_subcommand_passthrough() {
+    let parsed =
+      parse_args(svec!["--", "eval", "console.log('not a subcommand')"])
+        .unwrap();
+    let options = TranslateOptions::for_child_process();
+    let result = translate_to_deno_args(parsed, &options);
+    assert_eq!(
+      result.deno_args,
+      svec![
+        "run",
+        "-A",
+        "--unstable-bare-node-builtins",
+        "--unstable-detect-cjs",
+        "--",
+        "eval",
+        "console.log('not a subcommand')"
+      ]
+    );
+  }
+
+  #[test]
+  fn double_dash_preserves_flag_like_script_arg() {
+    let parsed =
+      parse_args(svec!["--", "--import-map=config.json", "script.js"]).unwrap();
+    let options = TranslateOptions::for_child_process();
+    let result = translate_to_deno_args(parsed, &options);
+    assert_eq!(
+      result.deno_args,
+      svec![
+        "run",
+        "-A",
+        "--unstable-bare-node-builtins",
+        "--unstable-detect-cjs",
+        "--",
+        "--import-map=config.json",
+        "script.js"
+      ]
     );
   }
 }

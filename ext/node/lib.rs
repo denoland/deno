@@ -8,7 +8,6 @@
 )]
 
 use std::borrow::Cow;
-use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -51,7 +50,7 @@ pub use ops::vm::init_global_template;
 /// `runtime/transpile.rs`). Rust consumers can read it directly.
 ///
 /// When bumping the emulated Node version, change it here only.
-pub const NODE_VERSION: &str = "26.3.0";
+pub const NODE_VERSION: &str = "26.5.1";
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -140,6 +139,7 @@ enum DotEnvLoadErr {
 #[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
@@ -156,6 +156,7 @@ fn op_node_load_env_file(
     .map_err(DotEnvLoadErr::Permission)?;
 
   let contents = fs.read_text_file_lossy_sync(&path)?;
+  let process_env = deno_os::ProcessEnvGuard::lock();
   parse_env_content_hook(&contents, &mut |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
@@ -174,10 +175,11 @@ fn op_node_load_env_file(
       value
     };
 
-    // SAFETY: called during single-threaded initialization
-    unsafe {
-      env::set_var(key, value);
-    }
+    process_env.set_var_and_notify_timezone(key, value, || {
+      scope.date_time_configuration_change_notification(
+        v8::TimeZoneDetection::Redetect,
+      );
+    });
   });
 
   Ok(())
@@ -325,6 +327,7 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_module_get_exception,
     ops::vm::op_vm_module_get_module_requests,
     ops::vm::op_vm_module_get_identifier,
+    ops::idna::op_node_idna_to_ascii,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,

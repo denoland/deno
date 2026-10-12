@@ -7,6 +7,9 @@ const { isArrayBufferView } = core.loadExtScript(
 const { TextDecoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 const {
   ArrayIsArray,
@@ -43,7 +46,7 @@ function normalizeCaCerts(ca) {
 }
 
 class Agent {
-  constructor(options = { __proto__: null }) {
+  constructor(options = kEmptyObject) {
     const connect = options.connect ?? { __proto__: null };
     const dispatcherOptions = { __proto__: null };
 

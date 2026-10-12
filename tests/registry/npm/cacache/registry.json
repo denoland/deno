@@ -91,6 +91,92 @@
         "@npmcli/template-oss": "4.22.0",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "20.0.4": {
+      "name": "cacache",
+      "version": "20.0.4",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "cacache@20.0.4",
+      "bugs": {
+        "url": "https://github.com/npm/cacache/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "9b547dc3db0c1f87cba6dbbff91fb17181b4bbb1",
+        "tarball": "http://localhost:4260/cacache/cacache-20.0.4.tgz",
+        "fileCount": 17,
+        "integrity": "sha512-M3Lab8NPYlZU2exsL3bMVvMrMqgwCnMWfdZbK28bn3pK6APT/Te/I8hjRPNu1uwORY9a1eEQoifXbKPQMfMTOA==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/cacache@20.0.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 63886
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "35d6f449539cbd54fa6c480573492cdd6818d033",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "coverage": "tap",
+        "postlint": "template-oss-check",
+        "postsnap": "npm run lintfix --",
+        "posttest": "npm run lint",
+        "npmclilint": "npmcli-lint",
+        "test-docker": "docker run -it --rm --name pacotest -v \"$PWD\":/tmp -w /tmp node:latest npm test",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/cacache.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.11.1",
+      "description": "Fast, fault-tolerant, cross-platform, disk-based, data-agnostic, content-addressable cache.",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.29.0",
+        "windowsCI": false,
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.22.1",
+      "dependencies": {
+        "glob": "^13.0.0",
+        "ssri": "^13.0.0",
+        "p-map": "^7.0.2",
+        "minipass": "^7.0.3",
+        "lru-cache": "^11.1.0",
+        "@npmcli/fs": "^5.0.0",
+        "fs-minipass": "^3.0.0",
+        "minipass-flush": "^1.0.5",
+        "minipass-collect": "^2.0.1",
+        "minipass-pipeline": "^1.2.4"
+      },
+      "cache-version": {
+        "index": "5",
+        "content": "2"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "@npmcli/template-oss": "4.29.0",
+        "@npmcli/eslint-config": "^6.0.1"
+      }
     }
   },
   "author": {

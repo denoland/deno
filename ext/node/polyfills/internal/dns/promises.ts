@@ -62,7 +62,7 @@ const {
   GetNameInfoReqWrap,
   QueryReqWrap,
 } = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
-const { domainToASCII } = core.loadExtScript(
+const { toASCII } = core.loadExtScript(
   "ext:deno_node/internal/idna.ts",
 );
 
@@ -141,7 +141,7 @@ function createLookupPromise(
 
     const err = cares.getaddrinfo(
       req,
-      domainToASCII(hostname),
+      toASCII(hostname),
       family,
       hints,
       dnsOrderToNumber(dnsOrder),
@@ -323,7 +323,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
+    const err = resolver._handle[bindingName](req, toASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));

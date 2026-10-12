@@ -57,10 +57,38 @@ fn pty_multiline_dot_chain() {
 }
 
 #[test(flaky)]
+fn pty_regex_literal_with_quote() {
+  // A quote inside a character class used to leave the validator waiting for a
+  // closing string, so the REPL blocked instead of evaluating the line.
+  // https://github.com/denoland/deno/issues/24963
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("let re = /[']/;");
+    // Wait for the statement to be evaluated before typing the next one.
+    // Rustyline is built without `buffer-redux`, so bytes it has already read
+    // into the buffer of the current `readline()` call are discarded when that
+    // call returns. Typing ahead can leave the next line stuck in that buffer
+    // and it will never reach the REPL.
+    console.expect("undefined");
+    console.write_line("re.test(\"'\")");
+    console.expect("true");
+  });
+}
+
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
     console.expect("null");
+  });
+}
+
+#[test(flaky)]
+fn pty_primordials_protected_from_object_prototype_properties() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Object.prototype.get = function () {}");
+    console.expect("[Function (anonymous)]");
+    console.write_line("new Deno.Command(\"whoami\")");
+    console.expect("Command");
   });
 }
 

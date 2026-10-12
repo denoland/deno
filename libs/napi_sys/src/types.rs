@@ -108,6 +108,7 @@ pub mod TypedarrayType {
   pub const float64_array: i32 = 8;
   pub const bigint64_array: i32 = 9;
   pub const biguint64_array: i32 = 10;
+  pub const float16_array: i32 = 11;
 }
 
 pub type napi_status = i32;

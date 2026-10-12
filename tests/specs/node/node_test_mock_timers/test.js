@@ -199,7 +199,9 @@ test("Date is mocked and tracks tick", () => {
   assert.strictEqual(new Date().getTime(), 5000);
   assert.strictEqual(Date.isMock, true);
   assert.strictEqual(Date.toString(), "function Date() { [native code] }");
-  assert.match(Date(), /1970/);
+  // Called as a function, `Date()` stringifies the mocked now. Compare with an
+  // explicit timestamp rather than a year: the year depends on the timezone.
+  assert.strictEqual(Date(), new Date(5000).toString());
   // explicit timestamp still works
   assert.strictEqual(new Date(0).getTime(), 0);
   mock.timers.reset();

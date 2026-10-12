@@ -1,5 +1,5 @@
 [WILDCARD]
-local: [WILDCARD]http[WILDCARD]127.0.0.1_PORT4545[WILDCARD]
+local: [WILDCARD]http[WILDCARD]127.0.0.1_port_4545[WILDCARD]
 type: TypeScript
 dependencies: 8 unique
 size: [WILDCARD]

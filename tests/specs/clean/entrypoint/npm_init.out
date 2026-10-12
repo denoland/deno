@@ -11,7 +11,7 @@
 ---- registry.json
 - remote
 -- http
---- localhost_PORT4260
+--- localhost_port_4260
 ---- http://localhost:4260/chalk ([WILDLINE])
 ---- http://localhost:4260/@denotest%2fadd ([WILDLINE])
 

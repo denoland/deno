@@ -613,3 +613,20 @@ Deno.test({
     Deno.removeSync(file);
   },
 });
+
+Deno.test({
+  name: "open with numeric flag `O_RDONLY | O_CREAT` requires read access",
+  permissions: { read: false, write: true },
+  async fn() {
+    const file = "tests/testdata/assets/hello.txt";
+
+    assertThrows(
+      () => openSync(file, O_RDONLY | O_CREAT),
+      Deno.errors.NotCapable,
+    );
+    await assertRejects(
+      () => openPromise(file, O_RDONLY | O_CREAT),
+      Deno.errors.NotCapable,
+    );
+  },
+});

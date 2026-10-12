@@ -1,10 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -302,10 +302,59 @@ pub enum ExtractTarballError {
   #[error(transparent)]
   Io(#[from] std::io::Error),
   #[class(generic)]
-  #[error(
-    "Extracted directory '{0}' of npm tarball was not in output directory."
-  )]
+  #[error("Extracted path '{0}' of npm tarball was not in output directory.")]
   NotInOutputDirectory(PathBuf),
+}
+
+fn resolve_entry_path(
+  output_folder: &Path,
+  entry_path: &Path,
+) -> Result<PathBuf, ExtractTarballError> {
+  let invalid_path =
+    || ExtractTarballError::NotInOutputDirectory(entry_path.to_path_buf());
+  let mut components = entry_path.components();
+
+  // npm tarballs contain a leading `package` directory (or occasionally the
+  // package name), which is intentionally omitted from the cache layout.
+  // Preserve the existing handling of paths beginning with `./`, but reject
+  // absolute paths and parent components in this leading position.
+  match components.next() {
+    Some(Component::Normal(_)) | Some(Component::CurDir) => {}
+    Some(Component::Prefix(_))
+    | Some(Component::RootDir)
+    | Some(Component::ParentDir)
+    | None => return Err(invalid_path()),
+  }
+
+  let mut relative_path = PathBuf::new();
+  for component in components {
+    match component {
+      Component::Normal(name) => relative_path.push(name),
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if !relative_path.pop() {
+          return Err(invalid_path());
+        }
+      }
+      Component::Prefix(_) | Component::RootDir => {
+        return Err(invalid_path());
+      }
+    }
+  }
+
+  if relative_path.components().any(|component| {
+    matches!(component, Component::Prefix(_) | Component::RootDir)
+  }) {
+    return Err(invalid_path());
+  }
+  let absolute_path = output_folder.join(relative_path);
+  // Joining a component that becomes a platform-specific prefix must not be
+  // able to replace the output path (for example, a drive-relative path on
+  // Windows).
+  if !absolute_path.starts_with(output_folder) {
+    return Err(invalid_path());
+  }
+  Ok(absolute_path)
 }
 
 /// Extracts raw (already decompressed) tar bytes to the output folder.
@@ -320,7 +369,6 @@ fn extract_tarball(
   archive.set_overwrite(true);
   archive.set_preserve_permissions(true);
   let mut created_dirs = HashSet::new();
-  let mut absolute_path = output_folder.to_path_buf();
 
   for entry in archive.entries()? {
     let entry = entry?;
@@ -333,26 +381,20 @@ fn extract_tarball(
       continue;
     }
 
-    // skip the first component which will be either "package" or the name of the package
-    absolute_path.clear();
-    absolute_path.push(output_folder);
-    for component in path.components().skip(1) {
-      absolute_path.push(component);
-    }
+    let absolute_path = resolve_entry_path(output_folder, &path)?;
     let dir_path = if entry_type == EntryType::Directory {
       absolute_path.as_path()
     } else {
-      absolute_path.parent().unwrap()
+      absolute_path
+        .parent()
+        .filter(|path| path.starts_with(output_folder))
+        .ok_or_else(|| {
+          ExtractTarballError::NotInOutputDirectory(path.to_path_buf())
+        })?
     };
     if !created_dirs.contains(dir_path) {
       created_dirs.insert(dir_path.to_path_buf());
       sys.fs_create_dir_all(dir_path)?;
-      let dir_path = deno_path_util::normalize_path(Cow::Borrowed(dir_path));
-      if !dir_path.starts_with(output_folder) {
-        return Err(ExtractTarballError::NotInOutputDirectory(
-          dir_path.to_path_buf(),
-        ));
-      }
     }
 
     let entry_type = entry.header().entry_type();
@@ -417,10 +459,32 @@ fn extract_tarball(
 mod test {
   use deno_semver::Version;
   use sys_traits::FsMetadata;
+  use sys_traits::FsRead;
   use sys_traits::FsWrite;
   use tempfile::TempDir;
 
   use super::*;
+
+  fn append_raw_tar_entry(
+    builder: &mut tar::Builder<Vec<u8>>,
+    path: &str,
+    entry_type: EntryType,
+    data: &[u8],
+  ) {
+    let mut header = tar::Header::new_old();
+    let name = &mut header.as_old_mut().name;
+    assert!(path.len() < name.len());
+    name[..path.len()].copy_from_slice(path.as_bytes());
+    header.set_mode(0o644);
+    header.set_size(data.len() as u64);
+    header.set_entry_type(entry_type);
+    header.set_cksum();
+    builder.append(&header, data).unwrap();
+  }
+
+  fn finish_tar(builder: tar::Builder<Vec<u8>>) -> Vec<u8> {
+    builder.into_inner().unwrap()
+  }
 
   #[test]
   pub fn test_verify_tarball() {
@@ -537,5 +601,162 @@ mod test {
     rename_with_retries(&sys, folder_2.as_path(), &dest_folder).unwrap();
     assert!(sys.fs_exists_no_err(dest_folder.join("a.txt")));
     assert!(!sys.fs_exists_no_err(dest_folder.join("b.txt")));
+  }
+
+  #[test]
+  fn extract_tarball_rejects_directory_path_before_creation() {
+    let temp_dir = TempDir::new().unwrap();
+    let output_folder = temp_dir.path().join("output");
+    let outside_folder = temp_dir.path().join("outside");
+    let sys = sys_traits::impls::RealSys;
+    let mut builder = tar::Builder::new(Vec::new());
+    append_raw_tar_entry(
+      &mut builder,
+      "package/nested/../../outside",
+      EntryType::Directory,
+      &[],
+    );
+
+    let err =
+      extract_tarball(&sys, &finish_tar(builder), &output_folder).unwrap_err();
+
+    assert!(matches!(err, ExtractTarballError::NotInOutputDirectory(_)));
+    assert!(!sys.fs_exists_no_err(outside_folder));
+  }
+
+  #[test]
+  fn extract_tarball_rejects_file_path_before_parent_creation() {
+    let temp_dir = TempDir::new().unwrap();
+    let output_folder = temp_dir.path().join("output");
+    let outside_folder = temp_dir.path().join("outside");
+    let sys = sys_traits::impls::RealSys;
+    let mut builder = tar::Builder::new(Vec::new());
+    append_raw_tar_entry(
+      &mut builder,
+      "package/nested/../../outside/file.txt",
+      EntryType::Regular,
+      b"data",
+    );
+
+    let err =
+      extract_tarball(&sys, &finish_tar(builder), &output_folder).unwrap_err();
+
+    assert!(matches!(err, ExtractTarballError::NotInOutputDirectory(_)));
+    assert!(!sys.fs_exists_no_err(outside_folder));
+  }
+
+  #[test]
+  fn extract_tarball_supports_valid_nested_and_extended_paths() {
+    let temp_dir = TempDir::new().unwrap();
+    let output_folder = temp_dir.path().join("output");
+    let sys = sys_traits::impls::RealSys;
+    let mut builder = tar::Builder::new(Vec::new());
+    append_raw_tar_entry(
+      &mut builder,
+      "package/nested/file.txt",
+      EntryType::Regular,
+      b"nested",
+    );
+    append_raw_tar_entry(
+      &mut builder,
+      "package/nested/../sibling/file.txt",
+      EntryType::Regular,
+      b"sibling",
+    );
+
+    let gnu_component = "g".repeat(120);
+    let gnu_path = format!("package/{gnu_component}/file.txt");
+    let mut gnu_header = tar::Header::new_gnu();
+    gnu_header.set_mode(0o644);
+    gnu_header.set_size(3);
+    gnu_header.set_entry_type(EntryType::Regular);
+    builder
+      .append_data(&mut gnu_header, &gnu_path, &b"gnu"[..])
+      .unwrap();
+
+    let pax_component = "p".repeat(120);
+    let pax_path = format!("package/{pax_component}/file.txt");
+    builder
+      .append_pax_extensions([("path", pax_path.as_bytes())])
+      .unwrap();
+    append_raw_tar_entry(
+      &mut builder,
+      "package/pax-placeholder",
+      EntryType::Regular,
+      b"pax",
+    );
+
+    extract_tarball(&sys, &finish_tar(builder), &output_folder).unwrap();
+
+    assert_eq!(
+      &*sys.fs_read(output_folder.join("nested/file.txt")).unwrap(),
+      b"nested"
+    );
+    assert_eq!(
+      &*sys.fs_read(output_folder.join("sibling/file.txt")).unwrap(),
+      b"sibling"
+    );
+    assert_eq!(
+      &*sys
+        .fs_read(output_folder.join(gnu_component).join("file.txt"))
+        .unwrap(),
+      b"gnu"
+    );
+    assert_eq!(
+      &*sys
+        .fs_read(output_folder.join(pax_component).join("file.txt"))
+        .unwrap(),
+      b"pax"
+    );
+  }
+
+  #[test]
+  fn extract_tarball_validates_pax_path_before_creation() {
+    let temp_dir = TempDir::new().unwrap();
+    let output_folder = temp_dir.path().join("output");
+    let outside_folder = temp_dir.path().join("outside");
+    let sys = sys_traits::impls::RealSys;
+    let long_component = "p".repeat(120);
+    let pax_path = format!("package/{long_component}/../../outside/file.txt");
+    let mut builder = tar::Builder::new(Vec::new());
+    builder
+      .append_pax_extensions([("path", pax_path.as_bytes())])
+      .unwrap();
+    append_raw_tar_entry(
+      &mut builder,
+      "package/pax-placeholder",
+      EntryType::Regular,
+      b"data",
+    );
+
+    let err =
+      extract_tarball(&sys, &finish_tar(builder), &output_folder).unwrap_err();
+
+    assert!(matches!(err, ExtractTarballError::NotInOutputDirectory(_)));
+    assert!(!sys.fs_exists_no_err(outside_folder));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn resolve_entry_path_rejects_windows_absolute_paths() {
+    let output_folder = Path::new(r"C:\cache\package");
+    assert!(
+      resolve_entry_path(output_folder, Path::new(r"C:\package\file.txt"))
+        .is_err()
+    );
+    assert!(
+      resolve_entry_path(
+        output_folder,
+        Path::new(r"\\server\share\package\file.txt")
+      )
+      .is_err()
+    );
+    assert!(
+      resolve_entry_path(
+        output_folder,
+        Path::new(r"package\nested\..\..\outside")
+      )
+      .is_err()
+    );
   }
 }

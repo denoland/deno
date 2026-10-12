@@ -316,8 +316,7 @@ pub fn create_client_config(
     // or client cert".
     let mut client = match maybe_cert_chain_and_key {
       TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
-        .with_client_auth_cert(cert_chain, private_key.clone_key())
-        .expect("invalid client key or certificate"),
+        .with_client_auth_cert(cert_chain, private_key.clone_key())?,
       TlsKeys::Null => client_config.with_no_client_auth(),
       TlsKeys::Resolver(_) => unimplemented!(),
     };
@@ -350,8 +349,7 @@ pub fn create_client_config(
 
   let mut client = match maybe_cert_chain_and_key {
     TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
-      .with_client_auth_cert(cert_chain, private_key.clone_key())
-      .expect("invalid client key or certificate"),
+      .with_client_auth_cert(cert_chain, private_key.clone_key())?,
     TlsKeys::Null => client_config.with_no_client_auth(),
     TlsKeys::Resolver(_) => unimplemented!(),
   };

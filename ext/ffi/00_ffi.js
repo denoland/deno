@@ -549,12 +549,13 @@ class DynamicLibrary {
         );
         this.symbols[symbol] = new Function(
           "call",
+          "Uint8Array",
           `return function (${params}) {
             const buffer = new Uint8Array(${structSize});
             call(${params}${parameters.length > 0 ? ", " : ""}buffer);
             return buffer;
           }`,
-        )(call);
+        )(call, Uint8Array);
       }
     }
   }

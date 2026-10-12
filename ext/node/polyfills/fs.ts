@@ -153,8 +153,6 @@ const {
   op_node_fs_read_deferred,
   op_node_fs_read_file_sync,
   op_node_fs_read_sync,
-  op_node_fs_seek,
-  op_node_fs_seek_sync,
   op_node_fs_write_deferred,
   op_node_fs_write_sync,
   op_node_lchmod,
@@ -231,6 +229,7 @@ const {
   NumberIsNaN,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
@@ -261,12 +260,11 @@ const {
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
 
-const defaultStatOptions = { __proto__: null, bigint: false };
-const defaultStatSyncOptions = {
-  __proto__: null,
+const defaultStatOptions = ObjectSetPrototypeOf({ bigint: false }, null);
+const defaultStatSyncOptions = ObjectSetPrototypeOf({
   bigint: false,
   throwIfNoEntry: true,
-};
+}, null);
 
 function stat(
   path: string | Buffer | URL,
@@ -478,6 +476,59 @@ type ReadvCallback = (
   buffers: readonly ArrayBufferView[],
 ) => void;
 
+function prepareReadvBuffers(
+  buffers: readonly ArrayBufferView[],
+  allowDirect: boolean,
+) {
+  const views: Uint8Array[] = [];
+  const lengths: number[] = [];
+  let length = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    const view = arrayBufferViewToUint8Array(buffers[i]);
+    const viewLength = TypedArrayPrototypeGetByteLength(view);
+    ArrayPrototypePush(views, view);
+    ArrayPrototypePush(lengths, viewLength);
+    length += viewLength;
+  }
+
+  if (allowDirect && views.length === 1) {
+    return { buffer: views[0], lengths, needsScatter: false, views };
+  }
+
+  // A staging buffer preserves one-read semantics while safely supporting
+  // duplicate and overlapping views.
+  return {
+    buffer: new Uint8Array(length),
+    lengths,
+    needsScatter: true,
+    views,
+  };
+}
+
+function scatterReadvBuffer(
+  source: Uint8Array,
+  views: Uint8Array[],
+  lengths: number[],
+  bytesRead: number,
+) {
+  let offset = 0;
+  for (let i = 0; i < views.length && offset < bytesRead; i++) {
+    const view = views[i];
+    const length = MathMin(
+      lengths[i],
+      TypedArrayPrototypeGetByteLength(view),
+      bytesRead - offset,
+    );
+    if (length > 0) {
+      TypedArrayPrototypeSet(
+        view,
+        TypedArrayPrototypeSubarray(source, offset, offset + length),
+      );
+    }
+    offset += lengths[i];
+  }
+}
+
 function readv(
   fd: number,
   buffers: readonly ArrayBufferView[],
@@ -505,41 +556,18 @@ function readv(
     lazyProcess().default.nextTick(cb, null, 0, buffers);
     return;
   }
+  const { buffer, lengths, views } = prepareReadvBuffers(buffers, false);
 
-  const innerReadv = async (
-    fd: number,
-    buffers: readonly ArrayBufferView[],
-    position: number | null,
-  ) => {
-    if (typeof position === "number") {
-      await op_node_fs_seek(fd, position, 0);
-    }
-
-    let readTotal = 0;
-    let readInBuf = 0;
-    let bufIdx = 0;
-    let buf = buffers[bufIdx];
-    while (bufIdx < buffers.length) {
-      const nread = op_node_fs_read_sync(fd, buf, -1n);
-      if (nread === null) {
-        break;
-      }
-      readInBuf += nread;
-      if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
-        readTotal += readInBuf;
-        readInBuf = 0;
-        bufIdx += 1;
-        buf = buffers[bufIdx];
-      }
-    }
-    readTotal += readInBuf;
-
-    return readTotal;
-  };
-
-  PromisePrototypeThen(innerReadv(fd, buffers, pos), (numRead) => {
-    cb(null, numRead, buffers);
-  }, (err) => cb(err, -1, buffers));
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(fd, buffer, pos === null ? -1n : BigInt(pos)),
+    (numRead) => {
+      scatterReadvBuffer(buffer, views, lengths, numRead);
+      cb(null, numRead, buffers);
+    },
+    (err) => {
+      cb(denoErrorToNodeError(err, { syscall: "read" }), 0, buffers);
+    },
+  );
 }
 
 ObjectDefineProperty(readv, customPromisifyArgs, {
@@ -568,29 +596,25 @@ function readvSync(
   }
   if (typeof position === "number") {
     validateInteger(position, "position", 0);
-    op_node_fs_seek_sync(fd, position, 0);
   }
 
-  let readTotal = 0;
-  let readInBuf = 0;
-  let bufIdx = 0;
-  let buf = buffers[bufIdx];
-  while (bufIdx < buffers.length) {
-    const nread = op_node_fs_read_sync(fd, buf, -1n);
-    if (nread === null) {
-      break;
+  const { buffer, lengths, needsScatter, views } = prepareReadvBuffers(
+    buffers,
+    true,
+  );
+  try {
+    const numRead = op_node_fs_read_sync(
+      fd,
+      buffer,
+      typeof position === "number" ? BigInt(position) : -1n,
+    );
+    if (needsScatter) {
+      scatterReadvBuffer(buffer, views, lengths, numRead);
     }
-    readInBuf += nread;
-    if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
-      readTotal += readInBuf;
-      readInBuf = 0;
-      bufIdx += 1;
-      buf = buffers[bufIdx];
-    }
+    return numRead;
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "read" });
   }
-  readTotal += readInBuf;
-
-  return readTotal;
 }
 
 function readvPromise(
@@ -608,10 +632,7 @@ function readvPromise(
 
 // -- readFile --
 
-const readFileDefaultOptions = {
-  __proto__: null,
-  flag: "r",
-};
+const readFileDefaultOptions = ObjectSetPrototypeOf({ flag: "r" }, null);
 
 function readFileMaybeDecode(data: Uint8Array, encoding: Encodings): string;
 function readFileMaybeDecode(
@@ -2387,7 +2408,7 @@ function opendirSync(
  */
 function openAsBlob(
   path: string | Buffer | URL,
-  options: { type?: string } = { __proto__: null },
+  options: { type?: string } = kEmptyObject,
 ): Promise<Blob> {
   validateObject(options, "options");
   const type = options.type || "";

@@ -139,6 +139,20 @@ test("mock.reset() clears call history of all mocks", () => {
   mock.restoreAll();
 });
 
+test("mock.reset() restores mock.method() implementations", () => {
+  const obj = {
+    bar() {
+      return "original";
+    },
+  };
+
+  mock.method(obj, "bar", () => "mocked");
+  assert.strictEqual(obj.bar(), "mocked");
+
+  mock.reset();
+  assert.strictEqual(obj.bar(), "original");
+});
+
 test("mock.restoreAll() restores all mocked methods", () => {
   const obj = {
     greet() {

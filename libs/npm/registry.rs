@@ -43,11 +43,15 @@ pub struct NpmPackageInfo {
   pub time: HashMap<Version, chrono::DateTime<chrono::Utc>>,
 }
 
-/// Custom `_deno.*` properties stored alongside a cached packument.
+/// Properties of a packument that aren't needed for resolution, but are
+/// stored alongside a cached packument.
 #[derive(Debug, Default, Clone)]
 pub struct NpmPackageInfoCacheMetadata {
   /// The `_deno.etag` property.
   pub etag: Option<String>,
+  /// The top-level `modified` property of the abbreviated install manifest,
+  /// which is the last time a version of the package was published.
+  pub modified: Option<chrono::DateTime<chrono::Utc>>,
   /// Whether the `_deno.packumentFormat` property records that this cache
   /// entry was created from a full packument response. When set, an empty
   /// `time` map means the registry provides no publish dates rather than
@@ -197,6 +201,12 @@ impl NpmPackageInfo {
     }
 
     let full_packument = index.deno_packument_format == Some("full");
+    // ignore unparsable dates because a missing `modified` is handled
+    // by fetching the full packument
+    let modified = index
+      .modified
+      .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+      .map(|date| date.to_utc());
 
     Ok((
       Self {
@@ -211,6 +221,7 @@ impl NpmPackageInfo {
       },
       NpmPackageInfoCacheMetadata {
         etag: deno_etag,
+        modified,
         full_packument,
       },
     ))
@@ -1949,6 +1960,30 @@ mod test {
       info.versions.get(&version).unwrap().get_trust_evidence(),
       Some(TrustEvidence::Provenance)
     );
+  }
+
+  #[test]
+  fn from_packument_bytes_cache_metadata_modified() {
+    let (_, metadata) = NpmPackageInfo::from_packument_bytes_with_cache_info(
+      br#"{"name":"pkg","versions":{},"modified":"2024-01-03T00:00:00.000Z"}"#
+        .to_vec(),
+    )
+    .unwrap();
+    assert_eq!(
+      metadata.modified,
+      Some(
+        chrono::DateTime::parse_from_rfc3339("2024-01-03T00:00:00.000Z")
+          .unwrap()
+          .to_utc()
+      )
+    );
+
+    // unparsable dates are ignored
+    let (_, metadata) = NpmPackageInfo::from_packument_bytes_with_cache_info(
+      br#"{"name":"pkg","versions":{},"modified":"yesterday"}"#.to_vec(),
+    )
+    .unwrap();
+    assert_eq!(metadata.modified, None);
   }
 
   #[test]

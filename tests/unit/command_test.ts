@@ -767,6 +767,30 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: [Deno.execPath()], read: true },
+  },
+  function commandLoaderEnvValueValidation() {
+    for (const name of ["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]) {
+      const command = (value: string) =>
+        new Deno.Command(Deno.execPath(), {
+          args: ["eval", ""],
+          clearEnv: true,
+          env: { [name]: value },
+        });
+
+      assertEquals(command("").outputSync().success, true);
+      assertThrows(
+        () => command("\t").outputSync(),
+        Deno.errors.NotCapable,
+        name,
+      );
+    }
+  },
+);
+
+Deno.test(
   { permissions: { run: true, read: true } },
   function commandSyncEnv() {
     const { stdout } = new Deno.Command(Deno.execPath(), {
@@ -848,7 +872,12 @@ Deno.test(
       args: ["-u"],
     }).output();
 
-    const currentUid = new TextDecoder().decode(stdout);
+    const currentUid = new TextDecoder().decode(stdout).trim();
+    const sameUid = await new Deno.Command("id", {
+      args: ["-u"],
+      uid: Number(currentUid),
+    }).output();
+    assertEquals(new TextDecoder().decode(sameUid.stdout).trim(), currentUid);
 
     if (currentUid !== "0") {
       await assertRejects(async () => {
@@ -902,7 +931,12 @@ Deno.test(
       args: ["-u"],
     }).outputSync();
 
-    const currentUid = new TextDecoder().decode(stdout);
+    const currentUid = new TextDecoder().decode(stdout).trim();
+    const sameUid = new Deno.Command("id", {
+      args: ["-u"],
+      uid: Number(currentUid),
+    }).outputSync();
+    assertEquals(new TextDecoder().decode(sameUid.stdout).trim(), currentUid);
 
     if (currentUid !== "0") {
       assertThrows(() => {
@@ -925,7 +959,12 @@ Deno.test(
       args: ["-g"],
     }).output();
 
-    const currentGid = new TextDecoder().decode(stdout);
+    const currentGid = new TextDecoder().decode(stdout).trim();
+    const sameGid = await new Deno.Command("id", {
+      args: ["-g"],
+      gid: Number(currentGid),
+    }).output();
+    assertEquals(new TextDecoder().decode(sameGid.stdout).trim(), currentGid);
 
     if (currentGid !== "0") {
       await assertRejects(async () => {
@@ -948,7 +987,12 @@ Deno.test(
       args: ["-g"],
     }).outputSync();
 
-    const currentGid = new TextDecoder().decode(stdout);
+    const currentGid = new TextDecoder().decode(stdout).trim();
+    const sameGid = new Deno.Command("id", {
+      args: ["-g"],
+      gid: Number(currentGid),
+    }).outputSync();
+    assertEquals(new TextDecoder().decode(sameGid.stdout).trim(), currentGid);
 
     if (currentGid !== "0") {
       assertThrows(() => {

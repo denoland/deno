@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "locked": {
+      "write": true,
+      "import": {
+        "allow": true,
+        "deny": ["127.0.0.1", "[::1]"]
+      }
+    }
+  }
+}

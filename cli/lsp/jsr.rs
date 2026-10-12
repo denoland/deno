@@ -140,11 +140,24 @@ impl JsrCacheResolver {
       // Find the first matching version of the package which is cached.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
+      // A wildcard requirement matches pre-release versions when the
+      // package has no stable release, same as deno_graph's resolver.
+      let include_all_prereleases =
+        deno_graph::packages::prerelease_fallback_applies(
+          &req.version_req,
+          &package_info,
+        );
       let version = versions
         .into_iter()
         .rev()
         .find(|v| {
-          if req.version_req.tag().is_some() || !req.version_req.matches(v) {
+          if req.version_req.tag().is_some()
+            || !deno_graph::packages::version_matches(
+              &req.version_req,
+              v,
+              include_all_prereleases,
+            )
+          {
             return false;
           }
           let nv = PackageNv {

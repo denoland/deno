@@ -32,10 +32,9 @@ const {
   DataViewPrototypeGetByteOffset,
   MathTrunc,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   PromiseReject,
   PromiseResolve,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   SymbolFor,
@@ -70,7 +69,7 @@ class TextDecoder {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = { __proto__: null }) {
+  constructor(label = "utf-8", options = undefined) {
     const prefix = "Failed to construct 'TextDecoder'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(
@@ -181,28 +180,41 @@ class TextDecoder {
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
       if (isSharedArrayBuffer(buffer)) {
-        // We clone the data into a non-shared ArrayBuffer so we can pass it
-        // to Rust.
-        // `input` is now a Uint8Array, and calling the TypedArray constructor
-        // with a TypedArray argument copies the data.
+        // We clone the data into a private, non-shared ArrayBuffer so we can
+        // pass it to Rust. This copy is mandatory: another thread can mutate a
+        // SharedArrayBuffer while V8 performs its two-pass UTF-8 decode (first
+        // sizing the output, then writing it), and a mutation in between can
+        // make the write pass emit more code units than were allocated,
+        // corrupting native memory.
+        //
+        // We first build a `Uint8Array` view over the selected range of the
+        // shared buffer (the raw bytes, regardless of `input`'s element type),
+        // then pass that view to the `Uint8Array` constructor. Constructing a
+        // TypedArray from a TypedArray argument (as opposed to a
+        // `buffer, byteOffset, byteLength` triple, which only creates another
+        // view) copies the data into a fresh, non-shared ArrayBuffer.
         if (isTypedArray(input)) {
           input = new Uint8Array(
-            buffer,
-            TypedArrayPrototypeGetByteOffset(
-              /** @type {Uint8Array} */ (input),
-            ),
-            TypedArrayPrototypeGetByteLength(
-              /** @type {Uint8Array} */ (input),
+            new Uint8Array(
+              buffer,
+              TypedArrayPrototypeGetByteOffset(
+                /** @type {Uint8Array} */ (input),
+              ),
+              TypedArrayPrototypeGetByteLength(
+                /** @type {Uint8Array} */ (input),
+              ),
             ),
           );
         } else if (isDataView(input)) {
           input = new Uint8Array(
-            buffer,
-            DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
-            DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            new Uint8Array(
+              buffer,
+              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            ),
           );
         } else {
-          input = new Uint8Array(buffer);
+          input = new Uint8Array(new Uint8Array(buffer));
         }
       }
 
@@ -351,7 +363,8 @@ class TextEncoder {
 }
 
 const encodeIntoBuf = new Uint32Array(2);
-const encodeIntoOpts = { __proto__: null, allowShared: true };
+const encodeIntoOpts = ObjectSetPrototypeOf({ allowShared: true }, null);
+
 const ENCODE_INTO_PACKED_SENTINEL = -1;
 const ENCODE_INTO_PACKED_MULTIPLIER = 0x100000000;
 
@@ -368,7 +381,7 @@ class TextDecoderStream {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = { __proto__: null }) {
+  constructor(label = "utf-8", options = undefined) {
     const prefix = "Failed to construct 'TextDecoderStream'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(

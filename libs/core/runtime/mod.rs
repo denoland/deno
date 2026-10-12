@@ -15,7 +15,7 @@ pub mod stats;
 pub mod v8_static_strings;
 
 #[cfg(all(test, not(miri)))]
-mod tests;
+pub(crate) mod tests;
 
 pub const V8_WRAPPER_TYPE_INDEX: i32 = 0;
 pub const V8_WRAPPER_OBJECT_INDEX: i32 = 1;

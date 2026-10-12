@@ -124,7 +124,7 @@ const fn op_string_onebyte() -> ::deno_core::_ops::OpDecl {
                     .value() as *const deno_core::_ops::OpCtx)
             };
             let mut scope = unsafe {
-                deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate)
+                deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate())
             };
             let mut scope = &mut scope;
             let result = {

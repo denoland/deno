@@ -85,17 +85,21 @@ const {
   Number,
   ObjectEntries,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   ObjectValues,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
+  Symbol,
   SymbolAsyncIterator,
   SymbolDispose,
   SymbolIterator,
-  SymbolFor,
   TypeError,
   Uint32Array,
 } = primordials;
+
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { read, readSync, write, writeSync } = core.loadExtScript(
   "ext:deno_io/12_io.js",
@@ -110,6 +114,8 @@ function lazyStreams() {
     (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
 }
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+
+const fsFileConstructorKey = Symbol("Deno.internal.FsFile");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -167,7 +173,7 @@ function chdir(directory) {
   op_fs_chdir(pathFromURL(directory));
 }
 
-function makeTempDirSync(options = { __proto__: null }) {
+function makeTempDirSync(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_dir_sync(
     options.dir,
     options.prefix,
@@ -175,7 +181,7 @@ function makeTempDirSync(options = { __proto__: null }) {
   );
 }
 
-function makeTempDir(options = { __proto__: null }) {
+function makeTempDir(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_dir_async(
     options.dir,
     options.prefix,
@@ -183,7 +189,7 @@ function makeTempDir(options = { __proto__: null }) {
   );
 }
 
-function makeTempFileSync(options = { __proto__: null }) {
+function makeTempFileSync(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_file_sync(
     options.dir,
     options.prefix,
@@ -191,7 +197,7 @@ function makeTempFileSync(options = { __proto__: null }) {
   );
 }
 
-function makeTempFile(options = { __proto__: null }) {
+function makeTempFile(options = EMPTY_OPTIONS) {
   return op_fs_make_temp_file_async(
     options.dir,
     options.prefix,
@@ -290,7 +296,7 @@ function realPath(path) {
 
 function removeSync(
   path,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   op_fs_remove_sync(
     pathFromURL(path),
@@ -300,7 +306,7 @@ function removeSync(
 
 async function remove(
   path,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   await op_fs_remove_async(
     pathFromURL(path),
@@ -599,7 +605,7 @@ function openSync(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid, fsFileConstructorKey);
 }
 
 async function open(
@@ -612,7 +618,7 @@ async function open(
     options,
   );
 
-  return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+  return new FsFile(rid, fsFileConstructorKey);
 }
 
 function createSync(path) {
@@ -646,7 +652,7 @@ class FsFile {
       value: rid,
     });
     this.#rid = rid;
-    if (!symbol || symbol !== SymbolFor("Deno.internal.FsFile")) {
+    if (!symbol || symbol !== fsFileConstructorKey) {
       throw new TypeError(
         "'Deno.FsFile' cannot be constructed, use 'Deno.open()' or 'Deno.openSync()' instead",
       );
@@ -755,7 +761,7 @@ class FsFile {
     return core.isTerminal(this.#rid);
   }
 
-  setRaw(mode, options = { __proto__: null }) {
+  setRaw(mode, options = EMPTY_OPTIONS) {
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }
@@ -881,7 +887,7 @@ async function readTextFile(path, options) {
 function writeFileSync(
   path,
   data,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   options.signal?.throwIfAborted();
   op_fs_write_file_sync(
@@ -897,7 +903,7 @@ function writeFileSync(
 async function writeFile(
   path,
   data,
-  options = { __proto__: null },
+  options = EMPTY_OPTIONS,
 ) {
   let cancelRid;
   let abortHandler;
@@ -946,7 +952,7 @@ async function writeFile(
 function writeTextFileSync(
   path,
   data,
-  options = { __proto__: null },
+  options = undefined,
 ) {
   const encoder = new TextEncoder();
   return writeFileSync(path, encoder.encode(data), options);
@@ -955,7 +961,7 @@ function writeTextFileSync(
 function writeTextFile(
   path,
   data,
-  options = { __proto__: null },
+  options = undefined,
 ) {
   if (
     ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
@@ -983,6 +989,7 @@ return {
   createSync,
   cwd,
   FsFile,
+  fsFileConstructorKey,
   link,
   linkSync,
   lstat,

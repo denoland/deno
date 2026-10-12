@@ -50,6 +50,7 @@ const {
   ObjectAssign,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectIs,
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
@@ -84,6 +85,8 @@ const {
   WeakSet,
   WeakSetPrototype,
 } = primordials;
+
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 // ---------------------------------------------------------------------------
 // no-color hooks (installed by the runtime bootstrap)
@@ -450,7 +453,7 @@ function formatValue(ctx, value, recurseTimes) {
   return op_console_format_value(intrinsics, ctx, value, recurseTimes ?? 0);
 }
 
-function inspectArgs(args, inspectOptions = { __proto__: null }) {
+function inspectArgs(args, inspectOptions = EMPTY_OPTIONS) {
   const colors = inspectOptions.colors ?? !noColorStdout();
   return op_console_inspect_args(intrinsics, args, {
     __proto__: null,
@@ -461,7 +464,7 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
 
 function inspect(
   value,
-  inspectOptions = { __proto__: null },
+  inspectOptions = EMPTY_OPTIONS,
 ) {
   return op_console_inspect(intrinsics, value, inspectOptions);
 }
@@ -543,6 +546,7 @@ class Console {
     // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
     const console = ObjectCreate({}, {
       [SymbolToStringTag]: {
+        __proto__: null,
         enumerable: false,
         writable: false,
         configurable: true,
@@ -570,7 +574,7 @@ class Console {
     this.#getWrap().info(...new SafeArrayIterator(args));
   };
 
-  dir = (obj = undefined, options = { __proto__: null }) => {
+  dir = (obj = undefined, options = EMPTY_OPTIONS) => {
     this.#getWrap().dir(obj, options);
   };
 
@@ -692,7 +696,7 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
       ? getEvaluatedDescriptor(object, key)
       : (getDescendantPropertyDescriptor(object, key) ??
         getEvaluatedDescriptor(object, key));
-    ObjectDefineProperty(result, key, descriptor);
+    ObjectDefineProperty(result, key, { __proto__: null, ...descriptor });
   }
   return result;
 
@@ -709,6 +713,7 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
 
   function getEvaluatedDescriptor(object, key) {
     return {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       value: object[key],

@@ -334,6 +334,18 @@ impl TCPWrap {
       Err(_) => return Ok(-1),
     };
 
+    // Post-resolution deny check: verify the resolved IP is not denied.
+    // This prevents a hostname that resolves to a local address (e.g. a
+    // DNS name pointing at 127.0.0.1) from bypassing --deny-net rules that
+    // target the resolved IP.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.listen()",
+      )?;
+
     // SAFETY: tcp is valid; socket2 SockAddr is properly initialized from
     // a resolved std::net::SocketAddr.
     unsafe {
@@ -561,6 +573,15 @@ impl TCPWrap {
       },
       Err(_) => return Ok(-1),
     };
+
+    // Post-resolution deny check for bind6 as well.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.listen()",
+      )?;
 
     // SAFETY: tcp is valid; socket2 SockAddr is properly initialized.
     unsafe {

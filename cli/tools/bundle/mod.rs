@@ -50,6 +50,8 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::LoadedModuleSource;
 use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_resolver::npmrc::discover_npmrc_from_home;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::OpenAccessKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -2664,20 +2666,25 @@ fn resolve_roots(
 async fn ensure_esbuild_downloaded(
   factory: &CliFactory,
 ) -> Result<PathBuf, AnyError> {
-  let installer_factory = factory.npm_installer_factory()?;
   let deno_dir = factory.deno_dir()?;
-  let npmrc = factory.npmrc()?;
-  let npm_registry_info = installer_factory.registry_info_provider()?;
-  let resolver_factory = factory.resolver_factory()?;
-  let workspace_factory = resolver_factory.workspace_factory();
+  let sys = factory.sys();
+
+  // Esbuild is an implementation detail of the bundler, so resolve its
+  // platform package independently from the workspace's package settings,
+  // while preserving registry and authentication settings explicitly chosen
+  // by the user in their home npmrc or process environment.
+  let (npmrc, _) = discover_npmrc_from_home(&sys)?;
+  let npmrc = Arc::new(npmrc);
+  let npm_cache_services = factory.create_npm_cache_services(npmrc.clone())?;
+  let link_packages = WorkspaceNpmLinkPackagesRc::default();
 
   let esbuild_path = esbuild::ensure_esbuild(
     deno_dir,
-    npmrc,
-    npm_registry_info,
-    workspace_factory.workspace_npm_link_packages()?,
-    installer_factory.tarball_cache()?,
-    factory.npm_cache()?,
+    &npmrc,
+    npm_cache_services.registry_info_provider(),
+    &link_packages,
+    npm_cache_services.tarball_cache(),
+    npm_cache_services.npm_cache(),
   )
   .await?;
   Ok(esbuild_path)

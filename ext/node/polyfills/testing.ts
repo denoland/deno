@@ -214,7 +214,7 @@ const {
 // `ERR_INVALID_STATE` is a hand-written class exported at the top level of the
 // errors module; unlike the generated codes it is not registered on `.codes`.
 const { ERR_INVALID_STATE } = nodeErrors;
-const { emitExperimentalWarning } = core.loadExtScript(
+const { emitExperimentalWarning, kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
@@ -2257,6 +2257,13 @@ class MockFunctionContext {
 
   resetCalls() {
     ArrayPrototypeSplice(this.#calls, 0, this.#calls.length);
+    // Node's MockTracker.reset() restores mocked methods (and Deno's
+    // mock.reset() already restores module mocks via MockModuleContext).
+    // Invoke restore here without splicing activeMocks mid-iteration.
+    if (this.#restore) {
+      this.#restore();
+      this.#restore = undefined;
+    }
   }
 
   restore() {
@@ -2521,7 +2528,10 @@ function mockMethodImpl(object, methodName, implementation, options) {
   }
 
   const restore = () => {
-    ObjectDefineProperty(object, methodName, descriptor);
+    ObjectDefineProperty(object, methodName, {
+      __proto__: null,
+      ...descriptor,
+    });
   };
 
   const impl = implementation === undefined ? original : implementation;
@@ -2531,6 +2541,7 @@ function mockMethodImpl(object, methodName, implementation, options) {
   const mockFn = createMockFunction(original, impl, ctx);
 
   const mockDescriptor = {
+    __proto__: null,
     configurable: descriptor.configurable,
     enumerable: descriptor.enumerable,
   };
@@ -2630,7 +2641,7 @@ class MockTimers {
     return MapPrototypeHas(this.#mockedApis, api);
   }
 
-  enable(options = { __proto__: null }) {
+  enable(options = kEmptyObject) {
     if (this._enabled) {
       throw new ERR_INVALID_STATE(
         "MockTimers is already enabled. Reset it first to enable it again",
@@ -3333,7 +3344,7 @@ class MockModuleContext {
   }
 }
 
-function mockModule(specifier, options = { __proto__: null }) {
+function mockModule(specifier, options = kEmptyObject) {
   let specStr;
   if (typeof specifier === "string") {
     specStr = specifier;

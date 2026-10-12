@@ -397,7 +397,19 @@ mod global_termios {
     unsafe { __errno_location() }
   }
 
-  #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+  #[cfg(target_os = "android")]
+  fn errno_location() -> *mut c_int {
+    unsafe extern "C" {
+      fn __errno() -> *mut c_int;
+    }
+    unsafe { __errno() }
+  }
+
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "android"
+  )))]
   fn errno_location() -> *mut c_int {
     compile_error!(
       "errno_location not implemented for this platform — \

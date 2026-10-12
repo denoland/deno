@@ -562,9 +562,13 @@ async function ensureWorkflowYmlsUpToDate() {
  * this convention.
  */
 async function ensureNoNonPermissionCapitalLetterShortFlags() {
-  const text = await Deno.readTextFile(join(ROOT_PATH, "cli/args/flags.rs"));
+  const text = await Deno.readTextFile(
+    join(ROOT_PATH, "libs/cli_parser/src/defs.rs"),
+  );
   const shortFlags = text.matchAll(/\.short\('([A-Z])'\)/g);
-  const values = Array.from(shortFlags.map((flag) => flag[1])).sort();
+  // Deduplicated: unlike the old clap builders, the command tree declares each
+  // arg per-command, so a flag like `-I` appears once per command that takes it.
+  const values = [...new Set(shortFlags.map((flag) => flag[1]))].sort();
   // DO NOT update this list with a non-permission short flag without
   // discussion--there needs to be precedence to add to this list.
   const expected = [

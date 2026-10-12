@@ -1814,8 +1814,6 @@ fn maybe_to_path_str(string: &str) -> Option<String> {
 }
 
 pub mod callsite_fns {
-  use capacity_builder::StringBuilder;
-
   use super::*;
   use crate::FromV8;
   use crate::ToV8;
@@ -2065,14 +2063,7 @@ pub mod callsite_fns {
   }
 
   fn fmt_file_line_col(file: &str, line: i64, col: i64) -> String {
-    StringBuilder::build(|builder| {
-      builder.append(file);
-      builder.append(':');
-      builder.append(line);
-      builder.append(':');
-      builder.append(col);
-    })
-    .unwrap()
+    format!("{file}:{line}:{col}")
   }
 
   pub fn to_string<'s, 'i>(

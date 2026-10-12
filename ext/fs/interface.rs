@@ -14,6 +14,7 @@ use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
+use deno_permissions::OpenAccessKind;
 use serde::Deserialize;
 
 #[derive(FromV8, Default, Debug, Clone, Copy)]
@@ -67,6 +68,23 @@ impl OpenOptions {
       mode,
     }
   }
+
+  pub fn access_kind(&self) -> OpenAccessKind {
+    // If neither write access mode is set, the file is opened for reading.
+    // This also covers read-only opens that carry creation flags.
+    let read = self.read || (!self.write && !self.append);
+    let write = self.write
+      || self.append
+      || self.create
+      || self.create_new
+      || self.truncate;
+
+    match (read, write) {
+      (true, true) => OpenAccessKind::ReadWrite,
+      (false, true) => OpenAccessKind::Write,
+      (true, false) | (false, false) => OpenAccessKind::Read,
+    }
+  }
 }
 
 impl From<i32> for OpenOptions {
@@ -108,17 +126,56 @@ impl From<i32> for OpenOptions {
       options.custom_flags = Some(flags);
     }
 
-    if !options.append
-      && !options.create
-      && !options.create_new
-      && !options.read
-      && !options.truncate
-      && !options.write
-    {
+    // O_RDONLY is zero, so no explicit access-mode bit remains to detect.
+    // Other flags, such as O_CREAT, do not change that read access mode.
+    if !options.read && !options.write {
       options.read = true;
     }
 
     Self { ..options }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn read_only_create_flags_require_read_and_write_access() {
+    let options = OpenOptions::from(libc::O_RDONLY | libc::O_CREAT);
+
+    assert!(options.read);
+    assert!(options.create);
+    assert_eq!(options.access_kind(), OpenAccessKind::ReadWrite);
+  }
+
+  #[test]
+  fn every_mutating_option_requires_write_access() {
+    for options in [
+      OpenOptions {
+        create: true,
+        ..Default::default()
+      },
+      OpenOptions {
+        create_new: true,
+        ..OpenOptions::read()
+      },
+      OpenOptions {
+        truncate: true,
+        ..OpenOptions::read()
+      },
+    ] {
+      assert_eq!(options.access_kind(), OpenAccessKind::ReadWrite);
+    }
+  }
+
+  #[test]
+  fn ordinary_read_and_write_access_are_unchanged() {
+    assert_eq!(OpenOptions::read().access_kind(), OpenAccessKind::Read);
+    assert_eq!(
+      OpenOptions::write(false, false, false, None).access_kind(),
+      OpenAccessKind::Write
+    );
   }
 }
 

@@ -119,6 +119,11 @@ fn parse_args(
   let mut i = 0;
   let mut positional_index = 0;
   let mut trailing_mode = false;
+  // Set when `--` appears before the first positional: the remaining args
+  // fill the positionals literally (a leading hyphen is not a flag).
+  let mut positional_only = false;
+  // Whether any positional value has been consumed yet.
+  let mut positional_started = false;
   let mut found_subcommand = skip_subcommand.is_none();
   let mut passthrough_from: Option<usize> = None;
   // Per-positional trailing: when set, ALL remaining args (including flags)
@@ -132,8 +137,19 @@ fn parse_args(
   while i < args.len() {
     let arg = &args[i];
 
-    // Per-positional trailing mode: absorb everything into this positional
+    // Per-positional trailing mode: absorb everything into this positional.
+    //
+    // INVARIANT: this path always strips `--` and does NOT honor
+    // `cmd_def.keep_double_dash` (unlike the two command-level `--` paths
+    // below). That's correct only because every subcommand with a `.trailing()`
+    // positional (init/create/x) has `keep_double_dash: false`. If a subcommand
+    // ever needs both a `.trailing()` positional and `--` retention, this path
+    // must be taught to honor the flag.
     if let Some(trail_def) = positional_trailing_def {
+      debug_assert!(
+        !cmd_def.keep_double_dash,
+        "keep_double_dash is ignored for `.trailing()` positionals; see INVARIANT above"
+      );
       if arg == "--" {
         // `--` still transitions to command-level trailing
         // so that `deno init --npm vite -- --serve` puts --serve
@@ -146,6 +162,29 @@ fn parse_args(
         continue;
       }
       set_arg_value(result, trail_def, arg.clone())?;
+      i += 1;
+      continue;
+    }
+
+    // Positional-only mode: a `--` appeared before the first positional of
+    // an entrypoint-style command (see the `--` handling below), so consume
+    // positional values without interpreting leading hyphens as flags, e.g.
+    // `deno run -- -script.ts`. Once the positionals are complete, the
+    // command's trailing var args receive the rest. Note that a second `--`
+    // is forwarded literally here: only the first `--` is special, and it
+    // was already consumed to enter this mode.
+    if positional_only {
+      if let Some(pos_def) = positional_defs.get(positional_index) {
+        apply_value_with_delimiter(result, pos_def, arg)?;
+        // Move to next positional unless this one accepts multiple
+        match pos_def.num_args {
+          NumArgs::ZeroOrMore | NumArgs::OneOrMore => {}
+          _ => positional_index += 1,
+        }
+      } else {
+        // This mode is only entered when cmd_def.trailing_var_arg is set.
+        result.trailing.push(arg.clone());
+      }
       i += 1;
       continue;
     }
@@ -167,7 +206,32 @@ fn parse_args(
         i += 1;
         continue;
       }
+      // For entrypoint-style commands (a single-value positional followed
+      // by trailing var args: run/serve/eval/task/compile), a `--` before
+      // the first positional does not start trailing args; it marks the
+      // remaining args as positional-only so the entrypoint itself may
+      // start with a hyphen (mirrors clap's trailing_var_arg). Commands
+      // with a multi-value positional (test/bench/install) instead mirror
+      // clap's `.last(true)`: args after `--` bypass the positional and
+      // stay trailing, so they fall through here.
+      if !positional_started
+        && cmd_def.trailing_var_arg
+        && let Some(next_pos) = positional_defs.get(positional_index)
+        && !matches!(
+          next_pos.num_args,
+          NumArgs::ZeroOrMore | NumArgs::OneOrMore
+        )
+      {
+        positional_only = true;
+        i += 1;
+        continue;
+      }
       trailing_mode = true;
+      // Keep the `--` in the forwarded args for subcommands that mirror clap's
+      // `.last(true)` / external-subcommand behavior; strip it otherwise.
+      if cmd_def.keep_double_dash {
+        result.trailing.push(arg.clone());
+      }
       i += 1;
       continue;
     }
@@ -197,6 +261,7 @@ fn parse_args(
     } else {
       // Positional argument
       if let Some(pos_def) = positional_defs.get(positional_index) {
+        positional_started = true;
         apply_value_with_delimiter(result, pos_def, arg)?;
 
         // If this positional has trailing: true, absorb everything
@@ -231,9 +296,14 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
-              // Keep a `--` separator in the forwarded args to match clap's
-              // trailing-var-arg behavior (e.g. `deno run script.ts -- -a`
-              // forwards `["--", "-a"]`).
+              // Strip a leading `--` separator unless this subcommand keeps it
+              // in the forwarded argv (clap `.last(true)` / external behavior,
+              // e.g. `deno run x.ts -- -a` forwards `["--", "-a"]`, but
+              // `deno eval code -- a` forwards `["a"]`).
+              if !cmd_def.keep_double_dash && i < args.len() && args[i] == "--"
+              {
+                i += 1;
+              }
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;
@@ -296,7 +366,12 @@ fn parse_args(
             CliErrorKind::InvalidValue,
             format!(
               "the argument '{}' cannot be used with '{}'",
-              arg_def.name, other
+              display_arg(arg_def),
+              cmd_def
+                .all_args()
+                .find(|a| a.name == *other)
+                .map(display_arg)
+                .unwrap_or_else(|| (*other).to_string())
             ),
           ));
         }
@@ -627,5 +702,22 @@ fn increment_arg_count(result: &mut ParseResult, arg_def: &ArgDef) {
       is_present: true,
       count: 1,
     });
+  }
+}
+
+/// Render an arg the way clap did in conflict messages: `--long <value>` for
+/// value-taking flags, `--long` for booleans, `<NAME>` for positionals.
+fn display_arg(arg: &ArgDef) -> String {
+  if arg.positional {
+    return format!("<{}>", arg.value_name.unwrap_or(arg.name));
+  }
+  let flag = match (arg.long, arg.short) {
+    (Some(long), _) => format!("--{long}"),
+    (None, Some(short)) => format!("-{short}"),
+    (None, None) => arg.name.to_string(),
+  };
+  match arg.num_args {
+    NumArgs::Exact(0) => flag,
+    _ => format!("{flag} <{}>", arg.value_name.unwrap_or(arg.name)),
   }
 }

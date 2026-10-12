@@ -578,6 +578,102 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
   assertEquals(result, new Uint8Array([1]));
 });
 
+function concatChunks(chunks: Uint8Array[]) {
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+async function pipeChunks(
+  stream: CompressionStream | DecompressionStream,
+  chunks: Uint8Array<ArrayBuffer>[],
+) {
+  const writer = stream.writable.getWriter();
+  const output = Array.fromAsync(stream.readable.values());
+
+  for (const chunk of chunks) {
+    await writer.write(chunk);
+  }
+  await writer.close();
+
+  return concatChunks(await output);
+}
+
+function compressChunks(format: CompressionFormat, chunks: string[]) {
+  const encoder = new TextEncoder();
+  return pipeChunks(
+    new CompressionStream(format),
+    chunks.map((chunk) => encoder.encode(chunk)),
+  );
+}
+
+function decompress(
+  format: CompressionFormat,
+  input: Uint8Array<ArrayBuffer>,
+) {
+  return pipeChunks(new DecompressionStream(format), [input]);
+}
+
+const compressionFormats: CompressionFormat[] = [
+  "deflate",
+  "deflate-raw",
+  "gzip",
+  "brotli",
+];
+
+Deno.test(async function compressionStreamOutputIsIndependentOfChunking() {
+  const text = "hello world hello world";
+  for (const format of compressionFormats) {
+    const singleChunk = await compressChunks(format, [text]);
+    const multipleChunks = await compressChunks(format, [
+      "hello world ",
+      "hello world",
+    ]);
+
+    assertEquals(multipleChunks, singleChunk, format);
+    assertEquals(
+      new TextDecoder().decode(await decompress(format, multipleChunks)),
+      text,
+      format,
+    );
+  }
+});
+
+Deno.test(async function compressionStreamDoesNotFlushOnEveryWrite() {
+  // 384 writes; a flush per write emits an empty block each time and stops
+  // matches from crossing chunk boundaries, which inflated the output of this
+  // input from ~80 bytes to ~3 KiB.
+  const text = "hello world ".repeat(512);
+  const chunked = [];
+  for (let i = 0; i < text.length; i += 16) {
+    chunked.push(text.slice(i, i + 16));
+  }
+
+  for (const format of compressionFormats) {
+    const singleChunk = await compressChunks(format, [text]);
+    const manyChunks = await compressChunks(format, chunked);
+
+    assertEquals(
+      new TextDecoder().decode(await decompress(format, manyChunks)),
+      text,
+      format,
+    );
+    // The deflate-based formats are not byte-identical across chunkings the
+    // way brotli is, because miniz_oxide compresses whatever lookahead it has
+    // instead of waiting for a full match window, but the cost must stay in
+    // the noise rather than scaling with the number of writes.
+    assert(
+      manyChunks.length < singleChunk.length * 2,
+      `${format}: ${manyChunks.length} bytes chunked vs ${singleChunk.length} bytes in one write`,
+    );
+  }
+});
+
 Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
   const cs = new CompressionStream("brotli");
   const ds = new DecompressionStream("brotli");
@@ -1168,5 +1264,49 @@ Deno.test(
     client.close();
     server.close();
     await Deno.remove(outPath);
+  },
+);
+
+// Cancelling a transferred ReadableStream while it is still open must close the
+// transfer's internal MessagePort. Otherwise the default resource sanitizer
+// reports a leaked message port (https://github.com/denoland/deno/issues/36015).
+Deno.test(
+  async function transferredReadableCancelWhileOpenClosesPort() {
+    const workerCode = `
+      self.onmessage = async (e) => {
+        const reader = e.data.getReader();
+        await reader.read(); // consume one chunk; the stream stays open
+        await reader.cancel("stop"); // cancel while still open
+        self.postMessage("done");
+        self.close();
+      };
+    `;
+    const worker = new Worker(
+      "data:application/javascript," + encodeURIComponent(workerCode),
+      { type: "module" },
+    );
+
+    const { promise: cancelled, resolve: onCancel } = Promise
+      .withResolvers<string>();
+    const readable = new ReadableStream({
+      pull(controller) {
+        // Never closes, so the stream is still open when it is cancelled.
+        controller.enqueue(new Uint8Array(16));
+      },
+      cancel(reason) {
+        // `pipeTo` only cancels the source after the transferred port's
+        // "error" handler has run (and thus after `port.close()`), so awaiting
+        // this is a deterministic assertion on the fix rather than relying on a
+        // cross-channel race with the worker's "done" message and the sanitizer.
+        onCancel(reason);
+      },
+    });
+
+    const { promise: done, resolve: onDone } = Promise.withResolvers<void>();
+    worker.onmessage = () => onDone();
+    worker.postMessage(readable, [readable]);
+    assertEquals(await cancelled, "stop");
+    await done;
+    worker.terminate();
   },
 );

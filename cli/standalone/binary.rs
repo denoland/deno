@@ -69,9 +69,9 @@ use sys_traits::FsRead;
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::CompileFlagsExt;
 use crate::args::JavaScriptEngine;
 use crate::args::get_default_v8_flags;
+use crate::args::resolve_compile_target;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -417,7 +417,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       self.get_base_binary(options.compile_flags).await?;
 
     if options.compile_flags.no_terminal {
-      let target = options.compile_flags.resolve_target();
+      let target = resolve_compile_target(options.compile_flags);
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -428,7 +428,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .context("Setting windows binary to GUI.")?;
     }
     if options.compile_flags.icon.is_some() {
-      let target = options.compile_flags.resolve_target();
+      let target = resolve_compile_target(options.compile_flags);
       // Desktop builds handle icons during app bundle packaging.
       if !target.contains("windows") && !self.is_desktop {
         bail!(
@@ -475,7 +475,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       });
     }
 
-    let target = compile_flags.resolve_target();
+    let target = resolve_compile_target(compile_flags);
     let binary_name =
       runtime_archive_name("denort", &compile_flags.engine, &target);
 
@@ -538,7 +538,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       });
     }
 
-    let target = compile_flags.resolve_target();
+    let target = resolve_compile_target(compile_flags);
     let lib_ext = if target.contains("darwin") {
       "dylib"
     } else if target.contains("windows") {
@@ -1622,7 +1622,7 @@ fn write_binary_bytes(
   data_section_bytes: Vec<u8>,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let target = compile_flags.resolve_target();
+  let target = resolve_compile_target(compile_flags);
   if target.contains("linux") {
     libsui::Elf::new(&original_bin).append(
       "d3n0l4nd",

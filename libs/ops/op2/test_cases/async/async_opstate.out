@@ -48,7 +48,7 @@ pub const fn op_async_opstate() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            let opstate = &opctx.state;
+            let opstate = opctx.state();
             let result = {
                 let arg0 = opstate.clone();
                 Self::call(arg0)

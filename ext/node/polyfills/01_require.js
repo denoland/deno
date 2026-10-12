@@ -2051,7 +2051,10 @@ let wrapperProxy = new Proxy(wrapper, {
 
   defineProperty(target, property, descriptor) {
     patched = true;
-    return ObjectDefineProperty(target, property, descriptor);
+    return ObjectDefineProperty(target, property, {
+      __proto__: null,
+      ...descriptor,
+    });
   },
 });
 

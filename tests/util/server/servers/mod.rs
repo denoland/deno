@@ -417,6 +417,9 @@ async fn main_server(
   remote_addr: SocketAddr,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   match (req.method(), req.uri().path()) {
+    (&Method::POST, "/-/npm/v1/security/advisories/bulk") => {
+      npm_registry::npm_security_advisories_bulk(req).await
+    }
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(UnsyncBoxBody::new(Full::new(
@@ -791,8 +794,12 @@ async fn main_server(
     }
     (_, "/large_headers") => {
       let mut res = Response::new(string_body("ok"));
-      // Add headers that total ~10KB to test http2 max header list size
-      for i in 0..100 {
+      // Add headers whose decoded size totals ~29KB to test the http2 max
+      // header list size. This is intentionally larger than hyper's old 16KB
+      // default so that a default client (which now advertises a browser-like
+      // 256KB limit) can still receive it. See
+      // https://github.com/denoland/deno/issues/36462.
+      for i in 0..200 {
         let value = "a".repeat(100);
         res.headers_mut().append(
           HeaderName::from_bytes(format!("x-large-header-{i}").as_bytes())

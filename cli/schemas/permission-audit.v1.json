@@ -1,5 +1,5 @@
 {
-  "$id": "https://deno.land/x/deno/cli/schemas/permission-audit.v1.json",
+  "$id": "https://raw.githubusercontent.com/denoland/deno/main/cli/schemas/permission-audit.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Schema for DENO_AUDIT_PERMISSIONS",
   "description": "The schema of a single line of the DENO_AUDIT_PERMISSIONS file output.",

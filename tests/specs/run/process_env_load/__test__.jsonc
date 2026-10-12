@@ -13,6 +13,11 @@
       "args": "run --allow-read --allow-env=FOO --no-prompt env_file.ts",
       "output": "env_file_no_env_perm.out",
       "exitCode": 1
+    },
+    "env_load_file_updates_timezone": {
+      "if": "unix",
+      "args": "run --allow-read --allow-env timezone.ts",
+      "output": "timezone.out"
     }
   }
 }

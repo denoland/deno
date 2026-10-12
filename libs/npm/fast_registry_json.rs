@@ -62,8 +62,8 @@ impl<'a, const STEP_SIZE: usize> BufBlockReader<'a, STEP_SIZE> {
     self.idx < self.len_minus_step
   }
 
-  pub fn full_block(&self) -> &'a [u8] {
-    &self.buf[self.idx..]
+  pub fn full_block(&self) -> &'a [u8; STEP_SIZE] {
+    self.buf[self.idx..].first_chunk().unwrap()
   }
 
   pub fn get_remainder(&self, dest: &mut [u8]) -> usize {
@@ -769,8 +769,7 @@ impl<'a> Tokenizer<'a> {
   pub fn tokenize(mut self) -> Result<Vec<Token>, Error> {
     while self.block_reader.has_full_block() {
       let block = self.block_reader.full_block();
-      let block =
-        simd::Simd8x64::<u8>::load(arrayref::array_ref![block, 0, 64]);
+      let block = simd::Simd8x64::<u8>::load(block);
       let (strings, characters) = self.scanner.next(&block);
       self.block_reader.advance();
       self.process_json_block(strings, characters);
@@ -779,8 +778,7 @@ impl<'a> Tokenizer<'a> {
 
     let mut remainder_buf = [0; 64];
     let _pad = self.block_reader.get_remainder(&mut remainder_buf);
-    let block =
-      simd::Simd8x64::<u8>::load(arrayref::array_ref![&remainder_buf, 0, 64]);
+    let block = simd::Simd8x64::<u8>::load(&remainder_buf);
     let (strings, characters) = self.scanner.next(&block);
     self.block_reader.advance();
     self.process_json_block(strings, characters);
@@ -936,6 +934,7 @@ pub(crate) fn pluck_packument_index_from_tokens(
 enum PackumentState<'i> {
   Start,
   WantNameValue,
+  WantModifiedValue,
   WantDenoEtagValue,
   WantDenoPackumentFormatValue,
   InVersions,
@@ -991,6 +990,7 @@ struct PackumentIndexer<'i> {
   input: &'i str,
   state: PackumentState<'i>,
   name: Option<&'i str>,
+  modified: Option<&'i str>,
   deno_etag: Option<&'i str>,
   deno_packument_format: Option<&'i str>,
   versions: Vec<&'i str>,
@@ -1011,6 +1011,7 @@ impl<'i> PackumentIndexer<'i> {
       input,
       state: PackumentState::Start,
       name: None,
+      modified: None,
       deno_etag: None,
       deno_packument_format: None,
       versions: Vec::new(),
@@ -1060,6 +1061,11 @@ impl<'i> PackumentIndexer<'i> {
         self.name = Some(self.string_value(start, end));
         self.state = PackumentState::Start;
       } else if !is_key
+        && matches!(self.state, PackumentState::WantModifiedValue)
+      {
+        self.modified = Some(self.string_value(start, end));
+        self.state = PackumentState::Start;
+      } else if !is_key
         && matches!(self.state, PackumentState::WantDenoEtagValue)
       {
         self.deno_etag = Some(self.string_value(start, end));
@@ -1071,6 +1077,8 @@ impl<'i> PackumentIndexer<'i> {
         self.state = PackumentState::Start;
       } else if is_key && v == b"name" {
         self.state = PackumentState::WantNameValue;
+      } else if is_key && v == b"modified" {
+        self.state = PackumentState::WantModifiedValue;
       } else if is_key && v == b"_deno.etag" {
         self.state = PackumentState::WantDenoEtagValue;
       } else if is_key && v == b"_deno.packumentFormat" {
@@ -1265,6 +1273,7 @@ impl<'i> PackumentIndexer<'i> {
 
     Ok(PackumentIndex {
       name: self.name,
+      modified: self.modified,
       deno_etag: self.deno_etag,
       deno_packument_format: self.deno_packument_format,
       versions: self.versions,
@@ -1332,6 +1341,9 @@ pub enum TrustEvidence {
 #[derive(Debug, Clone)]
 pub struct PackumentIndex<'i> {
   pub name: Option<&'i str>,
+  /// Top-level `modified` date of the abbreviated install manifest, which is
+  /// the last time any version was published (or the package changed).
+  pub modified: Option<&'i str>,
   pub deno_etag: Option<&'i str>,
   /// Custom top-level property written by the cache to record which format
   /// the packument was fetched in (currently only `"full"`).
@@ -1357,7 +1369,7 @@ pub fn pluck_packument_index(input: &str) -> Result<PackumentIndex<'_>, Error> {
 
   while block_reader.has_full_block() {
     let block = block_reader.full_block();
-    let block = simd::Simd8x64::<u8>::load(arrayref::array_ref![block, 0, 64]);
+    let block = simd::Simd8x64::<u8>::load(block);
     let (strings, characters) = scanner.next(&block);
     block_reader.advance();
     let ops = characters.op() & !strings.in_string;
@@ -1373,8 +1385,7 @@ pub fn pluck_packument_index(input: &str) -> Result<PackumentIndex<'_>, Error> {
 
   let mut remainder_buf = [0; 64];
   let _pad = block_reader.get_remainder(&mut remainder_buf);
-  let block =
-    simd::Simd8x64::<u8>::load(arrayref::array_ref![&remainder_buf, 0, 64]);
+  let block = simd::Simd8x64::<u8>::load(&remainder_buf);
   let (strings, characters) = scanner.next(&block);
   block_reader.advance();
   let ops = characters.op() & !strings.in_string;
@@ -1697,6 +1708,23 @@ mod tests {
     assert_eq!(index.name, Some("pkg"));
     assert_eq!(index.deno_etag, None);
     assert_eq!(index.versions, vec!["1.0.0"]);
+  }
+
+  #[test]
+  fn packument_index_plucks_modified() {
+    let input = r#"{"name":"pkg","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"version":"1.0.0","modified":"nested"}},"modified":"2024-01-03T00:00:00.000Z"}"#;
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.modified, Some("2024-01-03T00:00:00.000Z"));
+  }
+
+  #[test]
+  fn packument_index_ignores_time_modified() {
+    // the full packument only has `time.modified`, which is not the
+    // top-level `modified` of the abbreviated install manifest
+    let input = r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"time":{"modified":"2024-01-03T00:00:00.000Z","1.0.0":"2024-01-02T00:00:00.000Z"}}"#;
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.modified, None);
+    assert_eq!(index.time.len(), 2);
   }
 
   #[test]

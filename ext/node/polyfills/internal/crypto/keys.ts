@@ -19,8 +19,10 @@ const {
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeStartsWith,
   SymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
   TypeError,
   TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   Uint8Array,
 } = primordials;
 
@@ -465,7 +467,16 @@ function parseKeyEncoding(
   }
 
   if (passphrase !== undefined) {
-    passphrase = getArrayBufferOrView(passphrase, "key.passphrase", encoding);
+    const view = getArrayBufferOrView(
+      passphrase,
+      "key.passphrase",
+      encoding,
+    );
+    passphrase = new Uint8Array(
+      TypedArrayPrototypeGetBuffer(view),
+      TypedArrayPrototypeGetByteOffset(view),
+      TypedArrayPrototypeGetByteLength(view),
+    );
   }
 
   return {
@@ -939,8 +950,7 @@ class PrivateKeyObject extends AsymmetricKeyObject {
         this[kHandle],
         type,
         cipher ?? null,
-        // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString has no primordial
-        passphrase != null ? passphrase.toString() : null,
+        passphrase ?? null,
       );
     } else {
       return Buffer.from(
@@ -948,8 +958,7 @@ class PrivateKeyObject extends AsymmetricKeyObject {
           this[kHandle],
           type,
           cipher ?? null,
-          // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString has no primordial
-          passphrase != null ? passphrase.toString() : null,
+          passphrase ?? null,
         ),
       );
     }

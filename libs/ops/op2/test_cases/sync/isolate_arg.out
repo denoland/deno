@@ -119,7 +119,7 @@ pub const fn op_with_isolate_ref() -> ::deno_core::_ops::OpDecl {
             };
             let result = {
                 let arg0 = unsafe {
-                    deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate)
+                    deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate())
                 };
                 let arg0 = &arg0;
                 Self::call(arg0)
@@ -259,7 +259,7 @@ pub const fn op_with_isolate_mut() -> ::deno_core::_ops::OpDecl {
             };
             let result = {
                 let mut arg0 = unsafe {
-                    deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate)
+                    deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate())
                 };
                 let arg0 = &mut arg0;
                 Self::call(arg0)

@@ -62,8 +62,7 @@ packaging:
   `npm_installer`, `npmrc`, `package_json`, `lockfile`, `config`, `cli_parser`,
   `cache_dir`.
 - **Other building blocks:** `crypto`, `dotenv`, `eszip`, `http_h1`,
-  `inspector_server`, `maybe_sync`, `napi_sys`, `node_shim`,
-  `typescript_go_client`.
+  `inspector_server`, `maybe_sync`, `napi_sys`, `node_shim`.
 
 ## Inside `tests/`
 

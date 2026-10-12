@@ -284,6 +284,22 @@ impl<'s> EvalContextError<'s> {
   }
 }
 
+/// Copy `source` out as UTF-16 code units to key the persistent code cache
+/// with.
+///
+/// The key has to change whenever the source does, so the callback is handed
+/// the exact code units rather than a lossy UTF-8 conversion — the latter maps
+/// sources that differ only in unpaired surrogates onto the same key, which is
+/// exactly the stale-cache class of bug this keying exists to prevent.
+fn code_cache_source_units<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  source: v8::Local<'s, v8::String>,
+) -> Vec<u16> {
+  let mut units = vec![0; source.length()];
+  source.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
+  units
+}
+
 #[op2(reentrant)]
 pub fn op_eval_context<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
@@ -321,7 +337,12 @@ pub fn op_eval_context<'s, 'i>(
     .borrow()
     .as_ref()
     .map(|cb| {
-      let code_cache = cb(&specifier, &source).unwrap();
+      let source_units = code_cache_source_units(tc_scope, source);
+      // A cache backend that can't answer must not fail the eval: degrade to
+      // an uncached compile and don't arm the write side either.
+      let Ok(code_cache) = cb(&specifier, &source_units) else {
+        return (None, None);
+      };
       if let Some(code_cache_data) = &code_cache.data {
         let mut source = v8::script_compiler::Source::new_with_cached_data(
           source,
@@ -453,7 +474,12 @@ pub fn op_compile_function<'s, 'i>(
     .borrow()
     .as_ref()
     .map(|cb| {
-      let code_cache = cb(&specifier, &source).unwrap();
+      let source_units = code_cache_source_units(tc_scope, source);
+      // A cache backend that can't answer must not fail the compile: degrade
+      // to an uncached compile and don't arm the write side either.
+      let Ok(code_cache) = cb(&specifier, &source_units) else {
+        return (None, None);
+      };
       if let Some(code_cache_data) = &code_cache.data {
         let mut source = v8::script_compiler::Source::new_with_cached_data(
           source,
@@ -1469,7 +1495,7 @@ pub fn op_op_names(scope: &mut v8::PinScope<'_, '_>) -> Vec<String> {
   state
     .op_ctxs
     .iter()
-    .map(|o| o.decl.name.to_string())
+    .map(|o| o.decl().name.to_string())
     .collect()
 }
 
@@ -1579,6 +1605,24 @@ pub fn op_get_extras_binding_object<'s, 'i>(
 ) -> v8::Local<'s, v8::Value> {
   let context = scope.get_current_context();
   context.get_extras_binding_object(scope).into()
+}
+
+/// Return the `SharedArrayBuffer` constructor.
+///
+/// V8 always initializes the constructor on the native context, but may hide
+/// it from `globalThis` (`--enable-sharedarraybuffer-per-context`). Callers
+/// should use the global when present. This op recovers the constructor from
+/// a zero-length instance created via the C++ API.
+#[op2]
+pub fn op_get_shared_array_buffer_constructor<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+) -> v8::Local<'s, v8::Value> {
+  let sab = v8::SharedArrayBuffer::new(scope, 0)
+    .expect("Failed to create SharedArrayBuffer");
+  let key = v8_static_strings::CONSTRUCTOR.v8_string(scope).unwrap();
+  sab
+    .get(scope, key.into())
+    .expect("Failed to get SharedArrayBuffer constructor")
 }
 
 /// Toggle whether refed immediates keep the event loop alive.

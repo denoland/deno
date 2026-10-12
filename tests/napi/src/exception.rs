@@ -119,6 +119,18 @@ extern "C" fn test_exception_from_call(
   msg_val
 }
 
+/// Throw, then return an invalid napi_value. Node ignores the return value
+/// while an exception is pending, so the call must throw, not crash.
+extern "C" fn test_throw_return_invalid(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  unsafe {
+    napi_throw_error(env, ptr::null(), c"thrown before return".as_ptr());
+  }
+  0xFFFFFFFFF as napi_value
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_exception_pending", test_exception_pending),
@@ -131,6 +143,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_exception_from_call",
       test_exception_from_call
+    ),
+    napi_new_property!(
+      env,
+      "test_throw_return_invalid",
+      test_throw_return_invalid
     ),
   ];
 

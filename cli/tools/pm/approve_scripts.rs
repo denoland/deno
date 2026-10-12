@@ -22,8 +22,8 @@ use jsonc_parser::json;
 
 use super::CacheTopLevelDepsOptions;
 use crate::args::ApproveScriptsFlags;
-use crate::args::DenoSubcommandExt;
 use crate::args::Flags;
+use crate::args::npm_system_info;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::pm::ConfigKind;
@@ -87,7 +87,7 @@ pub async fn approve_scripts(
     let npm_resolver = factory.npm_resolver().await?;
     let candidates = find_script_candidates(
       npm_resolver,
-      &flags.subcommand.npm_system_info(),
+      &npm_system_info(&flags.subcommand),
       &allow_list,
       &deny_reqs,
     )?;
