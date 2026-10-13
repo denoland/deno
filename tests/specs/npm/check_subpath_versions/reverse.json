@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "none",
+  "imports": {
+    "oldUntyped": "npm:@denotest/subpath-versions@1.0.0/untyped",
+    "shared/feature": "npm:@denotest/subpath-versions@1.0.0/feature",
+    "shared": "npm:@denotest/subpath-versions@2.0.0",
+    "oldRoot": "npm:@denotest/subpath-versions@1.0.0",
+    "newRoot": "npm:@denotest/subpath-versions@2.0.0"
+  }
+}

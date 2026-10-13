@@ -1157,14 +1157,14 @@ fn no_types_npm_shims(
     else {
       continue;
     };
-    if let Some(sub) = npm_ref.sub_path() {
+    if npm_ref.sub_path().is_some() {
       if matches!(npm_subpath_types.get(target_str), Some(None)) {
-        for spec in [
-          format!("npm:{}/{sub}", npm_ref.req().name),
-          target_str.to_string(),
-          alias.clone(),
-        ] {
-          shims.push(format!("declare module {spec:?};"));
+        shims.push(format!("declare module {alias:?};"));
+        // A target that is itself an import-map key is handled through that
+        // key's own resolution. Never synthesize a versionless ambient: it
+        // could hide declarations from a different version of this package.
+        if !imports.contains_key(target_str) {
+          shims.push(format!("declare module {target_str:?};"));
         }
       }
       continue;
@@ -1199,6 +1199,7 @@ fn generate_npm_paths(
   npm_subpath_types: &BTreeMap<String, Option<PathBuf>>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
+  let mut concrete_paths = BTreeMap::new();
 
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
     for (alias, target) in imports {
@@ -1237,19 +1238,25 @@ fn generate_npm_paths(
       let alias_needs_mapping = is_global_cache || alias != &pkg_name;
       match npm_ref.sub_path() {
         Some(sub) => {
-          // Mapping directly to JS bypasses TypeScript's sibling declaration
-          // probing. Use Deno's resolved declaration, including wildcard and
-          // conditional exports, without bypassing exports on failure.
-          let Some(Some(types_path)) = npm_subpath_types.get(target_str) else {
+          // Apply source-written keys after all fallback mappings. Otherwise a
+          // different version's synthetic versionless key or a root export
+          // enumeration could replace this import's resolved declaration.
+          let Some(types_path) = npm_subpath_types.get(target_str) else {
+            continue;
+          };
+          let Some(types_path) = types_path else {
+            concrete_paths.insert(alias.clone(), None);
             continue;
           };
           let rel = types_path.to_string_lossy().replace('\\', "/");
-          // Concrete graph imports take precedence over the root package's
-          // enumerated export mappings, which may still point at JS or globs.
-          paths.insert(format!("npm:{pkg_name}/{sub}"), json!([&rel]));
-          paths.insert(target_str.to_string(), json!([&rel]));
+          paths
+            .entry(format!("npm:{pkg_name}/{sub}"))
+            .or_insert_with(|| json!([&rel]));
+          paths
+            .entry(target_str.to_string())
+            .or_insert_with(|| json!([&rel]));
           if alias_needs_mapping {
-            paths.insert(alias.clone(), json!([&rel]));
+            concrete_paths.insert(alias.clone(), Some(json!([&rel])));
           }
         }
         None => {
@@ -1313,6 +1320,16 @@ fn generate_npm_paths(
     }
   }
 
+  for (key, value) in concrete_paths {
+    match value {
+      Some(value) => {
+        paths.insert(key, value);
+      }
+      None => {
+        paths.remove(&key);
+      }
+    }
+  }
   paths
 }
 

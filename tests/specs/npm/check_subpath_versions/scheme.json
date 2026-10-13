@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "none",
+  "imports": {
+    "npm:@denotest/subpath-versions/feature": "npm:@denotest/subpath-versions@1.0.0/feature"
+  }
+}
