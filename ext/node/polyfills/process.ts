@@ -184,6 +184,7 @@ const {
   SafeWeakSet,
   String,
   StringPrototypeStartsWith,
+  SymbolFor,
   SymbolToStringTag,
 } = primordials;
 
@@ -532,6 +533,25 @@ export function availableMemory(): number {
 
 export function constrainedMemory(): number {
   return op_node_process_constrained_memory();
+}
+
+const kRef = SymbolFor("nodejs.ref");
+const kUnref = SymbolFor("nodejs.unref");
+
+/** https://nodejs.org/api/process.html#processrefmayberefable */
+// deno-lint-ignore no-explicit-any
+export function ref(maybeRefable: any) {
+  if (maybeRefable == null) return;
+  const fn = maybeRefable[kRef] || maybeRefable.ref;
+  if (typeof fn === "function") FunctionPrototypeCall(fn, maybeRefable);
+}
+
+/** https://nodejs.org/api/process.html#processunrefmayberefable */
+// deno-lint-ignore no-explicit-any
+export function unref(maybeRefable: any) {
+  if (maybeRefable == null) return;
+  const fn = maybeRefable[kUnref] || maybeRefable.unref;
+  if (typeof fn === "function") FunctionPrototypeCall(fn, maybeRefable);
 }
 
 interface ResourceUsage {
@@ -1421,6 +1441,8 @@ process.kill = kill;
 process.memoryUsage = memoryUsage;
 process.availableMemory = availableMemory;
 process.constrainedMemory = constrainedMemory;
+process.ref = ref;
+process.unref = unref;
 
 /** https://nodejs.org/api/process.html#processresourceusage */
 process.resourceUsage = resourceUsage;
