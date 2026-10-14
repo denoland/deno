@@ -13,6 +13,14 @@ description = "Web Cryptography API implementation for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+# See ext/crypto/mldsa.rs module doc: aws-lc-rs's `unstable::signature`
+# (ML-DSA) is compiled out of that crate whenever ITS OWN `fips` feature is
+# on, so deno_crypto needs to know when it's being built in FIPS mode too,
+# to switch ML-DSA over to the stub implementation instead of trying (and
+# failing) to link the now-absent unstable API.
+fips = ["aws-lc-rs/fips"]
+
 [dependencies]
 aes.workspace = true
 aes-gcm.workspace = true
