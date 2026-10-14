@@ -21,7 +21,9 @@ const {
   symbols,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
-const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   validateNumber,
   validateOneOf,
@@ -319,7 +321,7 @@ Agent.prototype.createConnection = function createConnection(options, cb) {
 };
 
 // Get the key for a given set of request options
-Agent.prototype.getName = function getName(options = { __proto__: null }) {
+Agent.prototype.getName = function getName(options = kEmptyObject) {
   let name = options.host || "localhost";
 
   name += ":";
