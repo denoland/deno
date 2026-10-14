@@ -73,7 +73,7 @@ export class BrotliDecompress extends Transform {
   #context;
 
   // TODO(littledivy): use `options` argument
-  constructor(_options = { __proto__: null }) {
+  constructor(_options = undefined) {
     super({
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
@@ -104,7 +104,7 @@ export class BrotliDecompress extends Transform {
 export class BrotliCompress extends Transform {
   #context;
 
-  constructor(options = { __proto__: null }) {
+  constructor(options = undefined) {
     super({
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {

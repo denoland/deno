@@ -5,8 +5,9 @@
   },
   "steps": [
     {
-      // minimumDependencyAge forces the full packument to be fetched, which is
-      // where the `_npmUser.trustedPublisher` publishing-trust signal lives.
+      // the trust policy in the .npmrc forces the full packument to be
+      // fetched, which is where the `_npmUser.trustedPublisher`
+      // publishing-trust signal lives
       "args": "install npm:@denotest/trusted-publisher",
       "output": "[WILDCARD]"
     },
