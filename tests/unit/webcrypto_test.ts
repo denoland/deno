@@ -2171,6 +2171,57 @@ Deno.test(async function testECspkiRoundTrip() {
   await crypto.subtle.importKey("spki", spki, alg, true, []);
 });
 
+// https://github.com/denoland/deno/issues/37031
+Deno.test(async function testImportEcPublicKeyNotOnCurve() {
+  for (const namedCurve of ["P-256", "P-384", "P-521"]) {
+    for (const name of ["ECDH", "ECDSA"]) {
+      const alg = { name, namedCurve };
+      const usages: KeyUsage[] = name === "ECDH" ? [] : ["verify"];
+      const { publicKey } = await crypto.subtle.generateKey(
+        alg,
+        true,
+        name === "ECDH" ? ["deriveBits"] : ["sign", "verify"],
+      );
+
+      // Flipping the last byte of the y coordinate moves the point off the
+      // curve.
+      const raw = new Uint8Array(
+        await crypto.subtle.exportKey("raw", publicKey),
+      );
+      raw[raw.length - 1] ^= 1;
+      await assertRejects(
+        () => crypto.subtle.importKey("raw", raw, alg, true, usages),
+        DOMException,
+      );
+
+      const spki = new Uint8Array(
+        await crypto.subtle.exportKey("spki", publicKey),
+      );
+      spki[spki.length - 1] ^= 1;
+      await assertRejects(
+        () => crypto.subtle.importKey("spki", spki, alg, true, usages),
+        DOMException,
+      );
+
+      const jwk = await crypto.subtle.exportKey("jwk", publicKey);
+      const y = Uint8Array.from(
+        atob(jwk.y!.replace(/-/g, "+").replace(/_/g, "/")),
+        (c) => c.charCodeAt(0),
+      );
+      y[y.length - 1] ^= 1;
+      jwk.y = btoa(String.fromCharCode(...y))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+      await assertRejects(
+        () => crypto.subtle.importKey("jwk", jwk, alg, true, usages),
+        DOMException,
+        "invalid",
+      );
+    }
+  }
+});
+
 // https://github.com/denoland/deno/issues/34044
 Deno.test(async function p521CompressedSpkiExportsUncompressed() {
   // deno-fmt-ignore
