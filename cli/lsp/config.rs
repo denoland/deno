@@ -59,6 +59,7 @@ use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use lsp_types::Uri;
 use node_resolver::NodeResolverOptions;
+use sys_traits::SystemTimeNow;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
@@ -1773,6 +1774,35 @@ impl ConfigData {
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.member_or_root_pkg_json()
+  }
+
+  /// Workspace `minimumDependencyAge`, with the same `.npmrc` and default
+  /// fallbacks the CLI uses when the config does not set an age.
+  pub fn minimum_dependency_age_config(
+    &self,
+  ) -> deno_config::deno_json::MinimumDependencyAgeConfig {
+    let parsed = match self
+      .member_dir
+      .workspace
+      .minimum_dependency_age(&CliSys::default())
+    {
+      Ok(config) => config,
+      Err(err) => {
+        lsp_warn!(
+          "Failed to parse \"minimumDependencyAge\" for \"{}\": {err}",
+          self.scope
+        );
+        Default::default()
+      }
+    };
+    deno_resolver::factory::resolve_minimum_dependency_age_config(
+      parsed,
+      self
+        .npmrc
+        .as_ref()
+        .and_then(|npmrc| npmrc.min_release_age_days),
+      chrono::DateTime::<chrono::Utc>::from(CliSys::default().sys_time_now()),
+    )
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
