@@ -11641,6 +11641,141 @@ fn lsp_completions_npm() {
   client.shutdown();
 }
 
+/// Versions newer than `minimumDependencyAge` are omitted from jsr/npm import
+/// completions, `exclude` opts a package out, and editing deno.json refreshes
+/// the list. https://github.com/denoland/deno/issues/31009
+#[test(timeout = 300)]
+fn lsp_completions_minimum_dependency_age() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  // @denotest/add: 0.2.0 is 2025-01-20, 0.2.1 is 2025-05-20, 1.0.0 is 2025-06-01.
+  // @denotest/min-release-age-latest: 1.0.0 is year 2000, 2.0.0 is year 9999.
+  temp_dir.write(
+    "deno.json",
+    r#"{ "minimumDependencyAge": "2025-03-01T00:00:00.000Z" }"#,
+  );
+  let deno_json_uri =
+    url_to_uri(&temp_dir.url().join("deno.json").unwrap()).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let uri = "file:///a/file.ts";
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"jsr:@denotest/add@\";\nimport \"npm:@denotest/min-release-age-latest@\";\n",
+    }
+  }));
+
+  let jsr_labels =
+    version_completion_labels(&mut client, uri, (0, 26), "jsr:@denotest/add@");
+  assert_eq!(
+    jsr_labels,
+    vec!["jsr:@denotest/add@0.2.0".to_string()],
+    "jsr completions should only include versions older than the cutoff",
+  );
+  let npm_labels = version_completion_labels(
+    &mut client,
+    uri,
+    (1, 45),
+    "npm:@denotest/min-release-age-latest@",
+  );
+  assert_eq!(
+    npm_labels,
+    vec!["npm:@denotest/min-release-age-latest@1.0.0".to_string()],
+    "npm completions should only include versions older than the cutoff",
+  );
+
+  temp_dir.write(
+    "deno.json",
+    r#"{
+      "minimumDependencyAge": {
+        "age": "2025-03-01T00:00:00.000Z",
+        "exclude": ["jsr:@denotest/add", "npm:@denotest/min-release-age-latest"]
+      }
+    }"#,
+  );
+  reload_deno_json(&mut client, &deno_json_uri);
+  let jsr_labels =
+    version_completion_labels(&mut client, uri, (0, 26), "jsr:@denotest/add@");
+  assert!(
+    jsr_labels
+      .iter()
+      .any(|label| label == "jsr:@denotest/add@1.0.0"),
+    "excluded jsr package should still offer versions newer than the cutoff, got {jsr_labels:?}"
+  );
+  let npm_labels = version_completion_labels(
+    &mut client,
+    uri,
+    (1, 45),
+    "npm:@denotest/min-release-age-latest@",
+  );
+  assert!(
+    npm_labels
+      .iter()
+      .any(|label| label == "npm:@denotest/min-release-age-latest@2.0.0"),
+    "excluded npm package should still offer versions newer than the cutoff, got {npm_labels:?}"
+  );
+
+  temp_dir.write("deno.json", r#"{ "minimumDependencyAge": false }"#);
+  reload_deno_json(&mut client, &deno_json_uri);
+  let jsr_labels =
+    version_completion_labels(&mut client, uri, (0, 26), "jsr:@denotest/add@");
+  assert!(
+    jsr_labels
+      .iter()
+      .any(|label| label == "jsr:@denotest/add@1.0.0"),
+    "disabling minimumDependencyAge should offer the newer jsr version, got {jsr_labels:?}"
+  );
+  let npm_labels = version_completion_labels(
+    &mut client,
+    uri,
+    (1, 45),
+    "npm:@denotest/min-release-age-latest@",
+  );
+  assert!(
+    npm_labels
+      .iter()
+      .any(|label| label == "npm:@denotest/min-release-age-latest@2.0.0"),
+    "disabling minimumDependencyAge should offer the newer npm version, got {npm_labels:?}"
+  );
+
+  client.shutdown();
+}
+
+fn version_completion_labels(
+  client: &mut LspClient,
+  uri: &str,
+  position: (usize, usize),
+  prefix: &str,
+) -> Vec<String> {
+  let list = client.get_completion_list(
+    uri,
+    position,
+    json!({ "triggerKind": 2, "triggerCharacter": "@" }),
+  );
+  list
+    .items
+    .into_iter()
+    .map(|item| item.label)
+    .filter(|label| label.starts_with(prefix))
+    .collect()
+}
+
+fn reload_deno_json(client: &mut LspClient, deno_json_uri: &impl Serialize) {
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": deno_json_uri,
+      "type": 2,
+    }],
+  }));
+  client.handle_refresh_diagnostics_request();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/24927.
 // Auto-completion for the configuration file `imports` field should suggest
 // jsr:/npm:/node: specifiers just like in script imports do.
