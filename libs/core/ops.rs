@@ -116,8 +116,10 @@ pub struct OpCtx {
   /// The fast-call overload passed to `FunctionTemplate::build_fast`. Stored
   /// here (rather than synthesized on the stack) because V8 150.x keeps the raw
   /// `CFunction` pointers directly inside `FunctionTemplateInfo`, so the slice
-  /// must outlive every template built from this op. `OpCtx` lives until isolate
-  /// disposal, which satisfies that.
+  /// must outlive every template built from this op, including any concurrent
+  /// TurboFan job that inlines the fast call. The runtime keeps its `OpCtxs`
+  /// alive until after the isolate has been disposed (see
+  /// `JsRealmInner::destroy`), which satisfies that.
   ///
   /// The single element is also the op's `CFunctionInfo` source (see
   /// [`OpCtx::fast_fn_info`]).
