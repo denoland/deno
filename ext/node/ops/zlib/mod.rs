@@ -259,6 +259,28 @@ impl ZlibInner {
 
   fn reset_stream(&mut self) {
     self.err = self.strm.reset(self.mode);
+    if self.err == Z_OK {
+      self.set_dictionary();
+    }
+  }
+
+  fn set_dictionary(&mut self) {
+    let Some(dictionary) = self.dictionary.as_deref() else {
+      return;
+    };
+    if dictionary.is_empty() {
+      return;
+    }
+
+    self.err = match self.mode {
+      Mode::Deflate | Mode::DeflateRaw => {
+        self.strm.deflate_set_dictionary(dictionary)
+      }
+      // The other inflate modes set the dictionary when inflate() returns
+      // Z_NEED_DICT in `do_write`.
+      Mode::InflateRaw => self.strm.inflate_set_dictionary(dictionary),
+      _ => return,
+    };
   }
 
   fn get_error_info(&self) -> Option<(i32, String)> {
@@ -448,9 +470,12 @@ impl Zlib {
     zlib.flush = Flush::None;
     zlib.err = Z_OK;
 
-    zlib.init_stream()?;
-
     zlib.dictionary = dictionary.map(|buf| buf.to_vec());
+
+    zlib.init_stream()?;
+    if zlib.err == Z_OK {
+      zlib.set_dictionary();
+    }
 
     zlib.callback = Some(callback);
 
