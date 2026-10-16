@@ -146,8 +146,9 @@ fn utf16_offset(utf16_map: &Utf16Map, byte_offset: usize) -> usize {
 /// enough along the source to cross a line end, which files a branch under the
 /// line below the one it is on.
 fn byte_offset(utf16_map: &Utf16Map, utf16_offset: usize) -> Option<usize> {
+  let utf16_offset = u32::try_from(utf16_offset).ok()?;
   utf16_map
-    .utf16_to_utf8_offset(TextSize::from(utf16_offset as u32))
+    .utf16_to_utf8_offset(TextSize::from(utf16_offset))
     .map(|offset| u32::from(offset) as usize)
 }
 
@@ -1184,6 +1185,16 @@ mod tests {
 
     assert_eq!(
       coverage_range_byte_offsets(&range, source, &utf16_map),
+      None,
+    );
+
+    let oversized_range = cdp::CoverageRange {
+      start_char_offset: 0,
+      end_char_offset: usize::MAX,
+      count: 1,
+    };
+    assert_eq!(
+      coverage_range_byte_offsets(&oversized_range, source, &utf16_map),
       None,
     );
   }
