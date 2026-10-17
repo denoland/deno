@@ -3292,6 +3292,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // Remove children that point to consolidated-away versions.
     // Phase 1 BFS (run by the caller after this function) will
     // re-resolve them to the target versions.
+    //
+    // Track nodes that lose an ordinary dependency edge: the repair BFS
+    // below is only seeded with root packages and Phase 1 never descends
+    // into peer edges, so a node that is only reachable through peer
+    // edges (e.g. a retained peer-only subtree from a previous
+    // resolution) would otherwise never get its removed edge repaired,
+    // silently dropping a required dependency from the snapshot.
+    let mut nodes_with_removed_children: Vec<NodeId> = Vec::new();
     for (node_id, node) in &mut self.graph.nodes {
       node.no_peers = false; // reset
       let Some(id) = self.graph.resolved_node_ids.get(*node_id) else {
@@ -3318,6 +3326,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           && child_id.nv.version != *target_version
         {
           node.children.remove(&dep.bare_specifier);
+          if matches!(dep.kind, NpmDependencyEntryKind::Dep) {
+            nodes_with_removed_children.push(*node_id);
+          }
         }
       }
     }
@@ -3336,6 +3347,31 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         pkg_nv.clone(),
         self.initial_overrides.clone(),
       ));
+    }
+
+    // Also queue non-root nodes that lost an ordinary dependency child
+    // above. They may not be reachable from any root via ordinary
+    // dependencies (only through peer edges, which Phase 1 skips), so
+    // the root-seeded BFS would never repair their removed edges.
+    // Sort for deterministic traversal order.
+    nodes_with_removed_children.sort_by_key(|id| id.0);
+    nodes_with_removed_children.dedup();
+    for node_id in nodes_with_removed_children {
+      if self.graph.root_packages.values().any(|id| *id == node_id) {
+        continue; // already queued above
+      }
+      let nv = self
+        .graph
+        .resolved_node_ids
+        .get(node_id)
+        .map(|id| id.nv.clone());
+      if let Some(nv) = nv {
+        self.pending_unresolved_nodes.push_back(GraphPath::for_root(
+          node_id,
+          nv,
+          self.initial_overrides.clone(),
+        ));
+      }
     }
 
     Ok(())
@@ -8240,6 +8276,93 @@ mod test {
         .iter()
         .any(|p| p.pkg_id.starts_with("shared@1.0.0")),
       "shared@1.0.0 should be consolidated away"
+    );
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/37022
+  //
+  // Incremental resolution can retain a package that is only reachable
+  // through peer edges (a "peer-only" subtree). When the version dedup
+  // pass consolidates a dependency version, it removes child edges that
+  // point at consolidated-away versions from every node, but only root
+  // packages are queued for the post-dedup repair BFS. Phase 1 never
+  // descends into peer edges, so a retained peer-only node never gets
+  // its removed ordinary edge repaired and the snapshot silently drops
+  // a required dependency.
+  //
+  // Scenario:
+  //   Phase 1: top@1.0.0 (peer: mid@^1.0.0, dep: leaf@^1.0.0),
+  //            other@1.0.0 (dep: leaf@^1.0.0); override pins leaf to
+  //            1.0.0. mid@1.0.0 (dep: leaf@^1.0.0) is auto-installed as
+  //            an unmet peer fallback.
+  //   Phase 2: publish other@1.1.0, change the override to pin leaf to
+  //            1.1.0, reqs become top@1, other@1.1.0.
+  //
+  // Dedup consolidates leaf 1.0.0 -> 1.1.0 and removes mid@1.0.0's
+  // `leaf` child edge. mid@1.0.0 is retained (still the peer fallback
+  // for top) but is not a root and is unreachable from any root via
+  // ordinary deps, so the repair BFS never revisits it. It must still
+  // record `leaf` (now 1.1.0) as a dependency.
+  #[tokio::test]
+  async fn dedup_repairs_removed_edges_in_retained_peer_only_subtree() {
+    let api = TestNpmRegistryApi::default();
+
+    api.ensure_package_version("leaf", "1.0.0");
+    api.ensure_package_version("leaf", "1.1.0");
+
+    api.ensure_package_version("mid", "1.0.0");
+    api.add_dependency(("mid", "1.0.0"), ("leaf", "^1.0.0"));
+
+    api.ensure_package_version("top", "1.0.0");
+    api.add_peer_dependency(("top", "1.0.0"), ("mid", "^1.0.0"));
+    api.add_dependency(("top", "1.0.0"), ("leaf", "^1.0.0"));
+
+    api.ensure_package_version("other", "1.0.0");
+    api.add_dependency(("other", "1.0.0"), ("leaf", "^1.0.0"));
+
+    // Phase 1: everything resolves with leaf pinned to 1.0.0
+    let snapshot = run_resolver_with_options_and_get_snapshot(
+      &api,
+      RunResolverOptions {
+        reqs: Vec::from(["top@1", "other@1.0.0"]),
+        overrides: make_overrides(serde_json::json!({ "leaf": "1.0.0" })),
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+
+    // Phase 2: publish other@1.1.0 and pin leaf to 1.1.0
+    api.ensure_package_version("other", "1.1.0");
+    api.add_dependency(("other", "1.1.0"), ("leaf", "^1.0.0"));
+
+    let (packages, _package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        snapshot,
+        reqs: Vec::from(["top@1", "other@1.1.0"]),
+        overrides: make_overrides(serde_json::json!({ "leaf": "1.1.0" })),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    // the retained mid@1.0.0 package must still record its required
+    // leaf dependency (repaired to the consolidated 1.1.0)
+    let mid_pkg = packages
+      .iter()
+      .find(|p| p.pkg_id == "mid@1.0.0")
+      .expect("mid@1.0.0 should be retained in the snapshot");
+    assert_eq!(
+      mid_pkg.dependencies.get("leaf"),
+      Some(&"leaf@1.1.0".to_string()),
+      "retained peer-only mid@1.0.0 must keep its required leaf dependency after dedup"
+    );
+
+    // leaf@1.0.0 should be consolidated away
+    assert!(
+      !packages.iter().any(|p| p.pkg_id.starts_with("leaf@1.0.0")),
+      "leaf@1.0.0 should be consolidated away"
     );
   }
 
