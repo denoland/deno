@@ -191,7 +191,7 @@ async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
-aws-lc-rs = { version = "1.16.3" }
+aws-lc-rs = { version = "1.18.2" }
 aws-lc-sys = { version = "0.40.0", features = ["prebuilt-nasm"] }
 backhand = { version = "0.25.1", default-features = false, features = ["zstd"] }
 base32 = "=0.5.1"
