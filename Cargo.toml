@@ -299,7 +299,7 @@ rusqlite = { version = "0.40.0", features = ["unlock_notify", "bundled", "sessio
 rustls = { version = "=0.23.40", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
-rustls-webpki = "0.103"
+rustls-webpki = "0.103.16"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
 same-file = "1.0.6"
@@ -343,8 +343,8 @@ urlpattern = "=0.4.2"
 uuid = { version = "1.3.0", features = ["v4"] }
 walkdir = "=2.5.0"
 web-transport-proto = "0.2.7"
-webpki-root-certs = "0.26.5"
-webpki-roots = "0.26"
+webpki-root-certs = "1.0.10"
+webpki-roots = "1.0.10"
 which = { version = "8.0.0", default-features = false }
 yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = "0.6"
