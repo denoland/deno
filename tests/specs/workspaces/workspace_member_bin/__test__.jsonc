@@ -1,0 +1,66 @@
+// Tests that a local workspace member which declares a `bin` in its
+// package.json is linked into `node_modules/.bin` — both the workspace root's
+// and that of a sibling member which depends on it — and that `deno task` can
+// invoke it. Only external npm dependencies used to get `.bin` entries, so a
+// task like `"cli": "local-cli"` failed with "command not found".
+//
+// This covers the default isolated (`.deno`) linker; the hoisted linker is
+// covered by the sibling `workspace_member_bin_hoisted` spec. No network
+// access is required — the workspace contains only local members.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read check_bin.ts",
+      "output": "ok\n"
+    },
+    {
+      // "Hello from deno" (rather than "node") asserts the task runner resolves
+      // the member's JS bin to a `deno run` command instead of leaving it to a
+      // `PATH` lookup, which would execute the `#!/usr/bin/env node` shebang
+      // with whatever Node happens to be installed — or fail outright.
+      "args": "task --cwd apps/web cli",
+      "output": "member_task.out"
+    },
+    {
+      "args": "task root-cli",
+      "output": "root_task.out"
+    },
+    {
+      // A member whose bin is a POSIX shell script rather than JavaScript must
+      // still run: it resolves through `PATH` (the root `.bin` is prepended)
+      // and `deno_task_shell` honours the shebang. Handing it to
+      // `deno run --ext=js` instead would fail with a `SyntaxError`.
+      "if": "unix",
+      "args": "task root-sh",
+      "output": "root_sh_task.out"
+    },
+    {
+      // A member whose bin is JavaScript with NO shebang classifies as
+      // `Executable` rather than `JsFile`, so under the managed resolver it is
+      // left to `PATH` and the kernel refuses to exec it. This is *not* a
+      // regression — before #36313 such a member got no `.bin` entry at all —
+      // and `npm`/`node` behave the same way on unix. It differs from BYONM,
+      // which deliberately routes every `.bin` entry through `deno run`; see
+      // the NOTE in `resolve_custom_commands`. Locked in so the asymmetry
+      // can't change silently.
+      //
+      // Linux only, because *how* the exec fails is platform specific: on
+      // macOS the spawn falls back to running the file with `/bin/sh` (the
+      // `ENOEXEC` behaviour of `execvp`), so instead of "Exec format error"
+      // the JS source comes back as a pile of shell syntax errors. What is
+      // being asserted here — that the entry is not routed through `deno run`
+      // — is the same on either platform, so testing it on one is enough.
+      "if": "linux",
+      "args": "task root-noshebang",
+      "output": "root_noshebang_task.out",
+      "exitCode": 1
+    }
+  ]
+}

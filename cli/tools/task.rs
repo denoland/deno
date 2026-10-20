@@ -225,6 +225,10 @@ pub async fn execute_script(
     progress_bar,
     env_vars,
     cli_options,
+    workspace_bin_names:
+      deno_npm_installer::package_json::workspace_member_bin_names(
+        cli_options.workspace(),
+      ),
     maybe_lockfile,
     concurrency: no_of_concurrent_tasks.into(),
     task_cache: &task_cache,
@@ -404,6 +408,9 @@ struct TaskRunner<'a> {
   progress_bar: &'a ProgressBar,
   env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
+  /// `node_modules/.bin` names contributed by local workspace members, used to
+  /// scope the `.bin` merge in `resolve_custom_commands`.
+  workspace_bin_names: HashSet<String>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   concurrency: usize,
   task_cache: &'a crate::tools::task_cache::TaskCache,
@@ -744,6 +751,7 @@ impl<'a> TaskRunner<'a> {
       self.node_resolver,
       self.npm_resolver,
       &node_modules_bin_dirs,
+      &self.workspace_bin_names,
     )?;
 
     // Input-based cache: if the task declares `files`, hash inputs +
@@ -867,6 +875,7 @@ impl<'a> TaskRunner<'a> {
       self.node_resolver,
       self.npm_resolver,
       &node_modules_bin_dirs,
+      &self.workspace_bin_names,
     )?;
 
     // npm sets a number of `npm_*` env vars when running a package.json script.

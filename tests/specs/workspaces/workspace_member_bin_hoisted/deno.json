@@ -1,0 +1,13 @@
+{
+  // the hoisted linker requires the "manual" node_modules dir
+  "nodeModulesDir": "manual",
+  "nodeModulesLinker": "hoisted",
+  "workspace": [
+    "./packages/local-cli",
+    "./packages/shtool",
+    "./apps/web"
+  ],
+  "tasks": {
+    "root-cli": "local-cli"
+  }
+}

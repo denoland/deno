@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
+use deno_npm::registry::NpmPackageVersionBinEntry;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -62,6 +63,11 @@ pub struct InstallWorkspacePkg {
   /// is set up separately, so the per-member linking must skip it.
   pub is_root: bool,
   pub scripts: std::collections::HashMap<SmallStackString, String>,
+  /// The member's package.json `bin`, in the same shape npm uses. Workspace
+  /// members are not part of the npm resolution snapshot, so this is the only
+  /// place their executables are known and it's what the installers use to
+  /// create their `node_modules/.bin` entries (#36313).
+  pub bin: Option<NpmPackageVersionBinEntry>,
   pub deps: Vec<InstallWorkspacePkgDep>,
 }
 
@@ -151,6 +157,65 @@ fn package_json_to_lifecycle_nv(
     .and_then(|version| Version::parse_from_npm(version).ok())
     .unwrap_or_else(|| Version::parse_from_npm("0.0.0").unwrap());
   PackageNv { name, version }
+}
+
+/// Parses a package.json `bin` into the same representation the npm registry
+/// uses. `deno_package_json` only keeps the raw json value, so the two shapes
+/// npm supports are handled here: a single string (the executable is named
+/// after the package) and a map of name to script. Anything else is ignored
+/// rather than erroring, matching how npm tolerates a malformed `bin`.
+fn package_json_to_bin_entry(
+  pkg_json: &deno_package_json::PackageJson,
+) -> Option<NpmPackageVersionBinEntry> {
+  match pkg_json.bin.as_ref()? {
+    serde_json::Value::String(script) => {
+      Some(NpmPackageVersionBinEntry::String(script.clone()))
+    }
+    serde_json::Value::Object(obj) => {
+      let map = obj
+        .iter()
+        .filter_map(|(name, script)| {
+          Some((name.clone(), script.as_str()?.to_string()))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+      if map.is_empty() {
+        None
+      } else {
+        Some(NpmPackageVersionBinEntry::Map(map))
+      }
+    }
+    _ => None,
+  }
+}
+
+/// The normalized `node_modules/.bin` entry names contributed by the
+/// workspace's non-root members.
+///
+/// Members aren't part of the npm resolution snapshot, so `deno task` needs
+/// this to tell a member's bin apart from a dependency's when merging `.bin`
+/// entries into its custom commands (#36313).
+pub fn workspace_member_bin_names(
+  workspace: &Workspace,
+) -> std::collections::HashSet<String> {
+  let mut names = std::collections::HashSet::new();
+  for (folder_url, folder) in workspace.config_folders() {
+    if folder_url == workspace.root_dir_url() {
+      continue;
+    }
+    let Some(pkg_json) = &folder.pkg_json else {
+      continue;
+    };
+    let Some(bin) = package_json_to_bin_entry(pkg_json) else {
+      continue;
+    };
+    let nv = package_json_to_lifecycle_nv(pkg_json);
+    names.extend(
+      crate::bin_entries::bin_names(nv.name.as_str(), Some(&bin))
+        .into_iter()
+        .map(|name| name.to_string()),
+    );
+  }
+  names
 }
 
 impl NpmInstallDepsProvider {
@@ -424,6 +489,7 @@ impl NpmInstallDepsProvider {
                 .collect()
             })
             .unwrap_or_default(),
+          bin: package_json_to_bin_entry(pkg_json),
           deps: workspace_pkg_deps,
         });
 
@@ -507,5 +573,54 @@ impl NpmInstallDepsProvider {
     &self,
   ) -> &[WorkspaceMemberVersionNotSatisfiedError] {
     &self.workspace_member_version_errors
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  fn bin_entry(json: &str) -> Option<NpmPackageVersionBinEntry> {
+    let pkg_json = deno_package_json::PackageJson::load_from_string(
+      PathBuf::from("/workspace/member/package.json"),
+      json,
+    )
+    .unwrap();
+    package_json_to_bin_entry(&pkg_json)
+  }
+
+  #[test]
+  fn parses_string_bin() {
+    assert_eq!(
+      bin_entry(r#"{ "name": "local-cli", "bin": "./cli.js" }"#),
+      Some(NpmPackageVersionBinEntry::String("./cli.js".to_string()))
+    );
+  }
+
+  #[test]
+  fn parses_map_bin() {
+    assert_eq!(
+      bin_entry(
+        r#"{ "name": "local-cli", "bin": { "local-cli": "./cli.js" } }"#
+      ),
+      Some(NpmPackageVersionBinEntry::Map(
+        [("local-cli".to_string(), "./cli.js".to_string())]
+          .into_iter()
+          .collect()
+      ))
+    );
+  }
+
+  #[test]
+  fn ignores_missing_or_malformed_bin() {
+    assert_eq!(bin_entry(r#"{ "name": "local-cli" }"#), None);
+    // an empty map has nothing to link
+    assert_eq!(bin_entry(r#"{ "name": "local-cli", "bin": {} }"#), None);
+    // non-string values within the map are skipped, like npm tolerates
+    assert_eq!(
+      bin_entry(r#"{ "name": "local-cli", "bin": { "local-cli": 1 } }"#),
+      None
+    );
+    assert_eq!(bin_entry(r#"{ "name": "local-cli", "bin": [] }"#), None);
   }
 }

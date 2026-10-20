@@ -1,0 +1,37 @@
+// Closest-first precedence between `node_modules/.bin` directories when the
+// closest entry is NOT JavaScript.
+//
+// Two workspace members declare a `foo` bin: `a-sh` points at a `#!/bin/sh`
+// script and `z-js` at a JS file. `z-js` wins the root `.bin`, while
+// `apps/web` — which only depends on `a-sh` — gets the shell script in its own
+// `.bin`. A task run from `apps/web` must therefore run the shell script, the
+// same thing a plain `PATH` lookup with those bin dirs prepended would find.
+//
+// The managed task runner only merges `JsFile` entries as custom commands and
+// leaves executables to `PATH`; skipping the closer `a-sh` entry without
+// recording its *name* let the farther `z-js` entry become a custom command,
+// and custom commands beat `PATH` in `deno_task_shell` — inverting closest
+// first. https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  // The shell-script bin has no meaning on Windows.
+  "if": "unix",
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read check_bin.ts",
+      "output": "ok\n"
+    },
+    {
+      "args": "task --cwd apps/web foo",
+      "output": "member_task.out"
+    },
+    {
+      "args": "task root-foo",
+      "output": "root_task.out"
+    }
+  ]
+}

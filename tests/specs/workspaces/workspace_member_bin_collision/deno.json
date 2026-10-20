@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/thing",
+    "./packages/thing-alt"
+  ],
+  "tasks": {
+    "run-bin": "thing-bin"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/scoped-tool",
+    "./packages/plain-tool"
+  ],
+  "tasks": {
+    "scoped": "tool",
+    "plain": "plain-tool"
+  }
+}

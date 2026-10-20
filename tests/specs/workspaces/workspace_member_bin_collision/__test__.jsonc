@@ -1,0 +1,29 @@
+// A registry dependency (`@denotest/one-bin`) and a workspace member both
+// declare a `thing-bin` executable. The dependency wins the root
+// `node_modules/.bin` entry: workspace members' bins are added after every
+// snapshot package, and the synthetic packages built for them aren't in the
+// resolution snapshot so they sort last when the collision forces a depth
+// sort. Only a synthetic unit test covered this before.
+//
+// Two members declare it, which also exercises the three-way case: the
+// duplicate-bin warning must not claim one of them "will be linked" when the
+// dependency is what actually wins.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "run --allow-read check_bin.ts",
+      "output": "ok\n"
+    },
+    {
+      "args": "task run-bin",
+      "output": "task.out"
+    }
+  ]
+}

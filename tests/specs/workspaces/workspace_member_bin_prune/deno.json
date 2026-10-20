@@ -1,0 +1,7 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/tool",
+    "./packages/other"
+  ]
+}
