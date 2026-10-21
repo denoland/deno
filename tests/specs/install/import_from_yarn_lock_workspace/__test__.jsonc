@@ -5,7 +5,9 @@
       // No deno.lock, package-lock.json, or pnpm-lock.yaml. `deno install`
       // should seed deno.lock from yarn.lock, including the workspace member's
       // deps (yarn classic flattens every workspace dependency into the single
-      // root lockfile, so both packages are captured).
+      // root lockfile, so all packages are captured). The member's `*`
+      // dependency keeps its locked 1.0.0 although 2.0.0 is newer, which shows
+      // it was seeded from yarn.lock rather than resolved afresh.
       "args": "install",
       "output": "install.out"
     },

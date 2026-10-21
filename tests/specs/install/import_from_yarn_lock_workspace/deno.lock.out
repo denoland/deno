@@ -2,12 +2,17 @@
   "version": "5",
   "specifiers": {
     "npm:@denotest/add@1.0.0": "1.0.0",
+    "npm:@denotest/different-nested-dep-child@*": "1.0.0",
     "npm:@denotest/esm-basic@1.0.0": "1.0.0"
   },
   "npm": {
     "@denotest/add@1.0.0": {
       "integrity": "[WILDCARD]",
       "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+    },
+    "@denotest/different-nested-dep-child@1.0.0": {
+      "integrity": "[WILDCARD]",
+      "tarball": "http://localhost:4260/@denotest/different-nested-dep-child/1.0.0.tgz"
     },
     "@denotest/esm-basic@1.0.0": {
       "integrity": "[WILDCARD]",
@@ -24,6 +29,7 @@
       "packages/app": {
         "packageJson": {
           "dependencies": [
+            "npm:@denotest/different-nested-dep-child@*",
             "npm:@denotest/esm-basic@1.0.0"
           ]
         }
