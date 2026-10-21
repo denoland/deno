@@ -1,0 +1,10 @@
+{
+  // `deno lint` waits for the plugin host to shut down before exiting. Work a
+  // plugin leaves pending must not keep it from exiting.
+  "steps": [
+    {
+      "args": "lint a.ts",
+      "output": "lint.out"
+    }
+  ]
+}
