@@ -1,5 +1,4 @@
 {
-  "tempDir": true,
   "args": "check",
   "output": "main.out"
 }
