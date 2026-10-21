@@ -103,6 +103,53 @@ v8_static_strings! {
 pub struct PluginHostProxy {
   tx: mpsc::Sender<PluginHostRequest>,
   pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
+  // Must be declared after `tx`: fields are dropped in declaration order, and
+  // the plugin host's run loop only ends once `tx` has been dropped.
+  _thread: PluginHostThread,
+}
+
+/// How long dropping a [`PluginHostProxy`] waits for the plugin host to tear
+/// down its worker. Teardown normally takes milliseconds; the bound only
+/// guarantees that `deno lint` can never hang on it.
+const PLUGIN_HOST_TEARDOWN_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_secs(10);
+
+/// The thread running the [`PluginHost`].
+///
+/// On drop, waits until the plugin host has torn down its worker, and with it
+/// the V8 isolate. Without this the thread was detached, so the process could
+/// exit while V8 was still disposing of the isolate on that thread.
+#[derive(Debug)]
+struct PluginHostThread {
+  join_handle: Option<std::thread::JoinHandle<Result<(), AnyError>>>,
+  /// Disconnected once the plugin host future, and the worker it owns, have
+  /// been dropped. (In a `Mutex` only because `PluginHostProxy` is `Sync`.)
+  worker_dropped_rx: Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl Drop for PluginHostThread {
+  fn drop(&mut self) {
+    match self
+      .worker_dropped_rx
+      .get_mut()
+      .recv_timeout(PLUGIN_HOST_TEARDOWN_TIMEOUT)
+    {
+      Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+      Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+        log::debug!("Timed out waiting for the lint PluginHost to shut down");
+        return;
+      }
+    }
+    // The worker is gone; what remains is shutting down the thread's tokio
+    // runtime, which waits for any blocking task a plugin left running. Join
+    // only if that has already finished so a stuck task can't hang us.
+    if let Some(join_handle) = self.join_handle.take()
+      && join_handle.is_finished()
+      && let Ok(Err(err)) = join_handle.join()
+    {
+      log::debug!("Lint PluginHost thread failed: {err:#}");
+    }
+  }
 }
 
 impl PluginHostProxy {
@@ -229,13 +276,18 @@ impl PluginHost {
   fn create(logger: PluginLogger) -> Result<PluginHostProxy, AnyError> {
     let (tx_req, rx_req) = mpsc::channel(10);
 
+    let (worker_dropped_tx, worker_dropped_rx) = std::sync::mpsc::channel();
+
     let logger_ = logger.clone();
-    let _join_handle: std::thread::JoinHandle<Result<(), AnyError>> =
+    let join_handle: std::thread::JoinHandle<Result<(), AnyError>> =
       std::thread::spawn(move || {
         let logger = logger_;
         log::debug!("Lint PluginHost thread spawned");
         let start = std::time::Instant::now();
         let fut = async move {
+          // Declared first so that it is dropped last, after the runner (and
+          // its worker) on every path out of this future.
+          let _worker_dropped_tx = worker_dropped_tx;
           let runner =
             create_plugin_runner_inner(logger.clone(), rx_req).await?;
           log::debug!("Lint PlugibnHost running loop");
@@ -253,6 +305,10 @@ impl PluginHost {
     let proxy = PluginHostProxy {
       tx: tx_req,
       plugin_info: Arc::new(Mutex::new(vec![])),
+      _thread: PluginHostThread {
+        join_handle: Some(join_handle),
+        worker_dropped_rx: Mutex::new(worker_dropped_rx),
+      },
     };
 
     Ok(proxy)
