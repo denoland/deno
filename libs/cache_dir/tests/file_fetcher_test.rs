@@ -466,3 +466,94 @@ async fn test_fetch_not_found_is_negatively_cached() {
   }
   assert_eq!(request_count.load(Ordering::SeqCst), 3);
 }
+
+#[tokio::test]
+async fn test_authenticated_fetch_bypasses_cached_not_found() {
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  use deno_cache_dir::file_fetcher::AuthTokens;
+  use http::header::AUTHORIZATION;
+
+  #[derive(Debug, Clone, Default)]
+  struct TestHttpClient {
+    #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
+    request_count: deno_maybe_sync::MaybeArc<AtomicUsize>,
+  }
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      _url: &Url,
+      headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.request_count.fetch_add(1, Ordering::SeqCst);
+      if headers
+        .get(AUTHORIZATION)
+        .is_some_and(|value| value == "Bearer secret")
+      {
+        let mut header_map = HeaderMap::new();
+        header_map
+          .insert("content-type", "application/typescript".parse().unwrap());
+        Ok(SendResponse::Success(
+          header_map,
+          b"export default 1;\n".to_vec(),
+        ))
+      } else {
+        Err(SendError::NotFound)
+      }
+    }
+  }
+
+  let sys = InMemorySys::default();
+  let http_cache = new_rc(MemoryHttpCache::new(sys.clone()));
+  let client = TestHttpClient::default();
+  let request_count = client.request_count.clone();
+  let url = Url::parse("https://localhost/private.ts").unwrap();
+
+  let unauthenticated_fetcher = FileFetcher::new(
+    NullBlobStore,
+    sys.clone(),
+    http_cache.clone(),
+    client.clone(),
+    new_rc(NullMemoryFiles),
+    FileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::Use,
+      auth_tokens: AuthTokens::new(None),
+    },
+  );
+  assert!(
+    unauthenticated_fetcher
+      .fetch_no_follow(&url, FetchNoFollowOptions::default())
+      .await
+      .is_err()
+  );
+  assert_eq!(request_count.load(Ordering::SeqCst), 1);
+
+  let authenticated_fetcher = FileFetcher::new(
+    NullBlobStore,
+    sys,
+    http_cache,
+    client,
+    new_rc(NullMemoryFiles),
+    FileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::Use,
+      auth_tokens: AuthTokens::new(Some("secret@localhost".to_string())),
+    },
+  );
+  let file = authenticated_fetcher
+    .fetch_no_follow(&url, FetchNoFollowOptions::default())
+    .await
+    .unwrap();
+
+  match file {
+    FileOrRedirect::File(file) => {
+      assert_eq!(&*file.source, b"export default 1;\n");
+    }
+    FileOrRedirect::Redirect(_) => unreachable!(),
+  }
+  assert_eq!(request_count.load(Ordering::SeqCst), 2);
+}
