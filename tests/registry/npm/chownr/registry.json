@@ -53,6 +53,92 @@
       },
       "directories": {},
       "_hasShrinkwrap": false
+    },
+    "3.0.0": {
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "name": "chownr",
+      "description": "like `chown -R`",
+      "version": "3.0.0",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/isaacs/chownr.git"
+      },
+      "devDependencies": {
+        "@types/node": "^20.12.5",
+        "mkdirp": "^3.0.1",
+        "prettier": "^3.2.5",
+        "rimraf": "^5.0.5",
+        "tap": "^18.7.2",
+        "tshy": "^1.13.1",
+        "typedoc": "^0.25.12"
+      },
+      "scripts": {
+        "prepare": "tshy",
+        "pretest": "npm run prepare",
+        "test": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "format": "prettier --write . --loglevel warn",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts"
+      },
+      "license": "BlueOak-1.0.0",
+      "engines": {
+        "node": ">=18"
+      },
+      "tshy": {
+        "exports": {
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "exports": {
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "main": "./dist/commonjs/index.js",
+      "types": "./dist/commonjs/index.d.ts",
+      "type": "module",
+      "prettier": {
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "_id": "chownr@3.0.0",
+      "gitHead": "8b9800ac5fe4da0b58bffc9c66dd618f0721472d",
+      "bugs": {
+        "url": "https://github.com/isaacs/chownr/issues"
+      },
+      "_nodeVersion": "20.11.0",
+      "_npmVersion": "10.5.0",
+      "dist": {
+        "integrity": "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==",
+        "shasum": "9855e64ecd240a9cc4267ce8a4aa5d24a1da15e4",
+        "tarball": "http://localhost:4260/chownr/chownr-3.0.0.tgz",
+        "fileCount": 13,
+        "unpackedSize": 22048
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
     }
   },
   "author": {

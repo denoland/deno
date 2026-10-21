@@ -68,6 +68,77 @@
       },
       "directories": {},
       "_hasShrinkwrap": false
+    },
+    "12.1.0": {
+      "name": "node-gyp",
+      "version": "12.1.0",
+      "author": {
+        "url": "http://tootallnate.net",
+        "name": "Nathan Rajlich",
+        "email": "nathan@tootallnate.net"
+      },
+      "license": "MIT",
+      "_id": "node-gyp@12.1.0",
+      "bugs": {
+        "url": "https://github.com/nodejs/node-gyp/issues"
+      },
+      "bin": {
+        "node-gyp": "bin/node-gyp.js"
+      },
+      "dist": {
+        "shasum": "302fc2d3fec36975cfb8bfee7a6bf6b7f0be9553",
+        "tarball": "http://localhost:4260/node-gyp/node-gyp-12.1.0.tgz",
+        "fileCount": 108,
+        "integrity": "sha512-W+RYA8jBnhSr2vrTtlPYPc1K+CSjGpVDRZxcqJcERZ8ND3A1ThWPHRwctTx3qC3oW99jt726jhdz3Y6ky87J4g==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/node-gyp@12.1.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 1870444
+      },
+      "main": "./lib/node-gyp.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "98307b03a1381cf6697d80081b6cd05a47e412bc",
+      "scripts": {
+        "lint": "eslint \"*/*.js\" \"test/**/*.js\" \".github/**/*.js\"",
+        "test": "cross-env NODE_GYP_NULL_LOGGER=true mocha --timeout 30000 test/test-download.js test/test-*"
+      },
+      "repository": {
+        "url": "git://github.com/nodejs/node-gyp.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.6.2",
+      "description": "Node.js native addon build tool",
+      "directories": {},
+      "_nodeVersion": "24.11.0",
+      "dependencies": {
+        "tar": "^7.5.2",
+        "nopt": "^9.0.0",
+        "which": "^6.0.0",
+        "semver": "^7.3.5",
+        "proc-log": "^6.0.0",
+        "env-paths": "^2.2.0",
+        "tinyglobby": "^0.2.12",
+        "graceful-fs": "^4.2.6",
+        "make-fetch-happen": "^15.0.0",
+        "exponential-backoff": "^3.1.1"
+      },
+      "preferGlobal": true,
+      "_hasShrinkwrap": false,
+      "installVersion": 11,
+      "devDependencies": {
+        "nan": "^2.23.1",
+        "mocha": "^11.7.5",
+        "eslint": "^9.39.1",
+        "bindings": "^1.5.0",
+        "cross-env": "^10.1.0",
+        "neostandard": "^0.12.2",
+        "require-inject": "^1.4.4"
+      }
     }
   },
   "author": {

@@ -90,6 +90,92 @@
         "@npmcli/template-oss": "4.21.4",
         "@npmcli/eslint-config": "^4.0.0"
       }
+    },
+    "15.0.6": {
+      "name": "make-fetch-happen",
+      "version": "15.0.6",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "make-fetch-happen@15.0.6",
+      "bugs": {
+        "url": "https://github.com/npm/make-fetch-happen/issues"
+      },
+      "tap": {
+        "color": 1,
+        "files": "test/*.js",
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "timeout": 60,
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "079dee708c88a04a1f79735bb02789a63597840e",
+        "tarball": "http://localhost:4260/make-fetch-happen/make-fetch-happen-15.0.6.tgz",
+        "fileCount": 13,
+        "integrity": "sha512-Je0fLJ0F5atA7F+eIlLzk+Wkcl57JDf4kf+EW8xiP5E31xOQxkIxTbgf1Oi1Lw9tRI9UEMRdI5Vz2xTzoNU1Jw==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/make-fetch-happen@15.0.6",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 53167
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^20.17.0 || >=22.9.0"
+      },
+      "gitHead": "a5a170ca2ee94d542f9ebfecd1094ed8cb667fb0",
+      "scripts": {
+        "lint": "npm run eslint",
+        "snap": "tap",
+        "test": "tap",
+        "eslint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "lintfix": "npm run eslint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/make-fetch-happen.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.15.0",
+      "description": "Opinionated, caching, retrying fetch client",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.25.0",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "22.22.3",
+      "dependencies": {
+        "ssri": "^13.0.0",
+        "cacache": "^20.0.1",
+        "minipass": "^7.0.2",
+        "proc-log": "^6.0.0",
+        "negotiator": "^1.0.0",
+        "@npmcli/agent": "^4.0.0",
+        "@npmcli/redact": "^4.0.0",
+        "minipass-fetch": "^5.0.0",
+        "minipass-flush": "^1.0.5",
+        "minipass-pipeline": "^1.2.4",
+        "@gar/promise-retry": "^1.0.0",
+        "http-cache-semantics": "^4.1.1"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.0",
+        "nock": "^13.2.4",
+        "safe-buffer": "^5.2.1",
+        "standard-version": "^9.3.2",
+        "@npmcli/template-oss": "4.25.0",
+        "@npmcli/eslint-config": "^5.0.0"
+      }
     }
   },
   "author": {

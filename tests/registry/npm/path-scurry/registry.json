@@ -109,6 +109,95 @@
         "@nodelib/fs.walk": "^1.2.8",
         "eslint-config-prettier": "^8.6.0"
       }
+    },
+    "2.0.2": {
+      "name": "path-scurry",
+      "version": "2.0.2",
+      "description": "walk paths fast and efficiently",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "https://blog.izs.me"
+      },
+      "main": "./dist/commonjs/index.js",
+      "type": "module",
+      "exports": {
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "license": "BlueOak-1.0.0",
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "prepare": "tshy",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "tap",
+        "snap": "tap",
+        "format": "prettier --write . --log-level warn",
+        "typedoc": "typedoc --tsconfig tsconfig-esm.json ./src/*.ts",
+        "bench": "bash ./scripts/bench.sh"
+      },
+      "devDependencies": {
+        "@nodelib/fs.walk": "^3.0.1",
+        "@types/node": "^25.3.0",
+        "mkdirp": "^3.0.0",
+        "prettier": "^3.3.2",
+        "rimraf": "^6.1.3",
+        "tap": "^21.6.1",
+        "ts-node": "^10.9.2",
+        "tshy": "^3.3.2",
+        "typedoc": "^0.28.17"
+      },
+      "engines": {
+        "node": "18 || 20 || >=22"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/path-scurry.git"
+      },
+      "dependencies": {
+        "lru-cache": "^11.0.0",
+        "minipass": "^7.1.2"
+      },
+      "tshy": {
+        "selfLink": false,
+        "exports": {
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "types": "./dist/commonjs/index.d.ts",
+      "module": "./dist/esm/index.js",
+      "gitHead": "1372560386e080834cfb0943e1aaaf5b2ec9b70b",
+      "_id": "path-scurry@2.0.2",
+      "bugs": {
+        "url": "https://github.com/isaacs/path-scurry/issues"
+      },
+      "_nodeVersion": "25.6.1",
+      "_npmVersion": "11.10.0",
+      "dist": {
+        "integrity": "sha512-3O/iVVsJAPsOnpwWIeD+d6z/7PmqApyQePUtCndjatj/9I5LylHvt5qluFaBT3I5h3r1ejfR056c+FCv+NnNXg==",
+        "shasum": "6be0d0ee02a10d9e0de7a98bae65e182c9061f85",
+        "tarball": "http://localhost:4260/path-scurry/path-scurry-2.0.2.tgz",
+        "fileCount": 13,
+        "unpackedSize": 535680
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
     }
   },
   "bugs": {
