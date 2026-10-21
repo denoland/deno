@@ -199,7 +199,7 @@ test("Date is mocked and tracks tick", () => {
   assert.strictEqual(new Date().getTime(), 5000);
   assert.strictEqual(Date.isMock, true);
   assert.strictEqual(Date.toString(), "function Date() { [native code] }");
-  assert.match(Date(), /1970/);
+  assert.strictEqual(Date(), new Date(5000).toString());
   // explicit timestamp still works
   assert.strictEqual(new Date(0).getTime(), 0);
   mock.timers.reset();
