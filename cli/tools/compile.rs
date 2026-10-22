@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::io::Write as _;
@@ -18,6 +19,7 @@ use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -37,6 +39,7 @@ use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
 use crate::util::file_watcher;
 use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
@@ -751,11 +754,9 @@ pub async fn compile_binary(
       include_paths: &roots.include_paths,
       exclude_paths: effective_exclude
         .iter()
-        .map(|p| cli_options.initial_cwd().join(p))
-        .chain(std::iter::once(
-          cli_options.initial_cwd().join(&output_path),
-        ))
-        .chain(std::iter::once(cli_options.initial_cwd().join(&temp_path)))
+        .flat_map(|p| exclude_path_forms(cli_options.initial_cwd(), p))
+        .chain(exclude_path_forms(cli_options.initial_cwd(), &output_path))
+        .chain(exclude_path_forms(cli_options.initial_cwd(), &temp_path))
         .collect(),
       compile_flags: &compile_flags,
     })
@@ -1158,6 +1159,45 @@ fn compile_watch_paths(
   paths
 }
 
+/// Resolve an `--exclude` / config exclude entry to the forms it must match.
+///
+/// Exclusion is an equality check against the paths two different consumers
+/// visit, and they do not agree on a single spelling:
+///
+/// - the VFS builder compares against **canonicalized** paths, so an entry
+///   that reaches its target through a symlink (a workspace member linked
+///   into `node_modules`) has to be matched by its real path;
+/// - the include walker ([`get_module_roots_and_include_paths`]) walks paths
+///   produced by `resolve_url_or_path` and `read_dir`, which collapse `..`
+///   but do *not* resolve symlinks, so it has to be matched by the
+///   **normalized** path instead.
+///
+/// The plain `cwd.join(entry)` this used to produce matches neither once the
+/// entry contains `..` (the join keeps the literal components), which is how
+/// a `--exclude ../folder` ran from a subdirectory silently embedded the tree
+/// the user excluded. Keep all three forms; duplicates are fine, since both
+/// consumers dedupe into a `HashSet`.
+///
+/// Note the canonical form widens what an entry excludes: `--exclude
+/// node_modules/foo`, where `foo` symlinks to `packages/foo`, also excludes
+/// `packages/foo` when it is reached by its real path. That is what makes
+/// excluding a workspace-symlinked `node_modules` work at all, but it does
+/// mean an entry can prune a tree the user did not name literally.
+fn exclude_path_forms(
+  initial_cwd: &Path,
+  path: impl AsRef<Path>,
+) -> impl Iterator<Item = PathBuf> {
+  let joined = initial_cwd.join(path.as_ref());
+  let canonical = canonicalize_path_maybe_not_exists(&joined)
+    .ok()
+    .filter(|canonical| canonical != &joined);
+  let normalized = match normalize_path(Cow::Borrowed(&joined)) {
+    Cow::Borrowed(_) => None, // already normalized, same as `joined`
+    Cow::Owned(normalized) => Some(normalized),
+  };
+  std::iter::once(joined).chain(canonical).chain(normalized)
+}
+
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
@@ -1238,7 +1278,7 @@ fn get_module_roots_and_include_paths(
   let mut include_paths = Vec::new();
   let exclude_set = exclude
     .iter()
-    .map(|path| initial_cwd.join(path))
+    .flat_map(|path| exclude_path_forms(initial_cwd, path))
     .collect::<HashSet<_>>();
   module_roots.push(entrypoint.clone());
   for side_module in include {
