@@ -94,6 +94,136 @@ Deno.test("[node/dns] resolve of a malformed hostname reports EBADNAME", async (
   assertEquals(err.hostname, "example..com");
 });
 
+// A root-name DNS question can have no answer or an NXDOMAIN response. Keep
+// both outcomes distinct and cover a nonempty NXDOMAIN control.
+for (
+  const [api, recordType, response, code, hostname] of [
+    ["callback", "A", "nodata", "ENODATA", ""],
+    ["callback", "A", "nxdomain", "ENOTFOUND", ""],
+    ["promise", "A", "nodata", "ENODATA", ""],
+    ["promise", "A", "nxdomain", "ENOTFOUND", ""],
+    ["promise", "MX", "nodata", "ENODATA", ""],
+    ["promise", "MX", "nxdomain", "ENOTFOUND", ""],
+    ["callback", "A", "nxdomain", "ENOTFOUND", "probe.example.com"],
+  ] as const
+) {
+  Deno.test(
+    `[node/dns] custom ${api} resolver preserves ${response} for ${
+      hostname || "empty"
+    } ${recordType} query`,
+    async () => {
+      const server = Deno.listenDatagram({
+        transport: "udp",
+        hostname: "127.0.0.1",
+        port: 0,
+      });
+      const resolver = api === "callback"
+        ? new dns.Resolver()
+        : new dnsPromises.Resolver();
+      resolver.setServers([
+        `127.0.0.1:${(server.addr as Deno.NetAddr).port}`,
+      ]);
+
+      const responseSent = (async () => {
+        const [request, remoteAddress] = await server.receive();
+        const reply = request.slice();
+        reply[2] = 0x81;
+        reply[3] = response === "nodata" ? 0x80 : 0x83;
+        reply.fill(0, 6, 12);
+        await server.send(reply, remoteAddress);
+        return request;
+      })().then(
+        (request) => ({ ok: true as const, request }),
+        (error) => ({ ok: false as const, error }),
+      );
+
+      let callbackCount = 0;
+      let callbackWasAsync = false;
+      let callReturned = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("DNS query timed out")),
+          3000,
+        );
+      });
+
+      try {
+        const query = api === "callback"
+          ? new Promise<unknown>((resolve) => {
+            (resolver as dns.Resolver).resolve(
+              hostname,
+              recordType,
+              (error) => {
+                callbackCount++;
+                callbackWasAsync = callReturned;
+                resolve(error);
+              },
+            );
+            callReturned = true;
+          })
+          : (resolver as dnsPromises.Resolver).resolve(hostname, recordType)
+            .then(
+              () => undefined,
+              (error) => error,
+            );
+        const error = await Promise.race([query, deadline]);
+        const responseResult = await Promise.race([responseSent, deadline]);
+        if (!responseResult.ok) throw responseResult.error;
+        const request = responseResult.request;
+        const expectedQname = hostname
+          ? new Uint8Array([
+            5,
+            ...new TextEncoder().encode("probe"),
+            7,
+            ...new TextEncoder().encode("example"),
+            3,
+            ...new TextEncoder().encode("com"),
+            0,
+          ])
+          : new Uint8Array([0]);
+        const questionEnd = 12 + expectedQname.length;
+        assert(
+          request.length >= questionEnd + 4,
+          "expected a complete DNS question",
+        );
+        assertEquals(request.slice(12, questionEnd), expectedQname);
+        assertEquals(
+          (request[questionEnd] << 8) | request[questionEnd + 1],
+          recordType === "A" ? 1 : 15,
+        );
+        assertEquals(
+          (request[questionEnd + 2] << 8) | request[questionEnd + 3],
+          1,
+        );
+
+        assert(error instanceof Error);
+        const dnsError = error as ErrnoException;
+        const syscall = recordType === "A" ? "queryA" : "queryMx";
+        assertEquals(dnsError.name, "Error");
+        assertEquals(
+          dnsError.message,
+          `${syscall} ${code}${hostname ? ` ${hostname}` : ""}`,
+        );
+        assertEquals(dnsError.code, code);
+        assertEquals(dnsError.syscall, syscall);
+        assertEquals(dnsError.errno, undefined);
+        assertEquals(dnsError.hostname, hostname || undefined);
+        if (api === "callback") {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          assertEquals(callbackCount, 1);
+          assert(callbackWasAsync, "DNS callback must be asynchronous");
+        }
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+        resolver.cancel();
+        server.close();
+        await responseSent;
+      }
+    },
+  );
+}
+
 Deno.test("lookupService promise", async () => {
   // Named import
   const result = await lookupServicePromise(address, port);
