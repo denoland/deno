@@ -1654,13 +1654,6 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
       ));
 
       if file_info.BasicInformation.FileAttributes
-        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
-        != 0
-      {
-        fsstat.is_symlink = true;
-      }
-
-      if file_info.BasicInformation.FileAttributes
         & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY
         != 0
       {
