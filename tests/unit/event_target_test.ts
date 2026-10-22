@@ -417,3 +417,30 @@ Deno.test(function eventTargetBrandChecking() {
     TypeError,
   );
 });
+
+// https://github.com/denoland/deno/issues/37023
+Deno.test(function eventTargetIgnoresSignalOnPollutedObjectPrototype() {
+  const controller = new AbortController();
+  Object.defineProperty(Object.prototype, "signal", {
+    value: controller.signal,
+    configurable: true,
+    writable: true,
+  });
+  try {
+    const target = new EventTarget();
+    let count = 0;
+    const listener = () => count++;
+    // No options object: no signal must be picked up from the prototype.
+    target.addEventListener("foo", listener);
+    // Internally, the options' signal gets an "abort" listener; that call
+    // must not pick up the inherited signal again and recurse.
+    target.addEventListener("bar", listener, { once: true });
+    controller.signal.addEventListener("abort", () => {});
+    target.dispatchEvent(new Event("foo"));
+    target.dispatchEvent(new Event("bar"));
+    assertEquals(count, 2);
+  } finally {
+    // deno-lint-ignore no-explicit-any
+    delete (Object.prototype as any).signal;
+  }
+});
