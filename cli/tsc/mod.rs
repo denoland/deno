@@ -55,7 +55,6 @@ pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
-pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
   concat_lib_texts(&[
