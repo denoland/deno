@@ -389,6 +389,12 @@ Deno.test("[util] parseEnv()", () => {
   });
 });
 
+Deno.test("[util] parseEnv() keeps a leading BOM like Node", () => {
+  // Unlike files read with --env-file or process.loadEnvFile(), parseEnv()
+  // takes a string and Node does not strip a BOM from it.
+  assertEquals(util.parseEnv("\uFEFFFOO=bar"), { "\uFEFFFOO": "bar" });
+});
+
 Deno.test("[util] getSystemErrorMap()", () => {
   const map = util.getSystemErrorMap();
   assert(map instanceof Map);

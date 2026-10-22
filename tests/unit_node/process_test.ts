@@ -2006,6 +2006,28 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "process.loadEnvFile() strips a leading UTF-8 BOM",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    Deno.writeTextFileSync(
+      envFilePath,
+      "\uFEFFLOAD_ENV_FILE_BOM_FIRST=first\nLOAD_ENV_FILE_BOM_SECOND=second\n",
+    );
+    try {
+      process.loadEnvFile(envFilePath);
+      assertEquals(process.env.LOAD_ENV_FILE_BOM_FIRST, "first");
+      assertEquals(process.env.LOAD_ENV_FILE_BOM_SECOND, "second");
+      assertEquals(process.env["\uFEFFLOAD_ENV_FILE_BOM_FIRST"], undefined);
+    } finally {
+      delete process.env.LOAD_ENV_FILE_BOM_FIRST;
+      delete process.env.LOAD_ENV_FILE_BOM_SECOND;
+      Deno.removeSync(dirPath, { recursive: true });
+    }
+  },
+});
+
 // Regression test: signal handlers receive the signal name as first argument
 Deno.test({
   name: "[node/process] signal handlers receive signal name",
