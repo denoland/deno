@@ -1372,20 +1372,20 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     )
   }
 
-  /// Like `resolve_node_from_info` but skips `package_name_versions`,
-  /// resolving directly from the registry.
-  fn resolve_node_from_registry(
+  /// Resolve an automatic peer fallback without reusing unrelated versions
+  /// from `package_name_versions`.
+  fn resolve_peer_node_from_registry(
     &mut self,
     pkg_req_name: &str,
-    version_req: &VersionReq,
+    version_reqs: &[&VersionReq],
     version_resolver: &NpmPackageVersionResolver,
     parent_id: Option<NodeId>,
   ) -> Result<(Rc<PackageNv>, NodeId), NpmResolutionError> {
-    let info = version_resolver
-      .resolve_best_package_version_info(version_req, std::iter::empty())?;
+    let info =
+      version_resolver.resolve_peer_package_version_info(version_reqs)?;
     self.create_node_from_version_info(
       pkg_req_name,
-      version_req,
+      version_reqs[0],
       version_resolver,
       parent_id,
       info,
@@ -1460,12 +1460,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // polluting the root scope. Phase 2 uses fallbacks only when a peer
     // isn't found in the normal scope chain.
     // Iterate because newly installed peers may themselves have peer deps.
+    let mut previous_peer_reqs = BTreeMap::new();
     for _ in 0..10 {
-      let prev_fallback_count = self.peer_fallbacks.len();
-      self.auto_install_missing_peers().await?;
+      let changed = self
+        .auto_install_missing_peers(&mut previous_peer_reqs)
+        .await?;
       // BFS to resolve regular deps of newly auto-installed packages
       self.drain_pending_parallel().await?;
-      if self.peer_fallbacks.len() == prev_fallback_count {
+      if !changed {
         break;
       }
     }
@@ -1492,46 +1494,81 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     Ok(())
   }
 
-  /// Scan all packages for peer deps that no existing package satisfies
-  /// and resolve them into the `peer_fallbacks` map.
-  async fn auto_install_missing_peers(
-    &mut self,
-  ) -> Result<(), NpmResolutionError> {
-    // Collect all declared peer deps across all packages
-    let mut needed: BTreeMap<StackString, VersionReq> = BTreeMap::new();
-    for (resolved_id, _) in
-      self.graph.resolved_node_ids.node_to_resolved_id.values()
-    {
+  fn reachable_nodes_with_peer_fallbacks(&self) -> FxHashSet<NodeId> {
+    // Only collect requirements reachable from the roots. A replaced fallback
+    // remains allocated in the graph, but must not keep constraining its peers.
+    let mut pending = self
+      .graph
+      .root_packages
+      .values()
+      .copied()
+      .collect::<Vec<_>>();
+    let mut reachable = FxHashSet::default();
+    while let Some(node_id) = pending.pop() {
+      if !reachable.insert(node_id) {
+        continue;
+      }
+      pending.extend(self.graph.nodes[&node_id].children.values().copied());
+      let resolved_id = self.graph.resolved_node_ids.get(node_id).unwrap();
       if let Some(deps) = self.dep_entry_cache.get(&resolved_id.nv) {
         for dep in deps.iter() {
-          if matches!(
-            dep.kind,
-            NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer
-          ) {
-            let effective_req = dep
-              .peer_dep_version_req
-              .as_ref()
-              .unwrap_or(&dep.version_req);
-            if !dep.kind.is_optional_peer() {
-              needed
-                .entry(StackString::from(dep.name.as_str()))
-                .or_insert_with(|| effective_req.clone());
-            }
+          if dep.kind == NpmDependencyEntryKind::Peer
+            && let Some(fallback) = self.peer_fallbacks.get(dep.name.as_str())
+          {
+            pending.push(*fallback);
           }
         }
       }
     }
 
-    for (name, req) in &needed {
-      // Skip if already satisfied by root_packages or fallbacks
+    reachable
+  }
+
+  /// Scan all packages for peer deps that no existing package satisfies
+  /// and resolve them into the `peer_fallbacks` map.
+  async fn auto_install_missing_peers(
+    &mut self,
+    previous_reqs: &mut BTreeMap<StackString, IndexSet<VersionReq>>,
+  ) -> Result<bool, NpmResolutionError> {
+    let reachable = self.reachable_nodes_with_peer_fallbacks();
+
+    // Preserve the existing first-requirement order for conflicting ranges.
+    let mut needed: BTreeMap<StackString, IndexSet<VersionReq>> =
+      BTreeMap::new();
+    for (node_id, (resolved_id, _)) in
+      &self.graph.resolved_node_ids.node_to_resolved_id
+    {
+      if !reachable.contains(node_id) {
+        continue;
+      }
+      if let Some(deps) = self.dep_entry_cache.get(&resolved_id.nv) {
+        for dep in deps.iter() {
+          if dep.kind == NpmDependencyEntryKind::Peer {
+            let effective_req = dep
+              .peer_dep_version_req
+              .as_ref()
+              .unwrap_or(&dep.version_req);
+            needed
+              .entry(StackString::from(dep.name.as_str()))
+              .or_default()
+              .insert(effective_req.clone());
+          }
+        }
+      }
+    }
+
+    let mut changed = false;
+    for (name, reqs) in &needed {
+      let req = reqs.first().unwrap();
+      // Explicit roots retain precedence. Retry an automatic fallback only
+      // when newly discovered packages change its required ranges.
       let already_in_root = self.graph.root_packages.iter().any(|(nv, _)| {
         nv.name.as_str() == name.as_str()
           && (req.tag().is_some() || req.matches(&nv.version))
       });
-      if already_in_root || self.peer_fallbacks.contains_key(name) {
+      if already_in_root || previous_reqs.get(name) == Some(reqs) {
         continue;
       }
-
       // Resolve from registry and add to fallback (not root_packages)
       let package_info = match package_info_or_link_fallback(
         self.api,
@@ -1545,14 +1582,20 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       };
       let version_resolver =
         self.version_resolver.get_for_package(&package_info);
-      match self.resolve_node_from_registry(
+      match self.resolve_peer_node_from_registry(
         name.as_str(),
-        req,
+        &reqs.iter().collect::<Vec<_>>(),
         &version_resolver,
         None,
       ) {
         Ok((child_nv, child_id)) => {
-          self.peer_fallbacks.insert(name.clone(), child_id);
+          previous_reqs.insert(name.clone(), reqs.clone());
+          if self.peer_fallbacks.insert(name.clone(), child_id)
+            == Some(child_id)
+          {
+            continue;
+          }
+          changed = true;
           // Queue BFS to resolve the fallback package's own deps
           let root_path = GraphPath::for_root(
             child_id,
@@ -1565,7 +1608,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
     }
 
-    Ok(())
+    Ok(changed)
   }
 
   // =========================================================================
@@ -3142,6 +3185,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // so the traversal above doesn't see them. Without this,
     // run_dedup_pass can't consolidate a version that only exists
     // as a peer fallback.
+    let reachable = self.reachable_nodes_with_peer_fallbacks();
     for (name, &fallback_node_id) in &self.peer_fallbacks {
       let Some(fallback_id) =
         self.graph.resolved_node_ids.get(fallback_node_id)
@@ -3151,9 +3195,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       let fallback_nv = fallback_id.nv.clone();
       // Collect peer dep version requirements from all packages
       // that declare a peer dep on this fallback package.
-      for (resolved_id, _) in
-        self.graph.resolved_node_ids.node_to_resolved_id.values()
+      for (node_id, (resolved_id, _)) in
+        &self.graph.resolved_node_ids.node_to_resolved_id
       {
+        if !reachable.contains(node_id) {
+          continue;
+        }
         let Some(deps) = self.dep_entry_cache.get(&resolved_id.nv) else {
           continue;
         };
@@ -3528,6 +3575,138 @@ mod test {
     assert_eq!(ids.get_node_id(&resolved_id), None); // stale entry should have been removed
     assert!(ids.get(node_id).is_some());
     assert_eq!(ids.get_node_id(&resolved_id_new), Some(node_id));
+  }
+
+  #[tokio::test]
+  async fn auto_peer_compatible_ranges() {
+    for ranges in [["*", "1"], ["1", "*"]] {
+      for skip_dedup in [false, true] {
+        let api = TestNpmRegistryApi::default();
+        for name in ["app", "consumer-a", "consumer-b"] {
+          api.ensure_package_version(name, "1.0.0");
+        }
+        for version in ["1.0.0", "2.0.0"] {
+          api.ensure_package_version("peer", version);
+        }
+        for (consumer, range) in
+          ["consumer-a", "consumer-b"].into_iter().zip(ranges)
+        {
+          api.add_dependency(("app", "1.0.0"), (consumer, "1"));
+          api.add_peer_dependency((consumer, "1.0.0"), ("peer", range));
+        }
+        let (packages, _) = run_resolver_with_options_and_get_output(
+          api,
+          RunResolverOptions {
+            reqs: vec!["app@1"],
+            skip_dedup,
+            ..Default::default()
+          },
+        )
+        .await;
+        for consumer in ["consumer-a", "consumer-b"] {
+          let package = packages
+            .iter()
+            .find(|package| {
+              package.pkg_id == format!("{consumer}@1.0.0_peer@1.0.0")
+            })
+            .unwrap();
+          assert_eq!(
+            package.dependencies.get("peer"),
+            Some(&"peer@1.0.0".to_string())
+          );
+        }
+        assert_eq!(packages.len(), 4);
+      }
+    }
+  }
+
+  #[tokio::test]
+  async fn auto_peer_rechecks_new_constraints() {
+    for skip_dedup in [false, true] {
+      let api = TestNpmRegistryApi::default();
+      for name in ["app", "addon", "old-helper", "new-helper"] {
+        api.ensure_package_version(name, "1.0.0");
+      }
+      for name in ["peer", "leaf"] {
+        for version in ["1.0.0", "2.0.0"] {
+          api.ensure_package_version(name, version);
+        }
+      }
+      api.add_peer_dependency(("app", "1.0.0"), ("peer", "*"));
+      api.add_peer_dependency(("app", "1.0.0"), ("addon", "1"));
+      api.add_peer_dependency(("addon", "1.0.0"), ("peer", "1"));
+      api.add_dependency(("peer", "2.0.0"), ("old-helper", "1"));
+      api.add_peer_dependency(("old-helper", "1.0.0"), ("leaf", "2"));
+      api.add_dependency(("peer", "1.0.0"), ("new-helper", "1"));
+      api.add_peer_dependency(("new-helper", "1.0.0"), ("leaf", "1"));
+
+      // addon narrows peer in the second round. The abandoned peer@2's
+      // old-helper must not keep constraining leaf in subsequent rounds.
+      let (packages, _) = run_resolver_with_options_and_get_output(
+        api,
+        RunResolverOptions {
+          reqs: vec!["app@1"],
+          skip_dedup,
+          ..Default::default()
+        },
+      )
+      .await;
+      assert_eq!(packages.len(), 5);
+      for (consumer, dependency) in
+        [("app", "peer"), ("addon", "peer"), ("new-helper", "leaf")]
+      {
+        let package = packages
+          .iter()
+          .find(|package| package.pkg_id.starts_with(&format!("{consumer}@")))
+          .unwrap();
+        assert!(
+          package.dependencies[dependency]
+            .starts_with(&format!("{dependency}@1.0.0"))
+        );
+      }
+      assert!(
+        !packages
+          .iter()
+          .any(|package| package.pkg_id.starts_with("old-helper@"))
+      );
+    }
+  }
+
+  #[tokio::test]
+  async fn auto_peer_dedup_ignores_replaced_fallback_constraints() {
+    let api = TestNpmRegistryApi::default();
+    for name in ["app", "consumer", "addon", "nested"] {
+      api.ensure_package_version(name, "1.0.0");
+    }
+    for name in ["peer", "shared"] {
+      for version in ["1.0.0", "2.0.0"] {
+        api.ensure_package_version(name, version);
+      }
+    }
+    api.add_dist_tag("shared", "latest", "1.0.0");
+    api.add_dependency(("app", "1.0.0"), ("consumer", "1"));
+    api.add_dependency(("app", "1.0.0"), ("nested", "1"));
+    api.add_dependency(("nested", "1.0.0"), ("shared", "2"));
+    api.add_peer_dependency(("consumer", "1.0.0"), ("peer", "*"));
+    api.add_peer_dependency(("consumer", "1.0.0"), ("addon", "1"));
+    api.add_peer_dependency(("addon", "1.0.0"), ("peer", "1"));
+    api.add_peer_dependency(("peer", "2.0.0"), ("shared", "1"));
+    api.add_peer_dependency(("peer", "1.0.0"), ("shared", "*"));
+
+    // peer@2 is replaced by peer@1. Only the retired version requires shared@1;
+    // dedup can now reuse nested's shared@2 for the active peer's wildcard.
+    let (packages, _) = run_resolver_and_get_output(api, vec!["app@1"]).await;
+    let peer = packages
+      .iter()
+      .find(|package| package.pkg_id.starts_with("peer@"))
+      .unwrap();
+    assert_eq!(peer.pkg_id, "peer@1.0.0_shared@2.0.0");
+    assert_eq!(peer.dependencies["shared"], "shared@2.0.0");
+    assert!(
+      !packages
+        .iter()
+        .any(|package| package.pkg_id == "shared@1.0.0")
+    );
   }
 
   #[tokio::test]
