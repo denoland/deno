@@ -3,6 +3,8 @@ import {
   Buffer,
   constants,
   File as BufferFile,
+  isAscii,
+  isUtf8,
   resolveObjectURL,
   transcode,
 } from "node:buffer";
@@ -10,6 +12,20 @@ import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
 
 const { MAX_STRING_LENGTH } = constants;
+
+Deno.test("[node/buffer] isUtf8 and isAscii snapshot shared and resizable inputs", () => {
+  const shared = new Uint8Array(new SharedArrayBuffer(4));
+  shared.set([0x64, 0x65, 0x6e, 0x6f]);
+  assertEquals(isUtf8(shared), true);
+  assertEquals(isAscii(shared), true);
+
+  const resizable = new Uint8Array(
+    new ArrayBuffer(4, { maxByteLength: 8 }),
+  );
+  resizable.set([0x64, 0x65, 0x6e, 0x6f]);
+  assertEquals(isUtf8(resizable), true);
+  assertEquals(isAscii(resizable), true);
+});
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
