@@ -47,6 +47,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::WalkOptions;
 use deno_lib::loader::as_deno_resolver_requested_module_type;
 use deno_lib::loader::loaded_module_source_to_module_source_code;
+use deno_lib::loader::module_format_from_requested_type;
 use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
@@ -1467,10 +1468,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         specifier.as_str(),
         &options.requested_module_type,
       );
-      let receiver = self
-        .0
-        .hook_registry
-        .push_load(specifier.to_string(), import_attributes);
+      let receiver = self.0.hook_registry.push_load(
+        specifier.to_string(),
+        module_format_from_requested_type(&options.requested_module_type),
+        import_attributes,
+      );
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let hook_result = match receiver.await {
