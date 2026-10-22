@@ -15,15 +15,19 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  createDeflateRaw,
   createGunzip,
   createGzip,
   createInflate,
   createZstdCompress,
   createZstdDecompress,
+  deflateRawSync,
   deflateSync,
   gunzip,
   gzip,
   gzipSync,
+  inflateRawSync,
+  inflateSync,
   unzipSync,
   zstdCompressSync,
 } from "node:zlib";
@@ -126,6 +130,31 @@ Deno.test(
     await promise;
   },
 );
+
+// Expected bytes were produced by Node.js for the same input and dictionary.
+// https://github.com/denoland/deno/issues/37035
+Deno.test("zlib deflate and inflate use dictionary", async () => {
+  const dictionary = Buffer.from("hello world hello world");
+  const input = Buffer.from("hello world");
+  const raw = Buffer.from("43620200", "hex");
+  const wrapped = Buffer.from("78bb69e708d9436202001a0b045d", "hex");
+
+  assertEquals(deflateRawSync(input, { dictionary }), raw);
+  assertEquals(deflateSync(input, { dictionary }), wrapped);
+  assertEquals(inflateRawSync(raw, { dictionary }), input);
+  assertEquals(inflateSync(wrapped, { dictionary }), input);
+
+  // The dictionary is applied again after a reset.
+  const deflate = createDeflateRaw({ dictionary });
+  deflate.reset();
+  const chunks: Buffer[] = [];
+  deflate.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const { promise, resolve } = Promise.withResolvers<void>();
+  deflate.on("end", () => resolve());
+  deflate.end(input);
+  await promise;
+  assertEquals(Buffer.concat(chunks), raw);
+});
 
 Deno.test(
   "zlib flush i32",
