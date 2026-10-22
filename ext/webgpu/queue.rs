@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Duration;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -108,7 +107,9 @@ impl GPUQueue {
             .device_poll(self.device, wgpu_types::PollType::wait_indefinitely())
             .unwrap();
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        // device_poll(wait_indefinitely) already ran the callback: yield
+        // so receiver_fut can set `done`, instead of a fixed 10ms sleep.
+        tokio::task::yield_now().await;
       }
       Ok::<(), JsErrorBox>(())
     };
