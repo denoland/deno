@@ -229,11 +229,18 @@ impl CliLinter {
 
     if fix_iterations > 0 {
       // everything looks good and the file still parses, so write it out
+      let mut perms = crate::cache::CACHE_PERM;
+      #[cfg(unix)]
+      if let Ok(metadata) = std::fs::metadata(file_path) {
+        use std::os::unix::fs::PermissionsExt;
+        perms = metadata.permissions().mode();
+      }
+
       atomic_write_file_with_retries(
         &CliSys::default(),
         file_path,
         source.text().as_bytes(),
-        crate::cache::CACHE_PERM,
+        perms,
       )
       .context("Failed writing fix to file.")?;
     }
