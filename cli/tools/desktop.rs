@@ -522,6 +522,7 @@ async fn compile_desktop(
     self_extracting,
     bundle: false,
     minify: false,
+    keep_names: false,
     exclude_unused_npm: desktop_flags.exclude_unused_npm,
     engine: desktop_flags.engine,
   };
