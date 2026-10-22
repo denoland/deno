@@ -124,14 +124,15 @@ pub trait StatementExecution {
         }
         ffi::SQLITE_TEXT => {
           let value = ffi::sqlite3_column_text(raw, index);
-          let value = std::ffi::CStr::from_ptr(value as _);
-          v8::String::new_from_utf8(
-            scope,
-            value.to_bytes(),
-            v8::NewStringType::Normal,
-          )
-          .unwrap()
-          .into()
+          let size = ffi::sqlite3_column_bytes(raw, index);
+          let value = if size == 0 {
+            &[]
+          } else {
+            std::slice::from_raw_parts(value, size as usize)
+          };
+          v8::String::new_from_utf8(scope, value, v8::NewStringType::Normal)
+            .unwrap()
+            .into()
         }
         ffi::SQLITE_BLOB => {
           let value = ffi::sqlite3_column_blob(raw, index);
