@@ -55,6 +55,15 @@ declare class KeyboardEvent extends UIEvent {
   getModifierState(key: string): boolean;
 }
 
+declare interface CompositionEventInit extends UIEventInit {
+  data?: string;
+}
+
+declare class CompositionEvent extends UIEvent {
+  constructor(type: string, init?: CompositionEventInit);
+  readonly data: string;
+}
+
 declare interface MouseEventInit extends UIEventInit {
   button?: number;
   clientX?: number;
@@ -567,6 +576,9 @@ declare namespace Deno {
   interface BrowserWindowEventMap {
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
+    compositionstart: CompositionEvent;
+    compositionupdate: CompositionEvent;
+    compositionend: CompositionEvent;
     mousedown: MouseEvent;
     mouseup: MouseEvent;
     click: MouseEvent;
@@ -675,6 +687,22 @@ declare namespace Deno {
      * fit below or to the right of that point.
      */
     showContextMenu(x: number, y: number, menu: MenuItem[]): void;
+
+    /** Allow or deny IME on this window. Off by default (raw key delivery);
+     * pass `true` when a text field is focused so CJK composition can start.
+     *
+     * Raw/winit only. No-op on WebView and CEF, where the engine owns
+     * composition. */
+    setImeAllowed(allowed: boolean): void;
+    /** Logical client rectangle (top-left origin, same space as
+     * {@linkcode showContextMenu}) the IME candidate window should sit next
+     * to. Raw/winit only. No-op on WebView and CEF. */
+    setImeCursorArea(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ): void;
 
     getNativeWindow(): Deno.UnsafeWindowSurface;
 
