@@ -1,0 +1,4 @@
+{
+  "args": "test test.js",
+  "output": "test.out"
+}
