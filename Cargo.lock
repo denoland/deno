@@ -3600,6 +3600,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures",
+ "percent-encoding",
  "serde",
  "thiserror 2.0.12",
  "tokio",
