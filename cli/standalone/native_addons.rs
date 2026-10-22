@@ -203,6 +203,41 @@ pub fn collect_bundle_required_packages(
   Ok(Some(closure))
 }
 
+/// Returns the subset of `referenced_paths` that live inside an installed npm
+/// package folder.
+pub fn resolve_bundle_npm_referenced_paths(
+  npm_resolver: &CliNpmResolver,
+  referenced_paths: &[PathBuf],
+) -> Result<HashSet<PathBuf>, AnyError> {
+  match npm_resolver {
+    CliNpmResolver::Managed(managed) => {
+      let snapshot = managed.resolution().snapshot();
+      let mut folders: Vec<PathBuf> = Vec::new();
+      for pkg in snapshot.all_packages_for_every_system() {
+        if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(&pkg.id)
+          && folder.exists()
+        {
+          folders.push(folder);
+        }
+      }
+      Ok(
+        referenced_paths
+          .iter()
+          .filter(|path| folders.iter().any(|folder| path.starts_with(folder)))
+          .cloned()
+          .collect(),
+      )
+    }
+    CliNpmResolver::Byonm(_) => Ok(
+      referenced_paths
+        .iter()
+        .filter(|path| path_is_in_node_modules(path))
+        .cloned()
+        .collect(),
+    ),
+  }
+}
+
 /// BYONM: walk every `node_modules` directory under `workspace_root` (the
 /// same set `fill_npm_vfs` embeds for BYONM) and return each package folder
 /// that ships a native addon. Nested `node_modules` are followed so a
@@ -260,6 +295,10 @@ fn find_byonm_native_addon_packages(
     }
   }
   packages
+}
+
+fn path_is_in_node_modules(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 fn folder_contains_node_addon(folder: &Path) -> bool {
