@@ -82,7 +82,7 @@ unsafe impl Send for PtrSymbol {}
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Sync for PtrSymbol {}
 
-struct UnsafeCallbackResource {
+pub(crate) struct UnsafeCallbackResource {
   cancel: Rc<CancelHandle>,
   // Closure is never directly touched, but it keeps the C callback alive
   // until `close()` method is called.
@@ -162,7 +162,14 @@ unsafe extern "C" fn deno_ffi_callback(
   )]
   unsafe {
     LOCAL_THREAD_ID.with(|s| {
-      if *s.borrow() == info.thread_id {
+      if *s.borrow() == info.thread_id && info.async_work_sender.is_closed() {
+        // The runtime has shut down and its isolate may be gone, for example
+        // when a library's unload destructor calls back during worker
+        // teardown. Return a zero value without entering V8.
+        if !matches!(info.result, NativeType::Void) {
+          zero_ffi_result(cif, result as *mut c_void);
+        }
+      } else if *s.borrow() == info.thread_id {
         // Call from main thread. If this callback is being triggered due to a
         // function call coming from Deno itself, then this callback will build
         // ontop of that stack.
@@ -187,12 +194,12 @@ unsafe extern "C" fn deno_ffi_callback(
 
         let mut args = TaskArgs {
           cif: NonNull::from(cif),
-          result: NonNull::from(result),
+          result: NonNull::from(&mut *result),
           args,
           info: NonNull::from(info),
         };
 
-        async_work_sender.spawn_blocking(move |scope| {
+        let callback = async_work_sender.try_spawn_blocking(move |scope| {
           // We don't have a lot of choice here, so just print an unhandled exception message
           v8::tc_scope!(tc_scope, scope);
           args.run(tc_scope);
@@ -204,8 +211,35 @@ unsafe extern "C" fn deno_ffi_callback(
           // won't run automatically after the JS callback returns.
           tc_scope.perform_microtask_checkpoint();
         });
+        if callback.is_err() && !matches!(info.result, NativeType::Void) {
+          // The runtime closed before dispatch. The native call still owns its
+          // result buffer; return a zero value without entering disposed V8 or
+          // panicking across the C callback boundary.
+          zero_ffi_result(cif, result as *mut c_void);
+        }
       }
     });
+  }
+}
+
+/// Zero a non-void callback's libffi return slot. libffi gives a non-struct
+/// return a slot of at least `ffi_arg` and expects small integers widened into
+/// it, so zero that whole slot rather than just the declared type's width.
+///
+/// # Safety
+///
+/// `cif` and `result` must be the ones libffi passed to the running closure.
+unsafe fn zero_ffi_result(cif: &libffi::low::ffi_cif, result: *mut c_void) {
+  // SAFETY: The caller guarantees a live cif and a writable result slot of
+  // the size computed from it.
+  unsafe {
+    let rtype = &*cif.rtype;
+    let size = if rtype.type_ == libffi::raw::FFI_TYPE_STRUCT {
+      rtype.size
+    } else {
+      rtype.size.max(std::mem::size_of::<libffi::low::ffi_arg>())
+    };
+    ptr::write_bytes(result as *mut u8, 0, size);
   }
 }
 
@@ -313,49 +347,18 @@ unsafe fn do_ffi_callback(
     let call_result = func.call(scope, recv.into(), &params);
 
     if call_result.is_none() {
-      // JS function threw an exception. Set the return value to zero and return.
-      // The exception continue propagating up the call chain when the event loop
-      // resumes.
-      match info.result {
-        NativeType::Bool => {
-          *(result as *mut bool) = false;
-        }
-        NativeType::U32 | NativeType::I32 => {
-          // zero is equal for signed and unsigned alike
-          *(result as *mut u32) = 0;
-        }
-        NativeType::F32 => {
-          *(result as *mut f32) = 0.0;
-        }
-        NativeType::F64 => {
-          *(result as *mut f64) = 0.0;
-        }
-        NativeType::U8 | NativeType::I8 => {
-          // zero is equal for signed and unsigned alike
-          *(result as *mut u8) = 0;
-        }
-        NativeType::U16 | NativeType::I16 => {
-          // zero is equal for signed and unsigned alike
-          *(result as *mut u16) = 0;
-        }
-        NativeType::Pointer
-        | NativeType::Buffer
-        | NativeType::Function
-        | NativeType::U64
-        | NativeType::I64 => {
-          *(result as *mut usize) = 0;
-        }
-        NativeType::Void => {
-          // nop
-        }
-        _ => {
-          unreachable!();
-        }
-      };
-
+      // JS function threw an exception, or the isolate is terminating. Set the
+      // return value to zero and return; an exception continues propagating up
+      // the call chain when the event loop resumes.
+      if !matches!(info.result, NativeType::Void) {
+        zero_ffi_result(cif, result);
+      }
       return;
     }
     let value = call_result.unwrap();
+    // Converting the result can run JavaScript (valueOf), which can throw or
+    // be interrupted. A failed conversion returns zero, as a failed call does,
+    // rather than panicking across the C callback boundary.
 
     match info.result {
       NativeType::Bool => {
@@ -373,9 +376,7 @@ unsafe fn do_ffi_callback(
           value.value() as f32
         } else {
           // Fallthrough, probably UB.
-          value
-            .number_value(scope)
-            .expect("Unable to deserialize result parameter.") as f32
+          value.number_value(scope).unwrap_or_default() as f32
         };
         *(result as *mut f32) = value;
       }
@@ -385,9 +386,7 @@ unsafe fn do_ffi_callback(
           value.value()
         } else {
           // Fallthrough, probably UB.
-          value
-            .number_value(scope)
-            .expect("Unable to deserialize result parameter.")
+          value.number_value(scope).unwrap_or_default()
         };
         *(result as *mut f64) = value;
       }
@@ -435,9 +434,7 @@ unsafe fn do_ffi_callback(
           value.value() as i8
         } else {
           // Fallthrough, essentially UB.
-          value
-            .int32_value(scope)
-            .expect("Unable to deserialize result parameter.") as i8
+          value.int32_value(scope).unwrap_or_default() as i8
         };
         *(result as *mut i8) = value;
       }
@@ -447,9 +444,7 @@ unsafe fn do_ffi_callback(
           value.value() as u8
         } else {
           // Fallthrough, essentially UB.
-          value
-            .uint32_value(scope)
-            .expect("Unable to deserialize result parameter.") as u8
+          value.uint32_value(scope).unwrap_or_default() as u8
         };
         *(result as *mut u8) = value;
       }
@@ -458,9 +453,7 @@ unsafe fn do_ffi_callback(
           value.value() as i16
         } else {
           // Fallthrough, essentially UB.
-          value
-            .int32_value(scope)
-            .expect("Unable to deserialize result parameter.") as i16
+          value.int32_value(scope).unwrap_or_default() as i16
         };
         *(result as *mut i16) = value;
       }
@@ -470,9 +463,7 @@ unsafe fn do_ffi_callback(
           value.value() as u16
         } else {
           // Fallthrough, essentially UB.
-          value
-            .uint32_value(scope)
-            .expect("Unable to deserialize result parameter.") as u16
+          value.uint32_value(scope).unwrap_or_default() as u16
         };
         *(result as *mut u16) = value;
       }
@@ -481,9 +472,7 @@ unsafe fn do_ffi_callback(
           value.value()
         } else {
           // Fallthrough, essentially UB.
-          value
-            .int32_value(scope)
-            .expect("Unable to deserialize result parameter.")
+          value.int32_value(scope).unwrap_or_default()
         };
         *(result as *mut i32) = value;
       }
@@ -493,9 +482,7 @@ unsafe fn do_ffi_callback(
           value.value()
         } else {
           // Fallthrough, essentially UB.
-          value
-            .uint32_value(scope)
-            .expect("Unable to deserialize result parameter.")
+          value.uint32_value(scope).unwrap_or_default()
         };
         *(result as *mut u32) = value;
       }
@@ -507,9 +494,8 @@ unsafe fn do_ffi_callback(
         } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
           *(result as *mut i64) = value.value() as i64;
         } else {
-          *(result as *mut i64) = value
-            .integer_value(scope)
-            .expect("Unable to deserialize result parameter.");
+          *(result as *mut i64) =
+            value.integer_value(scope).unwrap_or_default();
         }
       }
       NativeType::U64 | NativeType::USize => {
@@ -520,10 +506,8 @@ unsafe fn do_ffi_callback(
         } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
           *(result as *mut u64) = value.value() as u64;
         } else {
-          *(result as *mut u64) = value
-            .integer_value(scope)
-            .expect("Unable to deserialize result parameter.")
-            as u64;
+          *(result as *mut u64) =
+            value.integer_value(scope).unwrap_or_default() as u64;
         }
       }
       NativeType::Struct(_) => {

@@ -985,8 +985,7 @@ impl Foo {
                         >::cast_unchecked(args.data())
                             .value() as *const deno_core::_ops::OpCtx)
                     };
-                    let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                    scope.throw_exception(exception);
+                    deno_core::error::throw_op_error(&mut scope, &err);
                     return 1;
                 }
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<

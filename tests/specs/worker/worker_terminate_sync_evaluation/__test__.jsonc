@@ -1,0 +1,6 @@
+{
+  "tests": {
+    "web": { "args": "run -A main.ts web", "output": "stopped\n" },
+    "node": { "args": "run -A main.ts node", "output": "stopped\n" }
+  }
+}

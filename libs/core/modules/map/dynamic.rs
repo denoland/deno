@@ -121,10 +121,14 @@ impl ModuleMap {
           return false;
         }
         Err(e) => {
-          let exception = e.to_v8_error(scope);
-          let exception_local = v8::Local::new(scope, exception);
-          let resolver = resolver_handle.open(scope);
-          resolver.reject(scope, exception_local).unwrap();
+          // The caller propagates the pending termination; settling the
+          // promise would need V8 calls that fail while terminating.
+          if !matches!(e.as_kind(), CoreErrorKind::ExecutionTerminated) {
+            let exception = e.to_v8_error(scope);
+            let exception_local = v8::Local::new(scope, exception);
+            let resolver = resolver_handle.open(scope);
+            resolver.reject(scope, exception_local).unwrap();
+          }
           return false;
         }
       }
@@ -152,10 +156,14 @@ impl ModuleMap {
           return false;
         }
         Err(e) => {
-          let exception = e.to_v8_error(scope);
-          let exception_local = v8::Local::new(scope, exception);
-          let resolver = resolver_handle.open(scope);
-          resolver.reject(scope, exception_local).unwrap();
+          // The caller propagates the pending termination; settling the
+          // promise would need V8 calls that fail while terminating.
+          if !matches!(e.as_kind(), CoreErrorKind::ExecutionTerminated) {
+            let exception = e.to_v8_error(scope);
+            let exception_local = v8::Local::new(scope, exception);
+            let resolver = resolver_handle.open(scope);
+            resolver.reject(scope, exception_local).unwrap();
+          }
           return false;
         }
       }

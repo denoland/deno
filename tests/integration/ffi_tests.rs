@@ -335,3 +335,113 @@ fn ffi_callback_errors() {
     "Illegal unhandled exception in nonblocking callback\n".repeat(3)
   );
 }
+
+#[test_util::test]
+fn ffi_callback_errors_with_wide_results() {
+  build();
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --unstable-ffi --quiet testdata/ffi_callback_throw_wide_results.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert!(
+    output.status.success(),
+    "{:?}\n{stdout}\n{stderr}",
+    output.status
+  );
+  assert_eq!(stdout, "isize: thrown\nusize: thrown\nstruct: thrown\n");
+}
+
+#[test_util::test]
+fn ffi_worker_releases_host_state_during_native_call() {
+  build();
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --allow-run --quiet testdata/worker_release_during_native_call.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "web close: prompt\nnode process.exit: prompt\nweb terminate lock: prompt\n"
+  );
+}
+
+#[cfg(not(windows))]
+#[test_util::test]
+fn ffi_worker_unload_callback_skips_disposed_isolate() {
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --allow-write --allow-run --quiet testdata/worker_unload_callback.ts")
+    .env("NO_COLOR", "1")
+    .env("MallocScribble", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "20 unload callbacks did not enter a disposed isolate\n"
+  );
+}
+
+#[test_util::test]
+fn ffi_worker_interrupted_callback_return_conversion() {
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --quiet testdata/worker_callback_return_coercion.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "interrupted return conversion stopped safely\n"
+  );
+}
+
+#[test_util::test]
+fn ffi_worker_disposal_keeps_callback_alive() {
+  build();
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .args("run --no-lock --allow-ffi --allow-read --quiet testdata/worker_disposal_callback.ts")
+    .env("NO_COLOR", "1")
+    // Make freed libffi metadata reads observable on macOS. Other platforms
+    // still exercise the actual native return path and completion assertions.
+    .env("MallocScribble", "1")
+    .output()
+    .unwrap();
+  assert!(
+    output.status.success(),
+    "status: {}\nstdout: {}\nstderr: {}",
+    output.status,
+    String::from_utf8_lossy(&output.stdout),
+    String::from_utf8_lossy(&output.stderr)
+  );
+  assert_eq!(
+    String::from_utf8_lossy(&output.stdout),
+    "40 callbacks stopped safely\n"
+  );
+}
