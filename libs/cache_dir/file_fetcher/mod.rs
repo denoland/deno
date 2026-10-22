@@ -952,8 +952,9 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           },
         )?;
         if let Some(checksum) = &maybe_checksum {
+          let content_type = headers.get("content-type").map(|s| s.as_str());
           checksum
-            .check(url, &bytes)
+            .check_remote(url, content_type, &bytes)
             .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
         }
         Ok(FileOrRedirect::File(File {
