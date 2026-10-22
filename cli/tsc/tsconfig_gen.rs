@@ -19,6 +19,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 
 use super::get_deno_ns_declaration_file_text;
+use super::get_desktop_types_declaration_file_text;
 use super::get_types_declaration_file_text;
 
 /// Whether Deno should honor a user's `tsconfig.json` at `project_root`.
@@ -189,6 +190,7 @@ pub fn generate_tsconfig(
   excludes: &[String],
   has_local_wasm: bool,
   manage_root_tsconfig: bool,
+  is_desktop: bool,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
@@ -204,6 +206,7 @@ pub fn generate_tsconfig(
     &types_dir.join("index.d.ts"),
     node_types_root.is_some(),
     has_dom,
+    is_desktop,
     &no_types_shims,
   )?;
 
@@ -548,15 +551,24 @@ fn effective_lib_has_dom(
 
 /// Write the Deno type declarations to a `.d.ts` file. When `has_dom` is set the
 /// project opts into the `dom` lib, so emit only the `Deno` namespace and let
-/// `dom` own the web-platform globals (they'd otherwise collide).
+/// `dom` own the web-platform globals (they'd otherwise collide). When
+/// `is_desktop` is set (`deno check --desktop` / `deno desktop`) the window set
+/// is emitted plus the additive `deno.desktop` lib (which declares desktop-only
+/// globals like `Notification`).
 fn write_deno_types(
   path: &Path,
   has_node_types: bool,
   has_dom: bool,
+  is_desktop: bool,
   no_types_shims: &[String],
 ) -> Result<(), std::io::Error> {
+  // `dom` and `desktop` are mutually exclusive in practice (desktop implies no
+  // dom). If both were somehow set, `has_dom` wins (emit only the `Deno`
+  // namespace) so we never collide with the `dom` lib's globals.
   let types_text = if has_dom {
     get_deno_ns_declaration_file_text()
+  } else if is_desktop {
+    get_desktop_types_declaration_file_text()
   } else {
     get_types_declaration_file_text()
   };
