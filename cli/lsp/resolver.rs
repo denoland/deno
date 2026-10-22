@@ -741,6 +741,18 @@ impl LspResolver {
       .in_node_modules(specifier)
   }
 
+  /// Whether any scope configures `specifier` as the entry or export file of
+  /// a direct dependency.
+  pub fn is_configured_dep_resolution(&self, specifier: &Url) -> bool {
+    std::iter::once(&self.unscoped)
+      .chain(self.by_scope.values())
+      .any(|r| {
+        r.configured_dep_resolutions
+          .deps_by_resolution
+          .contains_key(specifier)
+      })
+  }
+
   pub fn get_scoped_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
