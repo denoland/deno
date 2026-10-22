@@ -393,6 +393,26 @@ Deno.test(function eventTargetOnceListenerCleansAbortSignalListener() {
   assertEquals(removeCount, 0);
 });
 
+Deno.test(function eventHandlerSetToNullRemovesListener() {
+  const controller = new AbortController();
+  const { signal } = controller;
+  const calls: number[] = [];
+
+  signal.addEventListener("abort", () => calls.push(1));
+  signal.onabort = () => calls.push(-1);
+  signal.addEventListener("abort", () => calls.push(2));
+  // Setting the handler to null removes its listener, so setting it again
+  // appends a new listener at the end of the list.
+  signal.onabort = null;
+  assertEquals(signal.onabort, null);
+  signal.addEventListener("abort", () => calls.push(3));
+  signal.onabort = () => calls.push(4);
+  signal.addEventListener("abort", () => calls.push(5));
+  controller.abort();
+
+  assertEquals(calls, [1, 2, 3, 4, 5]);
+});
+
 Deno.test(function eventTargetBrandChecking() {
   const self = {};
 
