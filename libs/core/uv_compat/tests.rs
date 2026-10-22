@@ -2004,6 +2004,19 @@ impl Drop for FdGuard {
 }
 
 #[cfg(unix)]
+// TTY mode operations and handle close both touch process-global termios
+// state. The libtest harness runs tests in this binary in parallel, so every
+// test that owns a TTY handle must share this lock even though each test uses
+// its own PTY.
+static TTY_TEST_LOCK: tokio::sync::Mutex<()> =
+  tokio::sync::Mutex::const_new(());
+
+#[cfg(unix)]
+async fn lock_tty_test() -> tokio::sync::MutexGuard<'static, ()> {
+  TTY_TEST_LOCK.lock().await
+}
+
+#[cfg(unix)]
 unsafe fn set_errno(val: i32) {
   #[cfg(target_os = "macos")]
   unsafe {
@@ -2023,15 +2036,6 @@ fn get_errno() -> i32 {
 }
 
 #[cfg(unix)]
-fn assert_fd_closed(fd: i32) {
-  unsafe {
-    set_errno(0);
-    assert_eq!(libc::fcntl(fd, libc::F_GETFD), -1);
-  }
-  assert_eq!(get_errno(), libc::EBADF);
-}
-
-#[cfg(unix)]
 #[allow(
   clippy::disallowed_methods,
   reason = "uv_compat tests require real Unix socket paths"
@@ -2047,6 +2051,7 @@ fn pipe_test_socket_path(name: &str) -> std::path::PathBuf {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_init_sets_fields() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |_runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2098,6 +2103,7 @@ async fn tty_init_rejects_non_tty() {
 #[cfg(target_os = "macos")]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_init_dev_tty_select_fallback() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     // Open /dev/tty directly — this produces an fd that kqueue rejects.
     let fd = unsafe { libc::open(c"/dev/tty".as_ptr(), libc::O_RDWR) };
@@ -2215,6 +2221,7 @@ async fn tty_init_dev_tty_select_fallback() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_get_winsize() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |_runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2251,6 +2258,7 @@ async fn tty_get_winsize() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_set_mode_raw_and_back() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |_runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2281,6 +2289,7 @@ async fn tty_set_mode_raw_and_back() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_set_mode_io() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |_runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2306,6 +2315,7 @@ async fn tty_set_mode_io() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_write_and_read_through_pty() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
 
@@ -2389,6 +2399,7 @@ async fn tty_write_and_read_through_pty() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_read_from_pty() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
 
@@ -2500,6 +2511,7 @@ async fn tty_read_from_pty() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_close_fires_callback() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2534,6 +2546,7 @@ async fn tty_close_fires_callback() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_shutdown_fires_callback() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2611,8 +2624,9 @@ fn new_tty_constructor() {
 }
 
 #[cfg(unix)]
-#[test]
-fn tty_reset_mode_when_no_tty_modified() {
+#[tokio::test(flavor = "current_thread")]
+async fn tty_reset_mode_when_no_tty_modified() {
+  let _tty_test_guard = lock_tty_test().await;
   // Should succeed (no-op) when no TTY has entered raw mode.
   assert_ok(uv_tty_reset_mode());
 }
@@ -2620,6 +2634,7 @@ fn tty_reset_mode_when_no_tty_modified() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_reset_mode_restores_termios() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2672,6 +2687,7 @@ async fn tty_reset_mode_restores_termios() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_reset_mode_preserves_errno() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
     let _fdm_guard = FdGuard(fdm);
@@ -2709,6 +2725,7 @@ fn tty_guess_handle_negative_fd() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_read_stop() {
+  let _tty_test_guard = lock_tty_test().await;
   run_test(async |runtime, uv_loop| {
     let (fdm, fds) = unsafe { open_pty_pair() };
 
@@ -3071,6 +3088,11 @@ async fn tcp_batch_accept() {
 
 // ========== Pipe handle lifecycle ==========
 
+// Do not verify closure by checking a saved fd number here. Another test in
+// this process can reuse that number as soon as it is closed. Check handle
+// ownership and peer-observable teardown instead; verify filesystem cleanup
+// separately.
+
 // UV_HANDLE_ACTIVE flag value (matches uv_compat.rs private const)
 #[cfg(unix)]
 const UV_HANDLE_ACTIVE: u32 = 1 << 0;
@@ -3078,19 +3100,20 @@ const UV_HANDLE_ACTIVE: u32 = 1 << 0;
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn pipe_open_not_active_until_read_start() {
-  run_test(async |runtime, uv_loop| {
-    // Create an OS pipe pair.
-    let mut pipe_fds = [0i32; 2];
-    assert_eq!(unsafe { libc::pipe(pipe_fds.as_mut_ptr()) }, 0);
-    let read_fd = pipe_fds[0];
-    let write_fd = pipe_fds[1];
-    let _write_guard = FdGuard(write_fd);
+  use std::io::Read;
+  use std::os::unix::io::IntoRawFd;
 
-    // Init and open a uv_pipe_t on the read end.
+  run_test(async |runtime, uv_loop| {
+    let (opened, mut peer) = std::os::unix::net::UnixStream::pair().unwrap();
+    // Keep a leaked owner from making the EOF assertion block indefinitely.
+    peer.set_nonblocking(true).unwrap();
+    let opened_fd = opened.into_raw_fd();
+
+    // Init and open a uv_pipe_t on one end of the socket pair.
     let mut pipe = new_pipe(false);
     unsafe {
       assert_ok(pipe::uv_pipe_init(uv_loop, &mut pipe, 0));
-      assert_ok(pipe::uv_pipe_open(&mut pipe, pipe_fds[0]));
+      assert_ok(pipe::uv_pipe_open(&mut pipe, opened_fd));
     }
 
     // After uv_pipe_open, the handle should NOT be active.
@@ -3156,14 +3179,23 @@ async fn pipe_open_not_active_until_read_start() {
       uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
     }
     tick(runtime).await;
-    assert_fd_closed(read_fd);
+    assert!(pipe.internal_fd.is_none());
+    assert!(pipe.internal_async_fd.is_none());
+    let mut byte = [0];
+    assert_eq!(peer.read(&mut byte).unwrap(), 0);
   })
   .await;
 }
 
 #[cfg(unix)]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "uv_compat tests require real Unix socket paths"
+)]
 #[tokio::test(flavor = "current_thread")]
 async fn pipe_listener_transfers_raw_fd_ownership() {
+  use tokio::io::AsyncReadExt;
+
   run_test(async |runtime, uv_loop| {
     let socket_path = pipe_test_socket_path("pipe-owner");
     let socket_path = socket_path.to_string_lossy().into_owned();
@@ -3185,12 +3217,30 @@ async fn pipe_listener_transfers_raw_fd_ownership() {
     );
     assert!(pipe.internal_listener.is_some());
     assert_eq!(pipe.fd(), Some(fd));
+    assert!(std::path::Path::new(&socket_path).exists());
+    // Keep a connection queued so listener teardown is observable separately
+    // from unlinking the socket path.
+    let mut client =
+      tokio::net::UnixStream::connect(&socket_path).await.unwrap();
 
     unsafe {
       uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
     }
     tick(runtime).await;
-    assert_fd_closed(fd);
+    assert!(pipe.internal_fd.is_none());
+    assert!(pipe.internal_listener.is_none());
+    assert!(!std::path::Path::new(&socket_path).exists());
+    let mut byte = [0];
+    let read_result = tokio::time::timeout(
+      std::time::Duration::from_secs(1),
+      client.read(&mut byte),
+    )
+    .await
+    .expect("queued client should terminate after listener close");
+    match read_result {
+      Ok(0) | Err(_) => {}
+      Ok(nread) => panic!("queued client unexpectedly read {nread} bytes"),
+    }
   })
   .await;
 }
@@ -3198,11 +3248,14 @@ async fn pipe_listener_transfers_raw_fd_ownership() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn pipe_accept_keeps_only_the_tokio_fd_owner() {
+  use std::io::Read;
   use std::os::unix::io::AsRawFd;
 
   run_test(async |runtime, uv_loop| {
-    let (accepted, peer) = std::os::unix::net::UnixStream::pair().unwrap();
+    let (accepted, mut peer) = std::os::unix::net::UnixStream::pair().unwrap();
     accepted.set_nonblocking(true).unwrap();
+    // Keep a leaked owner from making the EOF assertion block indefinitely.
+    peer.set_nonblocking(true).unwrap();
     let accepted = tokio::net::UnixStream::from_std(accepted).unwrap();
     let fd = accepted.as_raw_fd();
 
@@ -3229,8 +3282,9 @@ async fn pipe_accept_keeps_only_the_tokio_fd_owner() {
       uv_close(&mut server as *mut uv_pipe_t as *mut uv_handle_t, None);
     }
     tick(runtime).await;
-    assert_fd_closed(fd);
-    drop(peer);
+    assert!(client.internal_stream.is_none());
+    let mut byte = [0];
+    assert_eq!(peer.read(&mut byte).unwrap(), 0);
   })
   .await;
 }
@@ -3238,6 +3292,8 @@ async fn pipe_accept_keeps_only_the_tokio_fd_owner() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn pipe_bound_connect_transfers_raw_fd_ownership() {
+  use tokio::io::AsyncReadExt;
+
   run_test(async |runtime, uv_loop| {
     let server_path = pipe_test_socket_path("pipe-connect-server");
     let client_path = pipe_test_socket_path("pipe-connect-client");
@@ -3281,12 +3337,23 @@ async fn pipe_bound_connect_transfers_raw_fd_ownership() {
     );
     assert!(pipe.internal_stream.is_some());
     assert_eq!(pipe.fd(), Some(fd));
+    let (mut peer, _) = listener.accept().await.unwrap();
 
     unsafe {
       uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
     }
     tick(runtime).await;
-    assert_fd_closed(fd);
+    assert!(pipe.internal_stream.is_none());
+    // Bound the EOF wait so a leaked owner fails instead of hanging the test.
+    let mut byte = [0];
+    let nread = tokio::time::timeout(
+      std::time::Duration::from_secs(1),
+      peer.read(&mut byte),
+    )
+    .await
+    .expect("peer should reach EOF after pipe close")
+    .unwrap();
+    assert_eq!(nread, 0);
 
     drop(listener);
     #[allow(
