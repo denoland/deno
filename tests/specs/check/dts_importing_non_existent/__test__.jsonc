@@ -1,8 +1,20 @@
 {
-  // ignored: .d.ts entrypoint not checked under skipLibCheck:true.
-  // https://github.com/denoland/deno/issues/36085
-  "ignore": true,
-  "args": "check index.js",
-  "output": "check.out",
-  "exitCode": 1
+  // Each variant generates a `.deno/` under a different `skipLibCheck`, so
+  // isolate them in per-test temp dirs.
+  "tempDir": true,
+  "tests": {
+    // Aligned with tsgo: `skipLibCheck` defaults to true, so the referenced
+    // `.d.ts` is not type-checked and its unresolved import does not surface.
+    "default": {
+      "args": "check index.js",
+      "output": "Check [WILDCARD]index.js\n"
+    },
+    // With `skipLibCheck: false` the referenced `.d.ts` IS checked, so the
+    // unresolved import surfaces.
+    "skip_lib_check_false": {
+      "args": "check --config skip_lib_check_false.json index.js",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  }
 }
