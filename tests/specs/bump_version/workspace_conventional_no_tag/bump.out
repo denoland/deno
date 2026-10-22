@@ -1,0 +1,11 @@
+[WILDCARD]deno bump-version is experimental and subject to change[WILDCARD]
+Reading commits from the beginning of history to [WILDLINE]
+Found 1 commits.
+[WILDCARD]@x/a[WILDCARD]1.0.0[WILDCARD]1.1.0[WILDCARD]minor[WILDLINE]
+
+[dry-run] Release note:
+[WILDCARD]
+#### @x/a 1.1.0 (minor)
+
+- feat(a): initial feature
+[WILDCARD]

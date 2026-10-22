@@ -456,16 +456,18 @@ fn bump_workspace_conventional(
   let root_dir = workspace.root_dir_path();
 
   let start = match &version_flags.start {
-    Some(s) => s.clone(),
+    Some(s) => Some(s.clone()),
     None => {
-      let out = run_git(
-        &root_dir,
-        &["describe", "--tags", "--abbrev=0"],
-      )
-      .context(
-        "Failed to determine starting ref. Pass `--start <ref>` explicitly, or ensure the repository has at least one tag.",
-      )?;
-      out.trim().to_string()
+      let out = run_git(&root_dir, &["describe", "--tags", "--abbrev=0"]);
+      match out {
+        Ok(out) => Some(out.trim().to_string()),
+        Err(err) if is_no_tag_describe_error(&err) => None,
+        Err(err) => {
+          return Err(err).context(
+            "Failed to determine starting ref. Pass `--start <ref>` explicitly.",
+          );
+        }
+      }
     }
   };
   let base = match &version_flags.base {
@@ -483,16 +485,23 @@ fn bump_workspace_conventional(
     }
   };
 
-  println!(
-    "Reading commits between {} and {} in {}",
-    start,
-    base,
-    root_dir.display()
-  );
+  match &start {
+    Some(start) => println!(
+      "Reading commits between {} and {} in {}",
+      start,
+      base,
+      root_dir.display()
+    ),
+    None => println!(
+      "Reading commits from the beginning of history to {} in {}",
+      base,
+      root_dir.display()
+    ),
+  }
 
   let pkg_names: BTreeSet<String> =
     pkgs.iter().map(|p| p.name.clone()).collect();
-  let commits = read_commits(&root_dir, &start, &base)?;
+  let commits = read_commits(&root_dir, start.as_deref(), &base)?;
   println!("Found {} commits.", commits.len());
 
   let mut bumps_by_pkg: BTreeMap<String, BumpKind> = BTreeMap::new();
@@ -528,17 +537,19 @@ fn bump_workspace_conventional(
   // between releases, use that change as-is instead of computing from commits.
   let mut manual_changes: BTreeMap<String, (Version, Version)> =
     BTreeMap::new();
-  for pkg in pkgs.iter() {
-    if let Some(old_version) =
-      read_version_at_ref(&root_dir, &start, &pkg.config_path_relative)
-        .filter(|v| *v != pkg.current_version)
-    {
-      println!(
-        "Detected manual version change for {}: {} -> {}",
-        pkg.name, old_version, pkg.current_version
-      );
-      manual_changes
-        .insert(pkg.name.clone(), (old_version, pkg.current_version.clone()));
+  if let Some(start) = start.as_deref() {
+    for pkg in pkgs.iter() {
+      if let Some(old_version) =
+        read_version_at_ref(&root_dir, start, &pkg.config_path_relative)
+          .filter(|v| *v != pkg.current_version)
+      {
+        println!(
+          "Detected manual version change for {}: {} -> {}",
+          pkg.name, old_version, pkg.current_version
+        );
+        manual_changes
+          .insert(pkg.name.clone(), (old_version, pkg.current_version.clone()));
+      }
     }
   }
 
@@ -948,6 +959,11 @@ fn apply_conventional_bump(
 // Git
 // ---------------------------------------------------------------------------
 
+fn is_no_tag_describe_error(err: &AnyError) -> bool {
+  let err = err.to_string();
+  err.contains("No names found") || err.contains("cannot describe anything")
+}
+
 /// Read the `"version"` field from a deno.json at a given git ref.
 /// Returns `None` if the file doesn't exist at that ref or has no version.
 fn read_version_at_ref(
@@ -984,11 +1000,14 @@ const COMMIT_SEPARATOR: &str = "<!--bump-version-commit-separator-->";
 
 fn read_commits(
   cwd: &Path,
-  start: &str,
+  start: Option<&str>,
   base: &str,
 ) -> Result<Vec<Commit>, AnyError> {
   let format_arg = format!("--pretty=format:{}%H%B", COMMIT_SEPARATOR);
-  let range = format!("{}..{}", start, base);
+  let range = match start {
+    Some(start) => format!("{}..{}", start, base),
+    None => base.to_string(),
+  };
   let stdout = run_git(cwd, &["--no-pager", "log", &format_arg, &range])?;
   let mut commits = Vec::new();
   for chunk in stdout.split(COMMIT_SEPARATOR) {
