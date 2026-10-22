@@ -89,6 +89,7 @@ const {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_CHAR,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
   ERR_INVALID_URL,
@@ -606,25 +607,27 @@ function ClientRequest(input, options, cb) {
     // otherwise never be permission-checked. Enforce --allow-net for the
     // target here, matching fetch(), before routing through the proxy.
     //
-    // A host or port carrying invalid header characters (e.g. CR/LF) is not a
-    // reachable target: node:http rejects it with ERR_INVALID_CHAR while
-    // building the request. Skip the permission check for those so the op does
-    // not pre-empt that error with a parse/permission failure. Every other
-    // target is permission-checked and a denial fails closed, like fetch().
-    if (
-      !checkInvalidHeaderChar(host) && !checkInvalidHeaderChar(String(port))
-    ) {
-      // `port` may be a numeric string; coerce and clamp to the op's u16 range
-      // so the argument conversion never throws.
-      const targetPort = NumberParseInt(port, 10);
-      op_node_http_check_proxy_net(
-        host,
-        NumberIsFinite(targetPort) && targetPort >= 0 && targetPort <= 65535
-          ? targetPort
-          : 0,
-        protocol === "https:" ? "node:https.request()" : "node:http.request()",
-      );
+    // A host or port carrying invalid header characters (e.g. CR/LF) would be
+    // written verbatim into the request the client sends to the proxy -- the
+    // absolute-form request line for an http proxy, the CONNECT request for an
+    // https one -- so reject it before it reaches the wire. node:http otherwise
+    // relies on the Host header setter to catch this, but that only runs when
+    // the request derives a Host header from `host`; `setHost: false` or a
+    // caller-supplied Host header skips it, leaving the raw value to be
+    // injected. Fail closed instead.
+    if (checkInvalidHeaderChar(host) || checkInvalidHeaderChar(String(port))) {
+      throw new ERR_INVALID_CHAR("header content", "Host");
     }
+    // `port` may be a numeric string; coerce and clamp to the op's u16 range
+    // so the argument conversion never throws.
+    const targetPort = NumberParseInt(port, 10);
+    op_node_http_check_proxy_net(
+      host,
+      NumberIsFinite(targetPort) && targetPort >= 0 && targetPort <= 65535
+        ? targetPort
+        : 0,
+      protocol === "https:" ? "node:https.request()" : "node:http.request()",
+    );
     this[kProxy] = proxyEntry;
     optsWithoutSignal._proxy = proxyEntry;
     optsWithoutSignal._proxyTargetHost = host;
