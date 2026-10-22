@@ -1050,6 +1050,16 @@ Deno.test(function spawnSyncStdioUndefined() {
   assertEquals(ret.stderr.toString("utf-8").trim(), "world");
 });
 
+Deno.test(function spawnSyncProcessStdioUsesFileDescriptors() {
+  const ret = spawnSync(Deno.execPath(), ["eval", ""], {
+    stdio: [process.stdin, process.stdout, process.stderr],
+  });
+
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout, null);
+  assertEquals(ret.stderr, null);
+});
+
 Deno.test(function spawnSyncExitNonZero() {
   const ret = spawnSync(
     `"${Deno.execPath()}" eval "Deno.exit(22)"`,
