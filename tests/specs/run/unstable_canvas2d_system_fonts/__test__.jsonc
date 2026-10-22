@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "denied": {
+      "args": "run --quiet --reload --unstable-canvas2d main.js",
+      "output": "denied.out"
+    },
+    "allowed": {
+      "args": "run --quiet --reload --unstable-canvas2d --allow-sys=localFonts main.js",
+      "output": "allowed.out"
+    }
+  }
+}

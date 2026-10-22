@@ -57,13 +57,9 @@
     "idlharness.any.html": {
       "expectedFailures": [
         "DOMPointReadOnly interface: existence and properties of interface object",
-        "DOMPointReadOnly interface: existence and properties of interface prototype object",
         "DOMPoint interface: existence and properties of interface object",
-        "DOMPoint interface: existence and properties of interface prototype object",
         "DOMRectReadOnly interface: existence and properties of interface object",
-        "DOMRectReadOnly interface: existence and properties of interface prototype object",
         "DOMRect interface: existence and properties of interface object",
-        "DOMRect interface: existence and properties of interface prototype object",
         "DOMRectList interface: existence and properties of interface object",
         "DOMRectList interface object length",
         "DOMRectList interface object name",
@@ -73,29 +69,19 @@
         "DOMRectList interface: attribute length",
         "DOMRectList interface: operation item(unsigned long)",
         "DOMQuad interface: existence and properties of interface object",
-        "DOMQuad interface: existence and properties of interface prototype object",
         "DOMMatrixReadOnly interface: existence and properties of interface object",
-        "DOMMatrixReadOnly interface: existence and properties of interface prototype object",
-        "DOMMatrix interface: existence and properties of interface object",
-        "DOMMatrix interface: existence and properties of interface prototype object"
+        "DOMMatrix interface: existence and properties of interface object"
       ]
     },
     "idlharness.any.worker.html": {
       "expectedFailures": [
         "DOMPointReadOnly interface: existence and properties of interface object",
-        "DOMPointReadOnly interface: existence and properties of interface prototype object",
         "DOMPoint interface: existence and properties of interface object",
-        "DOMPoint interface: existence and properties of interface prototype object",
         "DOMRectReadOnly interface: existence and properties of interface object",
-        "DOMRectReadOnly interface: existence and properties of interface prototype object",
         "DOMRect interface: existence and properties of interface object",
-        "DOMRect interface: existence and properties of interface prototype object",
         "DOMQuad interface: existence and properties of interface object",
-        "DOMQuad interface: existence and properties of interface prototype object",
         "DOMMatrixReadOnly interface: existence and properties of interface object",
-        "DOMMatrixReadOnly interface: existence and properties of interface prototype object",
-        "DOMMatrix interface: existence and properties of interface object",
-        "DOMMatrix interface: existence and properties of interface prototype object"
+        "DOMMatrix interface: existence and properties of interface object"
       ]
     },
     "spec-examples.html": true,
@@ -128,5 +114,41 @@
       ]
     },
     "DOMMatrix-invertSelf.html": true
+  },
+  "css-font-loading": {
+    "empty-family-load.html": true,
+    "font-face-reject.html": true,
+    "fontface-descriptor-updates-2.html": false,
+    "fontface-font-variation-settings-persisted-js-api.html": false,
+    "fontface-fonts-loading.html": true,
+    "fontface-invalid-arraybuffer.html": true,
+    "fontface-invalid-family.tentative.html": true,
+    "fontface-load-in-modal-dialog.html": false,
+    "fontface-loadingevent.html": true,
+    "fontface-override-descriptor-getter-setter.sub.html": true,
+    "fontfaceset-clear-css-connected.html": false,
+    "fontfaceset-delete-css-connected.html": false,
+    "fontfaceset-has.html": false,
+    "fontfaceset-load-css-connected.html": false,
+    "fontfaceset-load-css-wide-keywords.html": true,
+    "fontfaceset-load-var.html": true,
+    "fontfaceset-update-after-stylesheet-change.html": false,
+    "fontfacesetloadevent-constructor.html": true,
+    "historical.html": true,
+    "idlharness.https.html": {
+      "expectedFailures": [
+        "FontFace interface: existence and properties of interface object",
+        "FontFaceFeatures interface: existence and properties of interface object",
+        "FontFaceVariationAxis interface: existence and properties of interface object",
+        "FontFaceVariations interface: existence and properties of interface object",
+        "FontFacePalette interface: existence and properties of interface object",
+        "FontFacePalettes interface: existence and properties of interface object",
+        "FontFaceSetLoadEvent interface: existence and properties of interface object",
+        "FontFaceSet interface: existence and properties of interface object",
+        "Document interface: attribute fonts",
+        "Document interface: document must inherit property \"fonts\" with the proper type"
+      ]
+    },
+    "nonexistent-file-url.html": false
   }
 }
