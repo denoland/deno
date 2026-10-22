@@ -1036,6 +1036,24 @@ Deno.test(function spawnSyncUndefinedValueInEnvVar() {
   assertEquals(ret.stdout.toString("utf-8").trim(), "BAZ");
 });
 
+Deno.test(function spawnSyncDoesNotInheritUnsetParentEnv() {
+  const probeKey = "DENO_CHILD_PROCESS_TEST_PROBE";
+  Deno.env.set(probeKey, "leaked");
+  try {
+    const ret = spawnSync(
+      `"${Deno.execPath()}" eval -p "Deno.env.get('${probeKey}') ?? '<unset>'"`,
+      {
+        env: { NO_COLOR: "true" },
+        shell: true,
+      },
+    );
+    assertEquals(ret.status, 0);
+    assertEquals(ret.stdout.toString("utf-8").trim(), "<unset>");
+  } finally {
+    Deno.env.delete(probeKey);
+  }
+});
+
 Deno.test(function spawnSyncStdioUndefined() {
   const ret = spawnSync(
     `"${Deno.execPath()}" eval "console.log('hello');console.error('world')"`,
