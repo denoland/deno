@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "tests": {
+    "preserves_computed_symbol_members": {
+      "steps": [{
+        "args": "pack --allow-dirty",
+        "output": "[WILDCARD]"
+      }, {
+        "args": ["run", "--allow-read", "verify.ts"],
+        "output": "computed symbol declarations preserved: true\n"
+      }]
+    }
+  }
+}
