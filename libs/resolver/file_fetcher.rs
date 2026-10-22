@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
@@ -30,6 +31,7 @@ use deno_graph::source::LoaderChecksum;
 use deno_permissions::CheckSpecifierKind;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
+use deno_permissions::is_windows_network_file_url;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;
 use http::header;
@@ -445,6 +447,9 @@ pub type GraphLoaderReporterRc =
 
 pub struct DenoGraphLoaderOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  /// File roots explicitly selected by the host application. These roots may
+  /// be loaded without read permission, including from a network filesystem.
+  pub file_roots: HashSet<Url>,
   /// Whether to include npm package sources in the graph.
   ///
   /// Generally we don't do this for performance reasons because we
@@ -454,6 +459,20 @@ pub struct DenoGraphLoaderOptions {
   /// Uses `check_open` with this API name for dynamic local-file loads.
   pub file_permission_api_name: Option<&'static str>,
   pub reporter: Option<GraphLoaderReporterRc>,
+}
+
+fn check_specifier_kind(
+  file_roots: &HashSet<Url>,
+  specifier: &Url,
+  was_dynamic_root: bool,
+) -> CheckSpecifierKind {
+  if was_dynamic_root {
+    CheckSpecifierKind::Dynamic
+  } else if file_roots.contains(specifier) {
+    CheckSpecifierKind::StaticRoot
+  } else {
+    CheckSpecifierKind::Static
+  }
 }
 
 #[sys_traits::auto_impl]
@@ -470,6 +489,11 @@ pub struct DenoGraphLoader<
   THttpClient: HttpClient,
 > {
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  #[allow(
+    clippy::disallowed_types,
+    reason = "immutable roots are shared across loader futures"
+  )]
+  file_roots: deno_maybe_sync::MaybeArc<HashSet<Url>>,
   #[allow(
     clippy::disallowed_types,
     reason = "Arc is needed for source content"
@@ -505,6 +529,7 @@ impl<
       in_npm_pkg_checker,
       sys,
       file_header_overrides: options.file_header_overrides,
+      file_roots: deno_maybe_sync::new_rc(options.file_roots),
       permissions: options.permissions,
       file_permission_api_name: options.file_permission_api_name,
       cache_info_enabled: false,
@@ -562,9 +587,10 @@ impl<
     Result<Option<TStrategy::Response>, deno_graph::source::LoadError>,
   > {
     let file_fetcher = self.file_fetcher.clone();
+    let file_roots = self.file_roots.clone();
     let permissions = self.permissions.clone();
     let file_permission_api_name = self.file_permission_api_name;
-    let is_statically_analyzable = !options.was_dynamic_root;
+    let was_dynamic_root = options.was_dynamic_root;
 
     async move {
       let maybe_cache_setting = match options.cache_setting {
@@ -585,11 +611,11 @@ impl<
           &specifier,
           match (&permissions, file_permission_api_name) {
             (Some(permissions), file_permission_api_name) => {
-              let kind = if is_statically_analyzable {
-                CheckSpecifierKind::Static
-              } else {
-                CheckSpecifierKind::Dynamic
-              };
+              let kind = check_specifier_kind(
+                &file_roots,
+                &specifier,
+                was_dynamic_root,
+              );
               match file_permission_api_name {
                 Some(api_name) => {
                   FetchPermissionsOptionRef::RestrictedWithFileApiName(
@@ -684,6 +710,9 @@ impl<
   }
 
   fn get_cache_info(&self, specifier: &Url) -> Option<CacheInfo> {
+    if is_windows_network_file_url(specifier) {
+      return None;
+    }
     let local = self.get_local_path(specifier)?;
     if self.sys.fs_is_file_no_err(&local) {
       Some(CacheInfo { local: Some(local) })
@@ -699,6 +728,7 @@ impl<
   ) -> LoadFuture {
     let specifier = if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
+      && !is_windows_network_file_url(specifier)
     {
       // The specifier might be in a completely different symlinked tree than
       // what the node_modules url is in (ex. `/my-project-1/node_modules`
@@ -904,15 +934,29 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
 #[cfg(test)]
 mod test {
   use std::collections::HashMap;
+  use std::ffi::OsStr;
+  use std::ffi::OsString;
+  use std::io;
+  use std::path::Path;
   use std::path::PathBuf;
+  use std::time::SystemTime;
+  use std::time::UNIX_EPOCH;
 
   use deno_cache_dir::file_fetcher::CacheSetting;
   use deno_cache_dir::file_fetcher::NullBlobStore;
   use deno_cache_dir::file_fetcher::SendError;
   use deno_cache_dir::file_fetcher::SendResponse;
+  use deno_cache_dir::memory::MemoryHttpCache;
   use deno_graph::source::CacheSetting as LoaderCacheSetting;
   use deno_graph::source::LoadResponse;
   use deno_graph::source::Loader;
+  use deno_permissions::Permissions;
+  use deno_permissions::RuntimePermissionDescriptorParser;
+  use sys_traits::BaseEnvVar;
+  use sys_traits::BaseFsMetadata;
+  use sys_traits::BaseFsOpen;
+  use sys_traits::OpenOptions;
+  use sys_traits::SystemTimeNow;
   use sys_traits::impls::InMemorySys;
   use url::Url;
 
@@ -932,6 +976,112 @@ mod test {
       _headers: http::HeaderMap,
     ) -> Result<SendResponse, SendError> {
       Err(SendError::NotFound)
+    }
+  }
+
+  #[derive(Debug, Clone, Copy)]
+  struct NoFileSystemSys;
+
+  impl BaseEnvVar for NoFileSystemSys {
+    fn base_env_var_os(&self, _key: &OsStr) -> Option<OsString> {
+      None
+    }
+  }
+
+  impl BaseFsMetadata for NoFileSystemSys {
+    type Metadata = <InMemorySys as BaseFsMetadata>::Metadata;
+
+    fn base_fs_metadata(&self, path: &Path) -> io::Result<Self::Metadata> {
+      panic!("unexpected metadata access: {path:?}")
+    }
+
+    fn base_fs_symlink_metadata(
+      &self,
+      path: &Path,
+    ) -> io::Result<Self::Metadata> {
+      panic!("unexpected symlink metadata access: {path:?}")
+    }
+  }
+
+  impl BaseFsOpen for NoFileSystemSys {
+    type File = <InMemorySys as BaseFsOpen>::File;
+
+    fn base_fs_open(
+      &self,
+      path: &Path,
+      _options: &OpenOptions,
+    ) -> io::Result<Self::File> {
+      panic!("unexpected file open: {path:?}")
+    }
+  }
+
+  impl SystemTimeNow for NoFileSystemSys {
+    fn sys_time_now(&self) -> SystemTime {
+      UNIX_EPOCH
+    }
+  }
+
+  fn fetch_options() -> FetchNoFollowOptions<'static> {
+    FetchNoFollowOptions {
+      local: Default::default(),
+      maybe_auth: None,
+      maybe_accept: None,
+      maybe_cache_setting: None,
+      maybe_checksum: None,
+    }
+  }
+
+  #[test]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "PermissionsContainer requires Arc"
+  )]
+  fn rejected_file_import_does_not_access_file_system() {
+    let file_fetcher = PermissionedFileFetcher::new(
+      NullBlobStore,
+      deno_maybe_sync::new_rc(MemoryHttpCache::default()),
+      TestHttpClient,
+      deno_maybe_sync::new_rc(crate::loader::MemoryFiles::default()),
+      NoFileSystemSys,
+      PermissionedFileFetcherOptions {
+        allow_remote: false,
+        cache_setting: CacheSetting::Use,
+      },
+    );
+    let parser = RuntimePermissionDescriptorParser::new(
+      InMemorySys::new_with_cwd(get_cwd()),
+    );
+    let permissions = PermissionsContainer::new(
+      std::sync::Arc::new(parser),
+      Permissions::none_without_prompt(),
+    );
+    let specifier = Url::parse("file://server/share/dependency.ts").unwrap();
+    let mut pool = futures::executor::LocalPool::new();
+
+    for kind in [CheckSpecifierKind::Static, CheckSpecifierKind::Dynamic] {
+      let err = pool
+        .run_until(file_fetcher.fetch_no_follow(
+          &specifier,
+          FetchPermissionsOptionRef::Restricted(&permissions, kind),
+          fetch_options(),
+        ))
+        .unwrap_err();
+      assert!(matches!(
+        err.into_kind(),
+        FetchNoFollowErrorKind::PermissionCheck(_)
+      ));
+
+      let err = pool
+        .run_until(file_fetcher.ensure_cached_no_follow(
+          &specifier,
+          FetchPermissionsOptionRef::Restricted(&permissions, kind),
+          fetch_options(),
+        ))
+        .unwrap_err();
+      assert!(matches!(
+        err.into_kind(),
+        FetchNoFollowErrorKind::PermissionCheck(_)
+      ));
     }
   }
 
@@ -973,6 +1123,7 @@ mod test {
       sys,
       DenoGraphLoaderOptions {
         file_header_overrides: HashMap::new(),
+        file_roots: HashSet::new(),
         permissions: None,
         file_permission_api_name: None,
         reporter: None,
@@ -988,6 +1139,31 @@ mod test {
       cache_setting: LoaderCacheSetting::Use,
       maybe_checksum: None,
     }
+  }
+
+  #[test]
+  fn file_root_permission_kinds() {
+    let root = Url::parse("file:///project/main.ts").unwrap();
+    let literal_dynamic_dependency =
+      Url::parse("file:///project/dependency.ts").unwrap();
+    let file_roots = HashSet::from([root.clone()]);
+
+    // An explicitly selected entrypoint keeps its host-provided authority.
+    assert_eq!(
+      check_specifier_kind(&file_roots, &root, false),
+      CheckSpecifierKind::StaticRoot,
+    );
+    // Static imports and analyzable dynamic imports are graph dependencies.
+    assert_eq!(
+      check_specifier_kind(&file_roots, &literal_dynamic_dependency, false),
+      CheckSpecifierKind::Static,
+    );
+    // Computed dynamic imports are checked at runtime, even if they resolve to
+    // the original entrypoint.
+    assert_eq!(
+      check_specifier_kind(&file_roots, &root, true),
+      CheckSpecifierKind::Dynamic,
+    );
   }
 
   #[test]

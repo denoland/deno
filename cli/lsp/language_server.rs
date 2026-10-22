@@ -413,7 +413,7 @@ impl LanguageServer {
       let module_graph_builder = factory.module_graph_builder().await?;
       let module_graph_creator = factory.module_graph_creator().await?;
       let mut inner_loader =
-        module_graph_builder.create_graph_loader_with_root_permissions();
+        module_graph_builder.create_graph_loader_with_root_permissions(&[]);
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_modules: &open_modules,
