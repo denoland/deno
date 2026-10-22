@@ -145,11 +145,31 @@ fn utf16_offset(utf16_map: &Utf16Map, byte_offset: usize) -> usize {
 /// on. Reading a range's offset as anything but a UTF-16 offset lands this far
 /// enough along the source to cross a line end, which files a branch under the
 /// line below the one it is on.
-fn byte_offset(utf16_map: &Utf16Map, utf16_offset: usize) -> usize {
+fn byte_offset(utf16_map: &Utf16Map, utf16_offset: usize) -> Option<usize> {
+  let utf16_offset = u32::try_from(utf16_offset).ok()?;
   utf16_map
-    .utf16_to_utf8_offset(TextSize::from(utf16_offset as u32))
+    .utf16_to_utf8_offset(TextSize::from(utf16_offset))
     .map(|offset| u32::from(offset) as usize)
-    .expect("a UTF-16 offset within the source has a byte offset")
+}
+
+/// Returns byte offsets only when the full V8 range maps to valid UTF-8
+/// boundaries in the runtime source. Coverage data can become stale or
+/// inconsistent with its source; ignoring such ranges keeps report generation
+/// from panicking or slicing through a multibyte character.
+fn coverage_range_byte_offsets(
+  range: &cdp::CoverageRange,
+  source: &str,
+  utf16_map: &Utf16Map,
+) -> Option<(usize, usize)> {
+  let start = byte_offset(utf16_map, range.start_char_offset)?;
+  let end = byte_offset(utf16_map, range.end_char_offset)?;
+  if start > end
+    || !source.is_char_boundary(start)
+    || !source.is_char_boundary(end)
+  {
+    return None;
+  }
+  Some((start, end))
 }
 
 fn generate_coverage_report(
@@ -213,6 +233,7 @@ fn generate_coverage_report(
     // runtime helpers) and shouldn't show up in user-visible coverage.
     let Some(line_index) = range_to_src_line_index(
       &function.ranges[0],
+      &options.script_runtime_source,
       &runtime_text_lines,
       &utf16_map,
       &maybe_source_map,
@@ -255,8 +276,27 @@ fn generate_coverage_report(
     for range in &function.ranges[1..] {
       let mut parent_count = block_hits;
       let mut parent_size = usize::MAX;
+      if coverage_range_byte_offsets(
+        range,
+        &options.script_runtime_source,
+        &utf16_map,
+      )
+      .is_none()
+      {
+        parent_counts.push(parent_count);
+        continue;
+      }
       for candidate in &function.ranges {
         if std::ptr::eq(candidate, range) {
+          continue;
+        }
+        if coverage_range_byte_offsets(
+          candidate,
+          &options.script_runtime_source,
+          &utf16_map,
+        )
+        .is_none()
+        {
           continue;
         }
         if candidate.start_char_offset <= range.start_char_offset
@@ -283,8 +323,15 @@ fn generate_coverage_report(
       // Skip whitespace-only "gap" ranges V8 emits between blocks (e.g. the
       // sliver between a catch's `return` and `finally`). They aren't real
       // branch arms, so counting them yields phantom branches (#35765).
-      let start_byte_offset = byte_offset(&utf16_map, range.start_char_offset);
-      let end_byte_offset = byte_offset(&utf16_map, range.end_char_offset);
+      let Some((start_byte_offset, end_byte_offset)) =
+        coverage_range_byte_offsets(
+          range,
+          &options.script_runtime_source,
+          &utf16_map,
+        )
+      else {
+        continue;
+      };
       if options.script_runtime_source[start_byte_offset..end_byte_offset]
         .trim()
         .is_empty()
@@ -297,6 +344,7 @@ fn generate_coverage_report(
       // source.
       let Some(line_index) = range_to_src_line_index(
         range,
+        &options.script_runtime_source,
         &runtime_text_lines,
         &utf16_map,
         &maybe_source_map,
@@ -434,6 +482,12 @@ fn generate_coverage_report(
         for range in &function.ranges {
           if range.start_char_offset <= line_start_utf16_offset
             && range.end_char_offset >= line_end_utf16_offset
+            && coverage_range_byte_offsets(
+              range,
+              &options.script_runtime_source,
+              &utf16_map,
+            )
+            .is_some()
           {
             let range_size = range.end_char_offset - range.start_char_offset;
             if range_size < best_range_size {
@@ -464,6 +518,15 @@ fn generate_coverage_report(
         .flat_map(|function| function.ranges.iter().enumerate())
       {
         if range.count > 0 {
+          continue;
+        }
+        if coverage_range_byte_offsets(
+          range,
+          &options.script_runtime_source,
+          &utf16_map,
+        )
+        .is_none()
+        {
           continue;
         }
 
@@ -595,11 +658,13 @@ fn generate_coverage_report(
 /// they were the user's own code.
 fn range_to_src_line_index(
   range: &cdp::CoverageRange,
+  source: &str,
   text_lines: &TextLines,
   utf16_map: &Utf16Map,
   maybe_source_map: &Option<SourceMap>,
 ) -> Option<usize> {
-  let range_start_byte_offset = byte_offset(utf16_map, range.start_char_offset);
+  let (range_start_byte_offset, _) =
+    coverage_range_byte_offsets(range, source, utf16_map)?;
   let line_index = text_lines.line_index(range_start_byte_offset);
   if let Some(source_map) = maybe_source_map.as_ref() {
     // A source map's columns are UTF-16 code units as well, so the column is
@@ -1099,11 +1164,54 @@ mod tests {
     // A range starting at that 7 belongs to the first line. Read as a
     // scalar-value offset instead it reaches into the line below, which is what
     // files a branch under the wrong line.
-    assert_eq!(byte_offset(&utf16_map, 7), text_lines.line_end(0_usize));
-    assert_eq!(text_lines.line_index(byte_offset(&utf16_map, 7)), 0);
+    let byte_offset = byte_offset(&utf16_map, 7).unwrap();
+    assert_eq!(byte_offset, text_lines.line_end(0_usize));
+    assert_eq!(text_lines.line_index(byte_offset), 0);
     assert_eq!(
       text_lines.line_index(text_lines.byte_index_from_char_index(7)),
       1,
+    );
+  }
+
+  #[test]
+  fn ignores_coverage_ranges_outside_the_runtime_source() {
+    let source = "const x = 1;";
+    let utf16_map = Utf16Map::new(source);
+    let range = cdp::CoverageRange {
+      start_char_offset: 0,
+      end_char_offset: source.encode_utf16().count() + 1,
+      count: 1,
+    };
+
+    assert_eq!(
+      coverage_range_byte_offsets(&range, source, &utf16_map),
+      None,
+    );
+
+    let oversized_range = cdp::CoverageRange {
+      start_char_offset: 0,
+      end_char_offset: usize::MAX,
+      count: 1,
+    };
+    assert_eq!(
+      coverage_range_byte_offsets(&oversized_range, source, &utf16_map),
+      None,
+    );
+  }
+
+  #[test]
+  fn ignores_coverage_ranges_inside_a_surrogate_pair() {
+    let source = "🕵🏻";
+    let utf16_map = Utf16Map::new(source);
+    let range = cdp::CoverageRange {
+      start_char_offset: 1,
+      end_char_offset: 2,
+      count: 1,
+    };
+
+    assert_eq!(
+      coverage_range_byte_offsets(&range, source, &utf16_map),
+      None,
     );
   }
 }
