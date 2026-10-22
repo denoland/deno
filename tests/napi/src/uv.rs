@@ -1028,8 +1028,50 @@ extern "C" fn test_uv_cond_broadcast(
   undefined
 }
 
+extern "C" fn test_uv_get_osfhandle(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  use std::fs::File;
+  use std::io::Read;
+
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+  let mut fd = 0;
+  assert_napi_ok!(napi_get_value_int32(env, args[0], &mut fd));
+  let handle = unsafe { libuv_sys_lite::uv_get_osfhandle(fd) };
+  // Repeated lookups borrow the same handle; they must not duplicate it.
+  assert_eq!(unsafe { libuv_sys_lite::uv_get_osfhandle(fd) }, handle);
+  #[cfg(unix)]
+  assert_eq!(handle, fd);
+  let mut result = ptr::null_mut();
+  if handle as isize == -1 {
+    assert_napi_ok!(napi_get_null(env, &mut result));
+    return result;
+  }
+
+  // The JS caller keeps the descriptor open. Duplicate its borrowed handle
+  // so dropping the Rust File cannot close the caller's descriptor.
+  #[cfg(unix)]
+  let borrowed = unsafe { std::os::fd::BorrowedFd::borrow_raw(handle) };
+  #[cfg(windows)]
+  let borrowed =
+    unsafe { std::os::windows::io::BorrowedHandle::borrow_raw(handle as _) };
+  let mut file = File::from(borrowed.try_clone_to_owned().unwrap());
+  let mut contents = String::new();
+  file.read_to_string(&mut contents).unwrap();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    contents.as_ptr().cast(),
+    contents.len(),
+    &mut result
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
+    napi_new_property!(env, "test_uv_get_osfhandle", test_uv_get_osfhandle),
     napi_new_property!(env, "test_uv_async", test_uv_async),
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
     napi_new_property!(
