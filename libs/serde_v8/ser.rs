@@ -5,12 +5,14 @@ use std::cell::RefCell;
 use serde::ser;
 use serde::ser::Serialize;
 
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::ExternalPointer;
 use crate::ToJsBuffer;
+#[allow(deprecated, reason = "uses a deprecated serde_v8 magic type; kept until call sites migrate")]
 use crate::U16String;
 use crate::error::Error;
 use crate::error::Result;
@@ -275,10 +277,10 @@ impl<'a, T: MagicType + ToV8> ser::SerializeStruct
 }
 
 // Dispatches between magic and regular struct serializers
+#[allow(deprecated, reason = "carries deprecated magic types until their removal")]
 pub enum StructSerializers<'a, 'b, 'c, 'i> {
   ExternalPointer(MagicalSerializer<'a, 'b, 'c, 'i, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, 'i, magic::Value<'a>>),
-  GlobalMagic(MagicalSerializer<'a, 'b, 'c, 'i, magic::GlobalValue>),
   RustToV8Buf(MagicalSerializer<'a, 'b, 'c, 'i, ToJsBuffer>),
   MagicAnyValue(MagicalSerializer<'a, 'b, 'c, 'i, AnyValue>),
   MagicDetached(MagicalSerializer<'a, 'b, 'c, 'i, DetachedBuffer>),
@@ -300,7 +302,6 @@ impl<'a> ser::SerializeStruct for StructSerializers<'a, '_, '_, '_> {
     match self {
       StructSerializers::ExternalPointer(s) => s.serialize_field(key, value),
       StructSerializers::Magic(s) => s.serialize_field(key, value),
-      StructSerializers::GlobalMagic(s) => s.serialize_field(key, value),
       StructSerializers::RustToV8Buf(s) => s.serialize_field(key, value),
       StructSerializers::MagicAnyValue(s) => s.serialize_field(key, value),
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
@@ -315,7 +316,6 @@ impl<'a> ser::SerializeStruct for StructSerializers<'a, '_, '_, '_> {
     match self {
       StructSerializers::ExternalPointer(s) => s.end(),
       StructSerializers::Magic(s) => s.end(),
-      StructSerializers::GlobalMagic(s) => s.end(),
       StructSerializers::RustToV8Buf(s) => s.end(),
       StructSerializers::MagicAnyValue(s) => s.end(),
       StructSerializers::MagicDetached(s) => s.end(),
@@ -572,6 +572,7 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
   }
 
   /// Serialises Rust typed structs into plain JS objects.
+  #[allow(deprecated, reason = "dispatch arms for deprecated magic types")]
   fn serialize_struct(
     self,
     name: &'static str,
@@ -609,10 +610,6 @@ impl<'a, 'b, 'c, 'i> ser::Serializer for Serializer<'a, 'b, 'c, 'i> {
       magic::Value::MAGIC_NAME => {
         let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
         Ok(StructSerializers::Magic(m))
-      }
-      magic::GlobalValue::MAGIC_NAME => {
-        let m = MagicalSerializer::<magic::GlobalValue>::new(self.scope);
-        Ok(StructSerializers::GlobalMagic(m))
       }
       _ => {
         // Regular structs

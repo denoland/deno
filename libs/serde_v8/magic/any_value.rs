@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(deprecated, reason = "impls for the deprecated type itself")]
 
 use num_bigint::BigInt;
 
@@ -12,6 +13,9 @@ use crate::magic::transl8::impl_magic;
 /// An untagged enum type that can be any of number, string, bool, bigint, or
 /// buffer.
 #[derive(Debug)]
+#[deprecated(
+  note = "use a typed value or a small FromV8 enum over the types you accept; slated for removal"
+)]
 pub enum AnyValue {
   RustBuffer(ToJsBuffer),
   V8Buffer(JsBuffer),
