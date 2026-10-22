@@ -1,0 +1,26 @@
+{
+  "tests": {
+    // The headline invariant of the collect-then-run fast path: output with a
+    // name filter is identical to the legacy single-phase path.
+    "filter_match": {
+      "args": "test --filter foo .",
+      "exitCode": 0,
+      "output": "filter_match.out"
+    },
+    // A filter matching zero tests anywhere skips every file.
+    "filter_zero_match": {
+      "args": "test --filter nomatch .",
+      "exitCode": 0,
+      "output": "filter_zero_match.out"
+    },
+    // The fast path composes with --parallel (pool size > 1).
+    "filter_match_parallel": {
+      "args": "test --parallel --filter foo .",
+      "envs": {
+        "DENO_JOBS": "4"
+      },
+      "exitCode": 0,
+      "output": "filter_match_parallel.out"
+    }
+  }
+}
