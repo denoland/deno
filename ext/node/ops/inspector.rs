@@ -22,10 +22,15 @@ use deno_inspector_server::stop_inspector_server;
 use deno_permissions::PermissionsContainer;
 
 #[op2(fast)]
-pub fn op_inspector_enabled(state: &OpState) -> bool {
+pub fn op_inspector_enabled(
+  state: &mut OpState,
+) -> Result<bool, deno_permissions::PermissionCheckError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("inspector", "inspector.enabled")?;
   // If there's `InspectorServerUrl` then inspector is enabled, this
   // will change once `op_inspector_open` will be implemented
-  state.try_borrow::<InspectorServerUrl>().is_some()
+  Ok(state.try_borrow::<InspectorServerUrl>().is_some())
 }
 
 /// Returns the port the inspector server is listening on, or 0 if the
@@ -33,23 +38,29 @@ pub fn op_inspector_enabled(state: &OpState) -> bool {
 /// `process.debugPort` so it reflects the actual bound port (which is
 /// important when `--inspect=...:0` requests an ephemeral port).
 #[op2(fast)]
-pub fn op_inspector_port(state: &OpState) -> u32 {
+pub fn op_inspector_port(
+  state: &mut OpState,
+) -> Result<u32, deno_permissions::PermissionCheckError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("inspector", "process.debugPort")?;
+
   let Some(url) = state.try_borrow::<InspectorServerUrl>() else {
-    return 0;
+    return Ok(0);
   };
   // URL looks like `ws://host:port/<uuid>` (or `wss://...`). Parse out
   // the port. We don't depend on the `url` crate here to keep the op
   // tiny; the format is fixed by `get_websocket_debugger_url`.
   let s = url.0.as_str();
   let Some(after_scheme) = s.split_once("://").map(|(_, rest)| rest) else {
-    return 0;
+    return Ok(0);
   };
   let host_and_port = after_scheme.split('/').next().unwrap_or("");
   let port_str = match host_and_port.rsplit_once(':') {
     Some((_, p)) => p,
-    None => return 0,
+    None => return Ok(0),
   };
-  port_str.parse::<u16>().map(|p| p as u32).unwrap_or(0)
+  Ok(port_str.parse::<u16>().map(|p| p as u32).unwrap_or(0))
 }
 
 #[op2(stack_trace)]
