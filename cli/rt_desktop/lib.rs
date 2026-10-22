@@ -621,6 +621,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     }
   }
 
+  fn run_on_ui_thread(&self, f: Box<dyn FnOnce() + Send>) {
+    laufey::run_on_ui_thread(f);
+  }
+
   fn alert(&self, title: &str, message: &str) {
     laufey::alert(title, message);
   }
