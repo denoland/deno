@@ -1,0 +1,50 @@
+{
+  "tempDir": true,
+  "tests": {
+    "global": {
+      "args": "check main.ts",
+      "output": "check.out"
+    },
+    "reverse": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "--no-config",
+            "Deno.copyFileSync('reverse.json', 'deno.json');"
+          ],
+          "output": ""
+        },
+        {
+          "args": "check main.ts",
+          "output": "check.out"
+        }
+      ]
+    },
+    "scheme": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "--no-config",
+            "Deno.copyFileSync('scheme.json', 'deno.json');"
+          ],
+          "output": ""
+        },
+        {
+          "args": "check scheme.ts",
+          "output": "check.out"
+        }
+      ]
+    },
+    "wrong": {
+      "args": "check wrong.ts",
+      "output": "wrong.out",
+      "exitCode": 1
+    },
+    "runtime": {
+      "args": "run main.ts",
+      "output": "runtime.out"
+    }
+  }
+}

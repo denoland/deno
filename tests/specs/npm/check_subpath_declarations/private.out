@@ -1,0 +1,1 @@
+[WILDCARD]error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './private' is not defined for types by "exports" in '[WILDCARD]package.json'
