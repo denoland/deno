@@ -2,7 +2,6 @@
 
 // deno-lint-ignore-file no-explicit-any no-var
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
 /** This Web Storage API interface provides access to a particular domain's
