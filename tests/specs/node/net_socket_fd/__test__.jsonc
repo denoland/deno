@@ -26,6 +26,11 @@
       "if": "unix",
       "args": "run -A --unstable-ffi double_close_fd_reuse.ts",
       "output": "double_close_fd_reuse.out"
+    },
+    "signal_hook_fd_not_adopted": {
+      "if": "unix",
+      "args": "run -A signal_hook_fd_not_adopted.ts",
+      "output": "signal_hook_fd_not_adopted.out"
     }
   }
 }
