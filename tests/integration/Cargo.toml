@@ -60,3 +60,6 @@ zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
 nix.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+junction.workspace = true
