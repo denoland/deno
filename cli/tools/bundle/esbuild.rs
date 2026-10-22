@@ -18,7 +18,7 @@ use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::sys::CliSys;
 
-pub const ESBUILD_VERSION: &str = "0.25.5";
+pub const ESBUILD_VERSION: &str = "0.28.2";
 // Bump when helper acquisition semantics change so an existing executable is
 // reacquired under the new rules.
 const ESBUILD_CACHE_VERSION: u8 = 1;
