@@ -66,6 +66,7 @@ use crate::lsp::documents::OpenDocument;
 use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::text::LineIndex;
 use crate::lsp::urls::uri_to_url;
 use crate::sys::CliSys;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
@@ -1574,12 +1575,24 @@ fn import_map_diagnostic_range(
   lsp::Range::default()
 }
 
-fn json_error_range(err: &serde_json::Error) -> lsp::Range {
+fn json_error_range(
+  line_index: &LineIndex,
+  err: &serde_json::Error,
+) -> lsp::Range {
   let line = err.line().saturating_sub(1) as u32;
-  let character = err.column().saturating_sub(1) as u32;
+  // `serde_json::Error::column()` is a UTF-8 byte offset within the line,
+  // not a UTF-16 code unit offset, so it needs to be converted before it
+  // can be used as an LSP `character` position.
+  let byte_col = err.column().saturating_sub(1) as u32;
+  let position = line_index
+    .position_utf16_from_utf8_line_col(line, byte_col)
+    .unwrap_or(lsp::Position {
+      line,
+      character: byte_col,
+    });
   lsp::Range {
-    start: lsp::Position { line, character },
-    end: lsp::Position { line, character },
+    start: position,
+    end: position,
   }
 }
 
@@ -1691,7 +1704,7 @@ pub(crate) fn generate_import_map_diagnostics(
         DenoDiagnostic::ImportMapDiagnostic(format!(
           "Unable to parse import map JSON: {err}"
         ))
-        .to_lsp_diagnostic(&json_error_range(err)),
+        .to_lsp_diagnostic(&json_error_range(&document.line_index, err)),
       ],
       _ => vec![
         DenoDiagnostic::ImportMapDiagnostic(err.to_string())
@@ -2376,6 +2389,52 @@ mod tests {
               "code": "import-map-diagnostic",
               "source": "deno",
               "message": "Unable to parse import map JSON: EOF while parsing a value at line 1 column 13",
+            },
+          ],
+        ],
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn test_import_map_document_json_parse_diagnostic_non_ascii() {
+    // `serde_json::Error::column()` reports a UTF-8 *byte* offset within the
+    // line, not a UTF-16 code unit offset. With a 4-byte emoji (2 UTF-16
+    // units) before the syntax error, naively using `column - 1` as the LSP
+    // `character` overshoots by 2: byte column 24 (1-indexed) naively
+    // becomes character 23, but the emoji only accounts for 2 UTF-16 units
+    // instead of 4 bytes, so the correct character is 21.
+    let (temp_dir, snapshot) = setup(
+      &[(
+        "import-map.json",
+        "{ \"imports\": { \"\u{1F995}\": invalid } }",
+        1,
+        LanguageId::Json,
+      )],
+      Some((
+        "deno.json",
+        r#"{
+        "importMap": "./import-map.json"
+      }"#,
+      )),
+    )
+    .await;
+    let actual = generate_all_import_map_diagnostics(&snapshot);
+    assert_eq!(
+      json!(actual),
+      json!([
+        [
+          url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap(),
+          [
+            {
+              "range": {
+                "start": { "line": 0, "character": 21 },
+                "end": { "line": 0, "character": 21 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Unable to parse import map JSON: expected value at line 1 column 24",
             },
           ],
         ],
