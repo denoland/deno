@@ -11,6 +11,8 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::npm::is_synthetic_module;
+
 pub mod analyzer;
 
 #[allow(clippy::disallowed_types, reason = "definition")]
@@ -308,11 +310,34 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     }
   }
 
+  /// Whether Node's `package.json`-based CJS/ESM rules apply to this file.
+  ///
+  /// `in_npm_pkg_checker` only recognizes the npm packages that belong to the
+  /// *current* resolution root: the global npm cache dir, or the workspace's
+  /// local `node_modules` dir. A file can live in a `node_modules` tree that
+  /// belongs to neither — most notably `deno x`, which runs an installed bin
+  /// out of `deno_x_cache/.../node_modules/` in a subprocess that resolves
+  /// against the user's cwd config. Such a file is an npm package file no
+  /// matter which config the process happened to load, and whether it is CJS
+  /// must not depend on that, so fall back to a `node_modules` path check.
+  ///
+  /// Synthetic modules (`deno eval`, piped stdin) are excluded: they have no
+  /// file on disk and are only anchored at the cwd so that their imports
+  /// resolve, so a cwd inside `node_modules` must not make them npm files.
+  fn node_cjs_rules_apply(&self, specifier: &Url) -> bool {
+    if self.in_npm_pkg_checker.in_npm_package(specifier) {
+      return true;
+    }
+    specifier.scheme() == "file"
+      && specifier.path().contains("/node_modules/")
+      && !is_synthetic_module(specifier)
+  }
+
   fn check_based_on_pkg_json(
     &self,
     specifier: &Url,
   ) -> Result<ResolutionMode, PackageJsonLoadError> {
-    if self.in_npm_pkg_checker.in_npm_package(specifier) {
+    if self.node_cjs_rules_apply(specifier) {
       let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
         return Ok(ResolutionMode::Require);
       };
