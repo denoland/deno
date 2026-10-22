@@ -38,6 +38,7 @@ pub use parse::MAX_HEADERS;
 pub use parse::ParseError;
 pub use parse::RequestHead;
 pub use parse::Version;
+pub use parse::is_valid_host_header_value;
 pub use parse::parse_request_head;
 pub use parse::parse_request_head_uninit;
 pub use parse::parse_request_head_uninit_all;
