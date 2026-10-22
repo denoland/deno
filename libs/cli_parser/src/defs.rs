@@ -1839,7 +1839,7 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("exclude-unused-npm")
       .long("exclude-unused-npm")
       .set_true()
-.help("Embed only the npm packages reachable from the module graph (managed npm; no node_modules directory).\n  Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.\n  Reduces binary size when the lockfile contains packages the entrypoint does not import.\n  Skips packages that are only reached through non-statically-analyzable dynamic imports;\n  pass those with --include npm:<pkg> if needed."),
+.help("Embed only the npm packages reachable from the module graph (managed npm).\n  Without this flag the full managed npm snapshot from the lockfile / package.json is embedded,\n  and a local node_modules directory is embedded wholesale.\n  Reduces binary size when the lockfile contains packages the entrypoint does not import.\n  Skips packages that are only reached through non-statically-analyzable dynamic imports;\n  pass those with --include npm:<pkg> if needed."),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -3078,7 +3078,7 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("exclude-unused-npm")
       .long("exclude-unused-npm")
       .set_true()
-.help("Embed only the npm packages reachable from the module graph (managed npm; no node_modules directory).\n  Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.\n  Reduces binary size when the lockfile contains packages the entrypoint does not import.\n  Skips packages that are only reached through non-statically-analyzable dynamic imports;\n  pass those with --include npm:<pkg> if needed."),
+.help("Embed only the npm packages reachable from the module graph (managed npm).\n  Without this flag the full managed npm snapshot from the lockfile / package.json is embedded,\n  and a local node_modules directory is embedded wholesale.\n  Reduces binary size when the lockfile contains packages the entrypoint does not import.\n  Skips packages that are only reached through non-statically-analyzable dynamic imports;\n  pass those with --include npm:<pkg> if needed."),
     ArgDef::new("output")
       .short('o')
       .long("output")
