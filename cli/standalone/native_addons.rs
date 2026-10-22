@@ -4,9 +4,11 @@
 //! `deno compile --bundle`. Two complementary signals:
 //!
 //! 1. Packages with `.node` native addons can't be tree-shaken into the
-//!    bundle, so we mark them for inclusion eagerly. For managed npm we
-//!    walk the resolved snapshot; for BYONM we scan the workspace
-//!    `node_modules` trees that `fill_npm_vfs` embeds.
+//!    bundle, so by default we mark them for inclusion eagerly. With
+//!    `--exclude-unused-npm`, only packages reached through rewritten bundle
+//!    paths are included. For managed npm we walk the resolved snapshot; for
+//!    BYONM we scan the workspace `node_modules` trees that `fill_npm_vfs`
+//!    embeds.
 //! 2. Absolute paths the bundle path-rewriter pointed at — captured at
 //!    bundle time — are mapped back to their owning npm package so the
 //!    binary writer ships only what's actually reached at runtime.
@@ -97,12 +99,12 @@ pub fn find_native_addon_packages(
 /// Compute the set of npm packages whose folders must ship in the binary
 /// produced by `deno compile --bundle`.
 ///
-/// Seeds the set with:
-/// - every native-addon package (always needed; bundle can't inline a
-///   `.node` file), and
-/// - every package whose installed folder contains one of the
-///   `referenced_paths` — i.e. paths the bundle path-rewriter resolved
-///   at build time, which the compiled binary will require() at runtime.
+/// Seeds the set with every package whose installed folder contains one of
+/// the `referenced_paths` — i.e. paths the bundle path-rewriter resolved at
+/// build time, which the compiled binary will require() at runtime. Unless
+/// `exclude_unused_npm` is set, the set also includes every native addon
+/// package because the bundle can't inline a `.node` file and runtime use
+/// can't always be determined statically.
 ///
 /// Then walks each seed's dependency closure so transitive runtime
 /// requires (e.g. a CJS package's own require()s) also have their
@@ -114,6 +116,7 @@ pub fn collect_bundle_required_packages(
   npm_resolver: &CliNpmResolver,
   npm_system_info: &NpmSystemInfo,
   referenced_paths: &[PathBuf],
+  exclude_unused_npm: bool,
 ) -> Result<Option<HashSet<NpmPackageId>>, AnyError> {
   let CliNpmResolver::Managed(managed) = npm_resolver else {
     return Ok(None);
@@ -122,8 +125,11 @@ pub fn collect_bundle_required_packages(
   let snapshot = managed.resolution().snapshot();
   // Managed resolver only: `workspace_root` is unused on this path (it only
   // matters for BYONM, which returns `None` above).
-  let native_packages =
-    find_native_addon_packages(npm_resolver, npm_system_info, None)?;
+  let native_packages = if exclude_unused_npm {
+    Vec::new()
+  } else {
+    find_native_addon_packages(npm_resolver, npm_system_info, None)?
+  };
 
   let mut folders: Vec<(NpmPackageId, PathBuf)> = Vec::new();
   for pkg in snapshot.all_packages_for_every_system() {

@@ -673,7 +673,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // closure of its dependencies, must be embedded in the VFS.
     let npm_snapshot = if compile_flags.bundle {
       self
-        .fill_bundle_native_addon_vfs(&mut vfs, &progress_bar)
+        .fill_bundle_native_addon_vfs(
+          &mut vfs,
+          &progress_bar,
+          compile_flags.exclude_unused_npm,
+        )
         .context("Embedding native addon packages.")?
     } else {
       match &self.npm_resolver {
@@ -1312,6 +1316,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     builder: &mut VfsBuilder,
     progress_bar: &ProgressBar,
+    exclude_unused_npm: bool,
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     let needs_for_cjs_wrapper =
       self.cli_options.compile_bundle_embed_node_modules();
@@ -1325,12 +1330,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .to_file_path()
       .ok();
     let needs_for_native_addons = !needs_for_cjs_wrapper
-      && !super::native_addons::find_native_addon_packages(
-        self.npm_resolver,
-        &self.npm_system_info,
-        workspace_root.as_deref(),
-      )?
-      .is_empty();
+      && if exclude_unused_npm {
+        !referenced_paths.is_empty()
+      } else {
+        !super::native_addons::find_native_addon_packages(
+          self.npm_resolver,
+          &self.npm_system_info,
+          workspace_root.as_deref(),
+        )?
+        .is_empty()
+      };
     if !needs_for_cjs_wrapper && !needs_for_native_addons {
       return Ok(None);
     }
@@ -1352,6 +1361,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             self.npm_resolver,
             &self.npm_system_info,
             referenced_paths,
+            exclude_unused_npm,
           )?
         else {
           unreachable!(

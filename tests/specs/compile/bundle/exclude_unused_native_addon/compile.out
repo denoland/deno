@@ -1,0 +1,11 @@
+[WILDCARD]Compile .deno_compile_bundle_[WILDCHARS(8)].mjs to out
+
+Embedded Files
+
+out
+├── .deno_compile_bundle_[WILDCHARS(8)].mjs ([WILDLINE])
+└── package.json ([WILDLINE])
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE][WILDCARD]
