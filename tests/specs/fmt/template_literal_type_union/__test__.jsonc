@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stdin": {
+      "args": "fmt -",
+      "input": "export type SortSelector = `${typeof Descending | typeof Ascending}${SortItems}`;\n",
+      "output": "export type SortSelector = `${\n  typeof Descending | typeof Ascending\n}${SortItems}`;\n"
+    }
+  }
+}
