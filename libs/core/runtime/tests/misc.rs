@@ -1236,9 +1236,20 @@ async fn test_dynamic_import_module_error_stack() {
     error_str.contains("TypeError: foo"),
     "Expected error to contain 'TypeError: foo', got: {error_str}"
   );
+  // The rejection propagates out of the dynamically imported module and
+  // surfaces the `await import(...)` site in `main.js`.
+  //
+  // Note: this asserts on the `main.js` frame rather than the innermost
+  // `import.js` op-call site. `import.js` awaits a *bare* op stub directly;
+  // its await frame used to be materialized by an `ErrorCaptureStackTrace`
+  // recapture in a per-op `.catch` handler, which has been removed to avoid
+  // allocating a second promise for every pending async op. Every real Deno
+  // async API (`Deno.readFile`, `fetch`, ...) wraps the op in an `async`
+  // function, so V8's async stack traces still include the call site there —
+  // see the CLI `error_023_stack_async` / `fetch_async_error_stack` specs.
   assert!(
-    error_str.contains("at async file:///import.js:1:43"),
-    "Expected error to contain import.js stack frame, got: {error_str}"
+    error_str.contains("at async file:///main.js:1:1"),
+    "Expected error to contain main.js stack frame, got: {error_str}"
   );
 }
 
