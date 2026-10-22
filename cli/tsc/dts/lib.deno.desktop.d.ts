@@ -57,8 +57,11 @@ declare class KeyboardEvent extends UIEvent {
 
 declare interface MouseEventInit extends UIEventInit {
   button?: number;
+  buttons?: number;
   clientX?: number;
   clientY?: number;
+  screenX?: number;
+  screenY?: number;
   ctrlKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
@@ -68,6 +71,7 @@ declare interface MouseEventInit extends UIEventInit {
 declare class MouseEvent extends UIEvent {
   constructor(type: string, init?: MouseEventInit);
   readonly button: number;
+  readonly buttons: number;
   readonly clientX: number;
   readonly clientY: number;
   readonly screenX: number;
@@ -622,9 +626,63 @@ declare namespace Deno {
 
     getSize(): [number, number];
     setSize(width: number, height: number): void;
+    /** Viewport width in CSS pixels, like
+     * [`window.innerWidth`](https://developer.mozilla.org/docs/Web/API/Window/innerWidth).
+     * Same as the first element of {@linkcode BrowserWindow.getSize}. */
+    readonly innerWidth: number;
+    /** Viewport height in CSS pixels, like
+     * [`window.innerHeight`](https://developer.mozilla.org/docs/Web/API/Window/innerHeight).
+     * Same as the second element of {@linkcode BrowserWindow.getSize}. */
+    readonly innerHeight: number;
+    /** Chrome-inclusive width in CSS pixels, like
+     * [`window.outerWidth`](https://developer.mozilla.org/docs/Web/API/Window/outerWidth).
+     * A frameless window matches {@linkcode BrowserWindow.innerWidth}. */
+    readonly outerWidth: number;
+    /** Chrome-inclusive height in CSS pixels, like
+     * [`window.outerHeight`](https://developer.mozilla.org/docs/Web/API/Window/outerHeight).
+     * A frameless window matches {@linkcode BrowserWindow.innerHeight}. */
+    readonly outerHeight: number;
+
+    /** Physical pixels per CSS pixel for this window, like
+     * [`window.devicePixelRatio`](https://developer.mozilla.org/docs/Web/API/Window/devicePixelRatio).
+     * Updates when the window moves to a display with a different scale.
+     * Observe that with {@linkcode BrowserWindow.matchMedia}, not
+     * {@linkcode BrowserWindowEventMap.resize}. */
+    readonly devicePixelRatio: number;
+
+    /** [`window.matchMedia`](https://developer.mozilla.org/docs/Web/API/Window/matchMedia)
+     * for this window. `change` fires when a move or resize crosses the
+     * query, including a move onto a display with a different
+     * {@linkcode BrowserWindow.devicePixelRatio}. Understands `width`,
+     * `height`, `aspect-ratio`, `orientation`, `resolution`, and
+     * `-webkit-device-pixel-ratio` / `device-pixel-ratio`, including
+     * Media Queries Level 4 range syntax. */
+    matchMedia(query: string): MediaQueryList;
 
     getPosition(): [number, number];
     setPosition(x: number, y: number): void;
+    /** Frame origin in screen CSS pixels, like
+     * [`window.screenX`](https://developer.mozilla.org/docs/Web/API/Window/screenX).
+     * Same as the first element of {@linkcode BrowserWindow.getPosition}.
+     * Not {@linkcode MouseEvent.screenX} — that is
+     * {@linkcode BrowserWindow.getInnerPosition}`()[0] + clientX`. */
+    readonly screenX: number;
+    /** Frame origin in screen CSS pixels, like
+     * [`window.screenY`](https://developer.mozilla.org/docs/Web/API/Window/screenY).
+     * Same as the second element of {@linkcode BrowserWindow.getPosition}.
+     * Not {@linkcode MouseEvent.screenY} — that is
+     * {@linkcode BrowserWindow.getInnerPosition}`()[1] + clientY`. */
+    readonly screenY: number;
+    /** Alias of {@linkcode BrowserWindow.screenX}, like
+     * [`window.screenLeft`](https://developer.mozilla.org/docs/Web/API/Window/screenLeft). */
+    readonly screenLeft: number;
+    /** Alias of {@linkcode BrowserWindow.screenY}, like
+     * [`window.screenTop`](https://developer.mozilla.org/docs/Web/API/Window/screenTop). */
+    readonly screenTop: number;
+    /** Top-left of the content view in screen CSS pixels. Differs from
+     * {@linkcode BrowserWindow.getPosition} by the title-bar height, so
+     * `getInnerPosition()[1] + clientY` is `MouseEvent.screenY`. */
+    getInnerPosition(): [number, number];
 
     isResizable(): boolean;
     setResizable(resizable: boolean): void;
