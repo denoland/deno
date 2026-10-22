@@ -1973,6 +1973,8 @@ fn format_raw<'s, 'i>(
   };
   let mut keys: Vec<v8::Local<'s, v8::Value>> = Vec::new();
   let mut extras_type = K_OBJECT_TYPE;
+  let mut extra_keys: &[&'static str] = &[];
+  let mut extra_keys_typed_array = typed_array_marker;
   let only_enumerable = !ctx.show_hidden;
 
   if proxy_details.is_some() && ctx.show_proxy {
@@ -2057,6 +2059,17 @@ fn format_raw<'s, 'i>(
       formatter.bound_value = Some(value);
       formatter.bound_size = size;
       extras_type = K_ARRAY_EXTRAS_TYPE;
+      if ctx.show_hidden {
+        // .buffer goes last, it's not a primitive like the others.
+        extra_keys = &[
+          "BYTES_PER_ELEMENT",
+          "length",
+          "byteLength",
+          "byteOffset",
+          "buffer",
+        ];
+        extra_keys_typed_array = true;
+      }
     } else if value.is_map_iterator() {
       keys = get_keys(scope, intr, value_obj, ctx.show_hidden);
       formatter.braces = get_iterator_braces("Map", &tag);
@@ -2178,24 +2191,15 @@ fn format_raw<'s, 'i>(
         let byte_length = any_array_buffer_byte_length(scope, value);
         let num = v8::Number::new(scope, byte_length as f64);
         let formatted = format_number(scope, ctx, num.into())?;
-        return Ok(format!("{prefix}{{ byteLength: {formatted} }}"));
+        return Ok(format!("{prefix}{{ [byteLength]: {formatted} }}"));
       }
       formatter.braces.0 = format!("{prefix}{{");
-      let mut new_keys: Vec<v8::Local<'s, v8::Value>> =
-        vec![v8_str(scope, "byteLength").into()];
-      new_keys.extend(keys);
-      keys = new_keys;
+      extra_keys = &["byteLength"];
     } else if value.is_data_view() {
       formatter.braces.0 =
         format!("{}{{", get_prefix(constructor_str, &tag, "DataView", ""));
       // .buffer goes last, it's not a primitive like the others.
-      let mut new_keys: Vec<v8::Local<'s, v8::Value>> = vec![
-        v8_str(scope, "byteLength").into(),
-        v8_str(scope, "byteOffset").into(),
-        v8_str(scope, "buffer").into(),
-      ];
-      new_keys.extend(keys);
-      keys = new_keys;
+      extra_keys = &["byteLength", "byteOffset", "buffer"];
     } else if value.is_promise() {
       formatter.braces.0 =
         format!("{}{{", get_prefix(constructor_str, &tag, "Promise", ""));
@@ -2319,6 +2323,28 @@ fn format_raw<'s, 'i>(
       }
       _ => run_formatter(scope, intr, ctx, &formatter, value, recurse_times)?,
     };
+    for &key in extra_keys {
+      let extra_value = match try_get_str(scope, value_obj, key) {
+        Some(v) => v,
+        // The getters of a detached DataView throw, so read the key from its
+        // buffer instead.
+        None => match v8::Local::<v8::Object>::try_from(js_get_str(
+          scope, value_obj, "buffer",
+        )?) {
+          Ok(buffer) => js_get_str(scope, buffer, key)?,
+          Err(_) => v8::undefined(scope).into(),
+        },
+      };
+      output.push(format_extra_property(
+        scope,
+        intr,
+        ctx,
+        extra_value,
+        recurse_times,
+        key,
+        extra_keys_typed_array,
+      )?);
+    }
     for key in &keys {
       output.push(format_property(
         scope,
@@ -2923,11 +2949,9 @@ fn run_formatter<'s, 'i>(
     ),
     FormatterId::TypedArray => format_typed_array(
       scope,
-      intr,
       ctx,
       formatter.bound_value.unwrap(),
       formatter.bound_size,
-      recurse_times,
     ),
     FormatterId::MapIterator | FormatterId::SetIterator => {
       unreachable!("iterators are special-cased before run_formatter")
@@ -3173,11 +3197,9 @@ fn format_map<'s, 'i>(
 
 fn format_typed_array<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   length: usize,
-  recurse_times: f64,
 ) -> R<Vec<String>> {
   let value_obj = v8::Local::<v8::Object>::try_from(value).unwrap();
   let max_length = (ctx.max_array_length.max(0.0) as usize).min(length);
@@ -3198,22 +3220,6 @@ fn format_typed_array<'s, 'i>(
   }
   if remaining > 0 {
     output.push(more_items(remaining));
-  }
-  if ctx.show_hidden {
-    // .buffer goes last, it's not a primitive like the others.
-    ctx.indentation_lvl += 2;
-    for key in [
-      "BYTES_PER_ELEMENT",
-      "length",
-      "byteLength",
-      "byteOffset",
-      "buffer",
-    ] {
-      let v = js_get_str(scope, value_obj, key)?;
-      let str_ = format_value(scope, intr, ctx, v, recurse_times, true)?;
-      output.push(format!("[{key}]: {str_}"));
-    }
-    ctx.indentation_lvl -= 2;
   }
   Ok(output)
 }
@@ -3522,6 +3528,24 @@ pub fn remove_colors(s: &str) -> String {
     i += 1;
   }
   out
+}
+
+fn format_extra_property<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  intr: &Intrinsics<'_>,
+  ctx: &mut Ctx<'s>,
+  value: v8::Local<'s, v8::Value>,
+  recurse_times: f64,
+  key: &str,
+  typed_array: bool,
+) -> R<String> {
+  ctx.indentation_lvl += 2;
+  let str_ = format_value(scope, intr, ctx, value, recurse_times, typed_array);
+  ctx.indentation_lvl -= 2;
+
+  // These entries are mainly getters. Should they be formatted like getters?
+  let name = ctx.stylize(scope, &format!("[{key}]"), "string")?;
+  Ok(format!("{name}: {}", str_?))
 }
 
 #[allow(clippy::too_many_arguments, reason = "formatting context")]
