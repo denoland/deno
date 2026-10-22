@@ -13,5 +13,6 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+libc.workspace = true
 libuv-sys-lite.workspace = true
 napi_sys.workspace = true
