@@ -1,0 +1,5 @@
+{
+  "optionalDependencies": {
+    "@denotest/failing-lifecycle": "1.0.0"
+  }
+}

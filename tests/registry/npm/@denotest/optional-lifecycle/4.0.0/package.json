@@ -1,0 +1,11 @@
+{
+  "name": "@denotest/optional-lifecycle",
+  "version": "4.0.0",
+  "bin": "index.js",
+  "optionalDependencies": {
+    "@denotest/failing-lifecycle": "1.0.0"
+  },
+  "dependencies": {
+    "@denotest/optional-lifecycle": "2.0.0"
+  }
+}

@@ -1,0 +1,5 @@
+[WILDCARD]Warning: script 'postinstall' in '@denotest/failing-lifecycle@3.0.0' failed with exit code 1
+stdout:
+deliberate failure
+
+main ran
