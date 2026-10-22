@@ -153,3 +153,62 @@ pub fn init(options: InitLoggingOptions) {
   let _ = log::set_logger(cli_logger);
   log::set_max_level(cli_logger.filter());
 }
+
+/// Temporarily lowers the process-wide max log level, restoring the previous
+/// level when dropped (including on panic / early return).
+///
+/// Used by `deno check` around internal `sync-types` work so progress/summary
+/// noise is suppressed without permanently clobbering a user-selected
+/// `--log-level` / `-L` setting.
+pub struct MaxLevelGuard {
+  prev: log::LevelFilter,
+}
+
+impl MaxLevelGuard {
+  pub fn suppress_below_error() -> Self {
+    let prev = log::max_level();
+    log::set_max_level(log::LevelFilter::Error);
+    Self { prev }
+  }
+}
+
+impl Drop for MaxLevelGuard {
+  fn drop(&mut self) {
+    log::set_max_level(self.prev);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn max_level_guard_restores_previous_level() {
+    let original = log::max_level();
+    log::set_max_level(log::LevelFilter::Debug);
+    {
+      let _guard = MaxLevelGuard::suppress_below_error();
+      assert_eq!(log::max_level(), log::LevelFilter::Error);
+    }
+    assert_eq!(log::max_level(), log::LevelFilter::Debug);
+    log::set_max_level(original);
+  }
+
+  #[test]
+  fn max_level_guard_restores_on_unwind() {
+    let original = log::max_level();
+    log::set_max_level(log::LevelFilter::Info);
+    let result = std::panic::catch_unwind(|| {
+      let _guard = MaxLevelGuard::suppress_below_error();
+      assert_eq!(log::max_level(), log::LevelFilter::Error);
+      panic!("force unwind while sync-types would be running");
+    });
+    assert!(result.is_err());
+    assert_eq!(
+      log::max_level(),
+      log::LevelFilter::Info,
+      "user log level must survive sync-types even if the quiet section panics"
+    );
+    log::set_max_level(original);
+  }
+}

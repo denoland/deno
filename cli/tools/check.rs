@@ -199,12 +199,12 @@ async fn native_check(
   // Cache miss: generate the tsconfig.json and materialize dependency types so
   // the native compiler can resolve the project's jsr:/npm:/http(s): imports.
   // Suppress sync-types' own progress/summary output (an internal step here) so
-  // it doesn't precede the type-check diagnostics. This clobbers the global log
-  // level, which is not ideal; replacing it with source-level suppression (or
-  // reusing the already-built graph so sync-types doesn't re-fetch) is tracked
-  // as a follow-up.
-  let prev_level = log::max_level();
-  log::set_max_level(log::LevelFilter::Error);
+  // it doesn't precede the type-check diagnostics. Save/restore via a drop
+  // guard so a user `--log-level` / `-L` survives even if sync-types panics.
+  // Source-level quiet (or reusing the already-built graph) is still tracked as
+  // a follow-up in denoland/deno#36116.
+  let _quiet_sync_types =
+    deno_lib::util::logger::MaxLevelGuard::suppress_below_error();
   let sync_result = crate::tools::installer::sync_types_command(
     flags.clone(),
     SyncTypesFlags {
@@ -213,7 +213,7 @@ async fn native_check(
     crate::tools::installer::RootTsConfigMode::CheckMode,
   )
   .await;
-  log::set_max_level(prev_level);
+  drop(_quiet_sync_types);
   sync_result?;
 
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;
