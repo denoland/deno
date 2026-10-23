@@ -80,6 +80,45 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
   }
 });
 
+// https://github.com/denoland/deno/issues/37041
+Deno.test({
+  name: "[node/child_process] forked IPC fd is close-on-exec on Linux",
+  ignore: Deno.build.os !== "linux",
+  async fn() {
+    const file = await Deno.makeTempFile({ suffix: ".mjs" });
+    await Deno.writeTextFile(
+      file,
+      `import { spawnSync } from "node:child_process";
+const result = spawnSync("ls", ["-l", "/proc/self/fd"], {
+  stdio: ["ignore", "pipe", "ignore"],
+});
+process.send?.({ status: result.status, fds: result.stdout.toString() });
+`,
+    );
+
+    const child = CP.fork(file, [], { stdio: "pipe" });
+    const report = withTimeout<{ status: number; fds: string }>();
+    const closed = withTimeout<void>();
+    child.on("message", (message) => {
+      report.resolve(message as { status: number; fds: string });
+    });
+    child.on("error", report.reject);
+    child.on("close", () => closed.resolve());
+
+    try {
+      const result = await report.promise;
+      assertEquals(result.status, 0);
+      // The spawned ls process must not inherit the parent's IPC socket.
+      assertEquals(result.fds.includes("socket:["), false);
+      await closed.promise;
+    } finally {
+      if (child.connected) child.disconnect();
+      child.kill();
+      await Deno.remove(file);
+    }
+  },
+});
+
 Deno.test({
   name: "[node/child_process spawn] Verify that stdin and stdout work",
   fn: async () => {
