@@ -194,6 +194,24 @@ mod impl_ {
       None => return Ok(None),
     };
     log::debug!("op_node_child_ipc_pipe: {:?}, {:?}", fd, serialization);
+
+    // The IPC descriptor is inherited intentionally by this child, but it
+    // must not be inherited again by programs that the child execs.
+    // Preserve any existing descriptor flags when enabling close-on-exec.
+    #[cfg(unix)]
+    {
+      let flags = unsafe { libc::fcntl(fd as libc::c_int, libc::F_GETFD) };
+      if flags == -1 {
+        return Err(io::Error::last_os_error());
+      }
+      if unsafe {
+        libc::fcntl(fd as libc::c_int, libc::F_SETFD, flags | libc::FD_CLOEXEC)
+      } == -1
+      {
+        return Err(io::Error::last_os_error());
+      }
+    }
+
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
     match serialization {
       ChildIpcSerialization::Json => {
