@@ -226,6 +226,7 @@ fn write_response_head_inner(
   out.extend_from_slice(b"\r\n");
 
   let mut date = None;
+  let mut has_connection_close = false;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
     assert!(
@@ -236,6 +237,12 @@ fn write_response_head_inner(
       valid_header_value(header.value),
       "invalid response header value"
     );
+    if header.name.eq_ignore_ascii_case(b"connection") {
+      has_connection_close |= header
+        .value
+        .split(|byte| *byte == b',')
+        .any(|token| token.trim_ascii().eq_ignore_ascii_case(b"close"));
+    }
     if header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
@@ -273,7 +280,10 @@ fn write_response_head_inner(
 
   if response.keep_alive && response.version == Version::Http10 {
     out.extend_from_slice(b"connection: keep-alive\r\n");
-  } else if !response.keep_alive && response.version == Version::Http11 {
+  } else if !response.keep_alive
+    && response.version == Version::Http11
+    && !has_connection_close
+  {
     out.extend_from_slice(b"connection: close\r\n");
   }
   out.extend_from_slice(b"\r\n");
@@ -295,6 +305,7 @@ fn write_response_head_to_inner(
   cursor.push(b"\r\n")?;
 
   let mut date = None;
+  let mut has_connection_close = false;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
     assert!(
@@ -305,6 +316,12 @@ fn write_response_head_to_inner(
       valid_header_value(header.value),
       "invalid response header value"
     );
+    if header.name.eq_ignore_ascii_case(b"connection") {
+      has_connection_close |= header
+        .value
+        .split(|byte| *byte == b',')
+        .any(|token| token.trim_ascii().eq_ignore_ascii_case(b"close"));
+    }
     if header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
@@ -342,7 +359,10 @@ fn write_response_head_to_inner(
 
   if response.keep_alive && response.version == Version::Http10 {
     cursor.push(b"connection: keep-alive\r\n")?;
-  } else if !response.keep_alive && response.version == Version::Http11 {
+  } else if !response.keep_alive
+    && response.version == Version::Http11
+    && !has_connection_close
+  {
     cursor.push(b"connection: close\r\n")?;
   }
   cursor.push(b"\r\n")?;
@@ -725,6 +745,42 @@ mod tests {
       out,
       b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
     );
+  }
+
+  #[test]
+  fn does_not_duplicate_response_connection_close() {
+    for value in [b"close".as_slice(), b"keep-alive, \tClOsE"] {
+      let headers = [Header {
+        name: b"Connection",
+        value,
+      }];
+      let response = ResponseHeader {
+        version: Version::Http11,
+        status: 200,
+        reason: b"OK",
+        headers: &headers,
+        content_length: Some(0),
+        keep_alive: false,
+      };
+      let mut expected = b"HTTP/1.1 200 OK\r\nConnection: ".to_vec();
+      expected.extend_from_slice(value);
+      expected.extend_from_slice(b"\r\ncontent-length: 0\r\n\r\n");
+      let mut out = Vec::new();
+      write_response_head(&mut out, response);
+      assert_eq!(out, expected);
+      let mut buffer = [0; 256];
+      let length = write_response_head_to(&mut buffer, response).unwrap();
+      assert_eq!(&buffer[..length], expected);
+
+      let mut expected = b"HTTP/1.1 200 OK\r\nConnection: ".to_vec();
+      expected.extend_from_slice(value);
+      expected.extend_from_slice(b"\r\ntransfer-encoding: chunked\r\n\r\n");
+      write_chunked_response_head(&mut out, response);
+      assert_eq!(out, expected);
+      let length =
+        write_chunked_response_head_to(&mut buffer, response).unwrap();
+      assert_eq!(&buffer[..length], expected);
+    }
   }
 
   #[test]
