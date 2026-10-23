@@ -359,6 +359,28 @@ pub struct LockfileContent {
 }
 
 impl LockfileContent {
+  /// Creates a copy of the content with only the workspace configuration
+  /// and the npm packages, which is what's stored in the node_modules
+  /// directory.
+  pub fn only_npm(&self) -> LockfileContent {
+    LockfileContent {
+      packages: PackagesContent {
+        specifiers: self
+          .packages
+          .specifiers
+          .iter()
+          .filter(|(req, _)| req.kind == PackageKind::Npm)
+          .map(|(req, value)| (req.clone(), value.clone()))
+          .collect(),
+        jsr: Default::default(),
+        npm: self.packages.npm.clone(),
+      },
+      redirects: Default::default(),
+      remote: Default::default(),
+      workspace: self.workspace.clone(),
+    }
+  }
+
   pub fn from_json(
     json: serde_json::Value,
   ) -> Result<Self, DeserializationError> {

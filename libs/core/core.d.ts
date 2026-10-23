@@ -507,6 +507,9 @@ export namespace primordials {
   export const setQueueMicrotask: (
     queueMicrotask: typeof globalThis.queueMicrotask,
   ) => void;
+  export const setSharedArrayBuffer: (
+    sharedArrayBuffer: typeof globalThis.SharedArrayBuffer,
+  ) => void;
   export const JSONParse: typeof JSON.parse;
   export const JSONStringify: typeof JSON.stringify;
   export const MathAbs: typeof Math.abs;
@@ -1104,6 +1107,25 @@ export namespace primordials {
   export const SetPrototypeForEach: UncurryThis<typeof Set.prototype.forEach>;
   export const SetPrototypeValues: UncurryThis<typeof Set.prototype.values>;
   export const SetPrototypeKeys: UncurryThis<typeof Set.prototype.keys>;
+  export const SharedArrayBuffer: typeof globalThis.SharedArrayBuffer;
+  export const SharedArrayBufferLength: typeof SharedArrayBuffer.length;
+  export const SharedArrayBufferName: typeof SharedArrayBuffer.name;
+  export const SharedArrayBufferPrototype: typeof SharedArrayBuffer.prototype;
+  export const SharedArrayBufferPrototypeGetByteLength: (
+    buffer: SharedArrayBuffer,
+  ) => number;
+  export const SharedArrayBufferPrototypeGetGrowable: (
+    buffer: SharedArrayBuffer,
+  ) => boolean;
+  export const SharedArrayBufferPrototypeGetMaxByteLength: (
+    buffer: SharedArrayBuffer,
+  ) => number;
+  export const SharedArrayBufferPrototypeSlice: UncurryThis<
+    typeof SharedArrayBuffer.prototype.slice
+  >;
+  export const SharedArrayBufferPrototypeGrow: UncurryThis<
+    typeof SharedArrayBuffer.prototype.grow
+  >;
   export const String: typeof globalThis.String;
   export const StringLength: typeof String.length;
   export const StringName: typeof String.name;

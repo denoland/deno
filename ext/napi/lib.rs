@@ -31,6 +31,7 @@ use core::ptr::NonNull;
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
@@ -379,7 +380,7 @@ pub struct PendingNapiFinalizer {
   pub hint: *mut c_void,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NapiFinalizerId(u64);
 
 /// Tracked finalizer callbacks that should be called at shutdown.
@@ -387,7 +388,7 @@ pub struct NapiFinalizerId(u64);
 #[derive(Default)]
 pub struct RefTracker {
   next_id: u64,
-  pending: Vec<PendingNapiFinalizer>,
+  pending: BTreeMap<NapiFinalizerId, PendingNapiFinalizer>,
   /// Finalizers whose objects have already been collected by the GC and are
   /// waiting to run at the next point where JavaScript execution is legal
   /// (see [`Env::defer_gc_finalizer`]). Kept separate from `pending` because
@@ -407,7 +408,7 @@ impl RefTracker {
   pub fn take_pending(&mut self) -> Vec<PendingNapiFinalizer> {
     self.drain_requested = false;
     let mut all = std::mem::take(&mut self.gc_ready);
-    all.append(&mut self.pending);
+    all.extend(std::mem::take(&mut self.pending).into_values());
     all
   }
 
@@ -438,13 +439,16 @@ impl RefTracker {
   ) -> NapiFinalizerId {
     let id = NapiFinalizerId(self.next_id);
     self.next_id += 1;
-    self.pending.push(PendingNapiFinalizer {
-      id: Some(id),
-      env,
-      cb,
-      data,
-      hint,
-    });
+    self.pending.insert(
+      id,
+      PendingNapiFinalizer {
+        id: Some(id),
+        env,
+        cb,
+        data,
+        hint,
+      },
+    );
     id
   }
 
@@ -455,12 +459,7 @@ impl RefTracker {
   #[must_use = "the return value decides whether the finalizer may still \
                 be run"]
   fn remove(&mut self, id: NapiFinalizerId) -> bool {
-    if let Some(pos) = self.pending.iter().rposition(|f| f.id == Some(id)) {
-      self.pending.remove(pos);
-      true
-    } else {
-      false
-    }
+    self.pending.remove(&id).is_some()
   }
 }
 

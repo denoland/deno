@@ -1,0 +1,71 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile --no-prompt --output no_permissions main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "args": "compile --no-prompt --allow-read=allowed --output scoped main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "args": "compile --no-prompt --allow-read --output all main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "commandName": "./no_permissions",
+      "args": [],
+      "output": "no_permissions.out"
+    },
+    {
+      "if": "unix",
+      "commandName": "./scoped",
+      "args": [],
+      "output": "scoped.out"
+    },
+    {
+      "if": "unix",
+      "commandName": "./all",
+      "args": [],
+      "output": "all.out"
+    },
+    {
+      "if": "windows",
+      "args": "compile --no-prompt --output no_permissions.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "args": "compile --no-prompt --allow-read=allowed --output scoped.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "args": "compile --no-prompt --allow-read --output all.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "commandName": "./no_permissions.exe",
+      "args": [],
+      "output": "no_permissions.out"
+    },
+    {
+      "if": "windows",
+      "commandName": "./scoped.exe",
+      "args": [],
+      "output": "scoped.out"
+    },
+    {
+      "if": "windows",
+      "commandName": "./all.exe",
+      "args": [],
+      "output": "all.out"
+    }
+  ]
+}

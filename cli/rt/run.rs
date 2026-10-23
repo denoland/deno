@@ -75,6 +75,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry;
+use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -157,6 +158,9 @@ struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   hook_registry: LoaderHookRegistry,
   permissions: PermissionsContainer,
+  /// Whether this loader belongs to a web worker. A worker's main module is
+  /// checked against read permissions like a dynamic import (as in `deno run`).
+  is_worker: bool,
   sys: DenoRtSys,
   /// For blob/object-URL module workers, the captured root blob and its
   /// specifier. Used so the worker's root module load resolves from the
@@ -202,6 +206,28 @@ impl CjsAnalysisSourceProvider for StandaloneCjsAnalysisSourceProvider<'_> {
 }
 
 impl EmbeddedModuleLoader {
+  /// Local files that aren't embedded in the binary are read from the host
+  /// file system. When loaded via `import()` or as a worker's main module,
+  /// they must pass the read permission check, the same as in `deno run`.
+  fn check_host_fs_read_permission(
+    &self,
+    specifier: &Url,
+    is_dynamic_import: bool,
+  ) -> Result<(), JsErrorBox> {
+    if specifier.scheme() != "file" || !(is_dynamic_import || self.is_worker) {
+      return Ok(());
+    }
+    if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+      && self.shared.vfs.file_entry(&path).is_ok()
+    {
+      return Ok(());
+    }
+    self
+      .permissions
+      .check_specifier(specifier, CheckSpecifierKind::Dynamic)
+      .map_err(JsErrorBox::from_err)
+  }
+
   fn resolve_inner(
     &self,
     raw_specifier: &str,
@@ -446,6 +472,13 @@ impl EmbeddedModuleLoader {
     maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
+    if let Err(err) = self.check_host_fs_read_permission(
+      original_specifier,
+      options.is_dynamic_import,
+    ) {
+      return deno_core::ModuleLoadResponse::Sync(Err(err));
+    }
+
     if self.shared.node_resolver.in_npm_package(original_specifier) {
       let loader = self.clone();
       let shared = self.shared.clone();
@@ -1186,6 +1219,7 @@ impl StandaloneModuleLoaderFactory {
   pub fn create_result(
     &self,
     permissions: PermissionsContainer,
+    is_worker: bool,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
     let hook_registry = LoaderHookRegistry::default();
@@ -1193,6 +1227,7 @@ impl StandaloneModuleLoaderFactory {
       shared: self.shared.clone(),
       hook_registry: hook_registry.clone(),
       permissions,
+      is_worker,
       sys: self.sys.clone(),
       maybe_main_module_blob,
     });
@@ -1220,7 +1255,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
     root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
-    self.create_result(root_permissions, None)
+    self.create_result(root_permissions, false, None)
   }
 
   fn create_for_worker(
@@ -1229,7 +1264,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
-    self.create_result(permissions, maybe_main_module_blob)
+    self.create_result(permissions, true, maybe_main_module_blob)
   }
 }
 

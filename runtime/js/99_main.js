@@ -239,7 +239,7 @@ function workerClose() {
   op_worker_close();
 }
 
-function postMessage(message, transferOrOptions = { __proto__: null }) {
+function postMessage(message, transferOrOptions = undefined) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);

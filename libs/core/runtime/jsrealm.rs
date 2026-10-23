@@ -100,8 +100,12 @@ pub struct ContextState {
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
   // We don't explicitly re-read this prop but need the slice to live alongside
-  // the context
-  pub(crate) op_ctxs: OpCtxs,
+  // the context. It is reference counted because it must also outlive the
+  // isolate: V8 keeps raw pointers to each op's fast-call `CFunction`
+  // overloads (stored in `OpCtx`) and concurrent TurboFan jobs may read them
+  // until the isolate is disposed. `JsRealmInner::destroy` hands a reference
+  // back to the runtime, which drops it only after disposing of the isolate.
+  pub(crate) op_ctxs: Rc<OpCtxs>,
   pub(crate) op_method_decls: Vec<OpMethodDecl>,
   pub(crate) methods_ctx_offset: usize,
   /// Snapshots built against V8 14.9+ bake the *slow* version of each op
@@ -214,7 +218,7 @@ impl ContextState {
       wasm_instance_fn: Default::default(),
       wasm_instances_map: Default::default(),
       activity_traces: Default::default(),
-      op_ctxs,
+      op_ctxs: Rc::new(op_ctxs),
       op_method_decls,
       methods_ctx_offset,
       fast_ops_upgraded: Cell::new(false),
@@ -313,8 +317,17 @@ impl JsRealmInner {
     self.function_templates.clone()
   }
 
-  pub fn destroy(self) {
+  /// Tears down the realm's context state.
+  ///
+  /// Returns the realm's op contexts, which the caller must keep alive until
+  /// the isolate has been disposed: function templates built with fast-call
+  /// overloads point into them, and V8 may still read those pointers from
+  /// concurrent compilation jobs until `Isolate::Dispose` cancels and joins
+  /// them.
+  #[must_use = "the op contexts must outlive the isolate"]
+  pub fn destroy(self) -> Rc<OpCtxs> {
     let state = self.state();
+    let op_ctxs = state.op_ctxs.clone();
     let raw_ptr = self.state().isolate.unwrap();
     // SAFETY: We know the isolate outlives the realm
     let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(raw_ptr) };
@@ -388,6 +401,8 @@ impl JsRealmInner {
     // Expect that this context is dead (we only check this in debug mode)
     // TODO(mmastrac): This check fails for some tests, will need to fix this
     // debug_assert_eq!(Rc::strong_count(&self.context), 1, "Realm was still alive when we wanted to destroy it. Not dropped?");
+
+    op_ctxs
   }
 }
 

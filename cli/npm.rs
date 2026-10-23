@@ -46,6 +46,7 @@ use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
 use sys_traits::PathsInErrorsExt;
 
+use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
@@ -77,11 +78,12 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
 >;
 
 pub use deno_npm_cache::NpmPackumentFormat;
+pub use deno_npm_cache::NpmPackumentRequestFormat;
 
-/// `Accept` header sent when fetching npm package metadata. Mirrors the npm
-/// install path (`CliNpmCacheHttpClient`) so registries that content-negotiate
-/// (or redirect non-npm-client requests elsewhere) behave the same for metadata
-/// lookups done by `deno outdated`, `deno add`, etc.
+/// `Accept` header sent when fetching npm package metadata in the abbreviated
+/// install manifest format. Also used for metadata lookups done by
+/// `deno outdated`, `deno add`, etc. so registries that content-negotiate
+/// (or redirect non-npm-client requests elsewhere) behave the same.
 const NPM_PACKAGE_INFO_ACCEPT: &str =
   "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
@@ -89,19 +91,16 @@ const NPM_PACKAGE_INFO_ACCEPT: &str =
 pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
   progress_bar: ProgressBar,
-  packument_format: NpmPackumentFormat,
 }
 
 impl CliNpmCacheHttpClient {
   pub fn new(
     http_client_provider: Arc<HttpClientProvider>,
     progress_bar: ProgressBar,
-    packument_format: NpmPackumentFormat,
   ) -> Self {
     Self {
       http_client_provider,
       progress_bar,
-      packument_format,
     }
   }
 
@@ -130,8 +129,17 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     maybe_auth: Option<String>,
     maybe_etag: Option<String>,
     maybe_registry_config: Option<&RegistryConfig>,
+    maybe_packument_format: Option<NpmPackumentRequestFormat>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
-    let guard = self.progress_bar.update(url.as_str());
+    // say when the more expensive full packument is being downloaded
+    // since the same url may have just been downloaded abbreviated
+    let progress_message = match maybe_packument_format {
+      Some(NpmPackumentRequestFormat::Full) => {
+        format!("{} {}", url, colors::gray("(full packument)"))
+      }
+      Some(NpmPackumentRequestFormat::Abbreviated) | None => url.to_string(),
+    };
+    let guard = self.progress_bar.update(&progress_message);
     let client = self
       .get_or_create_http_client(maybe_registry_config)
       .map_err(|err| deno_npm_cache::DownloadError {
@@ -151,20 +159,15 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         http::header::HeaderValue::try_from(etag).unwrap(),
       );
     }
-    if self.packument_format == NpmPackumentFormat::Abbreviated {
+    if maybe_packument_format == Some(NpmPackumentRequestFormat::Abbreviated) {
       // Request the abbreviated install manifest when possible. This is 2-5x
       // smaller than the full packument (e.g. @types/node: 2.3 MB vs 10.9 MB).
       // Uses content negotiation with quality factors for registry compatibility
       // (some registries like older Artifactory don't support the abbreviated
       // format and need the JSON fallback).
-      //
-      // Not used when minimumDependencyAge is configured, because the
-      // abbreviated format omits the `time` field needed for date filtering.
       headers.insert(
         http::header::ACCEPT,
-        http::header::HeaderValue::from_static(
-          "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*",
-        ),
+        http::header::HeaderValue::from_static(NPM_PACKAGE_INFO_ACCEPT),
       );
     }
     // Request gzip and bypass the tower-http Decompression middleware so

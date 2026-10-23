@@ -9,11 +9,17 @@ const {
 } = core;
 const {
   ArrayIsArray,
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
   SymbolDispose,
 } = primordials;
+
+const DEFAULT_WATCH_OPTIONS = ObjectFreeze(
+  ObjectSetPrototypeOf({ recursive: true }, null),
+);
 
 class FsWatcher {
   #rid = 0;
@@ -86,7 +92,7 @@ class FsWatcher {
 
 function watchFs(
   paths,
-  options = { __proto__: null, recursive: true },
+  options = DEFAULT_WATCH_OPTIONS,
 ) {
   return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
 }
