@@ -200,10 +200,12 @@ mod impl_ {
     // Preserve any existing descriptor flags when enabling close-on-exec.
     #[cfg(unix)]
     {
+      // SAFETY: fd is the live descriptor supplied by child IPC bootstrap.
       let flags = unsafe { libc::fcntl(fd as libc::c_int, libc::F_GETFD) };
       if flags == -1 {
         return Err(io::Error::last_os_error());
       }
+      // SAFETY: The same descriptor is still owned by the child bootstrap.
       if unsafe {
         libc::fcntl(fd as libc::c_int, libc::F_SETFD, flags | libc::FD_CLOEXEC)
       } == -1
