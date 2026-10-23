@@ -98,3 +98,29 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "SYNC and ASYNC: utimes on read-only Windows files",
+  ignore: Deno.build.os !== "windows",
+  async fn() {
+    const file = Deno.makeTempFileSync();
+    try {
+      Deno.chmodSync(file, 0o444);
+      const syncTime = new Date(50_000_000);
+      utimesSync(file, syncTime, syncTime);
+      assertEquals(Deno.statSync(file).mtime, syncTime);
+
+      const asyncTime = new Date(60_000_000);
+      await new Promise<void>((resolve, reject) => {
+        utimes(file, asyncTime, asyncTime, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      assertEquals(Deno.statSync(file).mtime, asyncTime);
+    } finally {
+      Deno.chmodSync(file, 0o666);
+      Deno.removeSync(file);
+    }
+  },
+});
