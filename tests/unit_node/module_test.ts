@@ -2,7 +2,11 @@
 
 import {
   builtinModules,
+  // @ts-ignore Not in our bundled @types/node yet.
+  constants,
   createRequire,
+  // @ts-ignore Not in our bundled @types/node yet.
+  enableCompileCache,
   // @ts-ignore Our internal @types/node is at v18.16.19 which predates
   // this change.
   findPackageJSON,
@@ -368,6 +372,18 @@ Deno.test("[node/module] Module.register is not exposed, registerHooks is", () =
   assertEquals(Module.register, undefined);
   // @ts-ignore Not in our bundled @types/node yet.
   assertEquals(typeof Module.registerHooks, "function");
+});
+
+// https://github.com/denoland/deno/issues/37054
+Deno.test("[node/module enableCompileCache] reports the cache as disabled", () => {
+  const result = enableCompileCache();
+  assertEquals(result.status, constants.compileCacheStatus.DISABLED);
+  // @ts-ignore Not in our bundled @types/node yet.
+  assertEquals(Module.enableCompileCache, enableCompileCache);
+  assertEquals(
+    process.getBuiltinModule("node:module").enableCompileCache,
+    enableCompileCache,
+  );
 });
 
 Deno.test("[node/module syncBuiltinESMExports] is exposed", () => {
