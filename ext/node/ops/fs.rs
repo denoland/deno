@@ -307,7 +307,7 @@ impl CpError {
 pub fn op_node_fs_exists_sync(
   state: &mut OpState,
   #[string] path: &str,
-) -> Result<bool, deno_permissions::PermissionCheckError> {
+) -> bool {
   let path_or_err = state.borrow_mut::<PermissionsContainer>().check_open(
     Cow::Borrowed(Path::new(path)),
     OpenAccessKind::ReadNoFollow,
@@ -316,10 +316,11 @@ pub fn op_node_fs_exists_sync(
   match path_or_err {
     Ok(path) => {
       let fs = state.borrow::<FileSystemRc>();
-      Ok(fs.exists_sync(&path))
+      fs.exists_sync(&path)
     }
-    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-    Err(err) => Err(err),
+    // Node's existsSync returns false for inaccessible paths instead of
+    // exposing the underlying filesystem error.
+    Err(_) => false,
   }
 }
 
