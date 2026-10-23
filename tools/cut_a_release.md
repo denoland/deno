@@ -1,7 +1,7 @@
 # Cutting a Deno release
 
 1. Go to this workflow:
-   https://github.com/denoland/deno/actions/workflows/start_release.yml
+   https://github.com/denoland/deno/actions/workflows/start_release.generated.yml
 1. Select the main branch, the kind of release, then run the workflow.
 1. Wait for the "Create Gist URL" step to complete and look at its output for
    the Gist URL.
