@@ -80,6 +80,43 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
   }
 });
 
+// https://github.com/denoland/deno/issues/37040
+Deno.test({
+  name: "[node/child_process] late IPC CLOSE does not emit an error",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // The grandchild inherits the IPC descriptor and holds it open briefly.
+    // This lets the child's exit path disconnect before readLoop gets CLOSE.
+    const file = await Deno.makeTempFile({ suffix: ".mjs" });
+    await Deno.writeTextFile(
+      file,
+      `import { spawn } from "node:child_process";
+spawn("sleep", ["0.05"], {
+  stdio: ["ignore", "ignore", "inherit"],
+}).unref();
+process.exit(0);
+`,
+    );
+
+    try {
+      for (let i = 0; i < 25; i++) {
+        const closed = withTimeout<void>();
+        const errors: Error[] = [];
+        const child = CP.fork(file, [], { stdio: "pipe" });
+        child.on("error", (err: Error) => errors.push(err));
+        child.on("close", () => closed.resolve());
+        await closed.promise;
+        // The read loop may publish its error on the following event-loop turn.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assertEquals(errors, []);
+        assertEquals(child.exitCode, 0);
+      }
+    } finally {
+      await Deno.remove(file);
+    }
+  },
+});
+
 Deno.test({
   name: "[node/child_process spawn] Verify that stdin and stdout work",
   fn: async () => {
