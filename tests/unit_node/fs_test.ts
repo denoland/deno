@@ -191,9 +191,10 @@ Deno.test(
   "[node/fs existsSync] no permission",
   { permissions: { read: false } },
   () => {
-    assertThrows(() => {
-      existsSync("tests/testdata/assets/fixture.json");
-    }, Deno.errors.NotCapable);
+    assertEquals(
+      existsSync("tests/testdata/assets/fixture.json"),
+      false,
+    );
   },
 );
 
