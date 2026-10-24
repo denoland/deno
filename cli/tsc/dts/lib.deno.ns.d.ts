@@ -4413,10 +4413,10 @@ declare namespace Deno {
      *
      * @default {true} */
     compact?: boolean;
-    /** Traversal depth for nested objects.
+    /** Traversal depth for nested objects. Set to `null` for unlimited depth.
      *
      * @default {4} */
-    depth?: number;
+    depth?: number | null;
     /** The maximum length for an inspection to take up a single line.
      *
      * @default {80} */
@@ -4454,6 +4454,30 @@ declare namespace Deno {
     strAbbreviateSize?: number;
   }
 
+  /** Options passed to a {@linkcode Deno.CustomInspect} function.
+   *
+   * @category I/O
+   */
+  export interface CustomInspectOptions extends InspectOptions {
+    /** Traversal depth for nested objects, or `null` for unlimited depth. */
+    depth: number | null;
+    /** Current indentation level. */
+    indentLevel: number;
+  }
+
+  /** A custom inspection function registered with
+   * `Symbol.for("Deno.customInspect")`.
+   *
+   * Receives {@linkcode Deno.inspect} and the current inspection options.
+   * Pass the options to `inspect` when formatting nested values.
+   *
+   * @category I/O
+   */
+  export type CustomInspect = (
+    inspect: typeof Deno.inspect,
+    options: CustomInspectOptions,
+  ) => string;
+
   /** Converts the input into a string that has the same format as printed by
    * `console.log()`.
    *
@@ -4466,21 +4490,26 @@ declare namespace Deno {
    * console.log(obj);  // prints same value as objAsString, e.g. { a: 10, b: "hello" }
    * ```
    *
-   * A custom inspect functions can be registered on objects, via the symbol
+   * A custom inspect function can be registered on objects, via the symbol
    * `Symbol.for("Deno.customInspect")`, to control and customize the output
-   * of `inspect()` or when using `console` logging:
+   * of `inspect()` or when using `console` logging. The function receives
+   * `inspect` and the current {@linkcode Deno.CustomInspectOptions}, including
+   * the traversal depth and indentation level:
    *
    * ```ts
    * class A {
    *   x = 10;
    *   y = "hello";
-   *   [Symbol.for("Deno.customInspect")]() {
-   *     return `x=${this.x}, y=${this.y}`;
+   *   [Symbol.for("Deno.customInspect")](
+   *     inspect: typeof Deno.inspect,
+   *     options: Deno.CustomInspectOptions,
+   *   ) {
+   *     return `x=${inspect(this.x, options)}, y=${inspect(this.y, options)}`;
    *   }
    * }
    *
-   * const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
-   * console.log(inStringFormat);  // prints "x=10, y=hello"
+   * const inStringFormat = Deno.inspect(new A()); // 'x=10, y="hello"'
+   * console.log(inStringFormat);  // prints 'x=10, y="hello"'
    * ```
    *
    * A depth can be specified by using the `depth` option:
