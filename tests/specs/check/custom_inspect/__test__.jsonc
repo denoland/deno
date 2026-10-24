@@ -1,0 +1,12 @@
+{
+  "steps": [
+    {
+      "args": "check --quiet main.ts",
+      "output": ""
+    },
+    {
+      "args": "run --quiet main.ts",
+      "output": ""
+    }
+  ]
+}
