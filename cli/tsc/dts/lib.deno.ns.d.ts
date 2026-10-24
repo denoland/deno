@@ -4410,9 +4410,10 @@ declare namespace Deno {
      * @default {false} */
     colors?: boolean;
     /** Try to fit more than one entry of a collection on the same line.
+     * A number limits how many nested levels are grouped on one line.
      *
-     * @default {true} */
-    compact?: boolean;
+     * @default {3} */
+    compact?: boolean | number;
     /** Traversal depth for nested objects. Set to `null` for unlimited depth.
      *
      * @default {4} */
