@@ -9,6 +9,10 @@
       "args": "check --unstable-raw-imports valid.ts",
       "output": "valid.out"
     },
+    "check_valid_all": {
+      "args": "check --unstable-raw-imports --all valid.ts",
+      "output": "valid.out"
+    },
     "missing_unstable": {
       "args": "check valid.ts",
       "output": "missing_unstable.out",
