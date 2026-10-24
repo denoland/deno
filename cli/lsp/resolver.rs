@@ -1141,6 +1141,7 @@ impl<'a> ResolverFactory<'a> {
         tarball_cache.clone(),
         deno_npm_installer::NpmInstallerOptions {
           clean_on_install: false,
+          production: false,
           maybe_lockfile,
           maybe_node_modules_path: maybe_node_modules_path.clone(),
           linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
