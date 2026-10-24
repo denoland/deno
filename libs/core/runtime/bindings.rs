@@ -1029,8 +1029,10 @@ pub(crate) fn op_ctx_template<'s, 'i>(
     // SAFETY: V8 150.x stores the raw `CFunction` pointers from `overloads`
     // directly in the `FunctionTemplateInfo`, so `build_fast` requires a
     // `'static` slice. The backing storage lives in `op_ctx`, which outlives
-    // every `FunctionTemplate` created from it (both are torn down at isolate
-    // disposal), so extending the borrow to `'static` is sound.
+    // every `FunctionTemplate` created from it (the runtime frees the op
+    // contexts only after disposing of the isolate, which also joins any
+    // concurrent compilation job reading them), so extending the borrow to
+    // `'static` is sound.
     let overloads: &'static [v8::fast_api::CFunction] = unsafe {
       std::mem::transmute::<&[_], &'static [_]>(overloads.as_slice())
     };
