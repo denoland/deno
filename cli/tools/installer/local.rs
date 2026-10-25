@@ -336,8 +336,9 @@ pub async fn sync_types_command(
     // internal step (not the user's `deno check`), and the graph the user
     // installed was already validated by `deno install` — re-emitting e.g.
     // "workspace member ... was not used" warnings here is just noise.
-    let prev_log_level = log::max_level();
-    log::set_max_level(log::LevelFilter::Error);
+    // Restore via drop guard so a user log level survives even on panic.
+    let _quiet_graph =
+      deno_lib::util::logger::MaxLevelGuard::suppress_below_error();
     let graph_result = graph_creator
       .create_graph_with_options(crate::graph_util::CreateGraphOptions {
         graph_kind: deno_graph::GraphKind::All,
@@ -348,7 +349,7 @@ pub async fn sync_types_command(
         npm_caching: cli_options.default_npm_caching_strategy(),
       })
       .await;
-    log::set_max_level(prev_log_level);
+    drop(_quiet_graph);
     let graph = match graph_result {
       Ok(graph) => graph,
       Err(e) => {
@@ -473,16 +474,22 @@ pub async fn sync_types_command(
   )
   .await?;
 
-  log::info!(
-    "{} tsconfig for stock TypeScript at {}",
-    deno_terminal::colors::green("Synced"),
-    project_root.join("tsconfig.json").display(),
-  );
-  for pkg in &installed {
-    log::debug!("  installed jsr package {}@{}", pkg.name, pkg.version);
-  }
-  if !installed.is_empty() {
-    log::info!("  installed {} jsr package(s)", installed.len());
+  // Only the standalone `deno sync-types` reports a summary. When run as an
+  // internal step of `deno check` (CheckMode), stay quiet so diagnostics aren't
+  // preceded by sync progress (callers also temporarily lower the global log
+  // level; restoring it is panic-safe via MaxLevelGuard).
+  if manage_root_tsconfig {
+    log::info!(
+      "{} tsconfig for stock TypeScript at {}",
+      deno_terminal::colors::green("Synced"),
+      project_root.join("tsconfig.json").display(),
+    );
+    for pkg in &installed {
+      log::debug!("  installed jsr package {}@{}", pkg.name, pkg.version);
+    }
+    if !installed.is_empty() {
+      log::info!("  installed {} jsr package(s)", installed.len());
+    }
   }
   Ok(())
 }
