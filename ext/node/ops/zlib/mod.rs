@@ -1008,7 +1008,7 @@ impl BrotliDecoder {
 
       // SAFETY: `ctx.inst`, `next_in`, `next_out`, `avail_in`, and `avail_out`
       // are valid pointers.
-      let error_info = unsafe {
+      unsafe {
         let res = ffi::decompressor::ffi::BrotliDecoderDecompressStream(
           ctx.inst,
           &mut avail_in,
@@ -1048,9 +1048,7 @@ impl BrotliDecoder {
         } else {
           None
         }
-      };
-
-      error_info
+      }
     };
 
     if let Some((err, msg)) = error_info {
