@@ -870,7 +870,9 @@ impl BrotliDecoder {
       for (i, &value) in params.iter().enumerate() {
         if let Some(param) = decoder_param(i as u32) {
           ffi::decompressor::ffi::BrotliDecoderSetParameter(
-            state, param, value,
+            state,
+            param as i32,
+            value,
           );
         }
       }
@@ -980,8 +982,11 @@ impl BrotliDecoder {
   }
 
   #[fast]
+  #[reentrant]
   pub fn write_sync(
     &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] _flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -991,30 +996,74 @@ impl BrotliDecoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
-    let mut ctx = self.ctx.borrow_mut();
-    let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
+    let error_info = {
+      let mut ctx = self.ctx.borrow_mut();
+      let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
 
-    let mut next_in = slice_input(input, in_off, in_len)?.as_ptr();
-    let mut next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
+      let mut next_in = slice_input(input, in_off, in_len)?.as_ptr();
+      let mut next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
-    let mut avail_in = in_len as usize;
-    let mut avail_out = out_len as usize;
+      let mut avail_in = in_len as usize;
+      let mut avail_out = out_len as usize;
 
-    // SAFETY: `ctx.inst` is a valid pointer to a BrotliDecoderState.
-    unsafe {
-      ffi::decompressor::ffi::BrotliDecoderDecompressStream(
-        ctx.inst,
-        &mut avail_in,
-        &mut next_in,
-        &mut avail_out,
-        &mut next_out,
-        std::ptr::null_mut(),
-      );
-    }
+      // SAFETY: `ctx.inst`, `next_in`, `next_out`, `avail_in`, and `avail_out`
+      // are valid pointers.
+      let error_info = unsafe {
+        let res = ffi::decompressor::ffi::BrotliDecoderDecompressStream(
+          ctx.inst,
+          &mut avail_in,
+          &mut next_in,
+          &mut avail_out,
+          &mut next_out,
+          std::ptr::null_mut(),
+        );
 
-    if write_result.len() >= 2 {
-      write_result[0] = avail_out as u32;
-      write_result[1] = avail_in as u32;
+        if write_result.len() >= 2 {
+          write_result[0] = avail_out as u32;
+          write_result[1] = avail_in as u32;
+        }
+
+        // A malformed stream must surface an error instead of silently
+        // returning the partial output decoded so far. This mirrors the
+        // async `write` path above; without it `brotliDecompressSync`
+        // accepts invalid input (e.g. CVE-2026-111497 block-switch streams).
+        if matches!(
+          res,
+          ffi::decompressor::ffi::interface::BrotliDecoderResult::BROTLI_DECODER_RESULT_ERROR
+        ) {
+          let error_code =
+            ffi::decompressor::ffi::BrotliDecoderGetErrorCode(ctx.inst);
+          let error_str =
+            ffi::decompressor::ffi::BrotliDecoderErrorString(error_code);
+          let msg = if error_str.is_null() {
+            "Decompression failed".to_string()
+          } else {
+            let c_str = std::ffi::CStr::from_ptr(error_str as *const _);
+            format!(
+              "ERR_{}",
+              c_str.to_str().unwrap_or("Decompression failed")
+            )
+          };
+          Some((error_code as i32, msg))
+        } else {
+          None
+        }
+      };
+
+      error_info
+    };
+
+    if let Some((err, msg)) = error_info {
+      let this = v8::Local::new(scope, &this);
+      v8_static_strings! {
+        ONERROR_STR = "onerror",
+      }
+      let onerror_str = ONERROR_STR.v8_string(scope).unwrap();
+      let onerror = this.get(scope, onerror_str.into()).unwrap();
+      let cb = v8::Local::<v8::Function>::try_from(onerror).unwrap();
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let err = v8::Integer::new(scope, err);
+      cb.call(scope, this.into(), &[msg.into(), err.into()]);
     }
 
     Ok(())
