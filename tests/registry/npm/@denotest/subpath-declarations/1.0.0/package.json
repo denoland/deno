@@ -1,0 +1,43 @@
+{
+  "name": "@denotest/subpath-declarations",
+  "version": "1.0.0",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./string": "./dist/foo.js",
+    "./default": {
+      "default": "./dist/foo.js"
+    },
+    "./conditional": {
+      "import": {
+        "types": "./types/import.d.ts",
+        "default": "./dist/foo.js"
+      },
+      "default": "./dist/other.js"
+    },
+    "./explicit": {
+      "types": "./types/explicit.d.ts",
+      "default": "./dist/foo.js"
+    },
+    "./mjs": "./dist/foo.mjs",
+    "./cjs": "./dist/foo.cjs",
+    "./wild/*": {
+      "types": "./types/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./wild/deep/*": {
+      "types": "./types/deep-selected/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./wild/exact": {
+      "types": "./types/selected.d.ts",
+      "default": "./dist/foo.js"
+    },
+    "./wild/blocked": null,
+    "./untyped": "./dist/untyped.js"
+  }
+}

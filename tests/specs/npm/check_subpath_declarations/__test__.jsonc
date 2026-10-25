@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    "global": {
+      "args": "check --node-modules-dir=none main.ts",
+      "output": "check.out"
+    },
+    "local": {
+      "args": "check --node-modules-dir=auto main.ts",
+      "output": "check.out"
+    },
+    "runtime": {
+      "args": "run main.ts",
+      "output": "runtime.out"
+    },
+    "wrong": {
+      "args": "check wrong.ts",
+      "output": "wrong.out",
+      "exitCode": 1
+    },
+    "untyped": {
+      "args": "check untyped.ts",
+      "output": "check.out"
+    },
+    "blocked": {
+      "args": "check blocked.ts",
+      "output": "blocked.out",
+      "exitCode": 1
+    },
+    "private": {
+      "args": "check private.ts",
+      "output": "private.out",
+      "exitCode": 1
+    }
+  }
+}
