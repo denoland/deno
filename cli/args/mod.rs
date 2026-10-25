@@ -1019,12 +1019,16 @@ impl CliOptions {
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
+    maybe_import_map: Option<&import_map::ImportMap>,
   ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       resolve_file_patterns(&lint_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
-      .resolve_lint_config_for_members(&cli_arg_patterns)?;
+      .resolve_lint_config_for_members_with_import_map(
+        &cli_arg_patterns,
+        maybe_import_map,
+      )?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
       let options = LintOptions::resolve(config, lint_flags)?;

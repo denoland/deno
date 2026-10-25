@@ -1584,8 +1584,19 @@ impl Workspace {
     Vec<(WorkspaceDirectoryRc, WorkspaceDirLintConfig)>,
     ToInvalidConfigError,
   > {
+    self.resolve_lint_config_for_members_with_import_map(cli_args, None)
+  }
+
+  pub fn resolve_lint_config_for_members_with_import_map(
+    self: &WorkspaceRc,
+    cli_args: &FilePatterns,
+    maybe_import_map: Option<&import_map::ImportMap>,
+  ) -> Result<
+    Vec<(WorkspaceDirectoryRc, WorkspaceDirLintConfig)>,
+    ToInvalidConfigError,
+  > {
     self.resolve_config_for_members(cli_args, |dir, patterns| {
-      dir.to_lint_config(patterns)
+      dir.to_lint_config_with_import_map(patterns, maybe_import_map)
     })
   }
 
@@ -2181,7 +2192,15 @@ impl WorkspaceDirectory {
     &self,
     cli_args: FilePatterns,
   ) -> Result<WorkspaceDirLintConfig, ToInvalidConfigError> {
-    let mut config = self.to_lint_config_inner()?;
+    self.to_lint_config_with_import_map(cli_args, None)
+  }
+
+  pub fn to_lint_config_with_import_map(
+    &self,
+    cli_args: FilePatterns,
+    maybe_import_map: Option<&import_map::ImportMap>,
+  ) -> Result<WorkspaceDirLintConfig, ToInvalidConfigError> {
+    let mut config = self.to_lint_config_inner(maybe_import_map)?;
     self.exclude_includes_with_member_for_base_for_root(&mut config.files);
     combine_files_config_with_cli_args(&mut config.files, cli_args);
     self.append_workspace_members_to_exclude(&mut config.files);
@@ -2190,6 +2209,7 @@ impl WorkspaceDirectory {
 
   fn to_lint_config_inner(
     &self,
+    maybe_import_map: Option<&import_map::ImportMap>,
   ) -> Result<WorkspaceDirLintConfig, ToInvalidConfigError> {
     let member_config = self
       .deno_json
@@ -2215,19 +2235,37 @@ impl WorkspaceDirectory {
     //    like this: `!my-plugin`
     // 3. Remove duplicates in case a plugin was defined in both
     //    workspace root and member.
+    let resolve_plugin = |specifier: &str, base: &Url| {
+      if let Some(import_map) = maybe_import_map {
+        match import_map.resolve(specifier, base) {
+          Ok(specifier) => return Ok(specifier),
+          Err(err)
+            if matches!(
+              err.as_kind(),
+              import_map::ImportMapErrorKind::UnmappedBareSpecifier(..)
+            ) => {}
+          Err(err) => {
+            return Err(ToInvalidConfigError::InvalidConfig {
+              config: "lint",
+              source: err.into(),
+            });
+          }
+        }
+      }
+      // Lint plugins also accept paths without a leading './'.
+      base
+        .join(specifier)
+        .map_err(|err| ToInvalidConfigError::InvalidConfig {
+          config: "lint",
+          source: err.into(),
+        })
+    };
     let excluded_plugins = member_config
       .options
       .plugins
       .iter()
       .filter(|plugin| plugin.specifier.starts_with('!'))
-      .map(|plugin| {
-        plugin.base.join(&plugin.specifier[1..]).map_err(|err| {
-          ToInvalidConfigError::InvalidConfig {
-            config: "lint",
-            source: err.into(),
-          }
-        })
-      })
+      .map(|plugin| resolve_plugin(&plugin.specifier[1..], &plugin.base))
       .collect::<Result<HashSet<_>, _>>()?;
 
     let plugins = root_config
@@ -2235,14 +2273,7 @@ impl WorkspaceDirectory {
       .flat_map(|root_config| &root_config.options.plugins)
       .chain(&member_config.options.plugins)
       .filter(|plugin| !plugin.specifier.starts_with('!'))
-      .map(|plugin| {
-        plugin.base.join(&plugin.specifier).map_err(|err| {
-          ToInvalidConfigError::InvalidConfig {
-            config: "lint",
-            source: err.into(),
-          }
-        })
-      })
+      .map(|plugin| resolve_plugin(&plugin.specifier, &plugin.base))
       .collect::<Result<IndexSet<_>, _>>()?
       .into_iter()
       .filter(|plugin| !excluded_plugins.contains(plugin))
@@ -4204,6 +4235,112 @@ pub mod test {
         },
       },
     );
+  }
+
+  #[test]
+  fn test_lint_plugins_import_map_merge_and_exclude() {
+    let workspace_dir = workspace_for_root_and_member(
+      json!({
+        "lint": {
+          "plugins": ["plugin", "remote/check.ts", "npm:plugin", "jsr:@scope/plugin"]
+        }
+      }),
+      json!({
+        "lint": {
+          "plugins": ["same-plugin", "!disabled-plugin", "local.ts"]
+        }
+      }),
+    );
+    let base = url_from_file_path(&root_dir().join("deno.json")).unwrap();
+    let import_map = import_map::parse_from_value(
+      base.clone(),
+      json!({
+        "imports": {
+          "plugin": "./plugins/one.ts",
+          "same-plugin": "./plugins/one.ts",
+          "remote/": "https://example.com/plugins/",
+          "disabled-plugin": "https://example.com/plugins/check.ts"
+        }
+      }),
+    )
+    .unwrap()
+    .import_map;
+    let config = workspace_dir
+      .to_lint_config_with_import_map(
+        FilePatterns::new_with_base(workspace_dir.dir_path()),
+        Some(&import_map),
+      )
+      .unwrap();
+    assert_eq!(
+      config.plugins,
+      vec![
+        base.join("./plugins/one.ts").unwrap(),
+        Url::parse("npm:plugin").unwrap(),
+        Url::parse("jsr:@scope/plugin").unwrap(),
+        base.join("./member/local.ts").unwrap(),
+      ]
+    );
+  }
+
+  #[test]
+  fn test_lint_plugins_import_map_scopes() {
+    let workspace_dir = workspace_for_root_and_member(
+      json!({ "lint": { "plugins": ["plugin"] } }),
+      json!({ "lint": { "plugins": ["plugin"] } }),
+    );
+    let base = url_from_file_path(&root_dir().join("deno.json")).unwrap();
+    let import_map = import_map::parse_from_value(
+      base.clone(),
+      json!({
+        "imports": { "plugin": "./root-plugin.ts" },
+        "scopes": {
+          "./member/": { "plugin": "./member-plugin.ts" }
+        }
+      }),
+    )
+    .unwrap()
+    .import_map;
+    let config = workspace_dir
+      .to_lint_config_with_import_map(
+        FilePatterns::new_with_base(workspace_dir.dir_path()),
+        Some(&import_map),
+      )
+      .unwrap();
+    assert_eq!(
+      config.plugins,
+      vec![
+        base.join("./root-plugin.ts").unwrap(),
+        base.join("./member-plugin.ts").unwrap(),
+      ]
+    );
+  }
+
+  #[test]
+  fn test_lint_plugins_blocked_import_map_entry() {
+    let workspace_dir = workspace_for_root_and_member(
+      json!({ "lint": { "plugins": ["blocked"] } }),
+      json!({}),
+    );
+    let import_map = import_map::parse_from_value(
+      url_from_file_path(&root_dir().join("deno.json")).unwrap(),
+      json!({ "imports": { "blocked": null } }),
+    )
+    .unwrap()
+    .import_map;
+    let err = workspace_dir
+      .to_lint_config_with_import_map(
+        FilePatterns::new_with_base(workspace_dir.dir_path()),
+        Some(&import_map),
+      )
+      .unwrap_err();
+    let ToInvalidConfigError::InvalidConfig { source, .. } = err else {
+      panic!("Expected invalid lint config");
+    };
+    assert!(matches!(
+      source.as_kind(),
+      crate::deno_json::IntoResolvedErrorKind::ImportMap(err)
+        if matches!(err.as_kind(), import_map::ImportMapErrorKind::BlockedByNullEntry(_))
+    ));
   }
 
   #[test]

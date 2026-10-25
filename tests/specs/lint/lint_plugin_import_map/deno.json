@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "checks/": "./plugins/"
+  },
+  "lint": {
+    "plugins": ["checks/test.ts"],
+    "rules": {
+      "tags": []
+    }
+  }
+}
