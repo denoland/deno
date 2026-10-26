@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "cwd": "app",
+      "args": "compile --include ../folder --exclude ../folder/a.txt --exclude ../folder/sub_folder --output main main.ts",
+      "output": "compile.out"
+    }
+  ]
+}
