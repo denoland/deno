@@ -1741,7 +1741,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           });
       let (file_overrides, header_overrides) =
         if let Some((blob_specifier, blob)) = captured_blob {
-          let bytes = blob.read_all().await;
+          let bytes = blob.read_all().await.map_err(JsErrorBox::from_err)?;
           (
             HashMap::from([(blob_specifier.clone(), Arc::from(bytes))]),
             HashMap::from([(

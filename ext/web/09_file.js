@@ -23,7 +23,9 @@ const {
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
+  op_blob_open_reader,
   op_blob_read_part,
+  op_blob_read_reader,
   op_blob_remove_part,
   op_blob_revoke_object_url,
   op_blob_slice_part,
@@ -34,6 +36,7 @@ const {
   ArrayBufferPrototypeSlice,
   ArrayPrototypePush,
   AsyncGeneratorPrototypeNext,
+  AsyncGeneratorPrototypeReturn,
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
@@ -426,6 +429,9 @@ class Blob {
           }
         }
       },
+      cancel(reason) {
+        return AsyncGeneratorPrototypeReturn(partIterator, reason);
+      },
     });
     return stream;
   }
@@ -641,7 +647,9 @@ const registry = new SafeFinalizationRegistry((uuid) => {
   op_blob_remove_part(uuid);
 });
 
-// TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
+const readerRegistry = new SafeFinalizationRegistry((rid) => {
+  core.tryClose(rid);
+});
 
 /**
  * An opaque reference to a blob part in Rust. This could be backed by a file,
@@ -693,16 +701,26 @@ class BlobReference {
    * @returns {AsyncGenerator<Uint8Array>}
    */
   async *stream() {
-    yield op_blob_read_part(this._id);
-
-    // let position = 0;
-    // const end = this.size;
-    // while (position !== end) {
-    //   const size = MathMin(end - position, 65536);
-    //   const chunk = this.slice(position, position + size);
-    //   position += chunk.size;
-    //   yield op_blob_read_part( chunk._id);
-    // }
+    const rid = await op_blob_open_reader(this._id);
+    const reader = rid === null ? null : { rid };
+    if (reader !== null) readerRegistry.register(reader, rid, reader);
+    try {
+      let position = 0;
+      while (position < this.size) {
+        const len = MathMin(this.size - position, 65536);
+        const range = { start: position, len };
+        const chunk = reader === null
+          ? await op_blob_read_part(this._id, range)
+          : await op_blob_read_reader(reader.rid, range);
+        position += len;
+        yield chunk;
+      }
+    } finally {
+      if (reader !== null) {
+        readerRegistry.unregister(reader);
+        core.tryClose(reader.rid);
+      }
+    }
   }
 }
 
@@ -780,6 +798,18 @@ function markFileBackedBlob(blob) {
   webidl.assertBranded(blob, BlobPrototype);
   blob[_fileBacked] = true;
   return blob;
+}
+
+/**
+ * @param {{ uuid: string, size: number }} part
+ * @param {string} type
+ * @returns {Blob}
+ */
+function blobFromFilePart(part, type) {
+  const blob = new Blob([], { type });
+  blob[_parts] = [new BlobReference(part.uuid, part.size)];
+  blob[_size] = part.size;
+  return markFileBackedBlob(blob);
 }
 
 ObjectDefineProperty(File.prototype, core.hostObjectBrand, {
@@ -900,6 +930,7 @@ function isBlob(obj) {
 return {
   Blob,
   blobFromObjectUrl,
+  blobFromFilePart,
   BlobPrototype,
   File,
   FilePrototype,

@@ -34,6 +34,7 @@ uuid = { workspace = true, features = ["serde"] }
 approx = "0.5.1"
 deno_bench_util.workspace = true
 deno_webidl.workspace = true
+tempfile.workspace = true
 
 [[bench]]
 name = "encoding"

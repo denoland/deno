@@ -37,15 +37,20 @@ pub use message_port::MessagePortError;
 pub use stream_resource::StreamResourceError;
 
 pub use crate::blob::Blob;
+pub use crate::blob::BlobFileSource;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
 pub use crate::blob::BlobStoreTrait;
+pub use crate::blob::FileBlobPart;
 pub use crate::blob::InMemoryBlobPart;
+pub use crate::blob::ReturnBlobPart;
 use crate::blob::op_blob_clone_part;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_from_object_url;
+use crate::blob::op_blob_open_reader;
 use crate::blob::op_blob_read_part;
+use crate::blob::op_blob_read_reader;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
@@ -90,6 +95,8 @@ deno_core::extension!(deno_web,
     op_blob_create_part,
     op_blob_slice_part,
     op_blob_read_part,
+    op_blob_open_reader,
+    op_blob_read_reader,
     op_blob_remove_part,
     op_blob_clone_part,
     op_blob_create_object_url,
