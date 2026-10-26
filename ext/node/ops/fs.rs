@@ -351,6 +351,127 @@ fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
   options
 }
 
+#[cfg(feature = "sync_fs")]
+fn clone_blob_file(
+  file: Rc<dyn deno_io::fs::File>,
+) -> std::io::Result<Option<std::fs::File>> {
+  let Some(fd) = file.clone().backing_fd() else {
+    return Ok(None);
+  };
+  #[cfg(unix)]
+  {
+    // SAFETY: file keeps this descriptor alive while it is duplicated.
+    let borrowed = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
+    Ok(Some(borrowed.try_clone_to_owned()?.into()))
+  }
+  #[cfg(windows)]
+  {
+    // SAFETY: file keeps this handle alive while it is duplicated.
+    let borrowed =
+      unsafe { std::os::windows::io::BorrowedHandle::borrow_raw(fd) };
+    Ok(Some(borrowed.try_clone_to_owned()?.into()))
+  }
+}
+
+#[cfg(feature = "sync_fs")]
+#[derive(Debug)]
+struct FsBlobSource {
+  fs: FileSystemRc,
+  permissions: PermissionsContainer,
+  path: PathBuf,
+}
+
+#[cfg(feature = "sync_fs")]
+impl deno_web::BlobFileSource for FsBlobSource {
+  fn open(&self) -> std::io::Result<std::fs::File> {
+    let path = self
+      .permissions
+      .check_open(
+        Cow::Borrowed(&self.path),
+        OpenAccessKind::Read,
+        Some("node:fs.openAsBlob"),
+      )
+      .map_err(|err| deno_io::fs::FsError::from(err).into_io_error())?;
+    let file = self
+      .fs
+      .open_sync(&path, OpenOptions::read())
+      .map_err(deno_io::fs::FsError::into_io_error)?;
+    clone_blob_file(file)?.ok_or_else(|| std::io::ErrorKind::Unsupported.into())
+  }
+}
+
+#[op2(stack_trace)]
+pub async fn op_node_open_as_blob(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<deno_web::ReturnBlobPart, FsError> {
+  let (fs, permissions) = {
+    let state = state.borrow();
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow::<PermissionsContainer>().clone(),
+    )
+  };
+  let path = PathBuf::from(path);
+  let path = if path.is_absolute() {
+    path
+  } else {
+    fs.cwd()?.join(path)
+  };
+  let checked = permissions
+    .check_open(
+      Cow::Borrowed(&path),
+      OpenAccessKind::Read,
+      Some("node:fs.openAsBlob"),
+    )?
+    .into_owned();
+  #[cfg(windows)]
+  {
+    let metadata = fs.stat_async(checked.as_checked_path().as_owned()).await?;
+    if metadata.is_directory {
+      let size =
+        usize::try_from(metadata.size).map_err(std::io::Error::other)?;
+      let part = std::sync::Arc::new(deno_web::FileBlobPart::unreadable(size));
+      let uuid = state
+        .borrow()
+        .borrow::<std::sync::Arc<dyn deno_web::BlobStoreTrait>>()
+        .insert_part(part);
+      return Ok(deno_web::ReturnBlobPart { uuid, size });
+    }
+  }
+  let file = fs.open_async(checked, OpenOptions::read()).await?;
+  #[cfg(feature = "sync_fs")]
+  if let Some(native) = clone_blob_file(file.clone())? {
+    drop(file);
+    let source = std::sync::Arc::new(FsBlobSource {
+      fs,
+      permissions,
+      path,
+    });
+    let part =
+      spawn_blocking(move || deno_web::FileBlobPart::new(source, &native))
+        .await??;
+    let part: std::sync::Arc<dyn deno_web::BlobPart + Send + Sync> =
+      std::sync::Arc::new(part);
+    let size = part.size();
+    let uuid = state
+      .borrow()
+      .borrow::<std::sync::Arc<dyn deno_web::BlobStoreTrait>>()
+      .insert_part(part);
+    return Ok(deno_web::ReturnBlobPart { uuid, size });
+  }
+  // Embedded/VFS files without OS handles already reside in memory. Keep the
+  // existing representation for these and for non-thread-safe embedders.
+  let bytes = file.read_all_async().await?.into_owned();
+  let size = bytes.len();
+  let part = std::sync::Arc::new(deno_web::InMemoryBlobPart::from(bytes));
+  let uuid = state
+    .borrow()
+    .borrow::<std::sync::Arc<dyn deno_web::BlobStoreTrait>>()
+    .insert_part(part);
+  Ok(deno_web::ReturnBlobPart { uuid, size })
+}
+
 #[op2(fast, stack_trace)]
 #[smi]
 pub fn op_node_open_sync(
