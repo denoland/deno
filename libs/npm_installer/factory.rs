@@ -502,6 +502,7 @@ impl<
             self.tarball_cache()?.clone(),
             NpmInstallerOptions {
               clean_on_install: self.options.clean_on_install,
+              production: self.options.production,
               maybe_lockfile: self.maybe_lockfile().await?.cloned(),
               maybe_node_modules_path: workspace_factory
                 .node_modules_dir_path()?
