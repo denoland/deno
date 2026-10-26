@@ -15,7 +15,6 @@ use util::assert_not_contains;
 use util::test;
 
 #[test]
-#[ignore = "native check delegates to tsc and does not use deno's FastCheck type-check cache (#35946)"]
 fn fast_check_cache() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let deno_dir = test_context.deno_dir();
