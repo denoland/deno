@@ -230,8 +230,14 @@ impl SourceMapper {
       return SourceMapApplication::Unchanged;
     };
 
-    let new_line_number = token.get_src_line() + 1;
-    let new_column_number = token.get_src_col() + 1;
+    // A malformed map can decode to u32::MAX here, and sourcemap >= 9.3 uses
+    // it as the placeholder for source-less segments.
+    let (Some(new_line_number), Some(new_column_number)) = (
+      token.get_src_line().checked_add(1),
+      token.get_src_col().checked_add(1),
+    ) else {
+      return SourceMapApplication::Unchanged;
+    };
 
     let new_file_name = match token.get_source() {
       Some(source_file_name) => {
@@ -412,6 +418,26 @@ mod tests {
     // Get again to hit a cache
     let line = source_mapper.get_source_line("file:///a.ts", 1).unwrap();
     assert_eq!(line, "fake source line");
+  }
+
+  #[test]
+  fn test_apply_source_map_out_of_range_src_line() {
+    let mut loader = SourceMapLoader::default();
+    // "AADA" moves the source line to -1, which decodes to u32::MAX.
+    loader.map.insert(
+      Url::parse("file:///a.js").unwrap(),
+      SourceMapLoaderContent {
+        source_map: Some(
+          ascii_str!(
+            r#"{"version":3,"sources":["file:///a.ts"],"names":[],"mappings":"AADA"}"#
+          )
+          .into(),
+        ),
+      },
+    );
+    let mut source_mapper = SourceMapper::new(Rc::new(loader));
+    let application = source_mapper.apply_source_map("file:///a.js", 1, 1);
+    assert_eq!(application, SourceMapApplication::Unchanged);
   }
 
   #[test]
