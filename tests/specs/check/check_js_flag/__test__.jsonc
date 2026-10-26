@@ -1,5 +1,4 @@
 {
-  "tempDir": true,
   "tests": {
     "without_flag": {
       "args": "check main.js",
