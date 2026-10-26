@@ -355,6 +355,120 @@ Deno.test(
   },
 );
 
+async function runFiniteRequestBodyShutdownCase(
+  shutdownWhileBodyPending: boolean,
+) {
+  const encoder = new TextEncoder();
+  const secondPullWaiting = Promise.withResolvers<void>();
+  const releaseSecondChunk = Promise.withResolvers<void>();
+  const bodyReadStarted = Promise.withResolvers<void>();
+  let phase = 0;
+  let bodyComplete = false;
+  let transportFailure: unknown;
+  let shutdownCheck: Promise<void> | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (phase === 0) {
+        phase = 1;
+        controller.enqueue(encoder.encode('{"value":"'));
+        return;
+      }
+      if (phase === 1) {
+        phase = 2;
+        secondPullWaiting.resolve();
+        void releaseSecondChunk.promise.then(() => {
+          try {
+            controller.enqueue(encoder.encode('closed"}'));
+            controller.close();
+          } catch (error) {
+            transportFailure = error;
+          }
+        });
+      }
+    },
+  });
+  const {
+    finished: serverFinished,
+    abort,
+    shutdown,
+  } = await makeServer(async (request) => {
+    const bodyPromise = request.json();
+    bodyReadStarted.resolve();
+    await secondPullWaiting.promise;
+    if (shutdownWhileBodyPending) {
+      shutdownCheck = shutdown().then(() => assert(bodyComplete));
+      void shutdownCheck.catch(() => {});
+    }
+    releaseSecondChunk.resolve();
+    assertEquals(await bodyPromise, { value: "closed" });
+    bodyComplete = true;
+    return new Response("body-ok");
+  });
+  let finishedResolved = false;
+  const finished = serverFinished.then(() => {
+    finishedResolved = true;
+  });
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const exercise = async () => {
+      const responsePromise = fetch(`http://localhost:${servePort}/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+        duplex: "half",
+      } as RequestInit);
+      await bodyReadStarted.promise;
+      const response = await responsePromise;
+      assertEquals(response.status, 200);
+      assertEquals(await response.text(), "body-ok");
+      if (!shutdownWhileBodyPending) {
+        shutdownCheck = shutdown().then(() => assert(bodyComplete));
+      }
+      assert(shutdownCheck !== undefined);
+      await shutdownCheck;
+      assertEquals(transportFailure, undefined);
+      await finished;
+    };
+    const watchdog = new Promise<never>((_, reject) => {
+      watchdogTimer = setTimeout(
+        () => reject(new Error("finite body shutdown watchdog exceeded 10s")),
+        10_000,
+      );
+    });
+    await Promise.race([exercise(), watchdog]);
+  } finally {
+    if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+    if (!finishedResolved) abort();
+    let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        finished,
+        new Promise<void>((_, reject) => {
+          cleanupTimer = setTimeout(
+            () => reject(new Error("finite body cleanup watchdog exceeded 1s")),
+            1_000,
+          );
+        }),
+      ]);
+    } finally {
+      if (cleanupTimer !== undefined) clearTimeout(cleanupTimer);
+    }
+  }
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerFiniteRequestBodyShutdownControl() {
+    await runFiniteRequestBodyShutdownCase(false);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerFiniteRequestBodyShutdownRegression() {
+    await runFiniteRequestBodyShutdownCase(true);
+  },
+);
 // Ensure that resources don't leak during a graceful shutdown
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
