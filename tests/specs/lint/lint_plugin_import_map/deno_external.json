@@ -1,0 +1,9 @@
+{
+  "importMap": "./maps/import_map.json",
+  "lint": {
+    "plugins": ["test-plugin"],
+    "rules": {
+      "tags": []
+    }
+  }
+}
