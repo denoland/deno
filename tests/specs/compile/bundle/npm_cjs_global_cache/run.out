@@ -1,0 +1,23 @@
+Node esm importing node cjs
+===========================
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass2]
+}
+{ default: [Function (anonymous)], named: [Function (anonymous)] }
+{
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass2]
+  },
+  named: [Getter],
+  MyClass: [Getter]
+}
+{
+  default: { default: [Function (anonymous)], named: [Function (anonymous)] },
+  named: [Getter]
+}
+===========================
+static method
