@@ -2816,7 +2816,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("external")
       .long("external")
       .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore),
+      .num_args(NumArgs::Exact(1)),
     ArgDef::new("watch").long("watch").set_true()
 .help("Watch and rebuild on changes"),
     ArgDef::new("minify").long("minify").set_true()

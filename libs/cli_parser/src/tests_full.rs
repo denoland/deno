@@ -9992,3 +9992,40 @@ fn bundle_sourcemap_rejects_invalid_value() {
     flags_from_vec(svec!["deno", "bundle", "--sourcemap=bogus", "main.ts"]);
   assert!(r.is_err(), "expected --sourcemap=bogus to be rejected");
 }
+
+#[test]
+fn bundle_external_does_not_consume_entrypoint() {
+  // Each `--external` takes exactly one value. Regression test for a bug
+  // where a space-separated value also swallowed the entrypoint after it.
+  let flags = flags_from_vec(svec![
+    "deno",
+    "bundle",
+    "--external",
+    "elasticlunr",
+    "main.ts"
+  ])
+  .unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.entrypoints, svec!["main.ts"]);
+  assert_eq!(b.external, svec!["elasticlunr"]);
+}
+
+#[test]
+fn bundle_external_repeated() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "bundle",
+    "--external=a",
+    "--external",
+    "b",
+    "main.ts"
+  ])
+  .unwrap();
+  let DenoSubcommand::Bundle(b) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(b.entrypoints, svec!["main.ts"]);
+  assert_eq!(b.external, svec!["a", "b"]);
+}
