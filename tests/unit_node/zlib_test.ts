@@ -39,6 +39,31 @@ Deno.test("brotli compression sync", () => {
   assertEquals(decompressed.toString(), "hello world");
 });
 
+// Regression test for CVE-2026-111497: a brotli stream that declares a single
+// block type then issues a block switch is a format error. The sync path used
+// to swallow the decoder error and return the partially decoded output instead
+// of throwing (also a memory-amplification concern). Vector from Node's own
+// test suite (test/parallel/test-zlib-invalid-input.js).
+Deno.test("brotli decompress rejects invalid block switch", async () => {
+  const invalidBlockSwitch = Buffer.from(
+    "200010414141fcffff07002228f00b60f7f41f000000",
+    "hex",
+  );
+
+  assertThrows(() => brotliDecompressSync(invalidBlockSwitch), Error);
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const brotli = createBrotliDecompress();
+  brotli.resume();
+  brotli.on("error", () => resolve());
+  brotli.on("end", () => reject(new Error("expected an error, got end")));
+  for (let i = 0; i < invalidBlockSwitch.length; i++) {
+    brotli.write(invalidBlockSwitch.subarray(i, i + 1));
+  }
+  brotli.end();
+  await promise;
+});
+
 Deno.test("brotli compression async", async () => {
   const buf = Buffer.from("hello world");
   const compressed: Buffer = await new Promise((resolve) =>

@@ -13,6 +13,9 @@ const { core, primordials } = __bootstrap;
 core.createLazyLoader("node:process")();
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const {
   op_vm_compile_function,
   op_vm_create_context,
@@ -90,7 +93,7 @@ const DONT_CONTEXTIFY = Symbol("DONT_CONTEXTIFY");
 class Script {
   #inner;
 
-  constructor(code, options = { __proto__: null }) {
+  constructor(code, options = kEmptyObject) {
     code = `${code}`;
     if (typeof options === "string") {
       options = { filename: options };
@@ -146,7 +149,7 @@ class Script {
       : undefined;
   }
 
-  #runInContext(contextifiedObject, options = { __proto__: null }) {
+  #runInContext(contextifiedObject, options = kEmptyObject) {
     validateObject(options, "options");
 
     let timeout = options.timeout;
@@ -289,7 +292,7 @@ let defaultContextNameIndex = 1;
 function createContext(
   // deno-lint-ignore deno-internal/prefer-primordials
   contextObject = {},
-  options = { __proto__: null },
+  options = kEmptyObject,
 ) {
   if (contextObject === DONT_CONTEXTIFY) {
     validateObject(options, "options");
@@ -439,7 +442,7 @@ function isContext(object) {
   return op_vm_is_context(object);
 }
 
-function compileFunction(code, params, options = { __proto__: null }) {
+function compileFunction(code, params, options = kEmptyObject) {
   validateString(code, "code");
   if (params !== undefined) {
     validateStringArray(params, "params");
@@ -694,7 +697,7 @@ class Module {
     }
   }
 
-  evaluate(options = { __proto__: null }) {
+  evaluate(options = kEmptyObject) {
     try {
       validateObject(options, "options");
       const status = op_vm_module_get_status(this[kWrap]);
@@ -715,7 +718,7 @@ class Module {
 }
 
 class SourceTextModule extends Module {
-  constructor(sourceText, options = { __proto__: null }) {
+  constructor(sourceText, options = kEmptyObject) {
     super();
     if (typeof sourceText !== "string") {
       throw new ERR_INVALID_ARG_TYPE("sourceText", "string", sourceText);
@@ -836,7 +839,7 @@ class SourceTextModule extends Module {
 }
 
 class SyntheticModule extends Module {
-  constructor(exportNames, evaluateCallback, options = { __proto__: null }) {
+  constructor(exportNames, evaluateCallback, options = kEmptyObject) {
     super();
     if (
       !ArrayIsArray(exportNames) ||

@@ -3627,170 +3627,922 @@ fn cipher_suite_to_names(
   }
 }
 
-/// Filter out UnsupportedCertVersion errors from signature verification.
-/// OpenSSL accepts X.509v1 certificates, but webpki/rustls rejects them.
-/// Since Node uses OpenSSL, we need to allow these through.
-fn filter_unsupported_cert_version(
-  result: Result<
+/// webpki refuses an X.509v1 certificate at parse time with this error.
+/// OpenSSL, and therefore Node, parses and verifies v1 certificates normally.
+fn is_unsupported_cert_version(err: &rustls::CertificateError) -> bool {
+  matches!(
+    err,
+    rustls::CertificateError::Other(other) if other
+      .0
+      .downcast_ref::<webpki::Error>()
+      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
+  )
+}
+
+/// As [`is_unsupported_cert_version`], for a whole `rustls::Error`.
+fn is_unsupported_cert_version_error(err: &rustls::Error) -> bool {
+  matches!(
+    err,
+    rustls::Error::InvalidCertificate(cert_err)
+      if is_unsupported_cert_version(cert_err)
+  )
+}
+
+/// The signature verification algorithms used wherever this file verifies a
+/// signature itself rather than going through webpki. This is the same
+/// `aws_lc_rs` provider rustls is configured with elsewhere in this file, so
+/// both paths accept exactly the same set of algorithms.
+fn supported_signature_algorithms()
+-> &'static rustls::crypto::WebPkiSupportedAlgorithms {
+  static ALGORITHMS: std::sync::OnceLock<
+    rustls::crypto::WebPkiSupportedAlgorithms,
+  > = std::sync::OnceLock::new();
+  ALGORITHMS.get_or_init(|| {
+    rustls::crypto::aws_lc_rs::default_provider()
+      .signature_verification_algorithms
+  })
+}
+
+/// Verify a `CertificateVerify` signature, falling back to a direct
+/// public-key verification when webpki could not parse the certificate.
+///
+/// Only webpki's *parser* rejects X.509v1; the signature primitives are the
+/// same ones it would use. Extract the `SubjectPublicKeyInfo` and verify
+/// against it, so that a peer still has to hold the private key belonging to
+/// the certificate it presented.
+fn verify_handshake_signature_allowing_v1(
+  inner_result: Result<
     rustls::client::danger::HandshakeSignatureValid,
     rustls::Error,
   >,
+  message: &[u8],
+  cert: &rustls::pki_types::CertificateDer<'_>,
+  dss: &rustls::DigitallySignedStruct,
+  tls13: bool,
 ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-  match result {
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::Other(ref other),
-    )) if other
-      .0
-      .downcast_ref::<webpki::Error>()
-      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) =>
-    {
+  let err = match inner_result {
+    Err(err) if is_unsupported_cert_version_error(&err) => err,
+    other => return other,
+  };
+  match verify_signature_with_unparsed_cert(
+    cert.as_ref(),
+    dss.scheme,
+    message,
+    dss.signature(),
+    tls13,
+  ) {
+    SignatureCheck::Valid => {
       Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::BadEncoding,
-    )) => Ok(rustls::client::danger::HandshakeSignatureValid::assertion()),
-    other => other,
+    SignatureCheck::Invalid => Err(rustls::Error::InvalidCertificate(
+      rustls::CertificateError::BadSignature,
+    )),
+    // Nothing was actually checked, so report webpki's original refusal
+    // rather than inventing a verdict.
+    SignatureCheck::Unchecked => Err(err),
+  }
+}
+
+/// Outcome of [`verify_signature_with_unparsed_cert`]. Only `Valid` may be
+/// treated as success.
+#[derive(Debug, PartialEq, Eq)]
+enum SignatureCheck {
+  Valid,
+  /// The signature did not verify under the certificate's public key.
+  Invalid,
+  /// The certificate could not be parsed, or no algorithm in the provider
+  /// covers this signature scheme together with this public key, so the
+  /// signature was not checked at all.
+  Unchecked,
+}
+
+/// Verify `signature` over `message` using the public key of a certificate
+/// webpki would not parse, choosing the algorithm from `scheme` the way
+/// rustls's own `verify_tls1{2,3}_signature` does.
+fn verify_signature_with_unparsed_cert(
+  cert: &[u8],
+  scheme: rustls::SignatureScheme,
+  message: &[u8],
+  signature: &[u8],
+  tls13: bool,
+) -> SignatureCheck {
+  let Some(parsed) = parse_certificate(cert) else {
+    return SignatureCheck::Unchecked;
+  };
+  let Some((_, candidates)) = supported_signature_algorithms()
+    .mapping
+    .iter()
+    .find(|(mapped, _)| *mapped == scheme)
+  else {
+    return SignatureCheck::Unchecked;
+  };
+  // TLS 1.3 uses only the first algorithm mapped to a scheme while TLS 1.2
+  // tries each in turn, mirroring rustls's own `verify_tls1{2,3}_signature`.
+  let candidates = match tls13 {
+    true => &candidates[..1.min(candidates.len())],
+    false => *candidates,
+  };
+  let mut checked = false;
+  for algorithm in candidates {
+    if algorithm.public_key_alg_id().as_ref() != parsed.spki_algorithm {
+      continue;
+    }
+    checked = true;
+    if algorithm
+      .verify_signature(parsed.spki_key, message, signature)
+      .is_ok()
+    {
+      return SignatureCheck::Valid;
+    }
+  }
+  match checked {
+    true => SignatureCheck::Invalid,
+    false => SignatureCheck::Unchecked,
+  }
+}
+
+/// `CertifiedKey::keys_match` parses the end-entity certificate with webpki,
+/// which refuses X.509v1. Compare the `SubjectPublicKeyInfo` bytes directly in
+/// that case, which is what `keys_match` itself does once webpki has parsed
+/// the certificate, so the certificate/key pairing is still enforced.
+fn keys_match_allowing_v1(
+  certified_key: &rustls::sign::CertifiedKey,
+  signing_key: &dyn rustls::sign::SigningKey,
+) -> Result<(), rustls::Error> {
+  let err = match certified_key.keys_match() {
+    Err(err) if is_unsupported_cert_version_error(&err) => err,
+    other => return other,
+  };
+  let end_entity = certified_key.end_entity_cert()?;
+  let Some(key_spki) = signing_key.public_key() else {
+    return Err(rustls::Error::InconsistentKeys(
+      rustls::InconsistentKeys::Unknown,
+    ));
+  };
+  let Some(parsed) = parse_certificate(end_entity.as_ref()) else {
+    return Err(err);
+  };
+  match key_spki.as_ref() == parsed.spki {
+    true => Ok(()),
+    false => Err(rustls::Error::InconsistentKeys(
+      rustls::InconsistentKeys::KeyMismatch,
+    )),
   }
 }
 
 // ---------------------------------------------------------------------------
-// Minimal DER helpers for chain verification of X.509v1 certificates.
-// webpki rejects v1 certs at parse time, so we do structural chain
-// checking ourselves (issuer/subject matching).
+// X.509 parsing and chain verification for certificates webpki will not parse.
+//
+// webpki rejects X.509v1 at parse time (`UnsupportedCertVersion`) while
+// OpenSSL, and therefore Node, accepts it; several upstream Node test fixtures
+// are genuinely v1. To keep that parity without giving up verification, parse
+// just enough of the certificate here and run the checks OpenSSL's
+// `X509_verify_cert` runs with default flags: the issuer's signature over each
+// `tbsCertificate`, the validity window, and `basicConstraints` / `keyUsage`
+// on every issuer that carries them.
+//
+// Distinguished names select candidate issuers, exactly as OpenSSL does. A
+// name match on its own never grants trust: a subject DN is public
+// information, so the signature is what decides.
+//
+// `nameConstraints`, `policyConstraints` and `inhibitAnyPolicy` are not
+// evaluated, so a certificate carrying any of them is refused outright rather
+// than treated as unconstrained, as is one carrying a critical extension this
+// code does not recognise: an unevaluated restriction must never read as an
+// absent one. Revocation is not checked, matching the non-v1 path here.
+//
+// The trust anchors reachable here are always ones the caller supplied
+// explicitly (the per-context `ca` option or
+// `tls.setDefaultCACertificates()`), never the bundled Mozilla roots. Names
+// are compared as raw DER rather than canonicalised as OpenSSL's
+// `X509_NAME_cmp` does, which can only reject a chain OpenSSL would accept,
+// never the reverse.
 // ---------------------------------------------------------------------------
 
-/// Read a DER tag-length-value element, returning (full element, remainder).
-fn der_read_element(data: &[u8]) -> Option<(&[u8], &[u8])> {
-  if data.is_empty() {
+/// A DER tag-length-value element.
+struct DerElement<'a> {
+  tag: u8,
+  /// The complete element, including its tag and length header.
+  all: &'a [u8],
+  /// The element's contents, excluding its tag and length header.
+  content: &'a [u8],
+}
+
+/// Read one DER element from the front of `data`, returning it and the
+/// remainder. Rejects the encodings that cannot appear in the X.509 structures
+/// parsed here: high-tag-number form, indefinite length, non-minimal length.
+fn der_next(data: &[u8]) -> Option<(DerElement<'_>, &[u8])> {
+  let tag = *data.first()?;
+  if tag & 0x1f == 0x1f {
     return None;
   }
-  let len_start = 1;
-  let first_len = *data.get(len_start)?;
-  let (content_len, header_len) = if first_len < 0x80 {
-    (first_len as usize, 2)
+  let first = *data.get(1)?;
+  let (content_len, header_len) = if first < 0x80 {
+    (first as usize, 2)
   } else {
-    let num_bytes = (first_len & 0x7F) as usize;
-    if num_bytes == 0 || num_bytes > 4 || data.len() < 2 + num_bytes {
+    let count = (first & 0x7f) as usize;
+    if count == 0 || count > 4 {
+      return None;
+    }
+    let bytes = data.get(2..2 + count)?;
+    if bytes[0] == 0 {
       return None;
     }
     let mut len = 0usize;
-    for i in 0..num_bytes {
-      len = (len << 8) | (data[2 + i] as usize);
+    for byte in bytes {
+      len = (len << 8) | (*byte as usize);
     }
-    (len, 2 + num_bytes)
+    if len < 0x80 {
+      return None;
+    }
+    (len, 2 + count)
   };
-  let total = header_len + content_len;
-  if data.len() < total {
+  let all = data.get(..header_len.checked_add(content_len)?)?;
+  Some((
+    DerElement {
+      tag,
+      all,
+      content: &all[header_len..],
+    },
+    &data[all.len()..],
+  ))
+}
+
+/// As [`der_next`], requiring a specific tag.
+fn der_expect(data: &[u8], tag: u8) -> Option<(DerElement<'_>, &[u8])> {
+  let (element, rest) = der_next(data)?;
+  (element.tag == tag).then_some((element, rest))
+}
+
+/// The contents of a BIT STRING that has no unused trailing bits, matching
+/// webpki's `bit_string_with_no_unused_bits`.
+fn der_bit_string<'a>(element: &DerElement<'a>) -> Option<&'a [u8]> {
+  (element.tag == 0x03 && element.content.first() == Some(&0))
+    .then(|| &element.content[1..])
+}
+
+/// The value octets of a BIT STRING that may have unused trailing bits, as a
+/// named-bit string such as `KeyUsage` uses. Rejects what DER forbids: an
+/// unused-bit count above 7, a count with no octets for it to apply to, and
+/// unused bits that are not zero. Without that last check a `keyCertSign` bit
+/// sitting in the unused region would read as asserted.
+fn der_named_bits<'a>(element: &DerElement<'a>) -> Option<&'a [u8]> {
+  if element.tag != 0x03 {
     return None;
   }
-  Some((&data[..total], &data[total..]))
-}
-
-/// Skip a DER element, returning the remainder.
-fn der_skip_element(data: &[u8]) -> Option<&[u8]> {
-  der_read_element(data).map(|(_, rest)| rest)
-}
-
-/// Extract raw (issuer, subject) DER Name fields from an X.509 certificate.
-fn extract_issuer_and_subject(cert_der: &[u8]) -> Option<(&[u8], &[u8])> {
-  // Certificate ::= SEQUENCE { tbsCertificate, ... }
-  let (cert_elem, _) = der_read_element(cert_der)?;
-  // TBSCertificate is the first element inside Certificate SEQUENCE.
-  let tbs_content = &cert_elem[cert_elem.len() - der_content_len(cert_elem)?..];
-  let (tbs_elem, _) = der_read_element(tbs_content)?;
-  let mut pos = &tbs_elem[tbs_elem.len() - der_content_len(tbs_elem)?..];
-
-  // Skip optional version [0] EXPLICIT
-  if pos.first() == Some(&0xA0) {
-    pos = der_skip_element(pos)?;
+  let (&unused, bits) = element.content.split_first()?;
+  if unused > 7 || (unused > 0 && bits.is_empty()) {
+    return None;
   }
-  // Skip serialNumber (INTEGER)
-  pos = der_skip_element(pos)?;
-  // Skip signatureAlgorithm (SEQUENCE)
-  pos = der_skip_element(pos)?;
-  // Read issuer (Name = SEQUENCE)
-  let (issuer, pos) = der_read_element(pos)?;
-  // Skip validity (SEQUENCE)
-  let pos = der_skip_element(pos)?;
-  // Read subject (Name = SEQUENCE)
-  let (subject, _) = der_read_element(pos)?;
-  Some((issuer, subject))
+  if unused > 0 && bits.last()? & ((1u8 << unused) - 1) != 0 {
+    return None;
+  }
+  Some(bits)
 }
 
-/// Return the length of the content portion of a DER element.
-fn der_content_len(element: &[u8]) -> Option<usize> {
-  let first_len = *element.get(1)?;
-  if first_len < 0x80 {
-    Some(first_len as usize)
-  } else {
-    let num_bytes = (first_len & 0x7F) as usize;
-    let mut len = 0usize;
-    for i in 0..num_bytes {
-      len = (len << 8) | (*element.get(2 + i)? as usize);
+/// A DER BOOLEAN. DER permits exactly one content octet, `0x00` or `0xff`.
+fn der_boolean(element: &DerElement<'_>) -> Option<bool> {
+  match element.content {
+    [0x00] => Some(false),
+    [0xff] => Some(true),
+    _ => None,
+  }
+}
+
+/// A non-negative DER INTEGER, as a `u64`. `None` for anything wider, which
+/// callers treat as "no constraint".
+fn der_unsigned(element: &DerElement<'_>) -> Option<u64> {
+  if element.content.is_empty() || element.content[0] & 0x80 != 0 {
+    return None;
+  }
+  let mut value = 0u64;
+  for byte in element.content {
+    value = value.checked_mul(256)?.checked_add(*byte as u64)?;
+  }
+  Some(value)
+}
+
+/// Days since 1970-01-01 for a proleptic Gregorian date.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+  let year = if month <= 2 { year - 1 } else { year };
+  let era = if year >= 0 { year } else { year - 399 } / 400;
+  let year_of_era = year - era * 400;
+  let shifted_month = (month + 9) % 12;
+  let day_of_year = (153 * shifted_month + 2) / 5 + day - 1;
+  let day_of_era =
+    year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+  era * 146097 + day_of_era - 719468
+}
+
+/// Seconds since the Unix epoch for a DER UTCTime or GeneralizedTime, in the
+/// only forms RFC 5280 permits: `YYMMDDHHMMSSZ` and `YYYYMMDDHHMMSSZ`.
+fn der_time_secs(element: &DerElement<'_>) -> Option<i64> {
+  fn digits(bytes: &[u8]) -> Option<i64> {
+    let mut value = 0i64;
+    for byte in bytes {
+      if !byte.is_ascii_digit() {
+        return None;
+      }
+      value = value * 10 + (*byte - b'0') as i64;
     }
-    Some(len)
+    Some(value)
+  }
+  let (year, rest) = match (element.tag, element.content.len()) {
+    // UTCTime: a two-digit year, where 50..=99 means 19xx (RFC 5280 4.1.2.5.1).
+    (0x17, 13) => {
+      let year = digits(&element.content[..2])?;
+      let year = if year < 50 { 2000 + year } else { 1900 + year };
+      (year, &element.content[2..])
+    }
+    (0x18, 15) => (digits(&element.content[..4])?, &element.content[4..]),
+    _ => return None,
+  };
+  if rest.last() != Some(&b'Z') {
+    return None;
+  }
+  let month = digits(&rest[0..2])?;
+  let day = digits(&rest[2..4])?;
+  let hour = digits(&rest[4..6])?;
+  let minute = digits(&rest[6..8])?;
+  let second = digits(&rest[8..10])?;
+  if !(1..=12).contains(&month) || hour > 23 || minute > 59 || second > 60 {
+    return None;
+  }
+  let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+  let month_days = [
+    31,
+    if leap { 29 } else { 28 },
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  if day < 1 || day > month_days[(month - 1) as usize] {
+    return None;
+  }
+  Some(
+    days_from_civil(year, month, day) * 86400
+      + hour * 3600
+      + minute * 60
+      + second,
+  )
+}
+
+/// The parts of an X.509 certificate needed to verify a certification path.
+struct ParsedCertificate<'a> {
+  /// The complete `TBSCertificate` element, which is what the signature of
+  /// this certificate covers.
+  tbs: &'a [u8],
+  /// Contents of the `signatureAlgorithm` SEQUENCE, in the form
+  /// `SignatureVerificationAlgorithm::signature_alg_id` returns.
+  signature_algorithm: &'a [u8],
+  /// Contents of the `signature` SEQUENCE inside `tbsCertificate`, which
+  /// RFC 5280 requires to equal `signature_algorithm`. Unlike the outer one
+  /// this copy is covered by the signature.
+  tbs_signature_algorithm: &'a [u8],
+  /// The `signatureValue`, with the BIT STRING's unused-bits octet removed.
+  signature: &'a [u8],
+  issuer: &'a [u8],
+  subject: &'a [u8],
+  not_before: i64,
+  not_after: i64,
+  /// The complete `SubjectPublicKeyInfo` element.
+  spki: &'a [u8],
+  /// Contents of the `SubjectPublicKeyInfo` `AlgorithmIdentifier` SEQUENCE, in
+  /// the form `SignatureVerificationAlgorithm::public_key_alg_id` returns.
+  spki_algorithm: &'a [u8],
+  /// The `subjectPublicKey`, with the BIT STRING's unused-bits octet removed.
+  spki_key: &'a [u8],
+  extensions: CertExtensions,
+}
+
+/// The extension-derived facts chain verification needs. `None` means the
+/// extension is absent, which for an X.509v1 certificate is always the case.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CertExtensions {
+  /// `cA` from `basicConstraints`.
+  is_ca: Option<bool>,
+  /// `pathLenConstraint` from `basicConstraints`.
+  path_len: Option<u64>,
+  /// Whether `keyUsage` asserts `keyCertSign`.
+  key_cert_sign: Option<bool>,
+  /// Whether `extendedKeyUsage` permits TLS server authentication, either
+  /// through `id-kp-serverAuth` or `anyExtendedKeyUsage`.
+  server_auth: Option<bool>,
+  /// Set when the certificate carries an extension that restricts what it is
+  /// allowed to certify and that this verifier does not evaluate. Such a
+  /// certificate is refused rather than used as if it were unconstrained.
+  unhandled_constraint: bool,
+}
+
+/// Parse the extensions this verifier understands out of the `extensions [3]`
+/// field of a `TBSCertificate`.
+///
+/// Everything here fails closed. A malformed value, or a repeat of an
+/// extension, makes the whole certificate unparseable and therefore rejected,
+/// rather than leaving a constraint half-read: RFC 5280 forbids duplicates and
+/// OpenSSL marks such a certificate invalid, and silently preferring one copy
+/// over another is how a `CA:FALSE, CA:TRUE` pair would end up read as a CA.
+fn parse_extensions(data: &[u8]) -> Option<CertExtensions> {
+  const BASIC_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x13]; // 2.5.29.19
+  const KEY_USAGE: &[u8] = &[0x55, 0x1d, 0x0f]; // 2.5.29.15
+  const EXTENDED_KEY_USAGE: &[u8] = &[0x55, 0x1d, 0x25]; // 2.5.29.37
+  const NAME_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x1e]; // 2.5.29.30
+  const POLICY_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x24]; // 2.5.29.36
+  const INHIBIT_ANY_POLICY: &[u8] = &[0x55, 0x1d, 0x36]; // 2.5.29.54
+  // id-kp-serverAuth, 1.3.6.1.5.5.7.3.1
+  const SERVER_AUTH: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01];
+  // anyExtendedKeyUsage, 2.5.29.37.0
+  const ANY_EXTENDED_KEY_USAGE: &[u8] = &[0x55, 0x1d, 0x25, 0x00];
+  /// Extensions that may be marked critical and still safely ignored here:
+  /// the ones parsed below, the name extensions (`subjectAltName` is checked
+  /// by rustls and by `checkServerIdentity` in JS, not here), the key and
+  /// issuer identifiers, and the informational ones. Anything else carrying
+  /// the critical bit is a restriction this code cannot evaluate.
+  const IGNORABLE_WHEN_CRITICAL: &[&[u8]] = &[
+    &[0x55, 0x1d, 0x0e], // subjectKeyIdentifier
+    &[0x55, 0x1d, 0x0f], // keyUsage
+    &[0x55, 0x1d, 0x11], // subjectAltName
+    &[0x55, 0x1d, 0x12], // issuerAltName
+    &[0x55, 0x1d, 0x13], // basicConstraints
+    &[0x55, 0x1d, 0x1f], // cRLDistributionPoints
+    &[0x55, 0x1d, 0x20], // certificatePolicies
+    &[0x55, 0x1d, 0x23], // authorityKeyIdentifier
+    &[0x55, 0x1d, 0x25], // extendedKeyUsage
+    &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x01], // authorityInfoAccess
+  ];
+
+  let mut out = CertExtensions::default();
+  let (extensions, rest) = der_expect(data, 0x30)?;
+  if !rest.is_empty() {
+    return None;
+  }
+  let mut cursor = extensions.content;
+  while !cursor.is_empty() {
+    let (extension, next) = der_expect(cursor, 0x30)?;
+    cursor = next;
+    let (oid, after_oid) = der_expect(extension.content, 0x06)?;
+    // critical BOOLEAN DEFAULT FALSE
+    let mut critical = false;
+    let after_critical = match der_next(after_oid) {
+      Some((element, rest)) if element.tag == 0x01 => {
+        critical = der_boolean(&element)?;
+        rest
+      }
+      _ => after_oid,
+    };
+    if critical && !IGNORABLE_WHEN_CRITICAL.contains(&oid.content) {
+      out.unhandled_constraint = true;
+    }
+    let (value, rest) = der_expect(after_critical, 0x04)?;
+    if !rest.is_empty() {
+      return None;
+    }
+    match oid.content {
+      BASIC_CONSTRAINTS => {
+        if out.is_ca.is_some() {
+          return None;
+        }
+        let (constraints, rest) = der_expect(value.content, 0x30)?;
+        if !rest.is_empty() {
+          return None;
+        }
+        let mut inner = constraints.content;
+        let mut is_ca = false;
+        if let Some((element, rest)) = der_next(inner)
+          && element.tag == 0x01
+        {
+          is_ca = der_boolean(&element)?;
+          inner = rest;
+        }
+        out.is_ca = Some(is_ca);
+        if !inner.is_empty() {
+          // An unreadable pathLenConstraint must not read as "unconstrained".
+          let (element, rest) = der_expect(inner, 0x02)?;
+          out.path_len = Some(der_unsigned(&element)?);
+          if !rest.is_empty() {
+            return None;
+          }
+        }
+      }
+      KEY_USAGE => {
+        if out.key_cert_sign.is_some() {
+          return None;
+        }
+        let (bits, rest) = der_expect(value.content, 0x03)?;
+        if !rest.is_empty() {
+          return None;
+        }
+        // KeyUsage is a BIT STRING whose bit 0 is the most significant bit of
+        // the first value octet, so keyCertSign (bit 5) is mask 0x04. A BIT
+        // STRING too short to reach bit 5 reads as not asserted.
+        let bits = der_named_bits(&bits)?;
+        let first = bits.first().copied().unwrap_or(0);
+        out.key_cert_sign = Some(first & 0x04 != 0);
+      }
+      EXTENDED_KEY_USAGE => {
+        if out.server_auth.is_some() {
+          return None;
+        }
+        let (purposes, rest) = der_expect(value.content, 0x30)?;
+        if !rest.is_empty() {
+          return None;
+        }
+        let mut inner = purposes.content;
+        let mut server_auth = false;
+        while !inner.is_empty() {
+          let (purpose, rest) = der_expect(inner, 0x06)?;
+          inner = rest;
+          if purpose.content == SERVER_AUTH
+            || purpose.content == ANY_EXTENDED_KEY_USAGE
+          {
+            server_auth = true;
+          }
+        }
+        out.server_auth = Some(server_auth);
+      }
+      NAME_CONSTRAINTS | POLICY_CONSTRAINTS | INHIBIT_ANY_POLICY => {
+        out.unhandled_constraint = true;
+      }
+      _ => {}
+    }
+  }
+  Some(out)
+}
+
+/// Parse an X.509 certificate, including the v1 form webpki rejects.
+fn parse_certificate(der: &[u8]) -> Option<ParsedCertificate<'_>> {
+  let (certificate, trailing) = der_expect(der, 0x30)?;
+  if !trailing.is_empty() {
+    return None;
+  }
+  let (tbs, rest) = der_expect(certificate.content, 0x30)?;
+  let (signature_algorithm, rest) = der_expect(rest, 0x30)?;
+  let (signature, rest) = der_next(rest)?;
+  if !rest.is_empty() {
+    return None;
+  }
+
+  // version [0] EXPLICIT is absent in v1.
+  let mut cursor = tbs.content;
+  if cursor.first() == Some(&0xa0) {
+    cursor = der_next(cursor)?.1;
+  }
+  let (_serial, cursor) = der_expect(cursor, 0x02)?;
+  let (tbs_signature_algorithm, cursor) = der_expect(cursor, 0x30)?;
+  let (issuer, cursor) = der_expect(cursor, 0x30)?;
+  let (validity, cursor) = der_expect(cursor, 0x30)?;
+  let (subject, cursor) = der_expect(cursor, 0x30)?;
+  let (spki, mut cursor) = der_expect(cursor, 0x30)?;
+
+  let (not_before, rest) = der_next(validity.content)?;
+  let (not_after, rest) = der_next(rest)?;
+  if !rest.is_empty() {
+    return None;
+  }
+
+  let (spki_algorithm, rest) = der_expect(spki.content, 0x30)?;
+  let (spki_key, rest) = der_next(rest)?;
+  if !rest.is_empty() {
+    return None;
+  }
+
+  // Remaining optional fields: issuerUniqueID [1], subjectUniqueID [2] and
+  // extensions [3]. v1 certificates have none of them.
+  let mut extensions = CertExtensions::default();
+  let mut seen_extensions = false;
+  while !cursor.is_empty() {
+    let (element, next) = der_next(cursor)?;
+    if element.tag == 0xa3 {
+      if seen_extensions {
+        return None;
+      }
+      seen_extensions = true;
+      extensions = parse_extensions(element.content)?;
+    }
+    cursor = next;
+  }
+
+  Some(ParsedCertificate {
+    tbs: tbs.all,
+    signature_algorithm: signature_algorithm.content,
+    tbs_signature_algorithm: tbs_signature_algorithm.content,
+    signature: der_bit_string(&signature)?,
+    issuer: issuer.all,
+    subject: subject.all,
+    not_before: der_time_secs(&not_before)?,
+    not_after: der_time_secs(&not_after)?,
+    spki: spki.all,
+    spki_algorithm: spki_algorithm.content,
+    spki_key: der_bit_string(&spki_key)?,
+    extensions,
+  })
+}
+
+fn is_self_signed(cert_der: &[u8]) -> bool {
+  parse_certificate(cert_der).is_some_and(|cert| cert.issuer == cert.subject)
+}
+
+/// Verify `child`'s signature over its own `tbsCertificate` with `issuer`'s
+/// public key, choosing the algorithm the way webpki's `verify_signed_data`
+/// does: by matching both the signature and the public-key algorithm
+/// identifiers.
+fn signature_is_valid(
+  child: &ParsedCertificate<'_>,
+  issuer: &ParsedCertificate<'_>,
+) -> bool {
+  // RFC 5280 requires the two `signatureAlgorithm` copies to agree, and only
+  // the one inside `tbsCertificate` is covered by the signature. OpenSSL's
+  // `X509_verify` rejects a mismatch; do the same rather than trusting the
+  // unprotected outer copy on its own.
+  if child.signature_algorithm != child.tbs_signature_algorithm {
+    return false;
+  }
+  supported_signature_algorithms()
+    .all
+    .iter()
+    .filter(|algorithm| {
+      algorithm.signature_alg_id().as_ref() == child.signature_algorithm
+        && algorithm.public_key_alg_id().as_ref() == issuer.spki_algorithm
+    })
+    .any(|algorithm| {
+      algorithm
+        .verify_signature(issuer.spki_key, child.tbs, child.signature)
+        .is_ok()
+    })
+}
+
+/// Whether `cert` may sign other certificates, following OpenSSL's
+/// `check_chain_extensions` with default flags.
+///
+/// An intermediate must assert `basicConstraints` `cA`: OpenSSL applies
+/// `X509_V_FLAG_X509_STRICT` to intermediates implicitly, so a certificate
+/// without the extension -- every X.509v1 certificate -- cannot sign another
+/// certificate unless it is a trust anchor. A trust anchor the caller
+/// configured is refused only when an extension it carries says it is not a
+/// CA, which is how X.509v1 roots, having no extensions at all, are trusted.
+///
+/// A CA carrying a constraint this verifier does not evaluate is refused, so
+/// that an unevaluated restriction can never read as an absent one.
+///
+/// Returns the Node/OpenSSL error code a refusal is reported with, or `None`
+/// when `cert` may sign.
+fn ca_rejection(
+  cert: &ParsedCertificate<'_>,
+  certs_below: u64,
+  is_trust_anchor: bool,
+) -> Option<&'static str> {
+  let extensions = &cert.extensions;
+  if extensions.unhandled_constraint {
+    return Some("UNHANDLED_CRITICAL_EXTENSION");
+  }
+  let is_ca = match is_trust_anchor {
+    true => extensions.is_ca != Some(false),
+    false => extensions.is_ca == Some(true),
+  };
+  // OpenSSL checks the CA flag as part of the purpose check for an issuer,
+  // so Node reports a non-CA issuer as `INVALID_PURPOSE`.
+  if !is_ca
+    || extensions.key_cert_sign == Some(false)
+    || extensions.server_auth == Some(false)
+  {
+    return Some("INVALID_PURPOSE");
+  }
+  if extensions.path_len.is_some_and(|limit| limit < certs_below) {
+    return Some("PATH_LENGTH_EXCEEDED");
+  }
+  None
+}
+
+#[cfg(test)]
+fn usable_as_ca(
+  cert: &ParsedCertificate<'_>,
+  certs_below: u64,
+  is_trust_anchor: bool,
+) -> bool {
+  ca_rejection(cert, certs_below, is_trust_anchor).is_none()
+}
+
+/// Longest certification path considered, counting the end entity and the
+/// trust anchor.
+const MAX_CHAIN_DEPTH: usize = 10;
+
+/// Signature verifications one chain is allowed to cost. Without a bound a peer
+/// can supply several same-subject intermediates per level and make the
+/// backtracking search below branch exponentially; webpki bounds its own path
+/// building the same way and for the same reason.
+const MAX_SIGNATURE_CHECKS: u32 = 100;
+
+/// A certificate offered as an issuer, with the DER it came from so that it can
+/// be compared against the trust store.
+struct ChainCandidate<'a> {
+  parsed: ParsedCertificate<'a>,
+  der: &'a [u8],
+}
+
+/// State shared across one certification-path search.
+struct ChainSearch<'a> {
+  candidates: &'a [ChainCandidate<'a>],
+  roots: &'a [ChainCandidate<'a>],
+  root_cert_ders: &'a [Vec<u8>],
+  /// Which candidates are already on the path under construction, so that no
+  /// certificate is used twice in one path.
+  on_path: Vec<bool>,
+  now: i64,
+  budget: u32,
+}
+
+impl ChainSearch<'_> {
+  fn is_trusted(&self, der: &[u8]) -> bool {
+    self
+      .root_cert_ders
+      .iter()
+      .any(|root| root.as_slice() == der)
+  }
+
+  /// `None` once the signature-verification budget is spent.
+  fn check_signature(
+    &mut self,
+    child: &ParsedCertificate<'_>,
+    issuer: &ParsedCertificate<'_>,
+  ) -> Option<bool> {
+    self.budget = self.budget.checked_sub(1)?;
+    Some(signature_is_valid(child, issuer))
+  }
+
+  /// One step of the search: check `current`, then try every issuer that could
+  /// have signed it.
+  ///
+  /// The search backtracks. Taking the first name-and-signature match and
+  /// committing to it would reject a legitimate chain whenever two
+  /// intermediates share a subject and key — cross-signing — and only the
+  /// second one reaches a configured root.
+  fn extend(
+    &mut self,
+    current: &ParsedCertificate<'_>,
+    current_der: &[u8],
+    depth: usize,
+    certs_below: u64,
+  ) -> Result<(), &'static str> {
+    if depth >= MAX_CHAIN_DEPTH {
+      return Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
+    }
+    if current.not_before > self.now {
+      return Err("CERT_NOT_YET_VALID");
+    }
+    if current.not_after < self.now {
+      return Err("CERT_HAS_EXPIRED");
+    }
+    // A certificate that *is* one of the trusted certificates terminates the
+    // chain, at any depth. This is the only way to become a trust anchor.
+    // webpki reports the end-entity case as `CaUsedAsEndEntity`; OpenSSL
+    // accepts it.
+    if self.is_trusted(current_der) {
+      return Ok(());
+    }
+
+    let mut had_candidate = false;
+    // The first failure that says something more specific than "no issuer",
+    // kept so backtracking does not lose the reason the first path died.
+    let mut error: Option<&'static str> = None;
+    let mut note = |code: &'static str| {
+      error = error.or(Some(code));
+    };
+
+    // Copied out so the borrow of the candidate lists is independent of the
+    // `&mut self` the recursive call needs. Both are shared slices, so this is
+    // a reference copy, not a clone.
+    let roots = self.roots;
+    let candidates = self.candidates;
+
+    // Trusted certificates first, mirroring OpenSSL's preference for the trust
+    // store over whatever the peer supplied.
+    for root in roots.iter().filter(|r| r.parsed.subject == current.issuer) {
+      had_candidate = true;
+      if let Some(code) = ca_rejection(&root.parsed, certs_below, true) {
+        note(code);
+        continue;
+      }
+      match self.check_signature(current, &root.parsed) {
+        None => return Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY"),
+        Some(true) => return Ok(()),
+        Some(false) => note("CERT_SIGNATURE_FAILURE"),
+      }
+    }
+
+    for (index, issuer) in candidates.iter().enumerate() {
+      if self.on_path[index] || issuer.parsed.subject != current.issuer {
+        continue;
+      }
+      had_candidate = true;
+      if let Some(code) = ca_rejection(&issuer.parsed, certs_below, false) {
+        note(code);
+        continue;
+      }
+      // A self-issued certificate the peer supplied is not a trust anchor,
+      // however well it signs itself; `is_trusted` above is the only way.
+      if issuer.parsed.subject == issuer.parsed.issuer {
+        note("SELF_SIGNED_CERT_IN_CHAIN");
+        continue;
+      }
+      match self.check_signature(current, &issuer.parsed) {
+        None => return Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY"),
+        Some(false) => {
+          note("CERT_SIGNATURE_FAILURE");
+          continue;
+        }
+        Some(true) => {}
+      }
+      // Every issuer reached here is non-self-issued, which is exactly what
+      // `pathLenConstraint` counts.
+      self.on_path[index] = true;
+      let result =
+        self.extend(&issuer.parsed, issuer.der, depth + 1, certs_below + 1);
+      self.on_path[index] = false;
+      match result {
+        Ok(()) => return Ok(()),
+        Err(code) => note(code),
+      }
+    }
+
+    if let Some(code) = error {
+      return Err(code);
+    }
+    if current.subject == current.issuer {
+      return Err(match depth {
+        0 => "DEPTH_ZERO_SELF_SIGNED_CERT",
+        _ => "SELF_SIGNED_CERT_IN_CHAIN",
+      });
+    }
+    Err(match (had_candidate, candidates.is_empty()) {
+      (false, true) => "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      _ => "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+    })
   }
 }
 
-/// Check whether a certificate chain (end_entity + intermediates) can be
-/// traced back to a root cert in `root_cert_ders` using issuer/subject
-/// matching. Returns an error code string if the chain cannot be built.
-/// Returns `Ok(())` if the chain reaches a trusted root, or
-/// `Err(code)` with a Node/OpenSSL error code if it does not.
-fn is_self_signed(cert_der: &[u8]) -> bool {
-  extract_issuer_and_subject(cert_der)
-    .is_some_and(|(issuer, subject)| issuer == subject)
-}
-
-fn verify_chain_structure(
+/// Verify that `end_entity` chains to one of `root_cert_ders`, for chains
+/// webpki refused to parse. Returns `Ok(())` only when every link's signature
+/// verifies; otherwise a Node/OpenSSL-style error code.
+///
+/// The validity window is checked on the end entity and on every intermediate,
+/// but not on the trust anchor that terminates the chain: rustls reduces a
+/// trust anchor to a subject and a public key and never checks its dates, so
+/// checking them here would reject chains the rest of this file accepts.
+fn verify_certificate_chain(
   end_entity: &[u8],
   intermediates: &[rustls::pki_types::CertificateDer<'_>],
   root_cert_ders: &[Vec<u8>],
+  now: rustls::pki_types::UnixTime,
 ) -> Result<(), &'static str> {
-  // Parse all certs' (issuer, subject) pairs up front.
-  let ee = extract_issuer_and_subject(end_entity)
-    .ok_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE")?;
-  let inter: Vec<_> = intermediates
+  let leaf =
+    parse_certificate(end_entity).ok_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE")?;
+
+  // `extendedKeyUsage` is checked on the end entity only, which is what webpki
+  // does for the chains it can parse (`KeyUsage::server_auth`), so the two
+  // paths in this file agree. Every caller of this function is verifying a
+  // server certificate.
+  if leaf.extensions.server_auth == Some(false) {
+    return Err("INVALID_PURPOSE");
+  }
+  if leaf.extensions.unhandled_constraint {
+    return Err("UNHANDLED_CRITICAL_EXTENSION");
+  }
+
+  let candidates: Vec<_> = intermediates
     .iter()
-    .filter_map(|c| extract_issuer_and_subject(c.as_ref()))
+    .filter_map(|cert| {
+      parse_certificate(cert.as_ref()).map(|parsed| ChainCandidate {
+        parsed,
+        der: cert.as_ref(),
+      })
+    })
     .collect();
   let roots: Vec<_> = root_cert_ders
     .iter()
-    .filter_map(|c| extract_issuer_and_subject(c))
+    .filter_map(|root| {
+      parse_certificate(root).map(|parsed| ChainCandidate {
+        parsed,
+        der: root.as_slice(),
+      })
+    })
     .collect();
 
-  // Walk the chain from end entity upward.
-  let mut current_issuer = ee.0;
-  let end_entity_subject = ee.1;
-
-  // Limit iterations to prevent cycles.
-  for _ in 0..(intermediates.len() + 2) {
-    // Check if the issuer is a root cert subject.
-    if roots.iter().any(|(_, subject)| *subject == current_issuer) {
-      return Ok(()); // Chain reaches a trusted root.
-    }
-    // Check if there's an intermediate whose subject matches.
-    if let Some((inter_issuer, _)) =
-      inter.iter().find(|(_, subject)| *subject == current_issuer)
-    {
-      // Self-signed intermediate that isn't a root.
-      if *inter_issuer == current_issuer {
-        return Err("SELF_SIGNED_CERT_IN_CHAIN");
-      }
-      current_issuer = inter_issuer;
-    } else {
-      break;
-    }
-  }
-
-  // Chain doesn't reach a trusted root.
-  if current_issuer == end_entity_subject {
-    Err("DEPTH_ZERO_SELF_SIGNED_CERT")
-  } else if intermediates.is_empty() {
-    Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
-  } else {
-    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
-  }
+  let mut search = ChainSearch {
+    on_path: vec![false; candidates.len()],
+    candidates: &candidates,
+    roots: &roots,
+    root_cert_ders,
+    now: now.as_secs() as i64,
+    budget: MAX_SIGNATURE_CHECKS,
+  };
+  search.extend(&leaf, end_entity, 0, 0)
 }
 
 /// Map a rustls CertificateError to a Node/OpenSSL-style error code.
@@ -3801,6 +4553,10 @@ fn node_verify_error_message(code: &str) -> Option<&'static str> {
   match code {
     "CERT_HAS_EXPIRED" => Some("certificate has expired"),
     "CERT_NOT_YET_VALID" => Some("certificate is not yet valid"),
+    "CERT_SIGNATURE_FAILURE" => Some("certificate signature failure"),
+    "INVALID_PURPOSE" => Some("unsupported certificate purpose"),
+    "PATH_LENGTH_EXCEEDED" => Some("path length constraint exceeded"),
+    "UNHANDLED_CRITICAL_EXTENSION" => Some("unhandled critical extension"),
     "DEPTH_ZERO_SELF_SIGNED_CERT" => Some("self-signed certificate"),
     "SELF_SIGNED_CERT_IN_CHAIN" => {
       Some("self-signed certificate in certificate chain")
@@ -3881,10 +4637,11 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     ) {
       Ok(v) => {
         if self.empty_explicit_ca {
-          let code = verify_chain_structure(
+          let code = verify_certificate_chain(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
+            now,
           )
           .err()
           .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
@@ -3910,30 +4667,20 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // OpenSSL accepts X.509v1 certificates; webpki rejects them with
-        // `UnsupportedCertVersion` or sometimes `BadEncoding`. We can't
-        // simply accept: that would skip chain verification entirely.
-        // Instead, do structural chain checking (issuer/subject matching)
-        // so that v1 certs with a valid chain are accepted while broken
-        // chains still produce the correct Node/OpenSSL error.
-        let is_v1_error = matches!(
-          cert_error,
-          rustls::CertificateError::BadEncoding
-        ) || matches!(
-          cert_error,
-          rustls::CertificateError::Other(other) if other
-            .0
-            .downcast_ref::<webpki::Error>()
-            .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
-        );
-        if is_v1_error {
-          match verify_chain_structure(
+        // OpenSSL accepts X.509v1 certificates while webpki rejects them at
+        // parse time, so verify such a chain here instead of letting webpki's
+        // refusal to parse it stand in for a verdict. This is a full
+        // verification -- signature, validity window and CA constraints on
+        // every link -- so a broken chain still produces the right
+        // Node/OpenSSL error.
+        if is_unsupported_cert_version(cert_error) {
+          match verify_certificate_chain(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
+            now,
           ) {
             Ok(()) => {
-              // Chain is structurally valid -- accept.
               return Ok(
                 rustls::client::danger::ServerCertVerified::assertion(),
               );
@@ -3950,10 +4697,11 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
           }
         }
         if matches!(cert_error, rustls::CertificateError::UnknownIssuer) {
-          let code = verify_chain_structure(
+          let code = verify_certificate_chain(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
+            now,
           )
           .err()
           .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
@@ -3999,8 +4747,12 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    filter_unsupported_cert_version(
+    verify_handshake_signature_allowing_v1(
       self.inner.verify_tls12_signature(message, cert, dss),
+      message,
+      cert,
+      dss,
+      false,
     )
   }
 
@@ -4011,8 +4763,12 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    filter_unsupported_cert_version(
+    verify_handshake_signature_allowing_v1(
       self.inner.verify_tls13_signature(message, cert, dss),
+      message,
+      cert,
+      dss,
+      true,
     )
   }
 
@@ -4290,23 +5046,21 @@ fn build_client_config(
       // which parses the end-entity cert via webpki and rejects X.509v1 certs
       // with `UnsupportedCertVersion`.  Node uses OpenSSL, which accepts v1
       // certs, and several upstream test fixtures (e.g. agent3) are v1.
-      // Build the CertifiedKey manually and tolerate UnsupportedCertVersion,
-      // matching the server-side workaround in `build_server_config`.
+      // Build the CertifiedKey manually and compare the SubjectPublicKeyInfo
+      // bytes ourselves for those, so the cert/key pairing is still checked,
+      // matching the server-side path in `build_server_config`.
       let provider = config_builder.crypto_provider().clone();
       let signing_key = provider
         .key_provider
         .load_private_key(private_key.clone_key())
         .ok()?;
       let certified_key =
-        rustls::sign::CertifiedKey::new(cert_chain, signing_key);
-      match certified_key.keys_match() {
-        Ok(()) => {}
-        Err(rustls::Error::InvalidCertificate(
-          rustls::CertificateError::Other(ref other),
-        )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
-          matches!(e, webpki::Error::UnsupportedCertVersion)
-        }) => {}
-        Err(_) => return None,
+        rustls::sign::CertifiedKey::new(cert_chain, signing_key.clone());
+      if let Err(e) =
+        keys_match_allowing_v1(&certified_key, signing_key.as_ref())
+      {
+        log::debug!("TLSWrap: client cert/key validation failed: {e}");
+        return None;
       }
       let resolver =
         Arc::new(StaticClientCertResolver(Arc::new(certified_key)));
@@ -4515,20 +5269,17 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    match self.inner.verify_tls12_signature(message, cert, dss) {
-      Ok(v) => Ok(v),
-      // X.509v1 client certs cannot be parsed by webpki for signature
-      // verification.  Node/OpenSSL accepts them, so tolerate the error.
-      Err(rustls::Error::InvalidCertificate(
-        rustls::CertificateError::Other(ref other),
-      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
-        matches!(e, webpki::Error::UnsupportedCertVersion)
-      }) =>
-      {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-      }
-      Err(e) => Err(e),
-    }
+    // webpki cannot parse an X.509v1 client cert to get at its public key.
+    // Node/OpenSSL can, so verify the signature directly rather than
+    // asserting it: the peer must still hold the private key belonging to
+    // the certificate it presented.
+    verify_handshake_signature_allowing_v1(
+      self.inner.verify_tls12_signature(message, cert, dss),
+      message,
+      cert,
+      dss,
+      false,
+    )
   }
 
   fn verify_tls13_signature(
@@ -4538,18 +5289,13 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    match self.inner.verify_tls13_signature(message, cert, dss) {
-      Ok(v) => Ok(v),
-      Err(rustls::Error::InvalidCertificate(
-        rustls::CertificateError::Other(ref other),
-      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
-        matches!(e, webpki::Error::UnsupportedCertVersion)
-      }) =>
-      {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-      }
-      Err(e) => Err(e),
-    }
+    verify_handshake_signature_allowing_v1(
+      self.inner.verify_tls13_signature(message, cert, dss),
+      message,
+      cert,
+      dss,
+      true,
+    )
   }
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
@@ -4611,20 +5357,14 @@ impl rustls::server::danger::ClientCertVerifier
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    let algos = &rustls::crypto::aws_lc_rs::default_provider()
-      .signature_verification_algorithms;
-    match rustls::crypto::verify_tls12_signature(message, cert, dss, algos) {
-      Ok(v) => Ok(v),
-      Err(rustls::Error::InvalidCertificate(
-        rustls::CertificateError::Other(ref other),
-      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
-        matches!(e, webpki::Error::UnsupportedCertVersion)
-      }) =>
-      {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-      }
-      Err(e) => Err(e),
-    }
+    let algos = supported_signature_algorithms();
+    verify_handshake_signature_allowing_v1(
+      rustls::crypto::verify_tls12_signature(message, cert, dss, algos),
+      message,
+      cert,
+      dss,
+      false,
+    )
   }
 
   fn verify_tls13_signature(
@@ -4634,20 +5374,14 @@ impl rustls::server::danger::ClientCertVerifier
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    let algos = &rustls::crypto::aws_lc_rs::default_provider()
-      .signature_verification_algorithms;
-    match rustls::crypto::verify_tls13_signature(message, cert, dss, algos) {
-      Ok(v) => Ok(v),
-      Err(rustls::Error::InvalidCertificate(
-        rustls::CertificateError::Other(ref other),
-      )) if other.0.downcast_ref::<webpki::Error>().is_some_and(|e| {
-        matches!(e, webpki::Error::UnsupportedCertVersion)
-      }) =>
-      {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-      }
-      Err(e) => Err(e),
-    }
+    let algos = supported_signature_algorithms();
+    verify_handshake_signature_allowing_v1(
+      rustls::crypto::verify_tls13_signature(message, cert, dss, algos),
+      message,
+      cert,
+      dss,
+      true,
+    )
   }
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
@@ -4848,24 +5582,17 @@ fn build_server_config(
   // end-entity cert via webpki and rejects X.509v1 certs with
   // UnsupportedCertVersion.  Node uses OpenSSL, which accepts v1 certs, and
   // several upstream Node test fixtures (e.g. agent2, agent3) are v1, so we
-  // build the CertifiedKey manually and call `keys_match` ourselves to keep
-  // the cert/key pairing check and the empty-chain check, while translating
-  // only UnsupportedCertVersion to success.
+  // build the CertifiedKey manually and run the pairing check ourselves,
+  // comparing SubjectPublicKeyInfo bytes for the certificates webpki will not
+  // parse.  A server must not be able to serve a certificate whose private
+  // key it does not hold.
   let provider = builder.crypto_provider().clone();
   let signing_key = provider.key_provider.load_private_key(private_key).ok()?;
-  let certified_key = rustls::sign::CertifiedKey::new(certs, signing_key);
-  match certified_key.keys_match() {
-    Ok(()) => {}
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::Other(ref other),
-    )) if other
-      .0
-      .downcast_ref::<webpki::Error>()
-      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) => {}
-    Err(e) => {
-      log::debug!("TLSWrap: cert/key validation failed: {e}");
-      return None;
-    }
+  let certified_key =
+    rustls::sign::CertifiedKey::new(certs, signing_key.clone());
+  if let Err(e) = keys_match_allowing_v1(&certified_key, signing_key.as_ref()) {
+    log::debug!("TLSWrap: cert/key validation failed: {e}");
+    return None;
   }
   let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
   let mut server_config = builder.with_cert_resolver(Arc::new(resolver));
@@ -5156,5 +5883,741 @@ mod tests {
       "payload was not fully consumed"
     );
     assert_eq!(inner.pending_cleartext_offset, 0);
+  }
+
+  // -------------------------------------------------------------------------
+  // X.509v1 certificate chain verification.
+  //
+  // webpki refuses to parse a v1 certificate, so `verify_certificate_chain`
+  // takes over for those chains. Accepting a v1 end-entity certificate under
+  // an explicitly supplied CA is Node parity and several upstream Node
+  // fixtures depend on it, so these tests pin both directions: a legitimate
+  // v1 chain is accepted, and a chain whose signatures do not actually verify
+  // is not -- a matching issuer distinguished name is not enough, because a
+  // subject DN is public information.
+  //
+  // `now` is pinned in every test so the fixtures cannot rot into passing or
+  // failing for the wrong reason.
+  // -------------------------------------------------------------------------
+
+  const ROOT_CA: &[u8] = include_bytes!("testdata/tls_v1/root_ca.der");
+  const ROOT_CA_OTHER_KEY: &[u8] =
+    include_bytes!("testdata/tls_v1/root_ca_other_key.der");
+  const UNRELATED_CA: &[u8] =
+    include_bytes!("testdata/tls_v1/unrelated_ca.der");
+  const LEAF_V3: &[u8] = include_bytes!("testdata/tls_v1/leaf_v3.der");
+  const LEAF_V1: &[u8] = include_bytes!("testdata/tls_v1/leaf_v1.der");
+  const LEAF_V1_WRONG_SIGNER: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v1_wrong_signer.der");
+  const LEAF_V1_EXPIRED: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v1_expired.der");
+  const LEAF_V1_SIGALG_MISMATCH: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v1_sigalg_mismatch.der");
+  const CHILD_OF_LEAF_V1: &[u8] =
+    include_bytes!("testdata/tls_v1/child_of_leaf_v1.der");
+  const NODE_AGENT8: &[u8] = include_bytes!("testdata/tls_v1/node_agent8.der");
+  const NODE_AGENT8_WRONG_SIGNER: &[u8] =
+    include_bytes!("testdata/tls_v1/node_agent8_wrong_signer.der");
+  const NODE_FAKE_STARTCOM_ROOT: &[u8] =
+    include_bytes!("testdata/tls_v1/node_fake_startcom_root.der");
+  const LEAF_KEY_PKCS8: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_key_pkcs8.der");
+  const OTHER_KEY_PKCS8: &[u8] =
+    include_bytes!("testdata/tls_v1/other_key_pkcs8.der");
+
+  /// Inside the validity window of every fixture that is meant to be valid,
+  /// and after `LEAF_V1_EXPIRED` has expired.
+  const NOW: u64 = 1811808000; // 2027-06-01T00:00:00Z
+  /// Before `LEAF_V1`'s notBefore.
+  const BEFORE_LEAF_V1: u64 = 1780272000; // 2026-06-01T00:00:00Z
+
+  fn at(secs: u64) -> rustls::pki_types::UnixTime {
+    rustls::pki_types::UnixTime::since_unix_epoch(
+      std::time::Duration::from_secs(secs),
+    )
+  }
+
+  fn check_chain(
+    end_entity: &[u8],
+    intermediates: &[&[u8]],
+    roots: &[&[u8]],
+    now: u64,
+  ) -> Result<(), &'static str> {
+    let intermediates: Vec<_> = intermediates
+      .iter()
+      .map(|der| rustls::pki_types::CertificateDer::from(der.to_vec()))
+      .collect();
+    let roots: Vec<Vec<u8>> = roots.iter().map(|der| der.to_vec()).collect();
+    verify_certificate_chain(end_entity, &intermediates, &roots, at(now))
+  }
+
+  fn signing_key(pkcs8: &'static [u8]) -> Arc<dyn rustls::sign::SigningKey> {
+    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
+      rustls::pki_types::PrivatePkcs8KeyDer::from(pkcs8),
+    );
+    rustls::crypto::aws_lc_rs::default_provider()
+      .key_provider
+      .load_private_key(key)
+      .expect("fixture private key should load")
+  }
+
+  // --- the parity direction: this must keep working ------------------------
+
+  #[test]
+  fn v1_chain_under_supplied_ca_is_accepted() {
+    assert_eq!(check_chain(LEAF_V1, &[], &[ROOT_CA], NOW), Ok(()));
+  }
+
+  #[test]
+  fn upstream_node_v1_fixture_is_accepted() {
+    // agent8 is a genuine X.509v1 fixture from the Node test suite, signed by
+    // Node's fake StartCom root. test-http2-https-fallback depends on this.
+    assert_eq!(
+      check_chain(NODE_AGENT8, &[], &[NODE_FAKE_STARTCOM_ROOT], NOW),
+      Ok(())
+    );
+  }
+
+  #[test]
+  fn trusted_certificate_as_end_entity_is_accepted() {
+    // A self-signed certificate that is itself in the trust store, which is
+    // how fixtures like agent2 are used. webpki calls this CaUsedAsEndEntity;
+    // OpenSSL accepts it.
+    assert_eq!(check_chain(ROOT_CA, &[], &[ROOT_CA], NOW), Ok(()));
+  }
+
+  #[test]
+  fn v1_chain_through_a_v1_ca_without_extensions_is_accepted() {
+    // An X.509v1 CA carries neither basicConstraints nor keyUsage, so "absent"
+    // has to mean "permitted" or no v1 chain could ever verify.
+    let ca = parse_certificate(ROOT_CA).unwrap();
+    assert_eq!(ca.extensions.is_ca, Some(true));
+    let agent8_ca = parse_certificate(NODE_FAKE_STARTCOM_ROOT).unwrap();
+    assert_eq!(agent8_ca.extensions.is_ca, Some(true));
+    assert_eq!(agent8_ca.extensions.key_cert_sign, None);
+    assert!(usable_as_ca(&agent8_ca, 0, true));
+    // A v1 certificate configured as a trust anchor may sign; one the peer
+    // sends as an intermediate may not, since only `cA` makes an intermediate
+    // a CA.
+    let v1_leaf = parse_certificate(LEAF_V1).unwrap();
+    assert_eq!(v1_leaf.extensions, CertExtensions::default());
+    assert!(usable_as_ca(&v1_leaf, 0, true));
+    assert!(!usable_as_ca(&v1_leaf, 0, false));
+  }
+
+  // --- invalid chains: these must be rejected ----------------------------
+
+  #[test]
+  fn v1_with_matching_issuer_dn_but_other_signer_is_rejected() {
+    // A v1 certificate whose issuer DN matches the trusted CA but which is
+    // signed by a different key. A matching DN alone is not enough.
+    let leaf = parse_certificate(LEAF_V1_WRONG_SIGNER).unwrap();
+    let root = parse_certificate(ROOT_CA).unwrap();
+    assert_eq!(
+      leaf.issuer, root.subject,
+      "fixture must share the trusted CA's DN for this test to mean anything"
+    );
+    assert_eq!(
+      check_chain(LEAF_V1_WRONG_SIGNER, &[], &[ROOT_CA], NOW),
+      Err("CERT_SIGNATURE_FAILURE")
+    );
+  }
+
+  #[test]
+  fn upstream_node_v1_fixture_with_other_signer_is_rejected() {
+    assert_eq!(
+      check_chain(
+        NODE_AGENT8_WRONG_SIGNER,
+        &[],
+        &[NODE_FAKE_STARTCOM_ROOT],
+        NOW
+      ),
+      Err("CERT_SIGNATURE_FAILURE")
+    );
+  }
+
+  #[test]
+  fn expired_v1_is_rejected() {
+    assert_eq!(
+      check_chain(LEAF_V1_EXPIRED, &[], &[ROOT_CA], NOW),
+      Err("CERT_HAS_EXPIRED")
+    );
+  }
+
+  #[test]
+  fn not_yet_valid_v1_is_rejected() {
+    assert_eq!(
+      check_chain(LEAF_V1, &[], &[ROOT_CA], BEFORE_LEAF_V1),
+      Err("CERT_NOT_YET_VALID")
+    );
+  }
+
+  #[test]
+  fn v1_with_no_candidate_issuer_is_rejected() {
+    assert_eq!(
+      check_chain(LEAF_V1, &[], &[UNRELATED_CA], NOW),
+      Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
+    );
+  }
+
+  #[test]
+  fn self_signed_v1_outside_the_trust_store_is_rejected() {
+    // This root shares the trusted CA's DN but is not itself trusted.
+    assert_eq!(
+      check_chain(ROOT_CA_OTHER_KEY, &[], &[UNRELATED_CA], NOW),
+      Err("DEPTH_ZERO_SELF_SIGNED_CERT")
+    );
+  }
+
+  #[test]
+  fn v1_signed_by_a_non_ca_certificate_is_rejected() {
+    // `CHILD_OF_LEAF_V1` really is signed by LEAF_V3's key, so only
+    // LEAF_V3's basicConstraints CA:FALSE stands between it and acceptance.
+    let leaf_v3 = parse_certificate(LEAF_V3).unwrap();
+    assert_eq!(leaf_v3.extensions.is_ca, Some(false));
+    let child = parse_certificate(CHILD_OF_LEAF_V1).unwrap();
+    assert!(
+      signature_is_valid(&child, &leaf_v3),
+      "fixture must be genuinely signed by the non-CA leaf"
+    );
+    assert!(
+      check_chain(CHILD_OF_LEAF_V1, &[LEAF_V3], &[ROOT_CA], NOW).is_err()
+    );
+  }
+
+  #[test]
+  fn intermediate_without_basic_constraints_is_rejected() {
+    // `LEAF_V1` shares `LEAF_V3`'s subject and key, so `CHILD_OF_LEAF_V1` is
+    // validly signed by it too. A v1 certificate has no basicConstraints and
+    // therefore cannot act as an intermediate CA: `openssl verify -untrusted
+    // leaf_v1 child_of_leaf_v1` reports error 79, invalid CA certificate.
+    let leaf_v1 = parse_certificate(LEAF_V1).unwrap();
+    let child = parse_certificate(CHILD_OF_LEAF_V1).unwrap();
+    assert!(
+      signature_is_valid(&child, &leaf_v1),
+      "fixture must be genuinely signed by the v1 leaf"
+    );
+    assert!(
+      check_chain(CHILD_OF_LEAF_V1, &[LEAF_V1], &[ROOT_CA], NOW).is_err()
+    );
+  }
+
+  #[test]
+  fn signature_algorithm_mismatch_is_rejected() {
+    // The outer signatureAlgorithm is not covered by the signature, so it must
+    // agree with the copy inside tbsCertificate, as OpenSSL requires.
+    let mismatched = parse_certificate(LEAF_V1_SIGALG_MISMATCH).unwrap();
+    assert_ne!(
+      mismatched.signature_algorithm, mismatched.tbs_signature_algorithm,
+      "fixture must actually have mismatched algorithm identifiers"
+    );
+    assert!(
+      check_chain(LEAF_V1_SIGALG_MISMATCH, &[], &[ROOT_CA], NOW).is_err()
+    );
+  }
+
+  #[test]
+  fn v1_chain_with_no_trusted_roots_is_rejected() {
+    // The default trust path never populates `root_cert_ders` -- only the
+    // caller's own `ca` option and `tls.setDefaultCACertificates()` do -- so
+    // with no supplied roots this path can never succeed, and the bundled
+    // Mozilla roots stay out of reach of it.
+    assert!(check_chain(LEAF_V1, &[], &[], NOW).is_err());
+    assert!(check_chain(NODE_AGENT8, &[], &[], NOW).is_err());
+    assert!(check_chain(LEAF_V1_WRONG_SIGNER, &[], &[], NOW).is_err());
+  }
+
+  // --- CertificateVerify over a v1 certificate -----------------------------
+
+  #[test]
+  fn handshake_signature_over_v1_cert_is_verified() {
+    const MESSAGE: &[u8] = b"a TLS CertificateVerify transcript";
+    let scheme = rustls::SignatureScheme::RSA_PSS_SHA256;
+
+    // The holder of the certificate's private key produces a signature that
+    // verifies against the certificate.
+    let key = signing_key(LEAF_KEY_PKCS8);
+    let signer = key.choose_scheme(&[scheme]).unwrap();
+    let signature = signer.sign(MESSAGE).unwrap();
+    assert_eq!(
+      verify_signature_with_unparsed_cert(
+        LEAF_V1, scheme, MESSAGE, &signature, true
+      ),
+      SignatureCheck::Valid
+    );
+
+    // A signature made with a different key does not verify.
+    let other_key = signing_key(OTHER_KEY_PKCS8);
+    let other_signer = other_key.choose_scheme(&[scheme]).unwrap();
+    let other_signature = other_signer.sign(MESSAGE).unwrap();
+    assert_eq!(
+      verify_signature_with_unparsed_cert(
+        LEAF_V1,
+        scheme,
+        MESSAGE,
+        &other_signature,
+        true
+      ),
+      SignatureCheck::Invalid
+    );
+
+    // A tampered transcript does not verify either.
+    assert_eq!(
+      verify_signature_with_unparsed_cert(
+        LEAF_V1,
+        scheme,
+        b"a different transcript",
+        &signature,
+        true
+      ),
+      SignatureCheck::Invalid
+    );
+
+    // Same for TLS 1.2, which tries every algorithm mapped to the scheme.
+    assert_eq!(
+      verify_signature_with_unparsed_cert(
+        LEAF_V1, scheme, MESSAGE, &signature, false
+      ),
+      SignatureCheck::Valid
+    );
+    assert_eq!(
+      verify_signature_with_unparsed_cert(
+        LEAF_V1,
+        scheme,
+        MESSAGE,
+        &other_signature,
+        false
+      ),
+      SignatureCheck::Invalid
+    );
+  }
+
+  // --- certificate/key pairing ---------------------------------------------
+
+  #[test]
+  fn keys_match_accepts_a_v1_cert_with_its_own_key() {
+    let key = signing_key(LEAF_KEY_PKCS8);
+    let certified = rustls::sign::CertifiedKey::new(
+      vec![rustls::pki_types::CertificateDer::from(LEAF_V1.to_vec())],
+      key.clone(),
+    );
+    // webpki cannot parse the v1 cert, so the built-in check cannot answer.
+    assert!(is_unsupported_cert_version_error(
+      &certified.keys_match().unwrap_err()
+    ));
+    assert_eq!(keys_match_allowing_v1(&certified, key.as_ref()), Ok(()));
+  }
+
+  #[test]
+  fn keys_match_rejects_a_v1_cert_without_its_key() {
+    // A v1 certificate must be paired with its own private key.
+    let other_key = signing_key(OTHER_KEY_PKCS8);
+    let certified = rustls::sign::CertifiedKey::new(
+      vec![rustls::pki_types::CertificateDer::from(LEAF_V1.to_vec())],
+      other_key.clone(),
+    );
+    assert!(matches!(
+      keys_match_allowing_v1(&certified, other_key.as_ref()),
+      Err(rustls::Error::InconsistentKeys(
+        rustls::InconsistentKeys::KeyMismatch
+      ))
+    ));
+  }
+
+  #[test]
+  fn keys_match_still_defers_to_webpki_for_v3() {
+    // A v3 certificate is parseable, so the built-in check answers and the
+    // fallback never runs.
+    let key = signing_key(LEAF_KEY_PKCS8);
+    let certified = rustls::sign::CertifiedKey::new(
+      vec![rustls::pki_types::CertificateDer::from(LEAF_V3.to_vec())],
+      key.clone(),
+    );
+    assert_eq!(certified.keys_match(), Ok(()));
+    assert_eq!(keys_match_allowing_v1(&certified, key.as_ref()), Ok(()));
+
+    let other_key = signing_key(OTHER_KEY_PKCS8);
+    let mismatched = rustls::sign::CertifiedKey::new(
+      vec![rustls::pki_types::CertificateDer::from(LEAF_V3.to_vec())],
+      other_key.clone(),
+    );
+    assert!(keys_match_allowing_v1(&mismatched, other_key.as_ref()).is_err());
+  }
+
+  // --- parser ---------------------------------------------------------------
+
+  #[test]
+  fn certificate_parser_extracts_the_signed_fields() {
+    let leaf = parse_certificate(LEAF_V1).unwrap();
+    let root = parse_certificate(ROOT_CA).unwrap();
+    assert_eq!(leaf.issuer, root.subject);
+    assert_ne!(leaf.subject, leaf.issuer);
+    assert!(leaf.not_before < leaf.not_after);
+    // The SPKI slice must be the whole SubjectPublicKeyInfo element, since
+    // that is what `SigningKey::public_key()` returns.
+    assert_eq!(leaf.spki.first(), Some(&0x30));
+    assert!(signature_is_valid(&leaf, &root));
+    // ... and only under the real issuer.
+    assert!(!signature_is_valid(
+      &leaf,
+      &parse_certificate(ROOT_CA_OTHER_KEY).unwrap()
+    ));
+  }
+
+  #[test]
+  fn certificate_parser_rejects_malformed_input() {
+    assert!(parse_certificate(&[]).is_none());
+    assert!(parse_certificate(&[0x30, 0x80]).is_none()); // indefinite length
+    assert!(parse_certificate(&LEAF_V1[..LEAF_V1.len() - 1]).is_none());
+    assert!(parse_certificate(&LEAF_V1[1..]).is_none());
+    // Trailing bytes after the Certificate SEQUENCE.
+    let mut trailing = LEAF_V1.to_vec();
+    trailing.push(0);
+    assert!(parse_certificate(&trailing).is_none());
+  }
+
+  const NAME_CONSTRAINED_CA: &[u8] =
+    include_bytes!("testdata/tls_v1/name_constrained_ca.der");
+  const LEAF_V1_UNDER_CONSTRAINED_CA: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v1_under_constrained_ca.der");
+  const LEAF_V3_EKU_CLIENT_ONLY: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v3_eku_client_only.der");
+  const CROSS_SIGNED_UNTRUSTED: &[u8] =
+    include_bytes!("testdata/tls_v1/cross_signed_untrusted.der");
+  const CROSS_SIGNED_TRUSTED: &[u8] =
+    include_bytes!("testdata/tls_v1/cross_signed_trusted.der");
+  const LEAF_V1_UNDER_CROSS_SIGNED: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v1_under_cross_signed.der");
+
+  #[test]
+  fn end_entity_without_server_auth_purpose_is_rejected() {
+    // `openssl verify -purpose sslserver` reports error 26 for this
+    // certificate, and webpki rejects the same thing on the chains it can
+    // parse via `KeyUsage::server_auth`.
+    let leaf = parse_certificate(LEAF_V3_EKU_CLIENT_ONLY).unwrap();
+    assert_eq!(leaf.extensions.server_auth, Some(false));
+    assert_eq!(
+      check_chain(LEAF_V3_EKU_CLIENT_ONLY, &[], &[ROOT_CA], NOW),
+      Err("INVALID_PURPOSE")
+    );
+    // A certificate with no extendedKeyUsage at all is unrestricted, which is
+    // every v1 certificate.
+    assert_eq!(
+      parse_certificate(LEAF_V1).unwrap().extensions.server_auth,
+      None
+    );
+    assert_eq!(check_chain(LEAF_V1, &[], &[ROOT_CA], NOW), Ok(()));
+  }
+
+  #[test]
+  fn ca_with_unhandled_constraints_is_refused() {
+    // This verifier does not evaluate nameConstraints, so it refuses a CA that
+    // carries them instead of treating the CA as unconstrained. That is
+    // deliberately stricter than OpenSSL, which accepts this exact chain
+    // (`openssl verify -CAfile name_constrained_ca leaf` reports OK, because
+    // the leaf has no dNSName to constrain). Erring towards rejection is the
+    // safe direction: the alternative is honouring none of the constraint.
+    let ca = parse_certificate(NAME_CONSTRAINED_CA).unwrap();
+    assert!(ca.extensions.unhandled_constraint);
+    assert_eq!(ca.extensions.is_ca, Some(true));
+    assert!(!usable_as_ca(&ca, 0, true));
+    assert!(!usable_as_ca(&ca, 0, false));
+    // The chain is genuinely signed, so only the constraint stands in the way.
+    let leaf = parse_certificate(LEAF_V1_UNDER_CONSTRAINED_CA).unwrap();
+    assert!(signature_is_valid(&leaf, &ca));
+    assert_eq!(
+      check_chain(
+        LEAF_V1_UNDER_CONSTRAINED_CA,
+        &[],
+        &[NAME_CONSTRAINED_CA],
+        NOW
+      ),
+      Err("UNHANDLED_CRITICAL_EXTENSION")
+    );
+  }
+
+  #[test]
+  fn path_building_backtracks_past_a_dead_end() {
+    // Two intermediates share a subject DN *and* a public key -- cross-signing
+    // -- but only one of them chains to the trusted root. The first one
+    // verifies the leaf's signature just as well, so a search that commits to
+    // it would reject a chain OpenSSL accepts.
+    let untrusted = parse_certificate(CROSS_SIGNED_UNTRUSTED).unwrap();
+    let trusted = parse_certificate(CROSS_SIGNED_TRUSTED).unwrap();
+    let leaf = parse_certificate(LEAF_V1_UNDER_CROSS_SIGNED).unwrap();
+    assert_eq!(untrusted.subject, trusted.subject);
+    assert_eq!(untrusted.spki, trusted.spki);
+    assert_ne!(untrusted.issuer, trusted.issuer);
+    assert!(signature_is_valid(&leaf, &untrusted));
+    assert!(signature_is_valid(&leaf, &trusted));
+
+    // Dead end first in the list.
+    assert_eq!(
+      check_chain(
+        LEAF_V1_UNDER_CROSS_SIGNED,
+        &[CROSS_SIGNED_UNTRUSTED, CROSS_SIGNED_TRUSTED],
+        &[ROOT_CA],
+        NOW
+      ),
+      Ok(())
+    );
+    // ... and the other order, which never needed backtracking.
+    assert_eq!(
+      check_chain(
+        LEAF_V1_UNDER_CROSS_SIGNED,
+        &[CROSS_SIGNED_TRUSTED, CROSS_SIGNED_UNTRUSTED],
+        &[ROOT_CA],
+        NOW
+      ),
+      Ok(())
+    );
+    // With only the dead end available the chain must still be rejected.
+    assert!(
+      check_chain(
+        LEAF_V1_UNDER_CROSS_SIGNED,
+        &[CROSS_SIGNED_UNTRUSTED],
+        &[ROOT_CA],
+        NOW
+      )
+      .is_err()
+    );
+  }
+
+  const CLIENT_AUTH_ONLY_CA: &[u8] =
+    include_bytes!("testdata/tls_v1/client_auth_only_ca.der");
+  const LEAF_V1_UNDER_CLIENT_AUTH_CA: &[u8] =
+    include_bytes!("testdata/tls_v1/leaf_v1_under_client_auth_ca.der");
+
+  #[test]
+  fn issuer_without_server_auth_purpose_is_rejected() {
+    // `openssl verify -purpose sslserver` reports error 26 *at depth 1* for
+    // this chain, so OpenSSL enforces extendedKeyUsage on the issuer and not
+    // only on the leaf. The leaf here is v1 and therefore carries no
+    // extensions of its own, which is exactly the case a leaf-only check
+    // would miss.
+    let ca = parse_certificate(CLIENT_AUTH_ONLY_CA).unwrap();
+    assert_eq!(ca.extensions.server_auth, Some(false));
+    assert_eq!(ca.extensions.is_ca, Some(true));
+    assert!(!usable_as_ca(&ca, 0, true));
+    assert!(!usable_as_ca(&ca, 0, false));
+    // The chain is genuinely signed, so only the purpose stands in the way.
+    let leaf = parse_certificate(LEAF_V1_UNDER_CLIENT_AUTH_CA).unwrap();
+    assert_eq!(leaf.extensions, CertExtensions::default());
+    assert!(signature_is_valid(&leaf, &ca));
+    assert!(
+      check_chain(
+        LEAF_V1_UNDER_CLIENT_AUTH_CA,
+        &[],
+        &[CLIENT_AUTH_ONLY_CA],
+        NOW
+      )
+      .is_err()
+    );
+  }
+
+  #[test]
+  fn unrecognised_critical_extension_is_rejected() {
+    fn parse(extension: &[u8]) -> Option<CertExtensions> {
+      let mut der = vec![0x30, extension.len() as u8];
+      der.extend_from_slice(extension);
+      parse_extensions(&der)
+    }
+    // An extension with a private OID (1.3.6.1.4.1.99999.1), value an empty
+    // OCTET STRING, built both non-critical and critical.
+    let make = |critical: bool| {
+      let oid: &[u8] = &[0x2b, 0x06, 0x01, 0x04, 0x01, 0x8d, 0xa3, 0x1f, 0x01];
+      let mut body = vec![0x06, oid.len() as u8];
+      body.extend_from_slice(oid);
+      if critical {
+        body.extend_from_slice(&[0x01, 0x01, 0xff]);
+      }
+      body.extend_from_slice(&[0x04, 0x00]);
+      let mut der = vec![0x30, body.len() as u8];
+      der.extend_from_slice(&body);
+      der
+    };
+    // Non-critical: safe to ignore, as every verifier does.
+    assert!(
+      !parse(&make(false)).unwrap().unhandled_constraint,
+      "a non-critical unknown extension must be ignored"
+    );
+    // Critical: this code cannot evaluate it, so it must not read as absent.
+    assert!(parse(&make(true)).unwrap().unhandled_constraint);
+
+    // A critical extension that this code does understand, or that is safe to
+    // ignore, must not trip the flag. basicConstraints is marked critical by
+    // essentially every CA, including the test fixtures.
+    assert!(
+      !parse_certificate(ROOT_CA)
+        .unwrap()
+        .extensions
+        .unhandled_constraint
+    );
+    assert!(
+      !parse_certificate(LEAF_V3)
+        .unwrap()
+        .extensions
+        .unhandled_constraint
+    );
+  }
+
+  #[test]
+  fn path_search_is_bounded() {
+    // A peer controls the intermediates it sends. Without a bound on signature
+    // verifications the backtracking search can be made to branch
+    // exponentially, so a pile of same-subject dead ends must still resolve
+    // promptly rather than burning CPU.
+    let dead_ends = vec![CROSS_SIGNED_UNTRUSTED; 200];
+    let started = std::time::Instant::now();
+    assert!(
+      check_chain(LEAF_V1_UNDER_CROSS_SIGNED, &dead_ends, &[ROOT_CA], NOW)
+        .is_err()
+    );
+    // Generous: 100 RSA-2048 verifications take single-digit milliseconds.
+    assert!(
+      started.elapsed() < std::time::Duration::from_secs(10),
+      "bounded search took {:?}",
+      started.elapsed()
+    );
+
+    // The bound must not get in the way of a path that is found early.
+    let mut with_trusted = vec![CROSS_SIGNED_TRUSTED];
+    with_trusted.extend_from_slice(&dead_ends);
+    assert_eq!(
+      check_chain(LEAF_V1_UNDER_CROSS_SIGNED, &with_trusted, &[ROOT_CA], NOW),
+      Ok(())
+    );
+  }
+
+  #[test]
+  fn malformed_constraint_extensions_fail_closed() {
+    fn parse(extension: &[u8]) -> Option<CertExtensions> {
+      let mut der = vec![0x30, extension.len() as u8];
+      der.extend_from_slice(extension);
+      parse_extensions(&der)
+    }
+    // basicConstraints with pathLenConstraint 0.
+    assert_eq!(
+      parse(&[
+        0x30, 0x0f, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x08, 0x30, 0x06, 0x01,
+        0x01, 0xff, 0x02, 0x01, 0x00,
+      ])
+      .unwrap()
+      .path_len,
+      Some(0)
+    );
+    // A negative pathLenConstraint must not read as "unconstrained".
+    assert_eq!(
+      parse(&[
+        0x30, 0x0f, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x08, 0x30, 0x06, 0x01,
+        0x01, 0xff, 0x02, 0x01, 0xff,
+      ]),
+      None
+    );
+    // A cA BOOLEAN that is neither 0x00 nor 0xff is not valid DER.
+    assert_eq!(
+      parse(&[
+        0x30, 0x0c, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x05, 0x30, 0x03, 0x01,
+        0x01, 0x01,
+      ]),
+      None
+    );
+    // keyUsage asserting keyCertSign, with 1 unused bit: 0x06 = bits 5 and 6.
+    assert_eq!(
+      parse(&[
+        0x30, 0x0b, 0x06, 0x03, 0x55, 0x1d, 0x0f, 0x04, 0x04, 0x03, 0x02, 0x01,
+        0x06,
+      ])
+      .unwrap()
+      .key_cert_sign,
+      Some(true)
+    );
+    // The same octet with 3 unused bits puts keyCertSign inside the unused
+    // region, which DER forbids and which must not read as asserted.
+    assert_eq!(
+      parse(&[
+        0x30, 0x0b, 0x06, 0x03, 0x55, 0x1d, 0x0f, 0x04, 0x04, 0x03, 0x02, 0x03,
+        0x04,
+      ]),
+      None
+    );
+    // An unused-bit count above 7 is never valid.
+    assert_eq!(
+      parse(&[
+        0x30, 0x0b, 0x06, 0x03, 0x55, 0x1d, 0x0f, 0x04, 0x04, 0x03, 0x02, 0x08,
+        0x00,
+      ]),
+      None
+    );
+  }
+
+  #[test]
+  fn duplicate_extensions_are_rejected() {
+    // basicConstraints with cA FALSE and with cA TRUE, as whole Extension
+    // elements: SEQUENCE { OID 2.5.29.19, OCTET STRING { SEQUENCE { BOOLEAN } } }
+    const CA_FALSE: &[u8] = &[
+      0x30, 0x0c, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x05, 0x30, 0x03, 0x01,
+      0x01, 0x00,
+    ];
+    const CA_TRUE: &[u8] = &[
+      0x30, 0x0c, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x05, 0x30, 0x03, 0x01,
+      0x01, 0xff,
+    ];
+    fn parse(extensions: &[u8]) -> Option<Option<bool>> {
+      Some(parse_extensions(extensions)?.is_ca)
+    }
+    fn sequence_of(body: &[u8]) -> Vec<u8> {
+      let mut der = vec![0x30, body.len() as u8];
+      der.extend_from_slice(body);
+      der
+    }
+
+    // A single basicConstraints is read normally, in both directions.
+    assert_eq!(parse(&sequence_of(CA_TRUE)), Some(Some(true)));
+    assert_eq!(parse(&sequence_of(CA_FALSE)), Some(Some(false)));
+
+    // Two copies make the certificate unparseable rather than letting the
+    // second override the first.
+    let mut both = CA_FALSE.to_vec();
+    both.extend_from_slice(CA_TRUE);
+    assert_eq!(parse(&sequence_of(&both)), None);
+    let mut reversed = CA_TRUE.to_vec();
+    reversed.extend_from_slice(CA_FALSE);
+    assert_eq!(parse(&sequence_of(&reversed)), None);
+  }
+
+  #[test]
+  fn der_time_parsing_is_strict() {
+    let utc = |s: &[u8]| {
+      der_time_secs(&DerElement {
+        tag: 0x17,
+        all: s,
+        content: s,
+      })
+    };
+    // 1970-01-01T00:00:00Z
+    assert_eq!(utc(b"700101000000Z"), Some(0));
+    // UTCTime years 50..=99 mean 19xx.
+    assert_eq!(utc(b"491231235959Z"), Some(2524607999));
+    // Rejected: no trailing Z, out-of-range fields, impossible dates, and the
+    // seconds-less form OpenSSL tolerates but RFC 5280 does not permit.
+    assert_eq!(utc(b"7001010000000"), None);
+    assert_eq!(utc(b"701301000000Z"), None);
+    assert_eq!(utc(b"700132000000Z"), None);
+    assert_eq!(utc(b"700229000000Z"), None); // 1970 was not a leap year
+    assert_eq!(utc(b"700101250000Z"), None);
+    assert_eq!(utc(b"7001010000Z"), None);
+    assert_eq!(utc(b"70010100000aZ"), None);
+    // GeneralizedTime, four-digit year.
+    let generalized = |s: &[u8]| {
+      der_time_secs(&DerElement {
+        tag: 0x18,
+        all: s,
+        content: s,
+      })
+    };
+    assert_eq!(generalized(b"19700101000000Z"), Some(0));
+    assert_eq!(generalized(b"20000229000000Z"), Some(951782400)); // 2000 was a leap year
+    assert_eq!(generalized(b"19000229000000Z"), None); // 1900 was not
   }
 }

@@ -8,16 +8,28 @@ const { AssertionError } = core.loadExtScript(
   "ext:deno_node/internal/assert/assertion_error.js",
 );
 const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-const { isErrorStackTraceLimitWritable } = core.loadExtScript(
+const {
+  ERR_AMBIGUOUS_ARGUMENT,
+  ERR_INVALID_ARG_TYPE,
+  isErrorStackTraceLimitWritable,
+} = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-const { getErrorSourceExpression } = core.loadExtScript(
+const { format } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const {
+  getErrorSourceExpression,
+} = core.loadExtScript(
   "ext:deno_node/internal/errors/error_source.ts",
 );
 
 const {
+  ArrayPrototypeSlice,
   Error,
   ErrorCaptureStackTrace,
+  ErrorPrototypeToString,
+  SafeArrayIterator,
   SafeRegExp,
   StringPrototypeCharCodeAt,
   StringPrototypeReplace,
@@ -86,38 +98,122 @@ function getErrMessage(fn: Function) {
   }
 }
 
-function innerOk(
-  fn: Function,
-  argLen: number,
-  value: unknown,
-  message?: string | Error,
-) {
-  if (!value) {
-    let generatedMessage = false;
+type MessageFactory = (actual: unknown, expected: unknown) => unknown;
 
-    if (argLen === 0) {
+/**
+ * Raw message input is always passed internally as a tuple array;
+ *  - `[]`                    : use the default message
+ *  - `[string]`              : use as is
+ *  - `[string, ...unknown[]]`: print like substitutions
+ *  - `[Error]`               : thrown as is
+ *  - `[MessageFactory]`      : called with `(actual, expected)`
+ */
+
+type MessageTuple =
+  | []
+  | [string, ...unknown[]]
+  | [Error]
+  | [MessageFactory];
+
+interface InnerFailOptions {
+  actual: unknown;
+  expected: unknown;
+  message: MessageTuple;
+  operator: string;
+  stackStartFn: Function;
+  diff?: "simple" | "full";
+  generatedMessage?: boolean;
+}
+
+function innerFail(obj: InnerFailOptions): never {
+  const { message } = obj;
+  let resolved: string | undefined;
+
+  if (message.length === 0) {
+    resolved = undefined;
+  } else if (typeof message[0] === "string") {
+    resolved = message.length > 1
+      ? format(...new SafeArrayIterator(message))
+      : message[0];
+  } else if (isError(message[0])) {
+    if (message.length > 1) {
+      throw new ERR_AMBIGUOUS_ARGUMENT(
+        "message",
+        `The error message was passed as error object "${
+          ErrorPrototypeToString(message[0])
+        }" has trailing arguments that would be ignored.`,
+      );
+    }
+    throw message[0];
+  } else if (typeof message[0] === "function") {
+    if (message.length > 1) {
+      throw new ERR_AMBIGUOUS_ARGUMENT(
+        "message",
+        `The error message with function "${
+          message[0].name || "anonymous"
+        }" has trailing arguments that would be ignored.`,
+      );
+    }
+    try {
+      const result = message[0](obj.actual, obj.expected);
+      resolved = typeof result === "string" ? result : undefined;
+    } catch {
+      // Ignore and use the default message instead.
+      resolved = undefined;
+    }
+  } else {
+    throw new ERR_INVALID_ARG_TYPE(
+      "message",
+      ["string", "function"],
+      message[0],
+    );
+  }
+
+  const error = new AssertionError({
+    actual: obj.actual,
+    expected: obj.expected,
+    message: resolved,
+    operator: obj.operator,
+    stackStartFn: obj.stackStartFn,
+    diff: obj.diff,
+  });
+  if (obj.generatedMessage !== undefined) {
+    error.generatedMessage = obj.generatedMessage;
+  }
+  throw error;
+}
+
+function innerOk(fn: Function, ...args: unknown[]) {
+  if (!args[0]) {
+    let generatedMessage = false;
+    let messageArgs: MessageTuple;
+
+    if (args.length === 0) {
       generatedMessage = true;
-      message = "No value argument passed to `assert.ok()`";
-    } else if (message == null) {
+      messageArgs = ["No value argument passed to `assert.ok()`"];
+    } else if (args.length === 1 || args[1] == null) {
       generatedMessage = true;
-      message = getErrMessage(fn);
-    } else if (isError(message)) {
-      throw message;
+      // The source expression may be unavailable; fall back to the default
+      // message instead of passing `undefined` as the message argument.
+      const source = getErrMessage(fn);
+      messageArgs = source === undefined ? [] : [source];
+    } else {
+      messageArgs = ArrayPrototypeSlice(args, 1) as MessageTuple;
     }
 
-    const err = new AssertionError({
-      actual: value,
+    innerFail({
+      actual: args[0],
       expected: true,
-      message,
+      message: messageArgs,
       operator: "==",
       stackStartFn: fn,
+      generatedMessage,
     });
-    err.generatedMessage = generatedMessage;
-    throw err;
   }
 }
 
 return {
+  innerFail,
   innerOk,
 };
 })();

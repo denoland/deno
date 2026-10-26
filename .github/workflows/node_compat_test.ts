@@ -159,15 +159,6 @@ const uploadMonthSummary = step.dependsOn(gzipMonthSummary)({
     "aws s3 cp tests/node_compat/summary.json.gz s3://dl-deno-land/node-compat-test/summary-$(date +%Y-%m).json.gz",
 });
 
-const postSlack = step.dependsOn(uploadMonthSummary)({
-  name: "Post message to slack channel",
-  run: "deno -A --config tests/config/deno.json tests/node_compat/slack.ts",
-  env: {
-    SLACK_TOKEN: "${{ secrets.NODE_COMPAT_SLACK_TOKEN }}",
-    SLACK_CHANNEL: "${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}",
-  },
-});
-
 const workflow = createWorkflow({
   name: "node_compat_test",
   on: {
@@ -181,7 +172,7 @@ const workflow = createWorkflow({
       runsOn: "ubuntu-latest",
       needs: [testJob],
       if: conditions.status.always().and(isMainBranch),
-      steps: [postSlack],
+      steps: [uploadMonthSummary],
     },
   ],
 });

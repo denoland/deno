@@ -589,6 +589,20 @@
           "type": "string",
           "description": "The command to run before deploying, usually used to run database migrations. When specified, takes precedence over all configuration specified in the console."
         },
+        "buildTimeout": {
+          "description": "The maximum time the build may take: a whole number of seconds, or a whole number with an `s`, `m` or `h` suffix (e.g. `\"10m\"`). Defaults to 5 minutes, and is capped to the maximum of the organization's plan. Part of the build configuration, but on its own it does not take precedence over the configuration specified in the console.",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[smh]$"
+            }
+          ],
+          "examples": ["10m", "90s", 600]
+        },
         "runtime": {
           "type": "object",
           "description": "Runtime configuration for the deployed application. When specified, takes precedence over all configuration specified in the console.",
@@ -617,6 +631,17 @@
               "type": "boolean",
               "description": "Enable single-page application mode for static deployments. When enabled, all routes will fall back to index.html.",
               "default": false
+            },
+            "memoryLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The maximum amount of memory the application can use at runtime, in megabytes. Applies to dynamic mode and framework presets, not to static mode. Capped to the maximum of the organization's plan."
+            },
+            "memory_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Deprecated: use `memoryLimit` instead.",
+              "deprecated": true
             }
           }
         },

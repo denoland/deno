@@ -1,0 +1,5 @@
+allowed/data.json Requires read access to "[WILDCARD]data.json", specify the required permissions during compilation using `deno compile --allow-read`
+outside/secret.json Requires read access to "[WILDCARD]secret.json", specify the required permissions during compilation using `deno compile --allow-read`
+outside/mod.ts Requires read access to "[WILDCARD]mod.ts", specify the required permissions during compilation using `deno compile --allow-read`
+error: Uncaught (in worker "") Requires read access to "[WILDCARD]worker.ts", specify the required permissions during compilation using `deno compile --allow-read`
+outside/worker.ts Requires read access to "[WILDCARD]worker.ts", specify the required permissions during compilation using `deno compile --allow-read`
