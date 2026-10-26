@@ -46,7 +46,9 @@ The user visible interface and high level integration is in the `deno` crate
 (located in `./cli`).
 
 This includes flag parsing, subcommands, package management tooling, etc. Flag
-parsing is in `cli/args/flags.rs`. Tools are in `cli/tools/<tool>`.
+definitions and parsing live in the `deno_cli_parser` crate (`libs/cli_parser/`)
+and are re-exported through `cli/args/flags.rs`. Tools are in
+`cli/tools/<tool>`.
 
 The `deno_runtime` crate (`./runtime`) assembles the JavaScript runtime,
 including all "extensions" (native functionality exposed to JavaScript). The
@@ -65,7 +67,7 @@ JavaScript – for instance filesystem operations and networking.
 ## Quick Start
 
 Before building, install the required prerequisites (Rust, native compilers,
-cmake, protobuf, etc.) and clone with `--recurse-submodules` as described in
+cmake, etc.) and clone with `--recurse-submodules` as described in
 [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#building-from-source).
 
 ### Building Deno
@@ -144,13 +146,13 @@ cargo test <nameOfTest>
 cargo test -p deno_core
 
 # Run just the CLI integration tests
-cargo test --bin deno
+cargo test -p integration_tests --test integration
 
 # Run spec tests only
 cargo test specs
 
 # Run a specific spec test
-cargo test spec::test_name
+cargo test specs::category_name::test_name
 ```
 
 ### Unit Tests (`tests/unit/`)
@@ -166,7 +168,7 @@ cargo test unit::webcrypto_test
 cargo test unit::
 
 # Run Node.js compatibility unit tests (tests/unit_node/)
-cargo test unit_node::crypto_test
+cargo test unit_node::assert_test
 
 # Run all Node.js compat unit tests
 cargo test unit_node::
@@ -265,10 +267,12 @@ Successfully compiled [WILDLINE]
 
 ### Adding a New CLI Subcommand
 
-1. Define the command structure in `cli/args/flags.rs`
+1. Define the command in `libs/cli_parser/src/`: the definition in `defs.rs`,
+   the flags struct and `DenoSubcommand` variant in `flags.rs`, and parsing in
+   `convert.rs`
 2. Add the command handler in `cli/tools/<command_name>.rs` or
    `cli/tools/<command_name>/mod.rs`
-3. Wire it up in `cli/main.rs`
+3. Wire it up in `run_subcommand` in `cli/lib.rs`
 4. Add spec tests in `tests/specs/<command_name>/`
 
 Example files to reference:
@@ -341,10 +345,10 @@ console.log("Debug:", value);
 
 ### Key Files to Understand First
 
-1. `cli/main.rs` - Entry point, command routing
-2. `cli/args/flags.rs` - CLI flag parsing and structure
+1. `cli/lib.rs` - Entry point (`main`) and command routing (`run_subcommand`)
+2. `libs/cli_parser/src/` - CLI flag definitions and parsing
 3. `runtime/worker.rs` - Worker/runtime initialization
-4. `runtime/permissions.rs` - Permission system
+4. `runtime/permissions/` - Permission system (`deno_permissions` crate)
 5. `cli/module_loader.rs` - Module loading and resolution
 
 ### Common Patterns
@@ -357,7 +361,8 @@ console.log("Debug:", value);
 
 ### Finding Examples
 
-- Need to add a CLI flag? Look at similar commands in `cli/args/flags.rs`
+- Need to add a CLI flag? Look at similar commands in
+  `libs/cli_parser/src/defs.rs`
 - Need to add an op? Look at ops in relevant `ext/` directory (e.g.,
   `ext/fs/lib.rs`)
 - Need to add a tool? Reference existing tools in `cli/tools/`
