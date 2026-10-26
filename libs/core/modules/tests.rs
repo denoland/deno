@@ -2466,6 +2466,19 @@ fn lazy_loaded_internal_module_ignores_loader_remapping() {
     "#,
     )
     .unwrap();
+
+  let module_map = runtime.module_map();
+  let lazy_module_id = module_map
+    .get_id("ext:test/lazy.js", RequestedModuleType::None)
+    .unwrap();
+  assert_eq!(
+    module_map
+      .get_requested_modules(lazy_module_id)
+      .unwrap()
+      .len(),
+    1,
+    "internal module import edges must survive instantiation for nested lazy loads"
+  );
 }
 
 #[test]

@@ -1282,6 +1282,21 @@ impl ModuleMap {
       ) {
         continue;
       }
+      // Internal modules may be linked from a later lazy-loaded graph while
+      // another module graph is being instantiated. Keep their pre-resolved
+      // edges so those callbacks do not fall back to the embedder's loader,
+      // which cannot resolve built-in `ext:` imports such as ext:core/mod.js.
+      if data.info.get(id).is_some_and(|info| info.is_internal) {
+        if let Some(info) = data.info.get(id) {
+          stack.extend(info.requests.iter().filter_map(|request| {
+            data.get_id(
+              request.reference.specifier.as_str(),
+              &request.reference.requested_module_type,
+            )
+          }));
+        }
+        continue;
+      }
       let Some(info) = data.info.get_mut(id) else {
         continue;
       };
