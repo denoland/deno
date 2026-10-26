@@ -881,6 +881,49 @@ Deno.test("Close connection", async () => {
   conn.close();
 });
 
+// https://github.com/denoland/deno/issues/27924
+Deno.test(
+  "close() ends when the peer never answers the close frame",
+  async () => {
+    // A server that completes the upgrade and then never sends another frame, so the
+    // client's closing handshake can only end by timing out.
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const accepted = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(4096);
+      const n = await conn.read(buf);
+      const request = new TextDecoder().decode(buf.subarray(0, n!));
+      const key = request.match(/Sec-WebSocket-Key: (.*)\r\n/i)![1].trim();
+      const digest = await crypto.subtle.digest(
+        "SHA-1",
+        new TextEncoder().encode(key + "258EAFA5-E914-47A5-95CA-C5AB0DC85B11"),
+      );
+      const accept = btoa(String.fromCharCode(...new Uint8Array(digest)));
+      await conn.write(
+        new TextEncoder().encode(
+          "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
+            `Connection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+        ),
+      );
+      return conn;
+    })();
+
+    const { port } = listener.addr as Deno.NetAddr;
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const closed = Promise.withResolvers<CloseEvent>();
+    ws.onopen = () => ws.close();
+    ws.onclose = (e) => closed.resolve(e);
+
+    const event = await closed.promise;
+    assertEquals(event.code, 1006);
+    assertEquals(event.wasClean, false);
+    assertEquals(ws.readyState, WebSocket.CLOSED);
+
+    (await accepted).close();
+    listener.close();
+  },
+);
+
 Deno.test("send to a closed socket", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const ws = new WebSocket("ws://localhost:4242");
