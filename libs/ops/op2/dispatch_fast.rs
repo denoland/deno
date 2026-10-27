@@ -663,6 +663,17 @@ pub(crate) fn generate_dispatch_fast(
   Ok(Some((fast_definition, fast_definition_metrics, fast_fn)))
 }
 
+fn buffer_can_copy_invalid_backing_store(buffer: BufferType) -> bool {
+  matches!(
+    buffer,
+    BufferType::Slice(RefType::Ref, _)
+      | BufferType::Vec(_)
+      | BufferType::BoxSlice(_)
+      | BufferType::Bytes
+      | BufferType::BytesMut
+  )
+}
+
 fn fast_api_typed_array_to_buffer(
   generator_state: &mut GeneratorState,
   arg_ident: &Ident,
@@ -672,22 +683,25 @@ fn fast_api_typed_array_to_buffer(
   let convert = byte_slice_to_buffer(arg_ident, input, buffer)?;
   let throw_exception =
     throw_type_error(generator_state, "expected ArrayBufferView");
+  let throw_invalid_buffer = throw_type_error(
+    generator_state,
+    "resizable or shared buffers are not supported for this operation",
+  );
+  let temp = format_ident!("{input}_temp");
+  let element = buffer.element();
+  let copy_invalid = buffer_can_copy_invalid_backing_store(buffer);
   Ok(quote! {
     let Ok(#input) = #input.try_cast::<deno_core::v8::ArrayBufferView>() else {
         #throw_exception
     };
     let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-    // SAFETY: we are certain the implied lifetime is valid here as the slices never escape the
-    // fastcall.
-    let #input = unsafe {
-      let (input_ptr, input_len) = #input.get_contents_raw_parts(&mut buffer);
-      let input_ptr = if input_ptr.is_null() { ::std::ptr::dangling_mut() } else { input_ptr };
-      let slice = ::std::slice::from_raw_parts_mut::<'s>(input_ptr, input_len);
-      let (before, slice, after) = slice.align_to_mut();
-      debug_assert!(before.is_empty());
-      debug_assert!(after.is_empty());
-      slice
+    // SAFETY: the temporary buffer does not outlive the fast call.
+    let Ok(mut #temp) = (unsafe {
+      deno_core::_ops::to_fast_v8_slice::<#element, #copy_invalid>(#input, &mut buffer)
+    }) else {
+      #throw_invalid_buffer
     };
+    let #input = #temp.as_mut();
     #convert
   })
 }
@@ -736,6 +750,19 @@ fn map_v8_fastcall_arg_to_arg(
       let buf = v8slice_to_buffer(arg_ident, &arg_temp, *buffer)?;
       quote!(
         let Ok(mut #arg_temp) = deno_core::_ops::to_v8_slice(#arg_ident.into()) else {
+          #throw_exception
+        };
+        #buf
+      )
+    }
+    Arg::Buffer(buffer, _, BufferSource::ArrayBuffer)
+      if buffer_can_copy_invalid_backing_store(*buffer) =>
+    {
+      let throw_exception =
+        throw_type_error(generator_state, "expected ArrayBuffer");
+      let buf = v8slice_to_buffer(arg_ident, &arg_temp, *buffer)?;
+      quote!(
+        let Ok(mut #arg_temp) = deno_core::_ops::to_v8_slice_buffer_or_copy(#arg_ident.into()) else {
           #throw_exception
         };
         #buf
