@@ -1,0 +1,10 @@
+Check [WILDCARD]main.ts
+running 1 test from [WILDCARD]/main.ts
+process lifecycle events are dispatched ... ok ([WILDCARD])
+------- post-test output -------
+beforeExit: 0
+exit: 0
+----- post-test output end -----
+
+ok | 1 passed | 0 failed ([WILDCARD])
+[WILDLINE]
