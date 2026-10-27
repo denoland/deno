@@ -3474,10 +3474,7 @@
     "parallel/test-stream-event-names.js": {},
     "parallel/test-stream-events-prepend.js": {},
     "parallel/test-stream-filter.js": {},
-    "parallel/test-stream-finished.js": {
-      "ignore": true,
-      "reason": "Uses the new Node 26 internal API internal/streams/end-of-stream kEosNodeSynchronousCallback which Deno does not expose"
-    },
+    "parallel/test-stream-finished.js": {},
     "parallel/test-stream-flatMap.js": {},
     "parallel/test-stream-forEach.js": {},
     "parallel/test-stream-inheritance.js": {},
