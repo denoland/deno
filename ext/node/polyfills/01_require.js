@@ -307,6 +307,8 @@ const lazyNodeModules = {
   "internal/streams/add-abort-signal": () =>
     core.loadExtScript("ext:deno_node/internal/streams/add-abort-signal.js")
       .default,
+  "internal/streams/end-of-stream": () =>
+    core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js"),
   "internal/streams/state": () =>
     core.loadExtScript("ext:deno_node/internal/streams/state.js").default,
   "internal/socketaddress": () =>
