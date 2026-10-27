@@ -779,7 +779,7 @@ Deno.test({
         // deno-lint-ignore no-explicit-any
         const rawFd = (client as any)._handle.fdForIpc();
         assert(rawFd >= 0);
-        const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+        const cp = spawn(Deno.execPath(), ["run", script], {
           stdio: ["ignore", "ignore", "pipe", rawFd],
         });
         cp.stderr?.on("data", (data) => {
@@ -823,7 +823,7 @@ Deno.test({
       const rawFd = (bootstrap as any)._handle.fdForIpc();
       assert(rawFd >= 0);
       bootstrap.close(() => {
-        const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+        const cp = spawn(Deno.execPath(), ["run", script], {
           stdio: ["ignore", "ignore", "pipe", rawFd],
         });
         cp.stderr?.on("data", (data) => {
