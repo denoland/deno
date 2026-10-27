@@ -516,6 +516,51 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "process.env rejects reserved internal keys",
+  fn() {
+    const keys = [
+      "CDN_LOOP",
+      "DENO_CACHE_LSC_ENDPOINT",
+      "DENO_DESKTOP_MUX_WS",
+      "DENO_TRUST_PROXY_HEADERS",
+      "DENO_UNSTABLE_CRON_SOCK",
+      "DENO_WEBGPU_TRACE",
+      "X_DENO_FETCH_TOKEN",
+    ];
+    if (Deno.build.os === "windows") {
+      keys.push(
+        "cdn_loop",
+        "deno_cache_lsc_endpoint",
+        "deno_desktop_mux_ws",
+        "deno_trust_proxy_headers",
+        "deno_unstable_cron_sock",
+        "deno_webgpu_trace",
+        "x_deno_fetch_token",
+      );
+    }
+    for (const key of keys) {
+      const original = process.env[key];
+      assertThrows(
+        () => {
+          process.env[key] = "changed";
+        },
+        TypeError,
+        `Key is reserved for internal use: "${key}"`,
+      );
+      assertEquals(process.env[key], original);
+      assertThrows(
+        () => {
+          delete process.env[key];
+        },
+        TypeError,
+        `Key is reserved for internal use: "${key}"`,
+      );
+      assertEquals(process.env[key], original);
+    }
+  },
+});
+
 // #30701
 Deno.test({
   name: "process.env handles falsy values correctly",
@@ -1902,6 +1947,95 @@ Deno.test({
     }
 
     Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() preserves internal service configuration",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = [
+      "CDN_LOOP=changed.example.deno-cluster.net",
+      "DENO_CACHE_LSC_ENDPOINT=http://changed.example,changed-token",
+      "DENO_DESKTOP_MUX_WS=ws://changed.example:1234",
+      "DENO_TRUST_PROXY_HEADERS=0",
+      "DENO_UNSTABLE_CRON_SOCK=tcp:changed.example:1234",
+      "DENO_WEBGPU_TRACE=/changed/trace/directory",
+      "X_DENO_FETCH_TOKEN=changed-fetch-token",
+      ...(Deno.build.os === "windows"
+        ? [
+          "cdn_loop=lowercase.example.deno-cluster.net",
+          "deno_cache_lsc_endpoint=http://lowercase.example,lowercase-token",
+          "deno_desktop_mux_ws=ws://lowercase.example:5678",
+          "deno_trust_proxy_headers=0",
+          "deno_unstable_cron_sock=tcp:lowercase.example:5678",
+          "deno_webgpu_trace=C:\\changed\\trace\\directory",
+          "x_deno_fetch_token=lowercase-fetch-token",
+        ]
+        : []),
+      "ORDINARY_LOAD_ENV_FILE_VAR=loaded",
+    ].join("\n");
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(
+      process.env.CDN_LOOP,
+      "launcher.example.deno-cluster.net",
+    );
+    assert.strictEqual(
+      process.env.DENO_CACHE_LSC_ENDPOINT,
+      "http://launcher.example,launcher-token",
+    );
+    assert.strictEqual(
+      process.env.DENO_DESKTOP_MUX_WS,
+      "ws://launcher.example:4321",
+    );
+    assert.strictEqual(
+      process.env.DENO_TRUST_PROXY_HEADERS,
+      "1",
+    );
+    assert.strictEqual(
+      process.env.DENO_UNSTABLE_CRON_SOCK,
+      "tcp:launcher.example:4321",
+    );
+    assert.strictEqual(
+      process.env.DENO_WEBGPU_TRACE,
+      Deno.args[1],
+    );
+    assert.strictEqual(
+      process.env.X_DENO_FETCH_TOKEN,
+      "launcher-fetch-token",
+    );
+    assert.strictEqual(process.env.ORDINARY_LOAD_ENV_FILE_VAR, "loaded");
+    `;
+
+    const traceDir = path.join(dirPath, "launcher-trace");
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath, traceDir],
+      cwd: testDir,
+      env: {
+        CDN_LOOP: "launcher.example.deno-cluster.net",
+        DENO_CACHE_LSC_ENDPOINT: "http://launcher.example,launcher-token",
+        DENO_DESKTOP_MUX_WS: "ws://launcher.example:4321",
+        DENO_TRUST_PROXY_HEADERS: "1",
+        DENO_UNSTABLE_CRON_SOCK: "tcp:launcher.example:4321",
+        DENO_WEBGPU_TRACE: traceDir,
+        X_DENO_FETCH_TOKEN: "launcher-fetch-token",
+      },
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const stderrStr = new TextDecoder().decode(stderr).trim();
+
+    Deno.removeSync(dirPath, { recursive: true });
+    assertEquals(exitCode, 0, stderrStr);
   },
 });
 
