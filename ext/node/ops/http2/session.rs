@@ -815,10 +815,13 @@ unsafe extern "C" fn on_frame_recv_callback(
   } else if ft == ffi::NGHTTP2_PUSH_PROMISE as u32
     || ft == ffi::NGHTTP2_HEADERS as u32
   {
+    // Match Node's OnFrameReceive: HEADERS/PUSH_PROMISE only go through
+    // HandleHeadersFrame. END_STREAM on these frames is delivered to JS via
+    // the flags argument; onSessionHeaders already push(null). Calling
+    // handle_data_end_stream here would fire onread(UV_EOF) synchronously so
+    // stream.read(0) emits 'end' before a consumer that awaited 'response'
+    // can attach listeners (#36850).
     handle_headers_frame(session, frame);
-    if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
-      handle_data_end_stream(session, frame);
-    }
   } else if ft == ffi::NGHTTP2_SETTINGS as u32 {
     if ff & ffi::NGHTTP2_FLAG_ACK as u8 == 0 {
       // Peer's actual settings. Update our tracked remote custom settings
