@@ -690,7 +690,7 @@ interface URLPatternOptions {
    *
    * @default {false}
    */
-  ignoreCase: boolean;
+  ignoreCase?: boolean;
 }
 
 /**

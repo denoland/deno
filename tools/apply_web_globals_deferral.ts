@@ -48,6 +48,94 @@ console.log(
   [...probeNames].sort().join(", "),
 );
 
+// Web-platform globals that overlap stock `lib.dom` but NOT @types/node, so
+// they're absent from TYPES_NODE_IGNORABLE_NAMES and stayed un-deferred -
+// colliding (TS2403 / TS2300) with lib.dom under a source-level `dom` co-load,
+// unlike every other web global. Defer them the same way. These are all
+// `declare var`s that both Deno's libs and the pinned tsgo's lib.dom declare
+// (verified). Deliberately curated to the pure web-platform *types* (CSS, DOM
+// geometry, canvas/image, WebGPU, WebTransport, ...); environment/identity
+// globals Deno owns (console, crypto, self, window/Window, location, the
+// on*-event handlers, web storage) are intentionally excluded - they need a
+// separate own-vs-defer decision. See denoland/deno#36094.
+const domOverlapNames = [
+  // WebGPU (dom declares ~35 `declare var GPU*`)
+  "GPUCanvasContext",
+  "GPUError",
+  "GPUInternalError",
+  "GPUOutOfMemoryError",
+  "GPUPipelineError",
+  "GPUValidationError",
+  // CSS Object Model
+  "CSSRule",
+  "CSSStyleSheet",
+  // DOM geometry
+  "DOMMatrix",
+  "DOMMatrixReadOnly",
+  "DOMPoint",
+  "DOMPointReadOnly",
+  "DOMQuad",
+  "DOMRect",
+  "DOMRectReadOnly",
+  // Canvas / imaging
+  "ImageBitmap",
+  "ImageBitmapRenderingContext",
+  "ImageData",
+  "OffscreenCanvas",
+  // File & events
+  "FileReader",
+  "ProgressEvent",
+  "PromiseRejectionEvent",
+  // Cache API
+  "Cache",
+  "CacheStorage",
+  "caches",
+  // WebTransport
+  "WebTransport",
+  "WebTransportBidirectionalStream",
+  "WebTransportDatagramDuplexStream",
+  "WebTransportError",
+  // Misc web platform
+  "Notification",
+  "PermissionStatus",
+  "Worker",
+  // Web types split from `declare class` into interface + var by
+  // tools/defork_classes.ts - their new `declare var` overlaps lib.dom's.
+  "GPU",
+  "GPUAdapter",
+  "GPUAdapterInfo",
+  "GPUBindGroup",
+  "GPUBindGroupLayout",
+  "GPUBuffer",
+  "GPUCommandBuffer",
+  "GPUCommandEncoder",
+  "GPUCompilationInfo",
+  "GPUCompilationMessage",
+  "GPUComputePassEncoder",
+  "GPUComputePipeline",
+  "GPUDevice",
+  "GPUPipelineLayout",
+  "GPUQuerySet",
+  "GPUQueue",
+  "GPURenderBundle",
+  "GPURenderBundleEncoder",
+  "GPURenderPassEncoder",
+  "GPURenderPipeline",
+  "GPUSampler",
+  "GPUShaderModule",
+  "GPUSupportedFeatures",
+  "GPUSupportedLimits",
+  "GPUTexture",
+  "GPUTextureView",
+  "GPUUncapturedErrorEvent",
+  "FocusEvent",
+  "KeyboardEvent",
+  "MouseEvent",
+  "UIEvent",
+  "WheelEvent",
+];
+for (const name of domOverlapNames) probeNames.add(name);
+
 // 2. Locate the type-node span of each matching `declare var NAME` with the AST,
 // then splice the ORIGINAL file text so only the type annotation changes -
 // comments, formatting and everything else are preserved byte-for-byte.
