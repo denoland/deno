@@ -140,6 +140,21 @@ enum ConnectionState {
   Error(Arc<AnyError>),
 }
 
+/// The bundled SQLite's first-time initialization (`sqlite3_initialize` ->
+/// `sqlite3MutexInit`) is unsafe to enter from two threads at once: on
+/// weak-memory architectures (arm64) a thread that observes `xMutexAlloc`
+/// already set skips the vtable copy but may read a stale NULL `xMutexInit`
+/// and call through it. Run the first initialization serially here before
+/// the eager-init threads open their connections in parallel.
+/// See https://github.com/denoland/deno/issues/37045.
+fn ensure_sqlite_initialized() {
+  static SQLITE_INIT: std::sync::Once = std::sync::Once::new();
+  SQLITE_INIT.call_once(|| {
+    // Opening any connection drives `sqlite3_initialize()` to completion.
+    drop(Connection::open_in_memory());
+  });
+}
+
 /// A cache database that eagerly initializes itself off-thread, preventing initialization operations
 /// from blocking the main thread.
 #[derive(Debug, Clone)]
@@ -209,6 +224,9 @@ impl CacheDB {
       version,
     };
 
+    // Finish the process-wide SQLite init on this thread so the eager
+    // init threads below never race it.
+    ensure_sqlite_initialized();
     new.spawn_eager_init_thread();
     new
   }
@@ -254,6 +272,8 @@ impl CacheDB {
     &self,
     path: Option<&Path>,
   ) -> Result<Connection, rusqlite::Error> {
+    // In-memory caches skip from_path(), so guard the open itself too.
+    ensure_sqlite_initialized();
     match path {
       // This should never fail unless something is very wrong
       None => Connection::open_in_memory(),
@@ -760,6 +780,41 @@ mod tests {
       Ok(row.get::<_, String>(0).unwrap())
     })
     .expect_err("Should have failed");
+  }
+
+  #[test]
+  fn parallel_from_path_initialization() {
+    // Regression test for https://github.com/denoland/deno/issues/37045:
+    // constructing many on-disk caches concurrently must not let multiple
+    // eager-init threads enter SQLite's first-time initialization at once.
+    // (The crash itself only reproduces on weak-memory architectures; this
+    // exercises the parallel open path under thread contention.)
+    let temp_dir = TempDir::new();
+    let mut handles = Vec::new();
+    for i in 0..16 {
+      let path = temp_dir.path().join(format!("db{i}")).to_path_buf();
+      handles.push(std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+          .enable_all()
+          .build()
+          .unwrap();
+        rt.block_on(async {
+          let db = CacheDB::from_path(&TEST_DB, path, "1.0");
+          db.ensure_connected().unwrap();
+          db.execute("insert into test values (?1)", [i as i64])
+            .unwrap();
+          let res = db
+            .query_row("select * from test", [], |row| {
+              Ok(row.get::<_, String>(0).unwrap())
+            })
+            .unwrap();
+          assert_eq!(res, Some(i.to_string()));
+        });
+      }));
+    }
+    for handle in handles {
+      handle.join().unwrap();
+    }
   }
 
   #[test]
