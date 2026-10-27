@@ -433,6 +433,11 @@ ArgDef::new("unstable-bare-node-builtins")
     .long("unstable-byonm")
     .set_true()
     .hidden(),
+  ArgDef::new("unstable-canvas2d")
+    .long("unstable-canvas2d")
+    .set_true()
+    .hidden()
+.help("Enable unstable Canvas 2D APIs"),
   ArgDef::new("unstable-cron")
     .long("unstable-cron")
     .set_true()
