@@ -8,6 +8,19 @@ const lib = loadTestLibrary();
 self.postMessage("ready");
 
 self.onmessage = (e) => {
+  if (e.data === "block_tsfn_queue") {
+    lib.test_tsfn_blocking_full_queue();
+    while (lib.tsfn_full_queue_state() < 1) { /* first call queued */ }
+    self.postMessage("blocked");
+    // Never drain the queue: the execute thread's second call stays blocked.
+    while (true) { /* interrupted by the parent */ }
+  }
+  if (e.data === "block_tsfn_queue_two_waiters") {
+    lib.test_tsfn_blocking_full_queue_two_waiters();
+    while (lib.tsfn_two_waiters_state() < 2) { /* both callers waiting */ }
+    self.postMessage("blocked");
+    while (true) { /* interrupted by the parent */ }
+  }
   if (e.data === "create_externals") {
     // Create an external buffer -- its C finalizer must not crash
     // when the worker is terminated before GC runs.

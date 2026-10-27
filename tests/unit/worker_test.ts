@@ -11,6 +11,264 @@ function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
 }
 
+async function workerStopDeadline<T>(pending: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Worker stop timed out")),
+          5000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function terminationStopsWasm(dispose = false) {
+  // (module (import "env" "memory" (memory 1 1 shared))
+  //   (func (export "spin") (loop $spin
+  //     i32.const 0 i32.const 1 i32.atomic.rmw.add drop
+  //     i32.const 4 i32.atomic.load i32.eqz br_if $spin)))
+  // The second word is only a cleanup latch for a broken runtime.
+  const bytes = new Uint8Array([
+    0,
+    97,
+    115,
+    109,
+    1,
+    0,
+    0,
+    0,
+    1,
+    4,
+    1,
+    96,
+    0,
+    0,
+    2,
+    16,
+    1,
+    3,
+    101,
+    110,
+    118,
+    6,
+    109,
+    101,
+    109,
+    111,
+    114,
+    121,
+    2,
+    3,
+    1,
+    1,
+    3,
+    2,
+    1,
+    0,
+    7,
+    8,
+    1,
+    4,
+    115,
+    112,
+    105,
+    110,
+    0,
+    0,
+    10,
+    25,
+    1,
+    23,
+    0,
+    3,
+    64,
+    65,
+    0,
+    65,
+    1,
+    254,
+    30,
+    2,
+    0,
+    26,
+    65,
+    4,
+    254,
+    16,
+    2,
+    0,
+    69,
+    13,
+    0,
+    11,
+    11,
+  ]);
+  const memory = new WebAssembly.Memory({
+    initial: 1,
+    maximum: 1,
+    shared: true,
+  });
+  const words = new Int32Array(memory.buffer);
+  const url = URL.createObjectURL(
+    new Blob([
+      `onmessage = ({data}) => new WebAssembly.Instance(
+      new WebAssembly.Module(data.bytes), {env: {memory: data.memory}}
+    ).exports.spin();`,
+    ], { type: "application/javascript" }),
+  );
+  const worker = new Worker(url, { type: "module" });
+  try {
+    worker.postMessage({ bytes, memory });
+    const deadline = performance.now() + 5000;
+    while (Atomics.load(words, 0) === 0 && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(Atomics.load(words, 0) > 0, "Wasm loop must run before termination");
+    worker.terminate();
+    if (dispose) {
+      const disposeWorker =
+        (worker as Worker & AsyncDisposable)[Symbol.asyncDispose];
+      assert(
+        typeof disposeWorker === "function",
+        "Worker provides an execution-stop barrier",
+      );
+      await workerStopDeadline(disposeWorker.call(worker));
+    } else {
+      // The ordinary Web API requests interruption without awaiting teardown.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const counter = Atomics.load(words, 0);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assertEquals(
+      Atomics.load(words, 0),
+      counter,
+      "terminated Wasm must stop writing",
+    );
+  } finally {
+    Atomics.store(words, 1, 1);
+    worker.terminate();
+    URL.revokeObjectURL(url);
+  }
+}
+
+Deno.test("worker termination stops shared-memory writes from Wasm", () =>
+  terminationStopsWasm());
+Deno.test("worker async disposal acknowledges stopped Wasm after terminate", () =>
+  terminationStopsWasm(true));
+
+Deno.test({
+  name: "worker async disposal waits for native writes into shared memory",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    const dir = await Deno.makeTempDir();
+    const path = `${dir}/input`;
+    const output = await new Deno.Command("mkfifo", { args: [path] }).output();
+    assertEquals(output.code, 0);
+    const buffer = new SharedArrayBuffer(1);
+    const url = URL.createObjectURL(
+      new Blob([
+        `onmessage = async ({data}) => {
+        const file = await Deno.open(data.path, {read:true, write:true});
+        const read = file.read(new Uint8Array(data.buffer));
+        postMessage("reading");
+        await read;
+      };`,
+      ], { type: "application/javascript" }),
+    );
+    const worker = new Worker(url, { type: "module" });
+    const reading = new Promise<void>((resolve) => {
+      worker.onmessage = () => resolve();
+    });
+    let writer: Deno.FsFile | undefined;
+    let disposal: Promise<void> | undefined;
+    let released = false;
+    try {
+      worker.postMessage({ path, buffer });
+      await workerStopDeadline(reading);
+      writer = Deno.openSync(path, { write: true });
+      // Ensure the blocking read has entered before requesting termination.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      let disposed = false;
+      disposal = worker[Symbol.asyncDispose]().then(() => {
+        disposed = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assertEquals(
+        disposed,
+        false,
+        "native shared-memory write is still pending",
+      );
+      writer.writeSync(new Uint8Array([55]));
+      released = true;
+      await workerStopDeadline(disposal);
+      assertEquals(new Uint8Array(buffer)[0], 55);
+    } finally {
+      // Release a blocked read even when the assertion catches premature ack.
+      if (writer) {
+        if (!released) writer.writeSync(new Uint8Array([55]));
+        writer.close();
+      }
+      await workerStopDeadline(disposal ?? worker[Symbol.asyncDispose]());
+      URL.revokeObjectURL(url);
+      await Deno.remove(dir, { recursive: true });
+    }
+  },
+});
+
+Deno.test(
+  "worker async disposal survives a stop swallowed by a promise hook",
+  async () => {
+    // words[0]: hook entered; words[1]: cleanup latch for a broken runtime;
+    // words[2]: the swallowed stop returned to the worker's own code.
+    const words = new Int32Array(new SharedArrayBuffer(12));
+    const url = URL.createObjectURL(
+      new Blob([
+        `import v8 from "node:v8";
+      onmessage = ({data}) => {
+        const words = new Int32Array(data);
+        let armed = true;
+        v8.promiseHooks.onInit(() => {
+          if (!armed) return;
+          armed = false;
+          Atomics.store(words, 0, 1);
+          while (Atomics.load(words, 1) === 0) {}
+        });
+        // V8 creates this promise in C++, which reports and clears a
+        // termination thrown by the hook instead of propagating it.
+        WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+        Atomics.store(words, 2, 1);
+        while (Atomics.load(words, 1) === 0) {}
+      };`,
+      ], { type: "application/javascript" }),
+    );
+    const worker = new Worker(url, { type: "module" });
+    try {
+      worker.postMessage(words.buffer);
+      const deadline = performance.now() + 5000;
+      while (Atomics.load(words, 0) === 0 && performance.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assertEquals(Atomics.load(words, 0), 1, "promise hook must be entered");
+      await workerStopDeadline(worker[Symbol.asyncDispose]());
+      assertEquals(
+        Atomics.load(words, 2),
+        1,
+        "the stop must have been swallowed by the hook",
+      );
+    } finally {
+      Atomics.store(words, 1, 1);
+      await workerStopDeadline(worker[Symbol.asyncDispose]());
+      URL.revokeObjectURL(url);
+    }
+  },
+);
+
 Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {

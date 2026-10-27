@@ -546,6 +546,371 @@ fn test_mods() {
 }
 
 #[test]
+fn test_lazy_loaded_esm_termination() {
+  #[op2(fast)]
+  fn op_stop_lazy_module(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_lazy_module, ops = [op_stop_lazy_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_lazy_module::init()],
+    ..Default::default()
+  });
+  let result = runtime.lazy_load_es_module_with_code(
+    "ext:stop_lazy_module/stopped.js",
+    "Deno.core.ops.op_stop_lazy_module(); while (true) {}",
+  );
+  assert!(
+    result.is_err(),
+    "interrupted lazy evaluation must return an error"
+  );
+}
+
+// Each case executes JavaScript at a different stage of lazy module loading.
+// Termination must reach the caller as an error without unwinding Rust.
+fn assert_lazy_module_interruption(path: &str, source: &'static str) {
+  #[op2(fast)]
+  fn op_stop_lazy_module(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_lazy_module, ops = [op_stop_lazy_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_lazy_module::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  deno_core::scope!(scope, runtime);
+  let specifier = "ext:stop_lazy_module/stopped.js";
+  let result = match path {
+    "fresh" => module_map.lazy_load_es_module_with_code(
+      scope,
+      specifier,
+      source.to_string().into(),
+      None,
+    ),
+    "cached" | "cached_synthetic" => {
+      module_map.add_lazy_loaded_esm_source(
+        specifier.to_string().into(),
+        source.to_string().into(),
+      );
+      let id = module_map
+        .new_es_module(
+          scope,
+          false,
+          specifier.to_string().into(),
+          source.to_string().into(),
+          false,
+          None,
+        )
+        .unwrap();
+      module_map.instantiate_module(scope, id).unwrap();
+      if path == "cached" {
+        module_map.lazy_load_esm_module(scope, specifier)
+      } else {
+        module_map.lazy_load_synthetic_esm_module(scope, specifier)
+      }
+    }
+    "synthetic" => {
+      let backing = "ext:stop_lazy_module/backing.js";
+      module_map.add_lazy_loaded_script_source(
+        backing.to_string().into(),
+        source.to_string().into(),
+      );
+      module_map.add_synthetic_esm_module(
+        specifier.to_string().into(),
+        backing.to_string().into(),
+      );
+      module_map.lazy_load_synthetic_esm_module(scope, specifier)
+    }
+    _ => unreachable!(),
+  };
+  let err = result.expect_err("interrupted module loading must fail");
+  assert!(
+    matches!(
+      err.as_kind(),
+      crate::error::CoreErrorKind::ExecutionTerminated
+    ),
+    "{err}"
+  );
+  assert!(
+    scope.is_execution_terminating(),
+    "loader swallowed termination"
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_microtask() {
+  assert_lazy_module_interruption(
+    "fresh",
+    "Promise.resolve().then(() => { Deno.core.ops.op_stop_lazy_module(); while (true) {} });",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_cached() {
+  assert_lazy_module_interruption(
+    "cached",
+    "Deno.core.ops.op_stop_lazy_module(); while (true) {}",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_cached_synthetic() {
+  assert_lazy_module_interruption(
+    "cached_synthetic",
+    "Deno.core.ops.op_stop_lazy_module(); while (true) {}",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_script() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { Deno.core.ops.op_stop_lazy_module(); while (true) {} })()",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_export_getter() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { return { get value() { Deno.core.ops.op_stop_lazy_module(); while (true) {} } }; })()",
+  );
+}
+
+#[test]
+fn test_lazy_module_interruption_export_keys() {
+  assert_lazy_module_interruption(
+    "synthetic",
+    "(function () { return new Proxy({}, { ownKeys() { Deno.core.ops.op_stop_lazy_module(); while (true) {} } }); })()",
+  );
+}
+
+// V8 reports and clears any exception thrown by a promise hook that runs while
+// C++ creates a promise (`NativeContext::RunPromiseHook`), including a
+// termination exception. A host stop must survive that, so this op registers
+// the sticky host request the way `WebWorker` does before terminating.
+#[test]
+fn test_lazy_module_interruption_synthetic_promise_hook() {
+  #[op2(fast)]
+  fn op_host_stop_lazy_module(scope: &mut v8::PinScope) {
+    scope.set_slot(crate::ExternalExecutionTermination(Arc::new(
+      std::sync::atomic::AtomicBool::new(true),
+    )));
+    scope.terminate_execution();
+  }
+  deno_core::extension!(
+    host_stop_lazy_module,
+    ops = [op_host_stop_lazy_module]
+  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![host_stop_lazy_module::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  let result = {
+    deno_core::scope!(scope, runtime);
+    let backing = "ext:host_stop_lazy_module/backing.js";
+    let specifier = "ext:host_stop_lazy_module/stopped.js";
+    module_map.add_lazy_loaded_script_source(
+      backing.to_string().into(),
+      "(function () { Deno.core.setPromiseHooks(() => { Deno.core.ops.op_host_stop_lazy_module(); while (true) {} }); return { value: 42 }; })()".to_string().into(),
+    );
+    module_map.add_synthetic_esm_module(
+      specifier.to_string().into(),
+      backing.to_string().into(),
+    );
+    module_map.lazy_load_synthetic_esm_module(scope, specifier)
+  };
+  let err = result.expect_err("interrupted module loading must fail");
+  assert!(
+    matches!(err.as_kind(), CoreErrorKind::ExecutionTerminated),
+    "{err}"
+  );
+  // V8 has already cleared the thrown termination, so check the stop
+  // functionally: no further script may run.
+  let next = runtime.execute_script("next.js", "globalThis.ran = true;");
+  let next = next.expect_err("host stop was lost");
+  assert_eq!(next.to_string(), "Uncaught Error: execution terminated");
+}
+
+// An op that fails while the isolate is terminating must not replace the
+// termination with a catchable error: V8's ThrowException clears it.
+#[test]
+fn test_lazy_loader_termination_is_not_catchable() {
+  static CAUGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+  #[op2(fast)]
+  fn op_stop_lazy_loader(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  #[op2(fast)]
+  fn op_lazy_loader_caught() {
+    CAUGHT.store(true, Ordering::SeqCst);
+  }
+  deno_core::extension!(
+    stop_lazy_loader,
+    ops = [op_stop_lazy_loader, op_lazy_loader_caught]
+  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_lazy_loader::init()],
+    ..Default::default()
+  });
+  runtime.module_map().add_lazy_loaded_esm_source(
+    "ext:stop_lazy_loader/stopped.js".to_string().into(),
+    "Deno.core.ops.op_stop_lazy_loader(); while (true) {}"
+      .to_string()
+      .into(),
+  );
+  let result = runtime.execute_script(
+    "load.js",
+    r#"
+    try {
+      Deno.core.createLazyLoader("ext:stop_lazy_loader/stopped.js")();
+    } catch {
+      Deno.core.ops.op_lazy_loader_caught();
+    }
+    "#,
+  );
+  let err = result.expect_err("a stopped lazy load must stop the caller");
+  assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
+  assert!(
+    !CAUGHT.load(Ordering::SeqCst),
+    "termination reached a JS catch block"
+  );
+}
+
+// Synchronous evaluation (used by require(esm)) must report an interrupted
+// module as terminated and leave the isolate terminating.
+#[test]
+fn test_mod_evaluate_sync_termination() {
+  #[op2(fast)]
+  fn op_stop_sync_module(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_sync_module, ops = [op_stop_sync_module]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_sync_module::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  deno_core::scope!(scope, runtime);
+  let id = module_map
+    .new_es_module(
+      scope,
+      false,
+      "file:///stopped.js".to_string().into(),
+      "Deno.core.ops.op_stop_sync_module(); while (true) {}"
+        .to_string()
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, id).unwrap();
+  let err = module_map
+    .mod_evaluate_sync(scope, id)
+    .expect_err("interrupted evaluation must fail");
+  assert!(
+    matches!(err.as_kind(), CoreErrorKind::ExecutionTerminated),
+    "{err}"
+  );
+  assert!(
+    scope.is_execution_terminating(),
+    "evaluation swallowed termination"
+  );
+}
+
+// A stop while dynamic import() lazily evaluates a module must leave the
+// isolate terminating rather than unwrap a failed promise rejection inside
+// V8's extern "C" import callback.
+#[test]
+fn test_lazy_dynamic_import_termination() {
+  #[op2(fast)]
+  fn op_stop_dynamic_import(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+  deno_core::extension!(stop_dynamic_import, ops = [op_stop_dynamic_import]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![stop_dynamic_import::init()],
+    ..Default::default()
+  });
+  runtime.module_map().add_lazy_loaded_esm_source(
+    "node:stop_dynamic_import".to_string().into(),
+    "Deno.core.ops.op_stop_dynamic_import(); while (true) {}"
+      .to_string()
+      .into(),
+  );
+  // As a worker's first `import("node:...")` of a lazily loaded built-in.
+  let result = runtime
+    .execute_script("import.js", r#"import("node:stop_dynamic_import");"#);
+  let err = result.expect_err("a stopped dynamic import must stop the caller");
+  assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
+}
+
+// A host stop that V8 swallowed inside a promise hook must not surface to
+// JavaScript as a catchable error once the loader notices it.
+#[test]
+fn test_lazy_loader_host_stop_is_not_catchable() {
+  static CAUGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+  #[op2(fast)]
+  fn op_host_stop_loader(scope: &mut v8::PinScope) {
+    scope.set_slot(crate::ExternalExecutionTermination(Arc::new(
+      std::sync::atomic::AtomicBool::new(true),
+    )));
+    scope.terminate_execution();
+  }
+  #[op2(fast)]
+  fn op_host_stop_caught() {
+    CAUGHT.store(true, Ordering::SeqCst);
+  }
+  deno_core::extension!(
+    host_stop_loader,
+    ops = [op_host_stop_loader, op_host_stop_caught]
+  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![host_stop_loader::init()],
+    ..Default::default()
+  });
+  let module_map = runtime.module_map().clone();
+  module_map.add_lazy_loaded_script_source(
+    "ext:host_stop_loader/backing.js".to_string().into(),
+    "(function () { Deno.core.setPromiseHooks(() => { Deno.core.ops.op_host_stop_loader(); while (true) {} }); return { value: 42 }; })()".to_string().into(),
+  );
+  module_map.add_synthetic_esm_module(
+    "node:host_stop_loader".to_string().into(),
+    "ext:host_stop_loader/backing.js".to_string().into(),
+  );
+  let result = runtime.execute_script(
+    "load.js",
+    r#"
+    try {
+      Deno.core.createLazyLoader("node:host_stop_loader")();
+    } catch {
+      Deno.core.ops.op_host_stop_caught();
+    }
+    "#,
+  );
+  let err = result.expect_err("a stopped lazy load must stop the caller");
+  assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
+  assert!(
+    !CAUGHT.load(Ordering::SeqCst),
+    "host stop reached a JS catch block"
+  );
+}
+
+// Probe for the JS-created promise path: the Torque hook caller has its own
+// catch, so check that termination still escapes it.
+#[test]
+fn test_lazy_module_interruption_js_promise_hook() {
+  assert_lazy_module_interruption(
+    "fresh",
+    "Deno.core.setPromiseHooks(() => { Deno.core.ops.op_stop_lazy_module(); while (true) {} }); Promise.resolve();",
+  );
+}
+
+#[test]
 fn test_lazy_loaded_esm() {
   deno_core::extension!(test_ext, lazy_loaded_esm = [dir "modules/testdata", "lazy_loaded.js"]);
 

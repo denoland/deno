@@ -664,6 +664,20 @@ interface WorkerOptions {
  * @category Workers
  */
 interface Worker extends EventTarget {
+  /** Requests termination and waits until this worker's JavaScript and the
+   * native operations running in its runtime's blocking pool (such as
+   * nonblocking FFI calls, N-API async work and `Deno.stdin` reads) have
+   * stopped. Unlike `terminate()`, which requests termination once, disposal
+   * keeps requesting it until execution stops. This also works after calling
+   * `terminate()`.
+   *
+   * Disposal can wait indefinitely for a blocked native operation. It does not
+   * cover workers created by this worker, or threads started by native
+   * libraries or detached from the runtime. However a worker stops, its
+   * thread stays alive until such operations return, even when nothing
+   * awaits disposal.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
   /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
   onerror: ((this: Worker, e: ErrorEvent) => any) | null;
 
