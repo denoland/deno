@@ -33,7 +33,9 @@ deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt", default-features = false }
-laufey = "0.7.0"
+# Until littledivy/laufey#fix/winit-mouse-enter-dblclick lands and a
+# release is cut. Replace with the published crate version afterwards.
+laufey = { git = "https://github.com/petamoriken/laufey", branch = "fix/winit-mouse-enter-dblclick" }
 libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }
