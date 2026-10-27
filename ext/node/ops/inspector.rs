@@ -32,8 +32,18 @@ pub fn op_inspector_enabled(state: &OpState) -> bool {
 /// inspector server has not been started. Used to back Node.js'
 /// `process.debugPort` so it reflects the actual bound port (which is
 /// important when `--inspect=...:0` requests an ephemeral port).
+///
+/// Requires `--allow-sys=inspector` to match the other inspector-state
+/// entry points (`inspector.url()`, `inspector.open()`, and
+/// `inspector.Session.connect()`): this op reveals whether an inspector
+/// is attached and which port it is listening on, so it should be gated
+/// by the same permission. See <https://github.com/denoland/deno/issues/36519>.
 #[op2(fast)]
-pub fn op_inspector_port(state: &OpState) -> u32 {
+pub fn op_inspector_port(state: &mut OpState) -> u32 {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("inspector", "inspector.debugPort")
+    .ok();
   let Some(url) = state.try_borrow::<InspectorServerUrl>() else {
     return 0;
   };
