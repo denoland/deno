@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm_entrypoint": {
+      "args": "bundle --min-dep-age=2025-05-15 npm:@denotest/add@1",
+      "output": "npm_entrypoint.out",
+      "exitCode": 1
+    },
+    "npm_import": {
+      "args": "bundle --min-dep-age=2025-05-15 main.ts",
+      "output": "npm_import.out",
+      "exitCode": 1
+    }
+  }
+}
