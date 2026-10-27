@@ -341,8 +341,9 @@ pub async fn op_node_fs_exists(
 
   match path_or_err {
     Ok(path) => Ok(fs.exists_async(path.into_owned()).await?),
-    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-    Err(err) => Err(FsError::Permission(err)),
+    // Like existsSync, Node's callback-based exists API reports every
+    // filesystem or permission failure as false.
+    Err(_) => Ok(false),
   }
 }
 

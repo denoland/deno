@@ -27,6 +27,7 @@ import {
   copyFileSync,
   createReadStream,
   createWriteStream,
+  exists,
   existsSync,
   fchmod,
   fchmodSync,
@@ -195,6 +196,17 @@ Deno.test(
       existsSync("tests/testdata/assets/fixture.json"),
       false,
     );
+  },
+);
+
+Deno.test(
+  "[node/fs exists] no permission",
+  { permissions: { read: false } },
+  async () => {
+    const result = await new Promise<boolean>((resolve) => {
+      exists("tests/testdata/assets/fixture.json", resolve);
+    });
+    assertEquals(result, false);
   },
 );
 
