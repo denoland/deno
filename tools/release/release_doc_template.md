@@ -7,7 +7,7 @@ land until the release is finished.**
 
 - [ ] Ensure forks and local clones of:
   - [`denoland/deno`](https://github.com/denoland/deno/),
-  - [`denoland/dotcom`](https://github.com/denoland/dotcom/),
+  - [`denoland/docs`](https://github.com/denoland/docs/),
   - [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
   - [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
 - [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
@@ -91,7 +91,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ## Update https://deno.com
 
 - [ ] Run
-      https://github.com/denoland/dotcom/actions/workflows/update_version.yml to
+      https://github.com/denoland/docs/actions/workflows/update_versions.yml to
       automatically open a PR.
   - [ ] Merge the PR.
 
@@ -160,6 +160,6 @@ Deno v$VERSION has been released.
 In case something went wrong:
 
 1. Update https://dl.deno.land/release-latest.txt to the previous release.
-1. Revert the PR to the [dotcom repo](https://github.com/denoland/dotcom/) in
+1. Revert the PR to the [docs repo](https://github.com/denoland/docs/) in
    order to prevent the [`setup-deno`](https://github.com/denoland/setup-deno)
    GH action from pulling it in.
