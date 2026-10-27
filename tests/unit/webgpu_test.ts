@@ -53,6 +53,44 @@ function checkWindowingSystem(): boolean {
   }
 }
 
+Deno.test(function webgpuErrorBuildersPreserveClassState() {
+  // Accessing the lazy global loads WebGPU and registers its error builders.
+  void GPUValidationError;
+  // @ts-ignore: Deno[Deno.internal].core is available to internal tests.
+  const core = Deno[Deno.internal].core;
+  const messageGetter = Object.getOwnPropertyDescriptor(
+    GPUError.prototype,
+    "message",
+  )!.get!;
+
+  const validation = core.buildCustomError(
+    "GPUValidationError",
+    "validation message",
+  );
+  assert(validation instanceof GPUValidationError);
+  assertEquals(messageGetter.call(validation), "validation message");
+  assert(!Object.hasOwn(validation, "message"));
+  assert(!("name" in validation));
+
+  const outOfMemory = core.buildCustomError(
+    "GPUOutOfMemoryError",
+    "out of memory message",
+  );
+  assert(outOfMemory instanceof GPUOutOfMemoryError);
+  assertEquals(messageGetter.call(outOfMemory), "out of memory message");
+  assert(!Object.hasOwn(outOfMemory, "message"));
+  assert(!("name" in outOfMemory));
+
+  const internal = core.buildCustomError(
+    "GPUInternalError",
+    "ignored message",
+  );
+  assert(internal instanceof GPUInternalError);
+  assertEquals(messageGetter.call(internal), undefined);
+  assert(!Object.hasOwn(internal, "message"));
+  assert(!("name" in internal));
+});
+
 Deno.test({
   permissions: { read: true, env: true },
   ignore: isWsl || isCIWithoutGPU,
