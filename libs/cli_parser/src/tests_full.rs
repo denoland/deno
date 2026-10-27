@@ -5059,6 +5059,7 @@ fn compile() {
         args: vec![],
         target: None,
         no_terminal: false,
+        include_code_cache: false,
         icon: None,
         include: Default::default(),
         exclude: Default::default(),
@@ -5074,6 +5075,28 @@ fn compile() {
       code_cache_enabled: true,
       ..Flags::default()
     }
+  );
+}
+
+#[test]
+fn compile_include_code_cache() {
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "--include-code-cache", "main.ts"])
+      .unwrap();
+  let DenoSubcommand::Compile(compile) = flags.subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert!(compile.include_code_cache);
+
+  assert!(
+    flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--include-code-cache",
+      "--no-code-cache",
+      "main.ts"
+    ])
+    .is_err()
   );
 }
 
@@ -5191,6 +5214,7 @@ fn compile_watch_with_no_clear_screen() {
         args: vec![],
         target: None,
         no_terminal: false,
+        include_code_cache: false,
         icon: None,
         include: Default::default(),
         exclude: Default::default(),
@@ -5228,6 +5252,7 @@ fn compile_with_flags() {
         args: svec!["foo", "bar", "-p", "8080"],
         target: None,
         no_terminal: true,
+        include_code_cache: false,
         icon: Some(String::from("favicon.ico")),
         include: vec!["include.txt".to_string()],
         exclude: vec!["exclude.txt".to_string()],
@@ -8218,6 +8243,7 @@ fn preload_flag_test() {
         args: vec![],
         target: None,
         no_terminal: false,
+        include_code_cache: false,
         icon: None,
         include: Default::default(),
         exclude: Default::default(),
