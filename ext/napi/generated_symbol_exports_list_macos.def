@@ -168,6 +168,7 @@ _uv_check_start
 _uv_check_stop
 _uv_close
 _uv_default_loop
+_uv_get_osfhandle
 _uv_hrtime
 _uv_idle_init
 _uv_idle_start
