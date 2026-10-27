@@ -6,10 +6,57 @@ import events, {
   EventEmitter,
 } from "node:events";
 import * as eventsNs from "node:events";
+import { Duplex, Readable, Writable } from "node:stream";
 import { createRequire } from "node:module";
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 
 EventEmitter.captureRejections = true;
+
+Deno.test("stream events ignore inherited properties", () => {
+  const originalSocket = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "socket",
+  );
+  Object.defineProperty(Object.prototype, "socket", {
+    configurable: true,
+    value: "baz",
+    writable: true,
+  });
+
+  try {
+    const streams = [
+      new Readable({ read() {} }),
+      new Writable({
+        write(_chunk, _encoding, callback) {
+          callback();
+        },
+      }),
+      new Duplex({
+        read() {},
+        write(_chunk, _encoding, callback) {
+          callback();
+        },
+      }),
+    ];
+
+    for (const stream of streams) {
+      let called = false;
+      stream.on("socket", () => {
+        called = true;
+      });
+      stream.emit("socket");
+      assertEquals(called, true);
+      assertStrictEquals(Object.getPrototypeOf(stream._events), null);
+    }
+  } finally {
+    if (originalSocket) {
+      Object.defineProperty(Object.prototype, "socket", originalSocket);
+    } else {
+      // @ts-ignore: the property is added above for this regression test.
+      delete Object.prototype.socket;
+    }
+  }
+});
 
 Deno.test("regression #20441", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
