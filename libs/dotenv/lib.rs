@@ -104,6 +104,9 @@ pub fn from_content_sanitized_iter_with_substitution(
   sys: &dyn BaseEnvVar,
   content: &str,
 ) -> Result<std::vec::IntoIter<IterElement>, ParseError> {
+  // This is used for file content (`--env-file`, `deno compile`), so strip a
+  // leading UTF-8 BOM. Otherwise it would end up in the first key.
+  let content = content.strip_prefix('\u{feff}').unwrap_or(content);
   let mut pairs = Vec::new();
   parse_env_content_with_substitution_hook(sys, content, &mut |k, v| {
     if let Some(index) = k
@@ -1205,5 +1208,45 @@ INNER_QUOTES_WITH_NEWLINE="2: foo bar\ni am "on" newline, 'yo'"
       pairs.get("KEY").map(String::as_str),
       Some("hello \"world\" goodbye")
     );
+  }
+
+  fn sanitized_pairs(content: &str) -> Vec<(String, String)> {
+    let sys = InMemorySys::default();
+    from_content_sanitized_iter_with_substitution(&sys, content)
+      .unwrap()
+      .map(|item| item.unwrap())
+      .collect()
+  }
+
+  #[test]
+  fn file_content_strips_leading_bom() {
+    assert_eq!(
+      sanitized_pairs("\u{feff}FOO=bar\nBAZ=qux\n"),
+      vec![
+        ("FOO".to_string(), "bar".to_string()),
+        ("BAZ".to_string(), "qux".to_string()),
+      ]
+    );
+  }
+
+  #[test]
+  fn file_content_strips_only_one_leading_bom() {
+    // Only a single BOM at the very start is an encoding marker. A second
+    // one, or one inside a value, is ordinary content and is kept.
+    assert_eq!(
+      sanitized_pairs("\u{feff}\u{feff}FOO=bar\nBAZ=a\u{feff}b\n"),
+      vec![
+        ("\u{feff}FOO".to_string(), "bar".to_string()),
+        ("BAZ".to_string(), "a\u{feff}b".to_string()),
+      ]
+    );
+  }
+
+  #[test]
+  fn parse_env_content_hook_keeps_leading_bom() {
+    // `parse_env_content_hook` also backs `node:util.parseEnv()`, which takes
+    // a string rather than a file. Node does not strip a BOM there, so
+    // neither do we; BOM handling happens where file content is read.
+    assert_parsed_eq("\u{feff}FOO=bar\n", &[("\u{feff}FOO", "bar")]);
   }
 }

@@ -42,6 +42,8 @@ pub enum Value<'a> {
 pub fn parse_ini(
   input: &str,
 ) -> Result<Vec<KeyValueOrSection<'_>>, ParseErrorFailureError> {
+  // Strip a leading UTF-8 BOM so it doesn't end up in the first key.
+  let input = input.strip_prefix('\u{feff}').unwrap_or(input);
   with_failure_handling(|input| {
     let (input, _) = skip_trivia(input)?;
     let (input, items) = many0(|input| {
@@ -392,5 +394,43 @@ a = 1
         }),
       ]
     )
+  }
+
+  #[test]
+  fn strips_leading_bom() {
+    let ini = parse_ini("\u{feff}a=1\nb=2\n").unwrap();
+    assert_eq!(
+      ini,
+      vec![
+        KeyValueOrSection::KeyValue(KeyValue {
+          key: Key::Plain("a".into()),
+          value: Value::Number(1),
+        }),
+        KeyValueOrSection::KeyValue(KeyValue {
+          key: Key::Plain("b".into()),
+          value: Value::Number(2),
+        }),
+      ]
+    );
+  }
+
+  #[test]
+  fn strips_only_one_leading_bom() {
+    // Only a single BOM at the very start is an encoding marker. A second
+    // one, or one inside a value, is ordinary content and is kept.
+    let ini = parse_ini("\u{feff}\u{feff}a=1\nb=x\u{feff}y\n").unwrap();
+    assert_eq!(
+      ini,
+      vec![
+        KeyValueOrSection::KeyValue(KeyValue {
+          key: Key::Plain("\u{feff}a".into()),
+          value: Value::Number(1),
+        }),
+        KeyValueOrSection::KeyValue(KeyValue {
+          key: Key::Plain("b".into()),
+          value: Value::String("x\u{feff}y".into()),
+        }),
+      ]
+    );
   }
 }
