@@ -49,6 +49,16 @@ Deno.test("napi float16 typedarray", () => {
   assertEquals(arr.length, 4);
 });
 
+Deno.test("napi create_typedarray out of range throws", function () {
+  // [status, exception pending, result set]; 10 is napi_pending_exception
+  assertEquals(typedarray.test_typedarray_out_of_range(), [10, true, false]);
+});
+
+Deno.test("napi create_typedarray with overflowing length throws", function () {
+  // [status, exception pending, result set]; 10 is napi_pending_exception
+  assertEquals(typedarray.test_typedarray_overflow(), [10, true, false]);
+});
+
 // TODO(bartlomieju): this test causes segfaults when used with jemalloc.
 // Node documentation provides a hint that this function is not supported by
 // other runtime like electron.
