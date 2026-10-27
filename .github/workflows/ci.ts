@@ -1181,6 +1181,16 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           )
           .comesAfter(tarSourcePublishStep)(
             {
+              // Debug builds are the artifacts that `deno upgrade pr <N>` and
+              // `deno upgrade branch <name>` install on most platforms, so
+              // mark them as canary like the release builds below. Otherwise
+              // `deno --version` on a PR build is indistinguishable from a
+              // stock stable release.
+              name: "Configure canary build",
+              if: isDebug.and(isNotTag),
+              run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
+            },
+            {
               name: "Build debug",
               if: isDebug,
               run:
