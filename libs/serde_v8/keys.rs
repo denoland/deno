@@ -1,14 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-
-// KeyCache stores a pool struct keys mapped to v8,
-// to minimize allocs and speed up decoding/encoding `v8::Object`s
-// TODO: experiment with in from_v8/to_v8
-// TODO: this is unused
-#[allow(dead_code, reason = "experiment")]
-pub struct KeyCache(HashMap<&'static str, v8::Global<v8::String>>);
-
 // creates an optimized v8::String for a struct field
 // TODO: experiment with external strings
 // TODO: evaluate if own KeyCache is better than v8's dedupe
