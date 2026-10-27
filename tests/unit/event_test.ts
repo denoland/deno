@@ -157,6 +157,35 @@ Deno.test(function inspectEvent() {
   );
 });
 
+// Regression for https://github.com/denoland/deno/issues/36510
+// Inspecting subclass prototypes must not throw "Cannot read private member".
+Deno.test(function inspectEventSubclassPrototypes() {
+  for (
+    const proto of [
+      ErrorEvent.prototype,
+      CloseEvent.prototype,
+      MessageEvent.prototype,
+      CustomEvent.prototype,
+      ProgressEvent.prototype,
+    ]
+  ) {
+    const out = Deno.inspect(proto);
+    assertStringIncludes(out, "Event {");
+  }
+
+  // ensure instances still inspect normally
+  assertStringIncludes(
+    Deno.inspect(new ErrorEvent("err", { message: "boom" })),
+    "ErrorEvent",
+  );
+  assertStringIncludes(
+    Deno.inspect(
+      new CustomEvent("evt", { detail: { hello: "world" } }),
+    ),
+    "detail:",
+  );
+});
+
 Deno.test(function removeEventListenerWithEmptyObjectOptions() {
   const target = new EventTarget();
   let callCount = 0;
