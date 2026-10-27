@@ -140,10 +140,13 @@ fn apply_desktop_config_to_flags(
       });
     }
 
-    if let Some(name) = app_config.name
-      && desktop_flags.output.is_none()
-    {
-      desktop_flags.output = Some(name);
+    if let Some(name) = app_config.name {
+      if desktop_flags.output.is_none() {
+        desktop_flags.output = Some(name.clone());
+      }
+      if desktop_flags.display_name.is_none() {
+        desktop_flags.display_name = Some(name);
+      }
     }
 
     if let Some(identifier) = app_config.identifier
@@ -588,6 +591,7 @@ async fn compile_desktop(
       create_linux_appimage(
         &bundle_path,
         &appimage_abs,
+        desktop_flags.display_name.as_deref(),
         desktop_flags.target.as_deref(),
       )?;
       appimage_abs
@@ -1875,18 +1879,11 @@ async fn package_linux_app_dir(
       "skipping .desktop file: {e} (desktop file IDs follow the same reverse-DNS rules as macOS bundle IDs)"
     );
   } else {
-    let desktop_entry = format!(
-      "[Desktop Entry]\n\
-       Type=Application\n\
-       Name={app_name}\n\
-       Exec={app_name}\n\
-       Icon=AppIcon\n\
-       StartupWMClass={desktop_id}\n\
-       Categories=Utility;\n",
-    );
+    let display_name =
+      desktop_flags.display_name.as_deref().unwrap_or(&app_name);
     std::fs::write(
       app_dir.join(format!("{desktop_id}.desktop")),
-      desktop_entry,
+      app_dir_desktop_entry(display_name, &app_name, &desktop_id),
     )?;
   }
 
@@ -1897,6 +1894,25 @@ async fn package_linux_app_dir(
   let _ = std::fs::remove_file(dylib_path);
 
   Ok(app_dir)
+}
+
+/// `.desktop` entry written inside the Linux app dir. `display_name` is the
+/// human-readable `Name=` (`desktop.app.name`), while `launcher` is the
+/// executable/app dir name derived from the output path.
+fn app_dir_desktop_entry(
+  display_name: &str,
+  launcher: &str,
+  desktop_id: &str,
+) -> String {
+  format!(
+    "[Desktop Entry]\n\
+     Type=Application\n\
+     Name={display_name}\n\
+     Exec={launcher}\n\
+     Icon=AppIcon\n\
+     StartupWMClass={desktop_id}\n\
+     Categories=Utility;\n",
+  )
 }
 
 /// Environment variable pointing at a local laufey checkout, used to bypass the
@@ -3645,6 +3661,7 @@ fn push_dir_contents_to_squashfs(
 fn create_linux_appimage(
   app_dir: &Path,
   appimage_path: &Path,
+  display_name: Option<&str>,
   target: Option<&str>,
 ) -> Result<(), AnyError> {
   use std::io::Cursor;
@@ -3654,6 +3671,7 @@ fn create_linux_appimage(
     .file_name()
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
+  let display_name = display_name.unwrap_or(&app_name);
 
   let runtime_elf = appimage_runtime_for_target(target)?;
 
@@ -3686,7 +3704,7 @@ fn create_linux_appimage(
   let desktop_entry = format!(
     "[Desktop Entry]\n\
      Type=Application\n\
-     Name={app_name}\n\
+     Name={display_name}\n\
      Exec={app_name}\n\
      Icon={app_name}\n\
      Categories=Utility;\n",
@@ -3787,9 +3805,12 @@ struct LinuxPackageMeta {
   /// Used as the package name, the `/usr/bin` symlink, and the icon/`.desktop`
   /// basenames.
   package: String,
-  /// Human display name (the staged app dir's name), used for `Name=` in the
-  /// `.desktop` entry and the package summary.
+  /// The staged app dir's name, which is also the launcher's file name
+  /// inside it. Used for the package summary and the `/usr/bin` symlink.
   app_name: String,
+  /// Human-readable name for `Name=` in the `.desktop` entry: the configured
+  /// `desktop.app.name`, falling back to `app_name`.
+  display_name: String,
   version: String,
   maintainer: String,
   summary: String,
@@ -3853,6 +3874,10 @@ fn linux_package_meta(
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
   let package = debian_package_name(&app_name);
+  let display_name = desktop_flags
+    .display_name
+    .clone()
+    .unwrap_or_else(|| app_name.clone());
   let identifier = desktop_flags
     .identifier
     .clone()
@@ -3863,6 +3888,7 @@ fn linux_package_meta(
     version: linux_package_version(config_version)?,
     package,
     app_name,
+    display_name,
     identifier,
   })
 }
@@ -3945,12 +3971,12 @@ fn system_desktop_entry(meta: &LinuxPackageMeta) -> String {
   format!(
     "[Desktop Entry]\n\
      Type=Application\n\
-     Name={app_name}\n\
+     Name={display_name}\n\
      Exec={package}\n\
      Icon={package}\n\
      StartupWMClass={identifier}\n\
      Categories=Utility;\n",
-    app_name = meta.app_name,
+    display_name = meta.display_name,
     package = meta.package,
     identifier = meta.identifier,
   )
@@ -7387,6 +7413,7 @@ def456  other.zip
       engine: Default::default(),
       all_targets: false,
       identifier: None,
+      display_name: None,
       deep_links: Vec::new(),
       codesign_identity: None,
       inspect_renderer: None,
@@ -7409,7 +7436,7 @@ def456  other.zip
     let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
     let appimage_path = tmp.path().join("MyApp.AppImage");
     let target = Some("x86_64-unknown-linux-gnu");
-    create_linux_appimage(&app_dir, &appimage_path, target).unwrap();
+    create_linux_appimage(&app_dir, &appimage_path, None, target).unwrap();
 
     let runtime_offset =
       appimage_runtime_for_target(target).unwrap().len() as u64;
@@ -8359,5 +8386,169 @@ def456  other.zip
     apply_desktop_config_to_flags(&mut flags, config);
     // Left unset; callers fall back to "webview" via unwrap_or("webview").
     assert_eq!(flags.backend.as_deref(), None);
+  }
+
+  // --- desktop.app.name as the Linux `.desktop` display name (#36776) ---
+
+  fn app_name_config(name: &str) -> DesktopConfig {
+    DesktopConfig {
+      app: Some(deno_config::deno_json::DesktopAppConfig {
+        name: Some(name.to_string()),
+        ..Default::default()
+      }),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn app_name_is_kept_as_display_name_with_explicit_output() {
+    let mut flags = DesktopFlags {
+      source_file: "report.ts".to_string(),
+      output: Some("./dist/aiuse.rpm".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, app_name_config("AI Usage"));
+    assert_eq!(flags.output.as_deref(), Some("./dist/aiuse.rpm"));
+    assert_eq!(flags.display_name.as_deref(), Some("AI Usage"));
+  }
+
+  #[test]
+  fn app_name_fills_output_and_display_name_without_output() {
+    let mut flags = DesktopFlags {
+      source_file: "report.ts".to_string(),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, app_name_config("AI Usage"));
+    assert_eq!(flags.output.as_deref(), Some("AI Usage"));
+    assert_eq!(flags.display_name.as_deref(), Some("AI Usage"));
+  }
+
+  #[test]
+  fn system_desktop_entry_uses_display_name_for_name_only() {
+    let mut flags = empty_desktop_flags();
+    flags.display_name = Some("AI Usage".to_string());
+    flags.identifier = Some("io.github.sigmasd.aiuse".to_string());
+
+    let meta =
+      linux_package_meta(Path::new("/tmp/dist/aiuse"), &flags, None).unwrap();
+    assert_eq!(
+      system_desktop_entry(&meta),
+      "[Desktop Entry]\n\
+       Type=Application\n\
+       Name=AI Usage\n\
+       Exec=aiuse\n\
+       Icon=aiuse\n\
+       StartupWMClass=io.github.sigmasd.aiuse\n\
+       Categories=Utility;\n",
+    );
+  }
+
+  #[test]
+  fn app_dir_desktop_entry_uses_display_name_for_name_only() {
+    assert_eq!(
+      app_dir_desktop_entry("AI Usage", "aiuse", "io.github.sigmasd.aiuse"),
+      "[Desktop Entry]\n\
+       Type=Application\n\
+       Name=AI Usage\n\
+       Exec=aiuse\n\
+       Icon=AppIcon\n\
+       StartupWMClass=io.github.sigmasd.aiuse\n\
+       Categories=Utility;\n",
+    );
+  }
+
+  #[test]
+  fn linux_desktop_entry_name_falls_back_to_app_dir_name() {
+    let meta = linux_package_meta(
+      Path::new("/tmp/dist/aiuse"),
+      &empty_desktop_flags(),
+      None,
+    )
+    .unwrap();
+    assert!(system_desktop_entry(&meta).contains("\nName=aiuse\n"));
+  }
+
+  #[test]
+  fn appimage_desktop_entry_uses_display_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "aiuse");
+    let appimage_path = tmp.path().join("aiuse.AppImage");
+    let target = Some("x86_64-unknown-linux-gnu");
+    create_linux_appimage(&app_dir, &appimage_path, Some("AI Usage"), target)
+      .unwrap();
+
+    let runtime_offset =
+      appimage_runtime_for_target(target).unwrap().len() as u64;
+    let appimage =
+      std::io::BufReader::new(std::fs::File::open(&appimage_path).unwrap());
+    let filesystem = backhand::FilesystemReader::from_reader_with_offset(
+      appimage,
+      runtime_offset,
+    )
+    .unwrap();
+    let mut desktop_entry = String::new();
+    for node in filesystem.files() {
+      if node.fullpath == Path::new("/aiuse.desktop")
+        && let backhand::InnerNode::File(file) = &node.inner
+      {
+        filesystem
+          .file(file)
+          .reader()
+          .read_to_string(&mut desktop_entry)
+          .unwrap();
+      }
+    }
+    assert!(
+      desktop_entry.contains("\nName=AI Usage\nExec=aiuse\nIcon=aiuse\n"),
+      "desktop entry:\n{desktop_entry}"
+    );
+  }
+
+  #[test]
+  fn deb_desktop_entry_uses_display_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "aiuse");
+    let deb = tmp.path().join("aiuse.deb");
+    let mut flags = empty_desktop_flags();
+    flags.display_name = Some("AI Usage".to_string());
+    create_linux_deb(
+      &app_dir,
+      &deb,
+      &flags,
+      Some("x86_64-unknown-linux-gnu"),
+      None,
+    )
+    .unwrap();
+
+    let bytes = std::fs::read(&deb).unwrap();
+    let data_tar_gz = {
+      let mut pos = 8;
+      let mut last = Vec::new();
+      while pos + 60 <= bytes.len() {
+        let header = &bytes[pos..pos + 60];
+        let size: usize = String::from_utf8_lossy(&header[48..58])
+          .trim()
+          .parse()
+          .unwrap();
+        last = bytes[pos + 60..pos + 60 + size].to_vec();
+        pos += 60 + size + (size % 2);
+      }
+      last
+    };
+    let data_tar = gunzip(&data_tar_gz);
+    let mut archive = tar::Archive::new(&data_tar[..]);
+    let mut desktop_entry = String::new();
+    for entry in archive.entries().unwrap() {
+      let mut entry = entry.unwrap();
+      if entry.path().unwrap().to_string_lossy()
+        == "usr/share/applications/aiuse.desktop"
+      {
+        entry.read_to_string(&mut desktop_entry).unwrap();
+      }
+    }
+    assert!(
+      desktop_entry.contains("\nName=AI Usage\nExec=aiuse\nIcon=aiuse\n"),
+      "desktop entry:\n{desktop_entry}"
+    );
   }
 }
