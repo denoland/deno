@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "denied": {
+      "args": "run main.mjs",
+      "output": "denied.out"
+    },
+    "granted": {
+      "args": "run --allow-read main.mjs",
+      "output": "granted.out"
+    }
+  }
+}
