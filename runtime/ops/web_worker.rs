@@ -26,8 +26,10 @@ deno_core::extension!(
   ops = [
     op_worker_post_message,
     op_worker_post_message_raw,
+    op_worker_post_stdio_message_raw,
     op_worker_recv_message,
     op_worker_recv_message_sync,
+    op_worker_recv_stdio_message,
     op_worker_maybe_wait_for_debugger,
     // Notify host that guest worker closes.
     op_worker_close,
@@ -62,6 +64,21 @@ fn op_worker_post_message_raw(
   Ok(())
 }
 
+#[op2]
+fn op_worker_post_stdio_message_raw(
+  state: &mut OpState,
+  #[buffer(detach)] data: JsBuffer,
+) -> Result<(), MessagePortError> {
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  let detached = DetachedBuffer::from_v8slice(data.into_parts());
+  if let Some(stdio_port) = &handle.stdio_port
+    && let Some(tx) = &*stdio_port.tx.borrow()
+  {
+    tx.send((detached, vec![])).ok();
+  }
+  Ok(())
+}
+
 #[op2(async(lazy), fast)]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
@@ -72,6 +89,23 @@ async fn op_worker_recv_message(
   };
   handle
     .port
+    .recv(state.clone())
+    .or_cancel(handle.cancel)
+    .await?
+}
+
+#[op2(async(lazy), fast)]
+async fn op_worker_recv_stdio_message(
+  state: Rc<RefCell<OpState>>,
+) -> Result<Option<RecvMessageData>, MessagePortError> {
+  let handle = {
+    let state = state.borrow();
+    state.borrow::<WebWorkerInternalHandle>().clone()
+  };
+  let Some(stdio_port) = handle.stdio_port else {
+    return Ok(None);
+  };
+  stdio_port
     .recv(state.clone())
     .or_cancel(handle.cancel)
     .await?
