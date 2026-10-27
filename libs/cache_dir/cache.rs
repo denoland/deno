@@ -84,6 +84,78 @@ impl<'a> Checksum<'a> {
       Ok(())
     }
   }
+
+  /// Verify a remote module against a lockfile hash.
+  ///
+  /// `deno_graph` writes remote lockfile hashes from the charset-decoded
+  /// source text (see `ModuleSourceAndInfo::source_bytes`), while the HTTP
+  /// cache stores the original response bytes. Hash the same decoded bytes
+  /// here so a Latin-1 (or other non-UTF-8) `Content-Type` charset does not
+  /// cause a false integrity failure on a subsequent `--frozen` load.
+  pub fn check_remote(
+    &self,
+    url: &Url,
+    maybe_content_type: Option<&str>,
+    content: &[u8],
+  ) -> Result<(), Box<ChecksumIntegrityError>> {
+    let bytes = remote_lock_integrity_bytes(url, maybe_content_type, content);
+    self.check(url, bytes.as_ref())
+  }
+}
+
+/// Bytes that `deno_graph` hashes when writing a remote lockfile entry.
+fn remote_lock_integrity_bytes<'a>(
+  url: &Url,
+  maybe_content_type: Option<&str>,
+  content: &'a [u8],
+) -> Cow<'a, [u8]> {
+  use deno_media_type::MediaType;
+  use deno_media_type::encoding::BOM_CHAR;
+  use deno_media_type::encoding::convert_to_utf8;
+  use deno_media_type::encoding::detect_charset;
+  use deno_media_type::resolve_media_type_and_charset_from_content_type;
+
+  let (media_type, maybe_charset) =
+    resolve_media_type_and_charset_from_content_type(url, maybe_content_type);
+
+  // Only the media types that deno_graph runs through `new_source_with_text`
+  // are charset-decoded before the lockfile hash is taken.
+  let is_text = matches!(
+    media_type,
+    MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Jsx
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Tsx
+      | MediaType::Cjs
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+  );
+
+  if !is_text {
+    return Cow::Borrowed(content);
+  }
+
+  let charset = maybe_charset.unwrap_or_else(|| detect_charset(url, content));
+  // Mirrors `decode_arc_source_detail` without requiring `std::sync::Arc`.
+  match convert_to_utf8(content, charset) {
+    Ok(Cow::Borrowed(text)) => match text.strip_prefix(BOM_CHAR) {
+      Some(stripped) => Cow::Owned(stripped.as_bytes().to_vec()),
+      None => Cow::Borrowed(content),
+    },
+    Ok(Cow::Owned(mut text)) => {
+      if text.starts_with(BOM_CHAR) {
+        text.drain(..BOM_CHAR.len_utf8());
+      }
+      Cow::Owned(text.into_bytes())
+    }
+    // If decoding fails, fall back to the raw bytes (previous behaviour).
+    Err(_) => Cow::Borrowed(content),
+  }
 }
 
 /// Turn provided `url` into a hashed filename.
@@ -348,5 +420,54 @@ mod test {
       url: "https://deno.land/std/http/file_server.ts".to_string(),
     };
     assert_eq!(data, expected);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn remote_lock_checksum_matches_decoded_latin1() {
+    // "export default \"café\";\n" as Latin-1 bytes (é = 0xE9)
+    let source = "export default \"café\";\n";
+    let latin1: Vec<u8> = source.chars().map(|c| c as u8).collect();
+    let utf8 = source.as_bytes();
+    assert_ne!(checksum(&latin1), checksum(utf8));
+
+    let url = Url::parse("http://127.0.0.1/mod.js").unwrap();
+    let expected_hash = checksum(utf8);
+    let expected = Checksum::new(&expected_hash);
+
+    // Raw bytes must fail (old behaviour).
+    assert!(expected.check(&url, &latin1).is_err());
+
+    // Charset-aware check matches the lockfile write path.
+    assert!(
+      expected
+        .check_remote(
+          &url,
+          Some("application/javascript; charset=iso-8859-1"),
+          &latin1,
+        )
+        .is_ok()
+    );
+  }
+
+  #[test]
+  fn remote_lock_checksum_utf8_unchanged() {
+    let content = b"export default 1;\n";
+    let url = Url::parse("http://example.com/mod.js").unwrap();
+    let expected_hash = checksum(content);
+    let expected = Checksum::new(&expected_hash);
+    assert!(
+      expected
+        .check_remote(
+          &url,
+          Some("application/javascript; charset=utf-8"),
+          content
+        )
+        .is_ok()
+    );
   }
 }
