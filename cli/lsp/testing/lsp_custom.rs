@@ -164,7 +164,21 @@ pub enum TestRunProgressMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     location: Option<lsp::Location>,
   },
+  /// Line coverage collected while running a coverage test profile.
+  Coverage {
+    coverage: Vec<TestCoverage>,
+  },
   End,
+}
+
+/// The line coverage for a source document. Line numbers are zero-based, as
+/// required by the editor APIs that consume this notification.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverage {
+  pub text_document: lsp::TextDocumentIdentifier,
+  pub covered_lines: Vec<u32>,
+  pub uncovered_lines: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
