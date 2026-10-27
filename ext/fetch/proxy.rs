@@ -662,6 +662,11 @@ where
               None if is_https => 443,
               _ => 80,
             };
+            // `Socks5Stream` opens its own TCP connection, bypassing
+            // `PermissionedHttpConnector`, so unlike direct and HTTP-proxied
+            // connections it does not get the TCP keepalive settings from
+            // `dns.rs` and a silently dead pooled connection is only noticed
+            // once TCP gives up retransmitting.
             let io = if let Some((user, pass)) = auth {
               Socks5Stream::connect_with_password(
                 socks_addr,
