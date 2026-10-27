@@ -727,6 +727,7 @@ impl ServerWebSocket {
       return Ok(());
     }
     ws.write_frame(frame).await?;
+    ws.flush().await?;
     Ok(())
   }
 }
@@ -1009,10 +1010,10 @@ pub async fn op_ws_next_event(
   }
 
   let mut ws = RcRef::map(&resource, |r| &r.ws_read).borrow_mut().await;
-  let writer = RcRef::map(&resource, |r| &r.ws_write);
+  let send_resource = resource.clone();
   let mut sender = move |frame| {
-    let writer = writer.clone();
-    async move { writer.borrow_mut().await.write_frame(frame).await }
+    let resource = send_resource.clone();
+    async move { resource.write_frame(resource.reserve_lock(), frame).await }
   };
   let cancel = resource.read_cancel.clone();
   loop {
@@ -1114,6 +1115,97 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  deno_core::extension!(websocket_flush_test, ops = [op_ws_next_event]);
+
+  async fn buffered_websocket() -> (ServerWebSocket, tokio::io::DuplexStream) {
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+
+    let (client, mut peer) = tokio::io::duplex(262144);
+    let client = tokio::io::BufStream::with_capacity(4096, 262144, client);
+    let request = Request::builder()
+      .method(Method::GET)
+      .uri("/")
+      .header(HOST, "localhost")
+      .header(UPGRADE, "websocket")
+      .header(CONNECTION, "Upgrade")
+      .header(SEC_WEBSOCKET_VERSION, "13")
+      .header(SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==")
+      .body(http_body_util::Empty::<Bytes>::new())
+      .unwrap();
+    let accept = async {
+      let mut request = Vec::new();
+      while !request.ends_with(b"\r\n\r\n") {
+        request.push(peer.read_u8().await.unwrap());
+      }
+      peer.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n").await.unwrap();
+    };
+    let (connected, ()) =
+      tokio::join!(handshake_connection(request, client), accept);
+    (ServerWebSocket::new(connected.unwrap().0), peer)
+  }
+
+  #[tokio::test]
+  async fn websocket_write_flushes_buffered_transport() {
+    use deno_core::futures::FutureExt;
+
+    for size in [32, 8192, 131072] {
+      let (resource, peer) = buffered_websocket().await;
+      let resource = Rc::new(resource);
+      resource
+        .write_frame(
+          resource.reserve_lock(),
+          Frame::binary(vec![7; size].into()),
+        )
+        .await
+        .unwrap();
+      let mut peer = WebSocket::after_handshake(peer, Role::Server);
+      // The peer is ready throughout. Completing the send must drain the
+      // buffered transport, without requiring another message or a timer.
+      let frame = peer
+        .read_frame()
+        .now_or_never()
+        .expect("WebSocket send completed before flushing the buffered frame")
+        .unwrap();
+      assert_eq!(frame.opcode, OpCode::Binary);
+      assert_eq!(&*frame.payload, vec![7; size].as_slice());
+    }
+  }
+
+  #[tokio::test]
+  async fn websocket_pong_flushes_buffered_transport() {
+    use deno_core::futures::FutureExt;
+    use tokio::io::AsyncWriteExt;
+
+    let (resource, mut peer) = buffered_websocket().await;
+    let mut runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+      extensions: vec![websocket_flush_test::init()],
+      ..Default::default()
+    });
+    let rid = runtime.op_state().borrow_mut().resource_table.add(resource);
+    // The following binary frame lets next_event finish after replying to
+    // the ping, so the pending pong can be checked without a timeout.
+    peer
+      .write_all(&[0x89, 4, b'p', b'i', b'n', b'g', 0x82, 1, 7])
+      .await
+      .unwrap();
+    runtime
+      .execute_script(
+        "test.js",
+        format!("Deno.core.ops.op_ws_next_event({rid})"),
+      )
+      .unwrap();
+    runtime.run_event_loop(Default::default()).await.unwrap();
+    let mut peer = WebSocket::after_handshake(peer, Role::Server);
+    let frame = peer
+      .read_frame()
+      .now_or_never()
+      .expect("automatic pong remained buffered after reading the next message")
+      .unwrap();
+    assert_eq!(frame.opcode, OpCode::Pong);
+    assert_eq!(&*frame.payload, b"ping");
+  }
 
   /// Returns the size of the future produced by `f` without constructing any
   /// arguments or running it. `size_of_val` on such a future would require
