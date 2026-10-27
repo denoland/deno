@@ -89,6 +89,55 @@ Deno.test(function textDecoder2() {
   assertEquals(decoder.decode(fixture), "𝓽𝓮𝔁𝓽");
 });
 
+Deno.test(function textDecoderStreamingBOMAfterASCII() {
+  for (const fatal of [false, true]) {
+    for (const ignoreBOM of [false, true]) {
+      for (const text of ["a\uFEFFb", "\uFEFFa\uFEFFb"]) {
+        const bytes = new TextEncoder().encode(text);
+        const expected = ignoreBOM ? text : text.replace(/^\uFEFF/, "");
+        for (let split = 0; split <= bytes.length; split++) {
+          for (const stream of [false, true]) {
+            const decoder = new TextDecoder("utf-8", { fatal, ignoreBOM });
+            assertEquals(
+              decoder.decode(bytes.subarray(0, split), { stream: true }) +
+                decoder.decode(bytes.subarray(split), { stream }) +
+                decoder.decode(),
+              expected,
+              `fatal=${fatal}, ignoreBOM=${ignoreBOM}, split=${split}, stream=${stream}`,
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
+Deno.test(function textDecoderStreamingBOMResetsAfterASCII() {
+  const decoder = new TextDecoder();
+  const ascii = new Uint8Array([0x61]);
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
+  assertEquals(decoder.decode(ascii, { stream: true }), "a");
+  assertEquals(decoder.decode(new Uint8Array(), { stream: true }), "");
+  assertEquals(decoder.decode(ascii, { stream: true }), "a");
+  assertEquals(decoder.decode(bom), "\uFEFF");
+  assertEquals(decoder.decode(bom), "");
+  assertEquals(decoder.decode(ascii, { stream: true }), "a");
+  assertEquals(decoder.decode(), "");
+  assertEquals(decoder.decode(bom, { stream: true }), "");
+  assertEquals(decoder.decode(bom, { stream: true }), "\uFEFF");
+  assertEquals(decoder.decode(), "");
+});
+
+Deno.test(async function textDecoderStreamBOMAfterASCII() {
+  const stream = ReadableStream.from([
+    new Uint8Array([0x61]),
+    new Uint8Array([0xef]),
+    new Uint8Array([0xbb, 0xbf, 0x62]),
+  ]).pipeThrough(new TextDecoderStream());
+  const chunks = await Array.fromAsync(stream);
+  assertEquals(chunks.join(""), "a\uFEFFb");
+});
+
 // ignoreBOM is tested through WPT
 
 Deno.test(function textDecoderASCII() {
