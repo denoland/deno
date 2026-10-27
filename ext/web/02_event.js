@@ -961,14 +961,18 @@ function getDefaultTargetData() {
 }
 
 function addEventListenerOptionsConverter(V, prefix) {
+  // `signal` is always an own property of the returned object, so that
+  // `addEventListener` never picks up a `signal` inherited from a polluted
+  // `Object.prototype` when no signal was passed.
   if (webidl.type(V) !== "Object") {
-    return { capture: !!V, once: false, passive: false };
+    return { capture: !!V, once: false, passive: false, signal: undefined };
   }
 
   const options = {
     capture: !!V.capture,
     once: !!V.once,
     passive: !!V.passive,
+    signal: undefined,
     // This field exists for simulating Node.js behavior, implemented in https://github.com/nodejs/node/commit/bcd35c334ec75402ee081f1c4da128c339f70c24
     // Some internal event listeners in Node.js can ignore `e.stopImmediatePropagation()` calls
     // from the earlier event listeners.
