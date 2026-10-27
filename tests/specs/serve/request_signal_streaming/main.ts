@@ -1,7 +1,5 @@
-// Request.signal must not abort while the response body is still streaming.
-// (In legacy-abort mode the signal aborts when the request completes; that
-// must happen only after the response body has been fully written, otherwise
-// proxied bodies tied to the signal get torn down mid-stream.)
+// Request.signal must not abort while the response body is still streaming,
+// nor after the request completes successfully.
 let abortedDuringStream = false;
 const abortedAfterCompletion = Promise.withResolvers<void>();
 
@@ -35,7 +33,7 @@ const text = await res.text();
 console.log("body:", text);
 console.log("aborted during stream:", abortedDuringStream);
 
-// Legacy-abort mode still aborts the signal, but only after completion.
+// The signal must not abort on a successfully completed request.
 let timer: number;
 const result = await Promise.race([
   abortedAfterCompletion.promise.then(() => true),
