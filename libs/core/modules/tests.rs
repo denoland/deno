@@ -3492,3 +3492,64 @@ async fn test_dyn_import_async_graph_with_lazy_esm_no_stall() {
   let v = g.get(scope, key.into()).unwrap();
   assert!(v.is_true(), "main.js await import never resolved");
 }
+
+#[tokio::test]
+async fn test_dynamic_import_waits_for_statically_evaluating_tla_graph() {
+  fn read_bool(runtime: &mut crate::JsRuntime, source: &'static str) -> bool {
+    let value = runtime.execute_script("file:///check.js", source).unwrap();
+    crate::scope!(scope, runtime);
+    crate::v8::Local::new(scope, value).is_true()
+  }
+  for import_dependency in [false, true] {
+    let main = crate::ModuleSpecifier::parse("file:///main.js").unwrap();
+    let dependency =
+      crate::ModuleSpecifier::parse("file:///dependency.js").unwrap();
+    let loader = crate::StaticModuleLoader::new([
+      (main.clone(), "export { value } from './dependency.js';"),
+      (
+        dependency.clone(),
+        "globalThis.executions = (globalThis.executions || 0) + 1; await new Promise(resolve => globalThis.release = resolve); export const value = 42;",
+      ),
+    ]);
+    let mut runtime = crate::JsRuntime::new(crate::RuntimeOptions {
+      module_loader: Some(std::rc::Rc::new(loader)),
+      ..Default::default()
+    });
+    // The embedder can resolve TLA from outside Deno's event loop.
+    let host = runtime.op_state().borrow().external_ops_tracker.clone();
+    host.ref_op();
+    let id = runtime.load_main_es_module(&main).await.unwrap();
+    let evaluation = runtime.mod_evaluate(id);
+    let target = if import_dependency { dependency } else { main }.to_string();
+    runtime.execute_script("file:///launch.js", format!(
+      "globalThis.settled = false; import({target:?}).then(m => {{ globalThis.firstModule = m; globalThis.settled = true; }});"
+    )).unwrap();
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    for _ in 0..4 {
+      let _ = runtime
+        .poll_event_loop(&mut context, crate::PollEventLoopOptions::default());
+    }
+    assert!(
+      !read_bool(&mut runtime, "settled"),
+      "import resolved before TLA: dependency={import_dependency}"
+    );
+    runtime
+      .execute_script("file:///release.js", "release();")
+      .unwrap();
+    host.unref_op();
+    runtime.run_event_loop(Default::default()).await.unwrap();
+    evaluation.await.unwrap();
+    assert!(read_bool(
+      &mut runtime,
+      "settled && firstModule.value === 42"
+    ));
+    runtime
+      .execute_script(
+        "file:///cached.js",
+        format!("import({target:?}).then(m => globalThis.cachedSame = m === firstModule);"),
+      )
+      .unwrap();
+    runtime.run_event_loop(Default::default()).await.unwrap();
+    assert!(read_bool(&mut runtime, "cachedSame && executions === 1"));
+  }
+}
