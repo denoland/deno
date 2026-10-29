@@ -2025,7 +2025,6 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
- "p256",
  "pathdiff",
  "percent-encoding",
  "phf 0.11.2",
@@ -2045,7 +2044,6 @@ dependencies = [
  "serde_repr",
  "sha2",
  "shlex",
- "spki 0.7.3",
  "strsim",
  "sys_traits",
  "tar",
@@ -2067,7 +2065,6 @@ dependencies = [
  "uuid",
  "walkdir",
  "wasm_dep_analyzer",
- "wasmparser",
  "which 8.0.0",
  "windows-sys 0.59.0",
  "winres",
@@ -5298,7 +5295,6 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.1.4",
- "serde",
 ]
 
 [[package]]
@@ -11528,7 +11524,6 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
- "serde",
 ]
 
 [[package]]

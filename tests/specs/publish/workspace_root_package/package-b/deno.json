@@ -1,5 +1,0 @@
-{
-  "name": "@scope/package-b",
-  "version": "0.1.0",
-  "exports": "./mod.ts"
-}

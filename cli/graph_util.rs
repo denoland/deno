@@ -498,10 +498,6 @@ impl ModuleGraphCreator {
     }
   }
 
-  pub fn module_graph_builder(&self) -> &Arc<ModuleGraphBuilder> {
-    &self.module_graph_builder
-  }
-
   pub async fn create_graph(
     &self,
     graph_kind: GraphKind,
