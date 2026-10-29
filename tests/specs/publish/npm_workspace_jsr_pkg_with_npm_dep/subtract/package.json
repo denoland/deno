@@ -1,8 +1,0 @@
-{
-  "name": "subtract",
-  "version": "1.0.0",
-  "dependencies": {
-    "add-dep": "npm:add@1.0.0",
-    "add": "workspace:^1.0.0"
-  }
-}

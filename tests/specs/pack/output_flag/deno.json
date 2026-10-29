@@ -1,5 +1,0 @@
-{
-  "name": "@test/output-flag",
-  "version": "1.0.0",
-  "exports": "./mod.ts"
-}

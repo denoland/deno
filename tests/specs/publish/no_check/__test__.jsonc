@@ -1,4 +1,0 @@
-{
-  "args": "publish --token 'sadfasdf' --no-check",
-  "output": "successful_no_check.out"
-}

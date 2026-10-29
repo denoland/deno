@@ -1,5 +1,0 @@
-{
-  "name": "@deno/no-token",
-  "version": "1.0.0",
-  "exports": "./mod.ts"
-}

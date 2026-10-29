@@ -15,7 +15,6 @@ mod node;
 mod node_compat_shim;
 mod npm;
 mod ops;
-mod registry;
 mod resolver;
 mod standalone;
 mod task_runner;
@@ -526,10 +525,10 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
-      tools::publish::publish(Arc::new(flags), publish_flags).await
+      tools::jsr_cli::publish(Arc::new(flags), publish_flags).await
     }),
     DenoSubcommand::Pack(pack_flags) => spawn_subcommand(async {
-      tools::pack::pack(flags.into(), pack_flags).await
+      tools::jsr_cli::pack(Arc::new(flags), pack_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;

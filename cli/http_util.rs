@@ -534,17 +534,6 @@ where
   Ok(s.into())
 }
 
-pub async fn body_to_json<B, D>(body: B) -> Result<D, AnyError>
-where
-  B: http_body::Body,
-  AnyError: From<B::Error>,
-  D: serde::de::DeserializeOwned,
-{
-  let bytes = body.collect().await?.to_bytes();
-  let val = deno_core::serde_json::from_slice(&bytes)?;
-  Ok(val)
-}
-
 pub struct RequestBuilder {
   client: deno_fetch::Client,
   req: http::Request<deno_fetch::ReqBody>,
