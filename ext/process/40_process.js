@@ -186,6 +186,21 @@ const kArgv0 = Symbol("argv0");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
+function envEntries(env) {
+  const entries = ObjectEntries(env);
+  for (let i = 0; i < entries.length; ++i) {
+    const { 0: key, 1: value } = entries[i];
+    if (typeof value !== "string") {
+      throw new TypeError(
+        `Cannot set environment variable '${key}': value must be a string, received ${
+          value === null ? "null" : typeof value
+        }`,
+      );
+    }
+  }
+  return entries;
+}
+
 function spawnChildInner(command, apiName, {
   args = [],
   cwd = undefined,
@@ -211,7 +226,7 @@ function spawnChildInner(command, apiName, {
     cwd: pathFromURL(cwd),
     clearEnv,
     argv0,
-    env: ObjectEntries(env),
+    env: envEntries(env),
     uid,
     gid,
     stdin,
@@ -661,7 +676,7 @@ function spawnInner(command, {
     cwd: pathFromURL(cwd),
     clearEnv,
     argv0: undefined,
-    env: ObjectEntries(env),
+    env: envEntries(env),
     uid,
     gid,
     stdin,
@@ -752,7 +767,7 @@ function spawnSyncInner(command, {
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
     clearEnv,
-    env: ObjectEntries(env),
+    env: envEntries(env),
     uid,
     gid,
     stdin,
