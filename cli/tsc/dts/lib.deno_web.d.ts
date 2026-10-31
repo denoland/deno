@@ -1369,6 +1369,8 @@ declare var MessageEvent: typeof globalThis extends
 
 /** @category Events */
 type Transferable =
+  | OffscreenCanvas
+  | ImageBitmap
   | MessagePort
   | ArrayBuffer
   | ReadableStream

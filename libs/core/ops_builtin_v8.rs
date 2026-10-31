@@ -730,15 +730,6 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
     object: v8::Local<'s, v8::Object>,
     value_serializer: &dyn v8::ValueSerializerHelper,
   ) -> Option<bool> {
-    if let Some(host_object_brand) = self.host_object_brand {
-      let value = object.get(scope, host_object_brand.into())?;
-      if let Ok(func) = value.try_cast::<v8::Function>() {
-        let result = func.call(scope, object.into(), &[])?;
-        value_serializer.write_uint32(u32::MAX);
-        value_serializer.write_value(scope.get_current_context(), result);
-        return Some(true);
-      }
-    }
     if let Some(host_objects) = self.host_objects {
       for i in 0..host_objects.length() {
         let value = host_objects.get_index(scope, i).unwrap();
@@ -746,6 +737,15 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
           value_serializer.write_uint32(i);
           return Some(true);
         }
+      }
+    }
+    if let Some(host_object_brand) = self.host_object_brand {
+      let value = object.get(scope, host_object_brand.into())?;
+      if let Ok(func) = value.try_cast::<v8::Function>() {
+        let result = func.call(scope, object.into(), &[])?;
+        value_serializer.write_uint32(u32::MAX);
+        value_serializer.write_value(scope.get_current_context(), result);
+        return Some(true);
       }
     }
     let message = v8::String::new(scope, "Unsupported object type").unwrap();

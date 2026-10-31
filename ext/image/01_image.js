@@ -1,7 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";
+import {
+  ImageBitmap,
+  op_create_image_bitmap,
+  op_image_bitmap_from_clone_data,
+  op_image_bitmap_receive,
+  op_image_bitmap_transfer,
+} from "ext:core/ops";
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
@@ -11,7 +17,9 @@ const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const { sniffImage } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const {
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteOffset,
@@ -107,6 +115,36 @@ webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
 
 const ImageBitmapPrototype = ImageBitmap.prototype;
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
+const bitmapData = SymbolFor("Deno_bitmapData");
+const getWidth =
+  ObjectGetOwnPropertyDescriptor(ImageBitmapPrototype, "width").get;
+const getHeight =
+  ObjectGetOwnPropertyDescriptor(ImageBitmapPrototype, "height").get;
+const imageBitmapGetData = ImageBitmapPrototype[bitmapData];
+ObjectDefineProperty(ImageBitmapPrototype, core.hostObjectBrand, {
+  __proto__: null,
+  value: function () {
+    const width = ReflectApply(getWidth, this, []);
+    const height = ReflectApply(getHeight, this, []);
+    if (width === 0 || height === 0) {
+      throw new DOMException("ImageBitmap is detached", "DataCloneError");
+    }
+    return {
+      type: "ImageBitmap",
+      width,
+      height,
+      data: ReflectApply(imageBitmapGetData, this, []),
+    };
+  },
+});
+core.registerCloneableResource("ImageBitmap", (data) => {
+  return op_image_bitmap_from_clone_data(data.width, data.height, data.data);
+});
+core.registerTransferableResource(
+  "ImageBitmap",
+  (bitmap) => op_image_bitmap_transfer(bitmap),
+  (rid) => op_image_bitmap_receive(rid),
+);
 ObjectDefineProperty(ImageBitmapPrototype, privateCustomInspect, {
   __proto__: null,
   value(inspect, inspectOptions) {
