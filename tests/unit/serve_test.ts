@@ -4481,6 +4481,59 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCompletedRejectsWhenStreamingResponseFails() {
+    const { promise, resolve } = Promise.withResolvers<boolean>();
+    const { finished, abort } = await makeServer((_req, info) => {
+      info.completed.then(() => resolve(true), () => resolve(false));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("chunk"));
+            controller.error(new Error("stream failed"));
+          },
+        }),
+      );
+    });
+
+    await fetch(`http://localhost:${servePort}`).then((response) =>
+      response.body?.cancel()
+    ).catch(() => {});
+    assertEquals(false, await promise);
+    abort();
+    await finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCompletedRejectsWhenClientDisconnectsMidStream() {
+    const { promise, resolve } = Promise.withResolvers<boolean>();
+    const { finished, abort } = await makeServer((_req, info) => {
+      info.completed.then(() => resolve(true), () => resolve(false));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("chunk"));
+          },
+        }),
+      );
+    });
+    const conn = await Deno.connect({ port: servePort });
+    await conn.write(
+      new TextEncoder().encode("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+    );
+    const response = new Uint8Array(1024);
+    await conn.read(response);
+    conn.close();
+
+    assertEquals(false, await promise);
+    abort();
+    await finished;
+  },
+);
+
 // Regression test for https://github.com/denoland/deno/issues/23537
 Deno.test(
   { permissions: { read: true, net: true } },
