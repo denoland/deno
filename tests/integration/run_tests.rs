@@ -2019,6 +2019,68 @@ fn deno_no_prompt_environment_variable() {
 }
 
 #[test]
+fn utime_submillisecond_precision() {
+  use std::time::Duration;
+  use std::time::UNIX_EPOCH;
+
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    include_str!("../testdata/run/utime_submillisecond.ts"),
+  );
+
+  for (kind, atime, mtime, tolerance) in [
+    (
+      "number",
+      Duration::new(1_600_000_000, 765_432_000),
+      Duration::new(1_700_000_000, 123_456_000),
+      // Allow floating-point error and the 100ns resolution of NTFS, while
+      // requiring precision finer than a microsecond.
+      Duration::from_nanos(999),
+    ),
+    (
+      "date",
+      Duration::new(1_600_000_000, 765_000_000),
+      Duration::new(1_700_000_000, 123_000_000),
+      Duration::ZERO,
+    ),
+  ] {
+    for api in [
+      "deno_sync",
+      "deno_async",
+      "file_sync",
+      "file_async",
+      "node_sync",
+      "node_callback",
+      "node_promise",
+    ] {
+      context
+        .new_command()
+        .args_vec(["run", "--allow-write", "main.ts", api, kind])
+        .run()
+        .skip_output_check()
+        .assert_exit_code(0);
+
+      // Deno.stat also truncates times to milliseconds, so inspect the actual
+      // filesystem metadata rather than reading back through the JS API.
+      let metadata =
+        std::fs::metadata(temp_dir.path().join("file.txt")).unwrap();
+      for (name, actual, expected) in [
+        ("atime", metadata.accessed().unwrap(), atime),
+        ("mtime", metadata.modified().unwrap(), mtime),
+      ] {
+        let actual = actual.duration_since(UNIX_EPOCH).unwrap();
+        assert!(
+          actual.abs_diff(expected) <= tolerance,
+          "{api} {kind} {name}: expected {expected:?}, got {actual:?}"
+        );
+      }
+    }
+  }
+}
+
+#[test]
 fn running_declaration_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
