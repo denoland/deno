@@ -7570,6 +7570,79 @@ fn escape_and_split_commas_test() {
 }
 
 #[test]
+fn path_permission_flags_escape_commas() {
+  for flag in [
+    "--allow-read",
+    "-R",
+    "--deny-read",
+    "--ignore-read",
+    "--allow-write",
+    "-W",
+    "--deny-write",
+    "--allow-ffi",
+    "--deny-ffi",
+  ] {
+    for (value, expected) in [
+      ("foo", svec!["foo"]),
+      ("foo,bar", svec!["foo", "bar"]),
+      ("foo,,bar,baz", svec!["foo,bar", "baz"]),
+      (",,foo", svec![",foo"]),
+      ("foo,,", svec!["foo,"]),
+      ("foo,,,,", svec!["foo,,"]),
+      ("foo,,,bar", svec!["foo,", "bar"]),
+      ("foo,,,,bar", svec!["foo,,bar"]),
+      ("資料,,data", svec!["資料,data"]),
+    ] {
+      let flags = flags_from_vec(svec![
+        "deno",
+        "run",
+        format!("{flag}={value}"),
+        format!("{flag}=other,,path,plain"),
+        "script.ts"
+      ])
+      .unwrap();
+      let actual = match flag {
+        "--allow-read" | "-R" => flags.permissions.allow_read,
+        "--deny-read" => flags.permissions.deny_read,
+        "--ignore-read" => flags.permissions.ignore_read,
+        "--allow-write" | "-W" => flags.permissions.allow_write,
+        "--deny-write" => flags.permissions.deny_write,
+        "--allow-ffi" => flags.permissions.allow_ffi,
+        "--deny-ffi" => flags.permissions.deny_ffi,
+        _ => unreachable!(),
+      };
+      let mut expected = expected;
+      expected.extend(svec!["other,path", "plain"]);
+      assert_eq!(actual, Some(expected), "{flag}={value}");
+    }
+  }
+}
+
+#[test]
+fn path_permission_flags_reject_empty_values() {
+  for flag in [
+    "--allow-read",
+    "--deny-read",
+    "--ignore-read",
+    "--allow-write",
+    "--deny-write",
+    "--allow-ffi",
+    "--deny-ffi",
+  ] {
+    for value in ["", ",", ",foo", "foo,", "foo,,,"] {
+      let err = flags_from_vec(svec![
+        "deno",
+        "run",
+        format!("{flag}={value}"),
+        "script.ts"
+      ])
+      .unwrap_err();
+      assert_eq!(err.kind, CliErrorKind::InvalidValue, "{flag}={value}");
+    }
+  }
+}
+
+#[test]
 fn net_flag_with_url() {
   let r = flags_from_vec(svec![
     "deno",

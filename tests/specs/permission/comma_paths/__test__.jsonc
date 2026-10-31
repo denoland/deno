@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "allow": {
+      "args": "run --no-config --no-prompt --allow-read=file,,with,,commas.txt,plain.txt --allow-write=file,,with,,commas.txt,plain.txt main.ts",
+      "output": "granted.out"
+    },
+    "repeated_short_flags": {
+      "args": "run --no-config --no-prompt -R=file,,with,,commas.txt -R=plain.txt -W=file,,with,,commas.txt -W=plain.txt main.ts",
+      "output": "granted.out"
+    },
+    "deny": {
+      "args": "run --no-config --no-prompt --allow-read=file,,with,,commas.txt,plain.txt --allow-write=file,,with,,commas.txt,plain.txt --deny-read=file,,with,,commas.txt --deny-write=file,,with,,commas.txt main.ts",
+      "output": "denied.out"
+    }
+  }
+}

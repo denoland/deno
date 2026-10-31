@@ -497,7 +497,7 @@ fn runtime_args_parse(
   compile_args_parse(result, flags);
   cached_only_arg_parse(result, flags);
   if include_perms {
-    permission_args_parse(result, flags);
+    permission_args_parse(result, flags)?;
   }
   if include_inspector {
     inspect_arg_parse(result, flags)?;
@@ -534,7 +534,10 @@ fn expand_net_list(entries: Vec<String>) -> Vec<String> {
   out
 }
 
-fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
+fn permission_args_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   if result.contains("permission-set") {
     flags.permission_set =
       Some(result.get_one("permission-set").unwrap_or("").to_string());
@@ -551,11 +554,24 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
     };
   }
 
-  perm_flag!("allow-read", flags.permissions.allow_read);
-  perm_flag!("deny-read", flags.permissions.deny_read);
-  perm_flag!("ignore-read", flags.permissions.ignore_read);
-  perm_flag!("allow-write", flags.permissions.allow_write);
-  perm_flag!("deny-write", flags.permissions.deny_write);
+  // Path lists must retain doubled commas until escape parsing.
+  macro_rules! path_perm_flag {
+    ($name:expr, $field:expr) => {
+      if let Some(values) = result.get_many($name) {
+        let mut paths = Vec::new();
+        for value in values {
+          paths.extend(escape_and_split_commas(value.to_string())?);
+        }
+        $field = Some(paths);
+      }
+    };
+  }
+
+  path_perm_flag!("allow-read", flags.permissions.allow_read);
+  path_perm_flag!("deny-read", flags.permissions.deny_read);
+  path_perm_flag!("ignore-read", flags.permissions.ignore_read);
+  path_perm_flag!("allow-write", flags.permissions.allow_write);
+  path_perm_flag!("deny-write", flags.permissions.deny_write);
   perm_flag!("allow-net", flags.permissions.allow_net);
   perm_flag!("deny-net", flags.permissions.deny_net);
 
@@ -573,8 +589,8 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
   perm_flag!("deny-run", flags.permissions.deny_run);
   perm_flag!("allow-sys", flags.permissions.allow_sys);
   perm_flag!("deny-sys", flags.permissions.deny_sys);
-  perm_flag!("allow-ffi", flags.permissions.allow_ffi);
-  perm_flag!("deny-ffi", flags.permissions.deny_ffi);
+  path_perm_flag!("allow-ffi", flags.permissions.allow_ffi);
+  path_perm_flag!("deny-ffi", flags.permissions.deny_ffi);
   perm_flag!("allow-import", flags.permissions.allow_import);
   perm_flag!("deny-import", flags.permissions.deny_import);
 
@@ -596,6 +612,7 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
       );
     }
   }
+  Ok(())
 }
 
 fn inspect_arg_parse(
@@ -2204,7 +2221,7 @@ fn repl_parse(
 ) -> Result<(), CliError> {
   compile_args_without_check_parse(result, flags);
   cached_only_arg_parse(result, flags);
-  permission_args_parse(result, flags);
+  permission_args_parse(result, flags)?;
   inspect_arg_parse(result, flags)?;
   location_arg_parse(result, flags);
   v8_flags_arg_parse(result, flags);
@@ -3292,7 +3309,7 @@ fn x_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
         let command = args[0].clone();
         let yes = result.get_bool("yes");
         runtime_args_parse(result, flags, true, true)?;
-        permission_args_parse(result, flags);
+        permission_args_parse(result, flags)?;
         flags.argv.extend(args[1..].iter().cloned());
         XFlagsKind::Command(XCommandFlags {
           yes,
