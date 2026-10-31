@@ -8203,6 +8203,8 @@ internals.writableStreamForRid = writableStreamForRid;
   markNotSerializable(ReadableStream.prototype);
   markNotSerializable(WritableStream.prototype);
   markNotSerializable(TransformStream.prototype);
+  markNotSerializable(ByteLengthQueuingStrategy.prototype);
+  markNotSerializable(CountQueuingStrategy.prototype);
 }
 
 const kNodeWebStreamsState = SymbolFor("nodejs.webstreams.kState");

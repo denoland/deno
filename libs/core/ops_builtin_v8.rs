@@ -626,6 +626,7 @@ struct SerializeDeserialize<'a> {
   error_callback: Option<v8::Local<'a, v8::Function>>,
   for_storage: bool,
   host_object_brand: Option<v8::Local<'a, v8::Symbol>>,
+  non_serializable_brand: Option<v8::Local<'a, v8::Symbol>>,
   deserializers: Option<v8::Local<'a, v8::Object>>,
   // Out-of-band `SharedArrayBuffer` transfer used by `BroadcastChannel`. Unlike
   // the shared `SharedArrayBufferStore` (which hands an id to a single taker),
@@ -718,6 +719,11 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
     scope: &mut v8::PinScope<'s, 'i>,
     object: v8::Local<'s, v8::Object>,
   ) -> Option<bool> {
+    if let Some(symbol) = self.non_serializable_brand {
+      if object.has(scope, symbol.into())? {
+        return Some(true);
+      }
+    }
     match self.host_object_brand {
       Some(symbol) => object.has(scope, symbol.into()),
       _ => Some(false),
@@ -730,6 +736,14 @@ impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
     object: v8::Local<'s, v8::Object>,
     value_serializer: &dyn v8::ValueSerializerHelper,
   ) -> Option<bool> {
+    if let Some(symbol) = self.non_serializable_brand {
+      if object.has(scope, symbol.into())? {
+        let message =
+          v8::String::new(scope, "Cannot clone object of unsupported type.")?;
+        self.throw_data_clone_error(scope, message);
+        return None;
+      }
+    }
     if let Some(host_object_brand) = self.host_object_brand {
       let value = object.get(scope, host_object_brand.into())?;
       if let Ok(func) = value.try_cast::<v8::Function>() {
@@ -880,12 +894,15 @@ pub fn op_serialize<'s, 'i>(
   let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
   let symbol = v8::Symbol::for_key(scope, key);
   let host_object_brand = Some(symbol);
+  let key = v8::String::new(scope, "Deno.nonSerializable").unwrap();
+  let non_serializable_brand = Some(v8::Symbol::for_key(scope, key));
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback,
     for_storage,
     host_object_brand,
+    non_serializable_brand,
     deserializers: None,
     broadcast_shared_array_buffers: None,
   });
@@ -993,12 +1010,15 @@ pub fn op_deserialize<'s, 'i>(
   let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
   let symbol = v8::Symbol::for_key(scope, key);
   let host_object_brand = Some(symbol);
+  let key = v8::String::new(scope, "Deno.nonSerializable").unwrap();
+  let non_serializable_brand = Some(v8::Symbol::for_key(scope, key));
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback: None,
     for_storage,
     host_object_brand,
+    non_serializable_brand,
     deserializers,
     broadcast_shared_array_buffers: None,
   });
@@ -1064,12 +1084,15 @@ pub fn serialize_broadcast<'s, 'i>(
   let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
   let symbol = v8::Symbol::for_key(scope, key);
   let broadcast = Rc::new(RefCell::new(Vec::new()));
+  let key = v8::String::new(scope, "Deno.nonSerializable").unwrap();
+  let non_serializable_brand = Some(v8::Symbol::for_key(scope, key));
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects: None,
     error_callback,
     for_storage: false,
     host_object_brand: Some(symbol),
+    non_serializable_brand,
     deserializers: None,
     broadcast_shared_array_buffers: Some(broadcast.clone()),
   });
@@ -1113,6 +1136,7 @@ pub fn deserialize_broadcast<'s, 'i>(
     error_callback: None,
     for_storage: false,
     host_object_brand: Some(symbol),
+    non_serializable_brand: None,
     deserializers,
     broadcast_shared_array_buffers: Some(Rc::new(RefCell::new(
       shared_array_buffers,
@@ -1144,12 +1168,15 @@ pub fn op_structured_clone<'s, 'i>(
   let key = v8_static_strings::HOST_OBJECT.v8_string(scope).unwrap();
   let symbol = v8::Symbol::for_key(scope, key);
   let host_object_brand = Some(symbol);
+  let key = v8::String::new(scope, "Deno.nonSerializable").unwrap();
+  let non_serializable_brand = Some(v8::Symbol::for_key(scope, key));
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects: None,
     error_callback: None,
     for_storage: false,
     host_object_brand,
+    non_serializable_brand,
     deserializers: None,
     broadcast_shared_array_buffers: None,
   });
@@ -1178,6 +1205,7 @@ pub fn op_structured_clone<'s, 'i>(
     for_storage: false,
     host_object_brand,
     deserializers,
+    non_serializable_brand: None,
     broadcast_shared_array_buffers: None,
   });
   let value_deserializer =

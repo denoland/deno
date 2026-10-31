@@ -68,6 +68,7 @@ function getCreateFilteredInspectProxy() {
 
 const {
   defineEventHandler,
+  Event,
   EventTarget,
   MessageEvent,
   setEventTargetData,
@@ -1006,7 +1007,8 @@ webidl.converters.StructuredSerializeOptions = webidl
 // `markNotSerializable()`. The descriptor is non-enumerable and
 // non-configurable so it can't be hidden, deleted, or overridden on the
 // instance.
-const kNotSerializable = Symbol("[[NotSerializable]]");
+const kNotSerializable = SymbolFor("Deno.nonSerializable");
+markNotSerializable(MessageChannel.prototype);
 
 function markNotSerializable(target) {
   ObjectDefineProperty(target, kNotSerializable, {
@@ -1017,6 +1019,9 @@ function markNotSerializable(target) {
     configurable: false,
   });
 }
+
+markNotSerializable(Event.prototype);
+markNotSerializable(EventTarget.prototype);
 
 // Per-instance "uncloneable" marker used by `worker_threads.markAsUncloneable`.
 // Unlike `kNotSerializable`, this is settable on individual objects (not just
