@@ -282,6 +282,7 @@ impl<
         sys: sys.as_ref(),
         deno_local_registry_dir: &deno_local_registry_dir,
         install_reporter: self.install_reporter.clone(),
+        is_global_install: self.lifecycle_scripts_config.is_global_install,
       },
     )));
     let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
@@ -1126,6 +1127,7 @@ impl<
           sys: sys.as_ref(),
           deno_local_registry_dir: &deno_local_registry_dir,
           install_reporter: self.install_reporter.clone(),
+          is_global_install: self.lifecycle_scripts_config.is_global_install,
         },
       ),
     );
@@ -1403,6 +1405,7 @@ fn ran_scripts_file(
 }
 
 struct LocalLifecycleScripts<'a, TSys: FsOpen + FsMetadata> {
+  is_global_install: bool,
   sys: &'a TSys,
   deno_local_registry_dir: &'a Path,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
@@ -1453,9 +1456,9 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
 
       _ = writeln!(
         &mut output,
-        "{}  Run \"{}\" to run build scripts.",
+        "{}  {}",
         colors::yellow("│"),
-        colors::bold("deno approve-scripts")
+        crate::lifecycle_scripts::scripts_run_hint(self.is_global_install)
       );
       _ = write!(&mut output, "{}", colors::yellow("╰─"));
 

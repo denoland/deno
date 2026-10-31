@@ -401,6 +401,7 @@ async fn install_global_compiled(
   };
 
   let mut new_flags = flags.as_ref().clone();
+  new_flags.internal.is_global_install = true;
   new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
 
   crate::tools::compile::compile(new_flags, compile_flags).await?;
@@ -554,6 +555,7 @@ async fn setup_config_dir(
 
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
+  new_flags.internal.is_global_install = true;
   // Pre-resolve cwd-relative paths against the user's original cwd before
   // switching `initial_cwd` to the generated install dir, otherwise they'd
   // be re-resolved against `dir` and point at non-existent files.

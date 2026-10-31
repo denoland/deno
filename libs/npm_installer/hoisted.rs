@@ -416,6 +416,7 @@ impl<
       &self.lifecycle_scripts_config,
       HoistedLifecycleScripts {
         install_reporter: self.install_reporter.clone(),
+        is_global_install: self.lifecycle_scripts_config.is_global_install,
       },
     )));
     let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
@@ -767,6 +768,7 @@ impl<
         &self.lifecycle_scripts_config,
         HoistedLifecycleScripts {
           install_reporter: self.install_reporter.clone(),
+          is_global_install: self.lifecycle_scripts_config.is_global_install,
         },
       ),
     );
@@ -1118,6 +1120,7 @@ impl<
 }
 
 struct HoistedLifecycleScripts {
+  is_global_install: bool,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
@@ -1152,9 +1155,9 @@ impl LifecycleScriptsStrategy for HoistedLifecycleScripts {
       _ = writeln!(&mut output, "{}", colors::yellow("│"));
       _ = writeln!(
         &mut output,
-        "{}  Run \"{}\" to run build scripts.",
+        "{}  {}",
         colors::yellow("│"),
-        colors::bold("deno approve-scripts")
+        crate::lifecycle_scripts::scripts_run_hint(self.is_global_install)
       );
       _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
