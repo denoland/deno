@@ -17,6 +17,7 @@ const {
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
   SymbolFor,
 } = primordials;
 
@@ -55,6 +56,7 @@ webidl.configureInterface(DOMPointReadOnly);
 
 const DOMRectPrototype = DOMRect.prototype;
 const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
+
 ObjectDefineProperty(
   DOMRectReadOnlyPrototype,
   SymbolFor("Deno.privateCustomInspect"),
@@ -150,6 +152,73 @@ ObjectDefineProperty(
     configurable: true,
   },
 );
+
+const geometryCloneTypes = [
+  [DOMPointReadOnlyPrototype, "DOMPointReadOnly", DOMPointReadOnly],
+  [DOMPointPrototype, "DOMPoint", DOMPoint],
+  [DOMRectReadOnlyPrototype, "DOMRectReadOnly", DOMRectReadOnly],
+  [DOMRectPrototype, "DOMRect", DOMRect],
+  [DOMQuadPrototype, "DOMQuad", DOMQuad],
+  [DOMMatrixReadOnlyPrototype, "DOMMatrixReadOnly", DOMMatrixReadOnly],
+  [DOMMatrixPrototype, "DOMMatrix", DOMMatrix],
+];
+
+for (let i = 0; i < geometryCloneTypes.length; i++) {
+  const [prototype, type, Constructor] = geometryCloneTypes[i];
+  const toJSON = prototype.toJSON;
+  ObjectDefineProperty(prototype, core.hostObjectBrand, {
+    __proto__: null,
+    value: function () {
+      return { type, value: ReflectApply(toJSON, this, []) };
+    },
+  });
+  core.registerCloneableResource(type, (data) => {
+    const value = data.value;
+    if (type === "DOMPoint" || type === "DOMPointReadOnly") {
+      return new Constructor(value.x, value.y, value.z, value.w);
+    }
+    if (type === "DOMRect" || type === "DOMRectReadOnly") {
+      return new Constructor(value.x, value.y, value.width, value.height);
+    }
+    if (type === "DOMQuad") {
+      return new DOMQuad(
+        new DOMPoint(value.p1.x, value.p1.y, value.p1.z, value.p1.w),
+        new DOMPoint(value.p2.x, value.p2.y, value.p2.z, value.p2.w),
+        new DOMPoint(value.p3.x, value.p3.y, value.p3.z, value.p3.w),
+        new DOMPoint(value.p4.x, value.p4.y, value.p4.z, value.p4.w),
+      );
+    }
+    return new Constructor(
+      value.is2D
+        ? [
+          value.a,
+          value.b,
+          value.c,
+          value.d,
+          value.e,
+          value.f,
+        ]
+        : [
+          value.m11,
+          value.m12,
+          value.m13,
+          value.m14,
+          value.m21,
+          value.m22,
+          value.m23,
+          value.m24,
+          value.m31,
+          value.m32,
+          value.m33,
+          value.m34,
+          value.m41,
+          value.m42,
+          value.m43,
+          value.m44,
+        ],
+    );
+  });
+}
 
 if (op_geometry_get_enable_css_parser_features()) {
   // https://drafts.csswg.org/geometry/#dommatrixreadonly-stringification-behavior
