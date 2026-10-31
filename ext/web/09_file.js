@@ -490,7 +490,8 @@ class Blob {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this) &&
+          this[webidl.brand] === webidl.brand,
         keys: [
           "size",
           "type",
@@ -609,7 +610,8 @@ class File extends Blob {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this) &&
+          this[webidl.brand] === webidl.brand,
         keys: [
           "name",
           "size",

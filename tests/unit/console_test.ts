@@ -2834,3 +2834,66 @@ Deno.test(function inspectProxyDoesNotTriggerGetTrap() {
     );
   }
 });
+
+function assertUninitializedPrototypeInspect(
+  base: { name: string; prototype: object },
+  derived: { name: string; prototype: object },
+  properties: string[],
+) {
+  for (
+    const [name, object] of [
+      [base.name, base.prototype],
+      [derived.name, derived.prototype],
+      [base.name, Object.create(base.prototype)],
+    ] as const
+  ) {
+    const actual = Deno.inspect(object);
+    assertStringIncludes(actual, `${name} {`);
+    for (const property of properties) {
+      assertStringIncludes(actual, `${property}: [Getter`);
+    }
+  }
+}
+
+Deno.test(function consoleInspectAbortSignalPrototype() {
+  // @ts-expect-error AbortSignal has an illegal constructor.
+  class Derived extends AbortSignal {}
+  assertUninitializedPrototypeInspect(AbortSignal, Derived, [
+    "aborted",
+    "reason",
+    "onabort",
+  ]);
+  const instance = AbortSignal.abort("reason");
+  Object.setPrototypeOf(instance, Derived.prototype);
+  const actual = Deno.inspect(instance);
+  assertStringIncludes(actual, "Derived {");
+  assertStringIncludes(actual, "aborted: true");
+  assertStringIncludes(actual, 'reason: "reason"');
+});
+
+Deno.test(function consoleInspectAbortControllerPrototype() {
+  class Derived extends AbortController {}
+  assertUninitializedPrototypeInspect(AbortController, Derived, ["signal"]);
+  const actual = Deno.inspect(new Derived());
+  assertStringIncludes(actual, "Derived {");
+  assertStringIncludes(actual, "signal: AbortSignal {");
+  assertStringIncludes(actual, "aborted: false");
+});
+
+Deno.test(function consoleInspectBlobPrototype() {
+  class Derived extends Blob {}
+  assertUninitializedPrototypeInspect(Blob, Derived, ["size", "type"]);
+  assertEquals(
+    Deno.inspect(new Derived(["abc"], { type: "text/plain" })),
+    'Derived { size: 3, type: "text/plain" }',
+  );
+});
+
+Deno.test(function consoleInspectFilePrototype() {
+  class Derived extends File {}
+  assertUninitializedPrototypeInspect(File, Derived, ["name", "size", "type"]);
+  assertEquals(
+    Deno.inspect(new Derived(["abc"], "test.txt", { type: "text/plain" })),
+    'Derived { name: "test.txt", size: 3, type: "text/plain" }',
+  );
+});
