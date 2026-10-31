@@ -1,0 +1,10 @@
+read file,with,commas.txt: denied
+write file,with,commas.txt: denied
+read plain.txt: granted
+write plain.txt: granted
+read file: denied
+write file: denied
+read with: denied
+write with: denied
+read commas.txt: denied
+write commas.txt: denied
