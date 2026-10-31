@@ -118,6 +118,22 @@ pub trait LifecycleScriptsExecutor: Sync + Send {
   ) -> Result<(), AnyError>;
 }
 
+pub(crate) fn scripts_run_hint(is_global_install: bool) -> String {
+  use deno_terminal::colors;
+
+  if is_global_install {
+    format!(
+      "Re-run this installation with \"{}\" to run build scripts.",
+      colors::bold("--allow-scripts --force")
+    )
+  } else {
+    format!(
+      "Run \"{}\" to run build scripts.",
+      colors::bold("deno approve-scripts")
+    )
+  }
+}
+
 pub trait LifecycleScriptsStrategy {
   fn can_run_scripts(&self) -> bool {
     true

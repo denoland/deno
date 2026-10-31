@@ -338,6 +338,7 @@ impl<
         initial_cwd: args.initial_cwd.clone(),
         root_dir: args.root_dir.clone(),
         explicit_install: args.explicit_install,
+        is_global_install: args.is_global_install,
       }))
     })
   }

@@ -1583,6 +1583,11 @@ impl CliOptions {
       denied: self.flags.deny_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
+      is_global_install: self.flags.internal.is_global_install
+        || matches!(
+          self.sub_command(),
+          DenoSubcommand::Install(InstallFlags::Global(_))
+        ),
       explicit_install: matches!(
         self.sub_command(),
         DenoSubcommand::Install(_)
