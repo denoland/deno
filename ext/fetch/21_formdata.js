@@ -3,6 +3,9 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const {
   Blob,
   BlobPrototype,
@@ -641,6 +644,7 @@ function formDataFromEntries(entries) {
 
 webidl.converters["FormData"] = webidl
   .createInterfaceConverter("FormData", FormDataPrototype);
+markNotSerializable(FormDataPrototype);
 
 return {
   FormData,

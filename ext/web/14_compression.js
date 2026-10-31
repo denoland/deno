@@ -21,6 +21,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
@@ -185,6 +188,8 @@ function maybeEnqueue(controller, output) {
 
 webidl.configureInterface(DecompressionStream);
 const DecompressionStreamPrototype = DecompressionStream.prototype;
+markNotSerializable(CompressionStreamPrototype);
+markNotSerializable(DecompressionStreamPrototype);
 
 return { CompressionStream, DecompressionStream };
 })();
