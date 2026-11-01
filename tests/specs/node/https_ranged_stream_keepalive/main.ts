@@ -6,12 +6,7 @@
 
 import https from "node:https";
 import tls from "node:tls";
-import {
-  createReadStream,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
