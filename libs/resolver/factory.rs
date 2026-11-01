@@ -555,6 +555,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             ),
             no_npm: self.options.no_npm,
             import_npm_lockfile: self.options.import_npm_lockfile,
+            node_modules_dir: self
+              .node_modules_dir_path()?
+              .map(|path| path.to_path_buf()),
           },
           &workspace_directory.workspace,
           maybe_external_import_map.as_ref().map(|v| &v.value),
