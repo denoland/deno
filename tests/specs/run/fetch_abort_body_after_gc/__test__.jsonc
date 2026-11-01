@@ -2,7 +2,7 @@
   "tests": {
     "fetch_abort_body_after_gc": {
       "args": "run --v8-flags=--expose-gc --allow-net main.ts",
-      "output": "gc before abort: false -> rejected: AbortError\ngc before abort: true -> rejected: AbortError\n"
+      "output": "gc before abort: false -> rejected: AbortError\ngc before abort: true -> rejected: AbortError\nbody collected while signal lives: true\n"
     }
   }
 }

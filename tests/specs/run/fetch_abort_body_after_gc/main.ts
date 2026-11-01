@@ -2,7 +2,7 @@
 //
 // Aborting a fetch must cancel the response body even after the Response
 // has been collected. The body cancellation is an abort algorithm on the
-// request's dependent signal, which the source only held through a WeakRef.
+// request's dependent signal, which the source only holds through a WeakRef.
 
 declare const gc: (opts?: object) => void;
 
@@ -45,6 +45,25 @@ async function abortAfter(collect: boolean) {
   }
 }
 
+// A body that is done with must not be retained by a signal that outlives it.
+async function cancelledBody(signal: AbortSignal) {
+  const reader = await openBody(signal);
+  await reader.cancel();
+  return new WeakRef(reader);
+}
+
+async function collectedWhileSignalLives() {
+  const controller = new AbortController();
+  const ref = await cancelledBody(controller.signal);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  gc({ type: "major", execution: "sync" });
+  console.log(
+    `body collected while signal lives: ${ref.deref() === undefined}`,
+  );
+  controller.abort();
+}
+
 await abortAfter(false);
 await abortAfter(true);
+await collectedWhileSignalLives();
 await server.shutdown();
