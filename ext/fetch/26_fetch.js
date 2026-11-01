@@ -29,6 +29,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
+  Symbol,
   TypeError,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -87,6 +88,11 @@ const {
   updateSpanFromError,
   updateSpanFromRequest,
 } = internals.__telemetryUtil;
+
+// A source signal reaches its dependents only through a WeakRef. A body
+// holds its request's signal here, so an abort still reaches a body that
+// outlives its Response.
+const _terminator = Symbol("[[terminator]]");
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -373,6 +379,7 @@ function createResponseBodyStream(responseBodyRid, terminator) {
 
   // TODO(lucacasonato): clean up registration
   terminator[abortSignal.add](onAbort);
+  readable[_terminator] = terminator;
 
   return readable;
 }
@@ -407,7 +414,9 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
       throw new TypeError("Blob URL fetch only supports GET method");
     }
 
-    const body = new InnerBody(req.blobUrlEntry.stream());
+    const stream = req.blobUrlEntry.stream();
+    stream[_terminator] = terminator;
+    const body = new InnerBody(stream);
     terminator[abortSignal.add](() => body.error(terminator.reason));
     processUrlList(req.urlList, req.urlListProcessed);
 
