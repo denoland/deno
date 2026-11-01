@@ -1301,7 +1301,7 @@ impl ModuleGraphBuilder {
     }
   }
 
-  pub(crate) fn maybe_resolve_ts_config_imports(
+  fn maybe_resolve_ts_config_imports(
     &self,
     graph_kind: GraphKind,
   ) -> Vec<deno_graph::ReferrerImports> {

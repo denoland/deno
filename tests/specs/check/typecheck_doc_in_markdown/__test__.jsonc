@@ -1,8 +1,4 @@
 {
-  // Disabled during the TypeScript un-fork: `check --doc`/`--doc-only` is not
-  // yet supported by the native tsc backend. Tracked in
-  // https://github.com/denoland/deno/issues/35946.
-  "ignore": true,
   "args": "check --doc-only markdown.md",
   "exitCode": 1,
   "output": "markdown.out"

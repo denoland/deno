@@ -42,10 +42,6 @@ pub fn extract_doc_tests(file: File) -> Result<Vec<File>, AnyError> {
 ///
 /// The difference from [`extract_doc_tests`] is that this function does *not*
 /// wrap extracted code snippets in a `Deno.test` call.
-#[allow(
-  dead_code,
-  reason = "re-enabled once `deno check --doc` is supported by the native type checker"
-)]
 pub fn extract_snippet_files(file: File) -> Result<Vec<File>, AnyError> {
   extract_inner(file, WrapKind::NoWrap)
 }
