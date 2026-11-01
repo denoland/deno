@@ -6,7 +6,12 @@
 
 import https from "node:https";
 import tls from "node:tls";
-import { createReadStream, readFileSync, writeFileSync } from "node:fs";
+import {
+  createReadStream,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,6 +33,7 @@ const server = https.createServer({ key, cert }, (req, res) => {
   res.setHeader("Content-Length", "1");
   createReadStream(file, { start: 0, end: 0 }).pipe(res);
 });
+server.on("close", () => rmSync(file, { force: true }));
 
 function readOne(
   buf: string,
