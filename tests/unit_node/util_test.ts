@@ -203,6 +203,63 @@ Deno.test({
   },
 });
 
+Deno.test("[util] callbackify() accepts thenables", async () => {
+  let synchronous = true;
+  const thenable = {
+    value: "foo",
+    then(onFulfilled: (value: string) => void) {
+      assertStrictEquals(this, thenable);
+      onFulfilled(this.value);
+    },
+  };
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const fn = util.callbackify(() => thenable as unknown as Promise<string>);
+  fn((err, value) => {
+    try {
+      assertStrictEquals(synchronous, false);
+      assertStrictEquals(err, null);
+      assertStrictEquals(value, "foo");
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+  synchronous = false;
+  await promise;
+});
+
+Deno.test("[util] callbackify() handles thenable rejections", async () => {
+  for (const reason of [new Error("rejected"), null]) {
+    let synchronous = true;
+    const thenable = {
+      then(_: unknown, onRejected: (reason: unknown) => void) {
+        assertStrictEquals(this, thenable);
+        onRejected(reason);
+      },
+    };
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const fn = util.callbackify(() => thenable as unknown as Promise<string>);
+    fn((err, value) => {
+      try {
+        assertStrictEquals(synchronous, false);
+        assertStrictEquals(value, undefined);
+        if (reason === null) {
+          assertStrictEquals(err.code, "ERR_FALSY_VALUE_REJECTION");
+          assert("reason" in err);
+          assertStrictEquals(err.reason, null);
+        } else {
+          assertStrictEquals(err, reason);
+        }
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+    synchronous = false;
+    await promise;
+  }
+});
+
 Deno.test({
   name: "[util] callbackify(undefined) throws",
   fn() {
