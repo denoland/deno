@@ -167,3 +167,80 @@ Deno.test("structuredClone CryptoKey", async () => {
   assertEquals(edClone.type, "private");
   assertEquals(edClone.algorithm.name, "Ed25519");
 });
+
+Deno.test("structuredClone validates the transfer list before serializing", () => {
+  let reads = 0;
+  const counted = {
+    get value() {
+      reads++;
+      return 1;
+    },
+  };
+  const throwing = {
+    get value() {
+      throw new Error("marker");
+    },
+  };
+
+  // An entry that isn't transferable is rejected before any getter runs.
+  assertThrows(
+    () => structuredClone(counted, { transfer: [{} as ArrayBuffer] }),
+    DOMException,
+    "Value not transferable",
+  );
+  assertEquals(reads, 0);
+  assertThrows(
+    () => structuredClone(throwing, { transfer: [{} as ArrayBuffer] }),
+    DOMException,
+    "Value not transferable",
+  );
+
+  // So is a duplicate entry, and the buffer stays attached.
+  const buffer = new ArrayBuffer(4);
+  assertThrows(
+    () => structuredClone(counted, { transfer: [buffer, buffer] }),
+    DOMException,
+    "duplicate",
+  );
+  assertEquals(reads, 0);
+  assertEquals(buffer.byteLength, 4);
+});
+
+Deno.test("structuredClone doesn't transfer buffers when it throws", () => {
+  // A getter that throws.
+  let buffer = new ArrayBuffer(4);
+  assertThrows(
+    () =>
+      structuredClone({
+        get value() {
+          throw new Error("marker");
+        },
+      }, { transfer: [buffer] }),
+    Error,
+    "marker",
+  );
+  assertEquals(buffer.byteLength, 4);
+
+  // A value that can't be cloned.
+  buffer = new ArrayBuffer(4);
+  assertThrows(
+    () => structuredClone({ fn() {} }, { transfer: [buffer] }),
+    DOMException,
+  );
+  assertEquals(buffer.byteLength, 4);
+
+  // An invalid entry after the buffer.
+  buffer = new ArrayBuffer(4);
+  assertThrows(
+    () => structuredClone(1, { transfer: [buffer, {} as ArrayBuffer] }),
+    DOMException,
+    "Value not transferable",
+  );
+  assertEquals(buffer.byteLength, 4);
+
+  // The buffer is transferred when cloning succeeds.
+  buffer = new ArrayBuffer(4);
+  const cloned = structuredClone(buffer, { transfer: [buffer] });
+  assertEquals(buffer.byteLength, 0);
+  assertEquals(cloned.byteLength, 4);
+});
