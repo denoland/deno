@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 // Regression test: set/delete on a list with many entries that share a name
 // must run in linear time. A quadratic implementation would take many seconds
@@ -390,4 +390,53 @@ Deno.test(function urlSearchParamsInitUndefinedIsEmpty() {
 Deno.test(function urlSearchParamsInitNullIsStringified() {
   assertEquals(new URLSearchParams(null!).toString(), "null=");
   assertEquals(new URLSearchParams(null!).get("null"), "");
+});
+
+// Web IDL `create sequence from iterable` uses `IteratorStepValue`, which calls
+// `IteratorNext`. `IteratorNext` throws a TypeError when the iterator result
+// is not an Object, and it does so before `done` is read.
+//
+// The constructor used to check only for `null`/`undefined` and then read
+// `res.done`, so a primitive iterator result whose prototype exposes `done`
+// was accepted instead of throwing.
+Deno.test(function urlSearchParamsRejectsNonObjectIteratorResult() {
+  let doneReads = 0;
+  const descriptor = Object.getOwnPropertyDescriptor(
+    Number.prototype,
+    "done",
+  );
+  Object.defineProperty(Number.prototype, "done", {
+    configurable: true,
+    get() {
+      ++doneReads;
+      return true;
+    },
+  });
+
+  try {
+    const iterable = {
+      [Symbol.iterator]() {
+        return {
+          next() {
+            return 1 as unknown as IteratorResult<[string, string]>;
+          },
+        };
+      },
+    };
+
+    assertThrows(
+      () => new URLSearchParams(iterable),
+      TypeError,
+      "Each query pair must be an iterable [name, value] tuple",
+    );
+
+    // `done` must not be read on the primitive result.
+    assertEquals(doneReads, 0);
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(Number.prototype, "done", descriptor);
+    } else {
+      delete (Number.prototype as unknown as { done?: unknown }).done;
+    }
+  }
 });
