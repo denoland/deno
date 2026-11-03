@@ -915,10 +915,21 @@ function serializeJsMessageData(data, transferables) {
     };
   }
 
+  // Reject an invalid transfer list before serializing, so that getters on
+  // `data` don't run and nothing is transferred when the list is invalid.
+  // https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializewithtransfer
   const hostObjects = [];
   const transferredArrayBuffers = [];
+  const seenTransferables = new SafeSet();
   for (let i = 0, j = 0; i < transferables.length; i++) {
     const t = transferables[i];
+    if (seenTransferables.has(t)) {
+      throw new DOMException(
+        "Transfer list contains a duplicate entry",
+        "DataCloneError",
+      );
+    }
+    seenTransferables.add(t);
     if (isArrayBuffer(t)) {
       if (
         ArrayBufferPrototypeGetByteLength(t) === 0 &&
@@ -933,6 +944,8 @@ function serializeJsMessageData(data, transferables) {
       ArrayPrototypePush(transferredArrayBuffers, t);
     } else if (t[core.hostObjectBrand]) {
       ArrayPrototypePush(hostObjects, t);
+    } else {
+      throw new DOMException("Value not transferable", "DataCloneError");
     }
   }
 

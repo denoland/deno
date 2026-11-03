@@ -897,7 +897,7 @@ pub fn op_serialize<'s, 'i>(
   // `was_detached()` before consulting the transfer map when serializing a
   // (typed array) view -- detaching early makes it throw "An ArrayBuffer is
   // detached and could not be cloned". They are detached after serialization.
-  let mut buffers_to_detach: Vec<v8::Local<v8::ArrayBuffer>> =
+  let mut buffers_to_detach: Vec<(v8::Local<v8::ArrayBuffer>, u32)> =
     Vec::with_capacity(
       transferred_array_buffers.map_or(0, |b| b.length() as usize),
     );
@@ -930,7 +930,7 @@ pub fn op_serialize<'s, 'i>(
         let backing_store = buf.get_backing_store();
         let id = shared_array_buffer_store.insert(backing_store);
         value_serializer.transfer_array_buffer(id, buf);
-        buffers_to_detach.push(buf);
+        buffers_to_detach.push((buf, id));
         let id = v8::Number::new(scope, id as f64).into();
         transferred_array_buffers.set(scope, i, id);
       }
@@ -941,9 +941,19 @@ pub fn op_serialize<'s, 'i>(
 
   let ret = value_serializer.write_value(scope.get_current_context(), value);
 
-  // Detach the transferred buffers now that serialization has read them.
-  for buf in buffers_to_detach {
-    buf.detach(None);
+  // Transferring has side effects, so it only happens once serialization has
+  // succeeded. If it failed, the buffers stay attached and their backing
+  // stores are removed from the store again.
+  let succeeded =
+    !scope.has_caught() && !scope.has_terminated() && ret == Some(true);
+  for (buf, id) in buffers_to_detach {
+    if succeeded {
+      buf.detach(None);
+    } else if let Some(shared_array_buffer_store) =
+      &JsRuntime::state_from(scope).shared_array_buffer_store
+    {
+      shared_array_buffer_store.take(id);
+    }
   }
 
   if scope.has_caught() || scope.has_terminated() {
