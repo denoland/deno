@@ -27,6 +27,7 @@ const {
   SymbolFor,
   SymbolIterator,
   SymbolToStringTag,
+  ObjectDefineProperty,
 } = primordials;
 
 const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
@@ -382,10 +383,16 @@ class Worker extends EventTarget {
     );
   }
 
-  [SymbolToStringTag] = "Worker";
 }
 
 const WorkerPrototype = Worker.prototype;
+ObjectDefineProperty(WorkerPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "Worker",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 defineEventHandler(Worker.prototype, "error");
 defineEventHandler(Worker.prototype, "message");

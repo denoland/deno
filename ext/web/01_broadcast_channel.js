@@ -21,6 +21,8 @@ const {
   Symbol,
   SymbolFor,
   Uint8Array,
+  ObjectDefineProperty,
+  SymbolToStringTag,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -223,6 +225,13 @@ class BroadcastChannel extends EventTarget {
 defineEventHandler(BroadcastChannel.prototype, "message");
 defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
+ObjectDefineProperty(BroadcastChannelPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "BroadcastChannel",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 return { BroadcastChannel, refBroadcastChannel };
 })();
