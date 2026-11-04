@@ -8,6 +8,9 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
 use deno_ast::TranspileModuleOptions;
+use deno_ast::swc::ast;
+use deno_ast::swc::ecma_visit::VisitMut;
+use deno_ast::swc::ecma_visit::VisitMutWith;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
@@ -22,6 +25,8 @@ use crate::args::Flags;
 use crate::args::SourceMapMode;
 use crate::args::TranspileFlags;
 use crate::factory::CliFactory;
+
+mod import_extensions;
 
 pub async fn transpile(
   flags: Arc<Flags>,
@@ -112,14 +117,20 @@ pub async fn transpile(
     let source_code = String::from_utf8(source_bytes.into_owned())
       .with_context(|| format!("{} is not valid UTF-8", file_path.display()))?;
 
-    let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.clone(),
-      text: source_code.into(),
-      media_type: *media_type,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    })?;
+    let parsed_source = deno_ast::parse_module_with_post_process(
+      deno_ast::ParseParams {
+        specifier: specifier.clone(),
+        text: source_code.into(),
+        media_type: *media_type,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+      },
+      |mut module, _| {
+        module.visit_mut_with(&mut ImportExtensionRewriter);
+        module
+      },
+    )?;
 
     // Use transpile options from deno.json, with source map overridden by CLI flag
     let transpile_and_emit_options = compiler_options_resolver
@@ -231,6 +242,52 @@ pub async fn transpile(
   }
 
   Ok(())
+}
+
+struct ImportExtensionRewriter;
+
+impl VisitMut for ImportExtensionRewriter {
+  fn visit_mut_module_decl(&mut self, node: &mut ast::ModuleDecl) {
+    match node {
+      ast::ModuleDecl::Import(node) => rewrite_import_specifier(&mut node.src),
+      ast::ModuleDecl::ExportNamed(node) => {
+        if let Some(src) = &mut node.src {
+          rewrite_import_specifier(src);
+        }
+      }
+      ast::ModuleDecl::ExportAll(node) => {
+        rewrite_import_specifier(&mut node.src)
+      }
+      ast::ModuleDecl::TsImportEquals(node) => {
+        if let ast::TsModuleRef::TsExternalModuleRef(module_ref) =
+          &mut node.module_ref
+        {
+          rewrite_import_specifier(&mut module_ref.expr);
+        }
+      }
+      _ => {}
+    }
+    node.visit_mut_children_with(self);
+  }
+
+  fn visit_mut_call_expr(&mut self, node: &mut ast::CallExpr) {
+    if matches!(node.callee, ast::Callee::Import(_))
+      && let Some(ast::ExprOrSpread { spread: None, expr }) =
+        node.args.first_mut()
+      && let ast::Expr::Lit(ast::Lit::Str(src)) = &mut **expr
+    {
+      rewrite_import_specifier(src);
+    }
+    node.visit_mut_children_with(self);
+  }
+}
+
+fn rewrite_import_specifier(specifier: &mut ast::Str) {
+  let value = specifier.value.to_string_lossy();
+  if let Some(replacement) = import_extensions::rewrite(&value) {
+    specifier.value = replacement.into();
+    specifier.raw = None;
+  }
 }
 
 async fn emit_declarations(
