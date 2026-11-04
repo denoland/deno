@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage=cov test.ts",
+      "output": "[WILDCARD]1 passed[WILDCARD]"
+    },
+    {
+      // This step and the next spell the directory as the file system
+      // does. The last step spells it with the escapes its URL uses.
+      "args": ["coverage", "cov", "--include=wt 🦆"],
+      "output": "included.out"
+    },
+    {
+      "args": ["coverage", "cov", "--exclude=wt 🦆"],
+      "output": "excluded.out"
+    },
+    {
+      "args": ["coverage", "cov", "--exclude=wt%20%F0%9F%A6%86"],
+      "output": "excluded.out"
+    }
+  ]
+}
