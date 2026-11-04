@@ -7,13 +7,17 @@
     },
     {
       // This step and the next spell the directory as the file system
-      // does. The last step spells it with the escapes its URL uses.
+      // does. The last two steps spell it with the escapes its URL uses.
       "args": ["coverage", "cov", "--include=wt 🦆"],
       "output": "included.out"
     },
     {
       "args": ["coverage", "cov", "--exclude=wt 🦆"],
       "output": "excluded.out"
+    },
+    {
+      "args": ["coverage", "cov", "--include=wt%20%F0%9F%A6%86"],
+      "output": "included.out"
     },
     {
       "args": ["coverage", "cov", "--exclude=wt%20%F0%9F%A6%86"],
