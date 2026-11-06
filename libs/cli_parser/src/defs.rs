@@ -1831,6 +1831,12 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .requires(&["bundle"])
 .help("Experimental. Minify the bundled output. Only meaningful with --bundle.\n  Reduces both the embedded bundle size and runtime memory use, at the cost of less readable stack traces."),
+    ArgDef::new("external")
+      .long("external")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["bundle"])
+.help("Experimental. Leave a matching import specifier unresolved in the bundle. Can be specified more than once."),
     ArgDef::new("app-name")
       .long("app-name")
       .action(ArgAction::Set)
