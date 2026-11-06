@@ -521,6 +521,7 @@ async fn compile_desktop(
     eszip: false,
     self_extracting,
     bundle: false,
+    external: Vec::new(),
     minify: false,
     exclude_unused_npm: desktop_flags.exclude_unused_npm,
     engine: desktop_flags.engine,

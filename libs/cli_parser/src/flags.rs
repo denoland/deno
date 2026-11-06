@@ -208,6 +208,8 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Specifiers to leave unresolved in the bundle.
+  pub external: Vec<String>,
   /// Stable identity for the compiled app. Determines where origin-bound
   /// storage (default `Deno.openKv()`, `localStorage`, `caches`) is persisted.
   /// Defaults to the output file name when not set.
