@@ -323,22 +323,37 @@ const kDefaultMaxCallStackSizeToCapture = 200;
 /**
  * Returns the call sites of the current call stack
  * @param frameCount The limit of the number of frames to return
- * @param _options The options
+ * @param options The options
  * @returns The call sites
  */
 function getCallSites(
   frameCount = 10,
   options = undefined,
 ) {
+  // If options is not provided, check if frameCount is the options object
+  if (options === undefined) {
+    if (typeof frameCount === "object") {
+      // If frameCount is an object, it is the options object
+      options = frameCount;
+      validateObject(options, "options");
+      if (options.sourceMap !== undefined) {
+        validateBoolean(options.sourceMap, "options.sourceMap");
+      }
+      frameCount = 10;
+    }
+  } else {
+    // If options is provided, validate it
+    validateObject(options, "options");
+    if (options.sourceMap !== undefined) {
+      validateBoolean(options.sourceMap, "options.sourceMap");
+    }
+  }
   validateNumber(
     frameCount,
     "frameCount",
     0,
     kDefaultMaxCallStackSizeToCapture,
   );
-  if (options) {
-    validateObject(options, "options");
-  }
   const target = {};
   // deno-lint-ignore deno-internal/prefer-primordials
   const original = Error.prepareStackTrace;
