@@ -589,6 +589,26 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.stdout/stderr isTTY is undefined when piped",
+  async fn() {
+    const code = `
+      import process from "node:process";
+      console.log(String(process.stdout.isTTY));
+      console.error(String(process.stderr.isTTY));
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--quiet", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stdout, stderr } = await command.output();
+    assertEquals(exitCode, 0);
+    assertEquals(new TextDecoder().decode(stdout).trim(), "undefined");
+    assertEquals(new TextDecoder().decode(stderr).trim(), "undefined");
+  },
+});
+
+Deno.test({
   name: "process.stdin readable with a TTY",
   // TODO(PolarETech): Run this test even in non tty environment
   ignore: !Deno.stdin.isTerminal(),
