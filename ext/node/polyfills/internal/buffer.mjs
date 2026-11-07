@@ -1358,7 +1358,7 @@ Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
   }
 
   offset = offset || 0;
-  const maxLength = MathMin(length || Infinity, this.length - offset);
+  const maxLength = MathMin(length ?? Infinity, this.length - offset);
   const buf = offset || maxLength < this.length
     ? TypedArrayPrototypeSubarray(this, offset, maxLength + offset)
     : this;
