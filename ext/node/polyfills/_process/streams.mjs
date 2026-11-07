@@ -142,7 +142,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       enumerable: true,
       configurable: true,
       // Allow users to overwrite it
-      get: () => getIsTTY(),
+      get: () => getIsTTY() || undefined,
       set: (value) => {
         getIsTTY = () => value;
       },
