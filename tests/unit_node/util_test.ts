@@ -27,6 +27,38 @@ Deno.test({
 });
 
 Deno.test({
+  // https://github.com/denoland/deno/issues/37136
+  name: "[util] getCallSites",
+  fn() {
+    const sites = util.getCallSites();
+    assert(Array.isArray(sites));
+    assert(sites.length > 0 && sites.length <= 10);
+
+    // The options-only overload uses the default frame count of 10.
+    const sitesWithOptionsOnly = util.getCallSites({ sourceMap: false });
+    assert(Array.isArray(sitesWithOptionsOnly));
+    assert(
+      sitesWithOptionsOnly.length > 0 && sitesWithOptionsOnly.length <= 10,
+    );
+    assert(Array.isArray(util.getCallSites({})));
+    assert(util.getCallSites(2).length <= 2);
+
+    type FnWithInvalidArgs = (
+      frameCount?: unknown,
+      options?: unknown,
+    ) => unknown;
+    const getCallSites = util.getCallSites as FnWithInvalidArgs;
+    // Explicit options are validated even when they are falsy.
+    assertThrows(() => getCallSites(10, null), TypeError);
+    assertThrows(() => getCallSites(10, false), TypeError);
+    assertThrows(() => getCallSites(10, 0), TypeError);
+    assertThrows(() => getCallSites(10, ""), TypeError);
+    assertThrows(() => getCallSites({ sourceMap: 1 }), TypeError);
+    assertThrows(() => getCallSites(null), TypeError);
+  },
+});
+
+Deno.test({
   name: "[util] inspect",
   fn() {
     assertEquals(stripAnsiCode(util.inspect({ foo: 123 })), "{ foo: 123 }");
