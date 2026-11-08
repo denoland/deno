@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle --minify main.ts -o out.mjs",
+      "output": "[WILDCARD]\nBundled [WILDCARD]"
+    },
+    {
+      "args": "run -A out.mjs",
+      "output": "ran function\n"
+    }
+  ]
+}
