@@ -1259,7 +1259,7 @@ fn message_to_error(
 fn replace_require_shim(contents: &str, minified: bool) -> String {
   if minified {
     let re = lazy_regex::regex!(
-      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[\w+\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+      r#"var ([\w$]+)\s*=\(([\w$]+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\(([\w$]+)\,\{get:\([\w$]+,[\w$]+\)=>\(typeof require<"u"\?require:[\w$]+\)\[[\w$]+\]\}\):([\w$]+)\)\(function\([\w$]+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+[\w$]+\+'" is not supported'\)\}\);"#
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
@@ -3049,6 +3049,63 @@ fn print_finished_message(
   log::info!("{}", output);
 
   Ok(())
+}
+
+#[cfg(test)]
+mod replace_require_shim_tests {
+  use super::replace_require_shim;
+
+  fn minified_shim(name: &str, a: &str, b: &str, c: &str) -> String {
+    format!(
+      r#"var {name}=({a}=>typeof require<"u"?require:typeof Proxy<"u"?new Proxy({a},{{get:({b},{c})=>(typeof require<"u"?require:{b})[{c}]}}):{a})(function({a}){{if(typeof require<"u")return require.apply(this,arguments);throw Error('Dynamic require of "'+{a}+'" is not supported')}});"#
+    )
+  }
+
+  fn assert_replaced(shim: &str, name: &str) {
+    let out =
+      replace_require_shim(&format!("var a=1;{shim}{name}(\"fs\");"), true);
+    assert!(!out.contains("Dynamic require"), "shim left in: {out}");
+    assert!(
+      out.contains(&format!(
+        "var {name}=__deno_internal_createRequire(import.meta.url);{name}(\"fs\");"
+      )),
+      "not replaced as expected: {out}"
+    );
+  }
+
+  #[test]
+  fn minified_shim_is_replaced() {
+    assert_replaced(&minified_shim("Ut", "e", "n", "t"), "Ut");
+  }
+
+  #[test]
+  fn minified_shim_named_with_a_dollar_is_replaced() {
+    for name in ["$", "$t", "t$", "a$b"] {
+      assert_replaced(&minified_shim(name, "e", "n", "t"), name);
+    }
+  }
+
+  #[test]
+  fn minified_shim_with_dollar_parameters_is_replaced() {
+    assert_replaced(&minified_shim("Ut", "$", "$n", "t$"), "Ut");
+  }
+
+  #[test]
+  fn every_name_esbuild_can_choose_is_replaced() {
+    const HEAD: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$";
+    const TAIL: &str =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$";
+    for head in HEAD.chars() {
+      assert_replaced(
+        &minified_shim(&head.to_string(), "e", "n", "t"),
+        &head.to_string(),
+      );
+      for tail in TAIL.chars() {
+        let name = format!("{head}{tail}");
+        assert_replaced(&minified_shim(&name, &name, "n", "t"), &name);
+      }
+    }
+  }
 }
 
 #[cfg(test)]
