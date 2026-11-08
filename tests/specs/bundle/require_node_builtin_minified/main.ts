@@ -1,3 +1,20 @@
+// Bundles with `--minify` a program whose require shim gets a name containing
+// `$`, and checks that the bundle still runs.
+//
+// `needs_fs.cjs` calls `require("node:fs")`, so esbuild wraps it in its
+// `__require` shim, which `replace_require_shim` swaps for `createRequire`.
+// With `--minify`, esbuild names symbols by how often they're used: the most
+// used take the first, shortest names. Each of the 200 exports below is called
+// three times in `useAll()`, so all of them outrank the shim and take the
+// shorter names first, leaving the shim with `$t` in esbuild 0.25.5. If the
+// shim isn't replaced, the bundle throws
+// `Dynamic require of "node:fs" is not supported`.
+//
+// Two calls per export are enough to outrank the shim; three leave a margin.
+// A different esbuild version may pick a different name; the unit tests for
+// `replace_require_shim` cover every one- and two-character name esbuild can
+// produce.
+
 import existsSync from "./needs_fs.cjs";
 export const value0 = () => "value0";
 export const value1 = () => "value1";
