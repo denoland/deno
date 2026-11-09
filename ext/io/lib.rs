@@ -62,6 +62,8 @@ use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE;
 
+#[cfg(any(windows, test))]
+mod console_utf8;
 mod fd_table;
 pub mod fs;
 mod pipe;
@@ -929,6 +931,60 @@ impl StdFileResourceInner {
   }
 }
 
+/// Writes to stdout, rejecting bytes that would permanently break it.
+///
+/// On Windows, `Stdout` fails to flush non-UTF-8 bytes to a console that is
+/// not in UTF-8 mode, and since it is line buffered those bytes would stay in
+/// its buffer and make every later write fail (and `println!` panic). So
+/// validate the bytes before handing them to `Stdout`.
+/// See https://github.com/denoland/deno/issues/20134
+fn write_stdout(
+  stdout: &mut io::StdoutLock<'_>,
+  buf: &[u8],
+) -> io::Result<usize> {
+  #[cfg(windows)]
+  if is_non_utf8_console(STD_OUTPUT_HANDLE) {
+    static WRITER: std::sync::Mutex<console_utf8::ConsoleUtf8Writer> =
+      std::sync::Mutex::new(console_utf8::ConsoleUtf8Writer::new());
+    let mut writer = WRITER
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner());
+    writer.write(buf, |bytes| stdout.write_all(bytes))?;
+    return Ok(buf.len());
+  }
+  stdout.write(buf)
+}
+
+fn write_all_stdout(
+  stdout: &mut io::StdoutLock<'_>,
+  mut buf: &[u8],
+) -> io::Result<()> {
+  while !buf.is_empty() {
+    match write_stdout(stdout, buf) {
+      Ok(0) => return Err(ErrorKind::WriteZero.into()),
+      Ok(nwritten) => buf = &buf[nwritten..],
+      Err(err) if err.kind() == ErrorKind::Interrupted => {}
+      Err(err) => return Err(err),
+    }
+  }
+  Ok(())
+}
+
+#[cfg(windows)]
+fn is_non_utf8_console(
+  std_handle: windows_sys::Win32::System::Console::STD_HANDLE,
+) -> bool {
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetConsoleOutputCP;
+  const CP_UTF8: u32 = 65001;
+  // SAFETY: winapi calls
+  unsafe {
+    let handle = GetStdHandle(std_handle);
+    let mut mode = 0;
+    GetConsoleMode(handle, &mut mode) != 0 && GetConsoleOutputCP() != CP_UTF8
+  }
+}
+
 #[async_trait::async_trait(?Send)]
 impl crate::fs::File for StdFileResourceInner {
   fn maybe_path(&self) -> Option<&Path> {
@@ -950,7 +1006,7 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::Stdout => {
         // bypass the file and use std::io::stdout()
         let mut stdout = std::io::stdout().lock();
-        let nwritten = stdout.write(buf)?;
+        let nwritten = write_stdout(&mut stdout, buf)?;
         stdout.flush()?;
         Ok(nwritten)
       }
@@ -1004,7 +1060,7 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::Stdout => {
         // bypass the file and use std::io::stdout()
         let mut stdout = std::io::stdout().lock();
-        stdout.write_all(buf)?;
+        write_all_stdout(&mut stdout, buf)?;
         stdout.flush()?;
         Ok(())
       }
@@ -1032,7 +1088,7 @@ impl crate::fs::File for StdFileResourceInner {
           .with_blocking_task(move || {
             // bypass the file and use std::io::stdout()
             let mut stdout = std::io::stdout().lock();
-            stdout.write_all(&buf)?;
+            write_all_stdout(&mut stdout, &buf)?;
             stdout.flush()?;
             Ok(())
           })
@@ -1073,7 +1129,7 @@ impl crate::fs::File for StdFileResourceInner {
           .with_blocking_task(|| {
             // bypass the file and use std::io::stdout()
             let mut stdout = std::io::stdout().lock();
-            let nwritten = stdout.write(&view)?;
+            let nwritten = write_stdout(&mut stdout, &view)?;
             stdout.flush()?;
             Ok(deno_core::WriteOutcome::Partial { nwritten, view })
           })
