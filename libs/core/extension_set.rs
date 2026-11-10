@@ -19,6 +19,8 @@ use crate::extensions::Extension;
 use crate::extensions::ExtensionSourceType;
 use crate::extensions::GlobalObjectMiddlewareFn;
 use crate::extensions::GlobalTemplateMiddlewareFn;
+use crate::extensions::OpMethodKind;
+use crate::extensions::OpMethodMiddlewareFn;
 use crate::extensions::OpMiddlewareFn;
 use crate::modules::ModuleName;
 use crate::ops::OpCtxs;
@@ -43,6 +45,15 @@ pub fn setup_op_state(
   lazy_extensions
 }
 
+/// A class and its ops after middleware: its constructor, methods and static
+/// methods, which `create_op_ctxs` lays out in that order.
+pub struct OpMethodOps {
+  pub decl: OpMethodDecl,
+  constructor: Option<OpDecl>,
+  methods: OpDeclStorage,
+  static_methods: OpDeclStorage,
+}
+
 // TODO(bartlomieju): `deno_core_ext` ops should be returned as a separate
 // vector - they need to be special cased and attached to `Deno.core.ops`,
 // but not added to "ext:core/ops" virtual module.
@@ -50,7 +61,7 @@ pub fn setup_op_state(
 pub fn init_ops(
   deno_core_ops: &'static [OpDecl],
   extensions: &mut [Extension],
-) -> (Vec<OpDeclStorage>, Vec<OpMethodDecl>) {
+) -> (Vec<OpDeclStorage>, Vec<OpMethodOps>) {
   // In debug build verify there that inter-Extension dependencies
   // are setup correctly.
   #[cfg(debug_assertions)]
@@ -71,6 +82,25 @@ pub fn init_ops(
     .iter_mut()
     .filter_map(|e| e.take_middleware())
     .collect();
+
+  // Class methods get their own middleware, which also sees the class name.
+  let method_middlewares: Vec<Box<OpMethodMiddlewareFn>> = extensions
+    .iter_mut()
+    .filter_map(|e| e.take_method_middleware())
+    .collect();
+  // A disabled extension disables its classes too, as `init_ops` does its
+  // plain ops, before any middleware sees them.
+  let rewrite_method =
+    |class: &'static str, kind: OpMethodKind, op: OpDecl, enabled: bool| {
+      let op = if enabled { op } else { op.disable() };
+      OpDecl {
+        name: op.name,
+        name_fast: op.name_fast,
+        ..method_middlewares
+          .iter()
+          .fold(op, |op, middleware| middleware(class, kind, op))
+      }
+    };
 
   // Create a single macroware out of all middleware functions.
   let has_middleware = !middlewares.is_empty();
@@ -112,9 +142,33 @@ pub fn init_ops(
       });
     }
 
-    let ext_method_ops = ext.init_method_ops();
-    for ext_op in ext_method_ops {
-      op_methods.push(*ext_op);
+    let enabled = ext.enabled;
+    let untouched = enabled && method_middlewares.is_empty();
+    for decl in ext.init_method_ops() {
+      let class = decl.name.0;
+      let rewrite_all = |kind, ops: &'static [OpDecl]| {
+        if untouched {
+          OpDeclStorage::Static(ops)
+        } else {
+          OpDeclStorage::Owned(
+            ops
+              .iter()
+              .map(|op| rewrite_method(class, kind, *op, enabled))
+              .collect(),
+          )
+        }
+      };
+      op_methods.push(OpMethodOps {
+        decl: *decl,
+        constructor: decl.constructor.map(|op| {
+          rewrite_method(class, OpMethodKind::Constructor, op, enabled)
+        }),
+        methods: rewrite_all(OpMethodKind::Method, decl.methods),
+        static_methods: rewrite_all(
+          OpMethodKind::StaticMethod,
+          decl.static_methods,
+        ),
+      });
     }
   }
 
@@ -162,31 +216,33 @@ fn check_no_duplicate_op_names(ops: &[OpDeclStorage]) {
 #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 pub fn create_op_ctxs(
   op_decls: Vec<OpDeclStorage>,
-  op_method_decls: &mut [OpMethodDecl],
+  op_methods: Vec<OpMethodOps>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   op_driver: Rc<OpDriverImpl>,
   op_state: Rc<RefCell<OpState>>,
   runtime_state: Rc<JsRuntimeState>,
   enable_stack_trace_in_ops: bool,
-) -> (OpCtxs, usize) {
+) -> (OpCtxs, usize, Vec<OpMethodDecl>) {
   let op_count = op_decls.iter().map(|storage| storage.len()).sum::<usize>()
-    + op_method_decls.len();
+    + op_methods.len();
 
   // Lay the declarations out in op-context order: method ops, then regular
   // ops. Each entry is a run of declarations that the returned `OpCtxs` keeps
-  // alive for the lifetime of the realm; static method tables are borrowed,
-  // only the name-patched constructors need an owned copy.
+  // alive for the lifetime of the realm; method tables are borrowed unless
+  // their extension is disabled or a class middleware rewrites them, and the
+  // name-patched constructors need an owned copy.
   //
   // `ids` mirrors the flattened declaration sequence: every method op carries
   // the id of the `OpMethodDecl` it belongs to, while regular ops are numbered
   // from the end of the method block. This is also the index handed to the op
   // metrics factory.
-  let mut decls =
-    Vec::with_capacity(op_method_decls.len() * 3 + op_decls.len());
+  let mut decls = Vec::with_capacity(op_methods.len() * 3 + op_decls.len());
   let mut ids: Vec<OpId> = Vec::with_capacity(op_count);
+  let mut op_method_decls = Vec::with_capacity(op_methods.len());
 
-  for (index, decl) in op_method_decls.iter_mut().enumerate() {
-    if let Some(mut constructor) = decl.constructor {
+  for (index, ops) in op_methods.into_iter().enumerate() {
+    let decl = ops.decl;
+    if let Some(mut constructor) = ops.constructor {
       constructor.name = decl.name.0;
       constructor.name_fast = decl.name.1;
 
@@ -194,12 +250,13 @@ pub fn create_op_ctxs(
       ids.push(index as _);
     }
 
-    for methods in [decl.methods, decl.static_methods] {
+    for methods in [ops.methods, ops.static_methods] {
       if !methods.is_empty() {
-        decls.push(OpDeclStorage::Static(methods));
         ids.extend(std::iter::repeat_n(index as OpId, methods.len()));
+        decls.push(methods);
       }
     }
+    op_method_decls.push(decl);
   }
 
   /* method op ctxs are stored before regular op ctxs */
@@ -227,7 +284,7 @@ pub fn create_op_ctxs(
     },
   );
 
-  (op_ctxs, methods_ctx_offset)
+  (op_ctxs, methods_ctx_offset, op_method_decls)
 }
 
 pub fn get_middlewares_and_external_refs(

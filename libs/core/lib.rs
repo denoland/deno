@@ -102,6 +102,8 @@ pub use crate::extensions::ExtensionFileSource;
 pub use crate::extensions::ExtensionFileSourceCode;
 pub use crate::extensions::Op;
 pub use crate::extensions::OpDecl;
+pub use crate::extensions::OpMethodKind;
+pub use crate::extensions::OpMethodMiddlewareFn;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::external::ExternalDefinition;
 pub use crate::external::ExternalPointer;
