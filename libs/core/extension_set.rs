@@ -19,6 +19,8 @@ use crate::extensions::Extension;
 use crate::extensions::ExtensionSourceType;
 use crate::extensions::GlobalObjectMiddlewareFn;
 use crate::extensions::GlobalTemplateMiddlewareFn;
+use crate::extensions::OpMethodKind;
+use crate::extensions::OpMethodMiddlewareFn;
 use crate::extensions::OpMiddlewareFn;
 use crate::modules::ModuleName;
 use crate::ops::OpCtxs;
@@ -43,8 +45,8 @@ pub fn setup_op_state(
   lazy_extensions
 }
 
-/// A class and its ops: its constructor, methods and static methods, which
-/// `create_op_ctxs` lays out in that order.
+/// A class and its ops after middleware: its constructor, methods and static
+/// methods, which `create_op_ctxs` lays out in that order.
 pub struct OpMethodOps {
   pub decl: OpMethodDecl,
   constructor: Option<OpDecl>,
@@ -80,6 +82,25 @@ pub fn init_ops(
     .iter_mut()
     .filter_map(|e| e.take_middleware())
     .collect();
+
+  // Class methods get their own middleware, which also sees the class name.
+  let method_middlewares: Vec<Box<OpMethodMiddlewareFn>> = extensions
+    .iter_mut()
+    .filter_map(|e| e.take_method_middleware())
+    .collect();
+  // A disabled extension disables its classes too, as `init_ops` does its
+  // plain ops, before any middleware sees them.
+  let rewrite_method =
+    |class: &'static str, kind: OpMethodKind, op: OpDecl, enabled: bool| {
+      let op = if enabled { op } else { op.disable() };
+      OpDecl {
+        name: op.name,
+        name_fast: op.name_fast,
+        ..method_middlewares
+          .iter()
+          .fold(op, |op, middleware| middleware(class, kind, op))
+      }
+    };
 
   // Create a single macroware out of all middleware functions.
   let has_middleware = !middlewares.is_empty();
@@ -121,23 +142,32 @@ pub fn init_ops(
       });
     }
 
-    // A disabled extension disables its classes too, as `init_ops` does its
-    // other ops. Only then does a class need its own copy of its ops.
     let enabled = ext.enabled;
-    let apply = |op: OpDecl| if enabled { op } else { op.disable() };
-    let apply_all = |ops: &'static [OpDecl]| {
-      if enabled {
-        OpDeclStorage::Static(ops)
-      } else {
-        OpDeclStorage::Owned(ops.iter().map(|op| op.disable()).collect())
-      }
-    };
+    let untouched = enabled && method_middlewares.is_empty();
     for decl in ext.init_method_ops() {
+      let class = decl.name.0;
+      let rewrite_all = |kind, ops: &'static [OpDecl]| {
+        if untouched {
+          OpDeclStorage::Static(ops)
+        } else {
+          OpDeclStorage::Owned(
+            ops
+              .iter()
+              .map(|op| rewrite_method(class, kind, *op, enabled))
+              .collect(),
+          )
+        }
+      };
       op_methods.push(OpMethodOps {
         decl: *decl,
-        constructor: decl.constructor.map(apply),
-        methods: apply_all(decl.methods),
-        static_methods: apply_all(decl.static_methods),
+        constructor: decl.constructor.map(|op| {
+          rewrite_method(class, OpMethodKind::Constructor, op, enabled)
+        }),
+        methods: rewrite_all(OpMethodKind::Method, decl.methods),
+        static_methods: rewrite_all(
+          OpMethodKind::StaticMethod,
+          decl.static_methods,
+        ),
       });
     }
   }
@@ -199,8 +229,8 @@ pub fn create_op_ctxs(
   // Lay the declarations out in op-context order: method ops, then regular
   // ops. Each entry is a run of declarations that the returned `OpCtxs` keeps
   // alive for the lifetime of the realm; method tables are borrowed unless
-  // their extension is disabled, and the name-patched constructors need an
-  // owned copy.
+  // their extension is disabled or a class middleware rewrites them, and the
+  // name-patched constructors need an owned copy.
   //
   // `ids` mirrors the flattened declaration sequence: every method op carries
   // the id of the `OpMethodDecl` it belongs to, while regular ops are numbered

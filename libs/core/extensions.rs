@@ -186,6 +186,17 @@ pub type OpFnRef = v8::FunctionCallback;
 /// Sync ops only return `0` or `1`. Async ops may return `0`, `1`, or `2`.
 pub type SlowFnImplRef = fn(*const v8::FunctionCallbackInfo) -> usize;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
+/// Which part of a class an op implements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpMethodKind {
+  Constructor,
+  Method,
+  StaticMethod,
+}
+/// Rewrites one op of a class, as [`OpMiddlewareFn`] does a plain op. It gets
+/// the class's name too, because methods of different classes share names.
+pub type OpMethodMiddlewareFn =
+  dyn Fn(&'static str, OpMethodKind, OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
 /// Trait implemented by all generated ops.
 pub trait Op {
@@ -556,6 +567,7 @@ macro_rules! extension {
           op_state_fn: ::std::option::Option::None,
           needs_lazy_init: false,
           middleware_fn: ::std::option::Option::None,
+          method_middleware_fn: ::std::option::Option::None,
           enabled: true,
         }
       }
@@ -741,6 +753,7 @@ pub struct Extension {
   pub op_state_fn: Option<Box<OpStateFn>>,
   pub needs_lazy_init: bool,
   pub middleware_fn: Option<Box<OpMiddlewareFn>>,
+  pub method_middleware_fn: Option<Box<OpMethodMiddlewareFn>>,
   pub enabled: bool,
 }
 
@@ -753,6 +766,7 @@ impl Extension {
       op_state_fn: None,
       needs_lazy_init: self.needs_lazy_init,
       middleware_fn: None,
+      method_middleware_fn: None,
       name: self.name,
       deps: self.deps,
       js_files: Cow::Borrowed(&[]),
@@ -790,6 +804,7 @@ impl Default for Extension {
       op_state_fn: None,
       needs_lazy_init: false,
       middleware_fn: None,
+      method_middleware_fn: None,
       enabled: true,
     }
   }
@@ -879,6 +894,13 @@ impl Extension {
   /// Middleware should be called before init
   pub fn take_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
     self.middleware_fn.take()
+  }
+
+  /// Class-method middleware should be called before init
+  pub fn take_method_middleware(
+    &mut self,
+  ) -> Option<Box<OpMethodMiddlewareFn>> {
+    self.method_middleware_fn.take()
   }
 
   pub fn get_global_template_middleware(
