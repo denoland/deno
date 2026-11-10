@@ -222,6 +222,97 @@ fn test_op_disabled() {
 }
 
 #[test]
+fn test_disabled_extension() {
+  #[op2(fast)]
+  #[smi]
+  fn op_foo() -> u32 {
+    42
+  }
+
+  struct Foo;
+
+  // SAFETY: zero-sized payload.
+  unsafe impl GarbageCollected for Foo {
+    fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+    fn get_name(&self) -> &'static std::ffi::CStr {
+      c"Foo"
+    }
+  }
+
+  #[op2]
+  impl Foo {
+    #[constructor]
+    #[cppgc]
+    fn new() -> Foo {
+      Foo
+    }
+
+    #[fast]
+    #[smi]
+    fn bar(&self) -> u32 {
+      42
+    }
+
+    #[getter]
+    #[smi]
+    fn baz(&self) -> u32 {
+      42
+    }
+
+    #[fast]
+    #[static_method]
+    #[smi]
+    fn qux() -> u32 {
+      42
+    }
+  }
+
+  deno_core::extension!(test_ext, ops = [op_foo], objects = [Foo]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+  let r = runtime
+    .execute_script(
+      "test.js",
+      r#"
+        const { op_foo, Foo } = Deno.core.ops;
+        const foo = new Foo();
+        op_foo() + foo.bar() + foo.baz + Foo.qux();
+      "#,
+    )
+    .unwrap();
+  {
+    deno_core::scope!(scope, runtime);
+    assert_eq!(r.open(scope).integer_value(scope), Some(168));
+  }
+
+  // Every op of a disabled extension throws, including those of its classes.
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init().disable()],
+    ..Default::default()
+  });
+  let mut ran = vec![];
+  for script in [
+    "Deno.core.ops.op_foo()",
+    "new Deno.core.ops.Foo()",
+    "Deno.core.ops.Foo.prototype.bar.call({})",
+    "Object.getOwnPropertyDescriptor(Deno.core.ops.Foo.prototype, 'baz').get.call({})",
+    "Deno.core.ops.Foo.qux()",
+  ] {
+    // A method called on the wrong receiver throws if it runs, too.
+    let result = runtime.execute_script("test.js", script);
+    if !matches!(result, Err(err) if err.to_string().contains("op is disabled"))
+    {
+      ran.push(script);
+    }
+  }
+  assert!(ran.is_empty(), "ran with the extension disabled: {ran:#?}");
+}
+
+#[test]
 fn test_op_detached_buffer() {
   #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
