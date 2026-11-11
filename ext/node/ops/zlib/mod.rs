@@ -1497,8 +1497,7 @@ impl ZstdDecompress {
           })?;
         if in_buffer.pos() >= in_len as usize
           || out_buffer.pos() >= out_len as usize
-          || (in_buffer.pos() == in_before
-            && out_buffer.pos() == out_before)
+          || (in_buffer.pos() == in_before && out_buffer.pos() == out_before)
         {
           break;
         }
