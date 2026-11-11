@@ -2264,9 +2264,9 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
   }
   if (start !== undefined) {
     validateNumber(start, "start", 0, kMaxLength);
-    if (end !== undefined) {
-      validateNumber(end, "end", 0, this.length);
-    }
+  }
+  if (end !== undefined) {
+    validateNumber(end, "end", 0, this.length);
   }
 
   if (start < 0 || this.length < start || this.length < end) {
