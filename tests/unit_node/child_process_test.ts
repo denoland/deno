@@ -1855,3 +1855,52 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "[node/child_process spawnSync] reports a program that can't start",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // A new temporary file isn't executable.
+    const file = Deno.makeTempFileSync();
+    try {
+      const { error } = spawnSync(file);
+      assert(error && "code" in error);
+      assertEquals(error.code, "EACCES");
+      assertThrows(() => execFileSync(file), Error, "EACCES");
+    } finally {
+      Deno.removeSync(file);
+    }
+    // Longer than any system's limit for one argument.
+    const tooLong = spawnSync("echo", ["x".repeat(4 * 1024 * 1024)]);
+    assert(tooLong.error && "code" in tooLong.error);
+    assertEquals(tooLong.error.code, "E2BIG");
+  },
+});
+
+Deno.test({
+  name: "[node/child_process spawnSync] reports a refused uid",
+  ignore: Deno.build.os === "windows" || Deno.uid() === 0,
+  fn() {
+    const { error } = spawnSync("echo", ["x"], { uid: 0 });
+    assert(error && "code" in error);
+    assertEquals(error.code, "EPERM");
+  },
+});
+
+Deno.test({
+  name: "[node/child_process spawnSync] throws without run permission",
+  // spawnSync reads the environment before it checks run permission.
+  permissions: { run: false, env: true },
+  fn() {
+    assertThrows(
+      () => spawnSync("echo", ["x"]),
+      Deno.errors.NotCapable,
+      "--allow-run",
+    );
+    assertThrows(
+      () => execFileSync("echo", ["x"]),
+      Deno.errors.NotCapable,
+      "--allow-run",
+    );
+  },
+});
