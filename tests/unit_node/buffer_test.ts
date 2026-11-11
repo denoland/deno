@@ -155,6 +155,34 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "[node/buffer] fill with undefined offset and negative end throws instead of hanging",
+  fn() {
+    // https://github.com/denoland/deno/issues/37144
+    // `end` was only validated when `start` was given, so a negative `end`
+    // survived as `end >>> 0` (2 ** 32 - 1) and the copy loop ran ~2 ** 32
+    // times for string, Buffer and Uint8Array values.
+    for (
+      const call of [
+        () => Buffer.alloc(3).fill(Buffer.from([1, 2]), undefined, -1),
+        () => Buffer.alloc(3).fill(new Uint8Array([1, 2]), undefined, -2),
+        () => Buffer.alloc(3).fill("ab", undefined, -1),
+      ]
+    ) {
+      const err = assertThrows(call, RangeError);
+      assertEquals((err as { code?: string }).code, "ERR_OUT_OF_RANGE");
+    }
+    // An `end` past the buffer length is rejected the same way, matching
+    // the behavior when `offset` is given.
+    const err = assertThrows(
+      () => Buffer.alloc(3).fill("ab", undefined, 5),
+      RangeError,
+    );
+    assertEquals((err as { code?: string }).code, "ERR_OUT_OF_RANGE");
+  },
+});
+
 // tests from:
 // https://github.com/nodejs/node/blob/56dbe466fdbc598baea3bfce289bf52b97b8b8f7/test/parallel/test-buffer-bytelength.js#L70
 Deno.test({
