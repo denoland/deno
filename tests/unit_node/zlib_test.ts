@@ -26,6 +26,8 @@ import {
   gzipSync,
   unzipSync,
   zstdCompressSync,
+  zstdDecompress,
+  zstdDecompressSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -62,6 +64,44 @@ Deno.test("brotli decompress rejects invalid block switch", async () => {
   }
   brotli.end();
   await promise;
+});
+
+// https://github.com/denoland/deno/issues/37146
+// A Zstandard stream is one or more frames, and decoders skip skippable
+// frames (RFC 8878 section 3.1). Decompression used to stop after the
+// first frame, silently dropping the rest of the input.
+Deno.test("zstdDecompressSync decodes concatenated and skippable frames", () => {
+  const a = zstdCompressSync(Buffer.from("hello "));
+  const b = zstdCompressSync(Buffer.from("world"));
+  // 8-byte skippable frame header (magic 0x184D2A50, length 3) + payload.
+  const skip = Buffer.concat([
+    Buffer.from([0x50, 0x2a, 0x4d, 0x18, 3, 0, 0, 0]),
+    Buffer.from("xyz"),
+  ]);
+
+  assertEquals(
+    zstdDecompressSync(Buffer.concat([a, b])).toString(),
+    "hello world",
+  );
+  assertEquals(
+    zstdDecompressSync(Buffer.concat([skip, a])).toString(),
+    "hello ",
+  );
+  assertEquals(
+    zstdDecompressSync(Buffer.concat([a, skip])).toString(),
+    "hello ",
+  );
+});
+
+Deno.test("zstdDecompress decodes concatenated frames", async () => {
+  const a = zstdCompressSync(Buffer.from("hello "));
+  const b = zstdCompressSync(Buffer.from("world"));
+  const decompressed: Buffer = await new Promise((resolve) =>
+    zstdDecompress(Buffer.concat([a, b]), (_, res) => {
+      return resolve(res);
+    })
+  );
+  assertEquals(decompressed.toString(), "hello world");
 });
 
 Deno.test("brotli compression async", async () => {

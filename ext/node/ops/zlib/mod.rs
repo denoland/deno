@@ -1479,12 +1479,30 @@ impl ZstdDecompress {
       let mut in_buffer = InBuffer::around(input_slice);
       let mut out_buffer = OutBuffer::around(output_slice);
 
-      ctx
-        .decoder
-        .run(&mut in_buffer, &mut out_buffer)
-        .map_err(|e| {
-          JsErrorBox::generic(format!("Zstd decompress error: {}", e))
-        })?;
+      // `ZSTD_decompressStream` returns when a frame ends, so a single
+      // `run` call decodes at most one frame. Keep feeding the remaining
+      // input so concatenated frames — and data after a skippable frame —
+      // are decoded in the same write instead of being silently dropped.
+      // Stop when the input is consumed, the output buffer is full (the
+      // caller re-invokes with a fresh output buffer), or a call makes no
+      // progress (e.g. a truncated frame waiting for more input).
+      loop {
+        let in_before = in_buffer.pos();
+        let out_before = out_buffer.pos();
+        ctx
+          .decoder
+          .run(&mut in_buffer, &mut out_buffer)
+          .map_err(|e| {
+            JsErrorBox::generic(format!("Zstd decompress error: {}", e))
+          })?;
+        if in_buffer.pos() >= in_len as usize
+          || out_buffer.pos() >= out_len as usize
+          || (in_buffer.pos() == in_before
+            && out_buffer.pos() == out_before)
+        {
+          break;
+        }
+      }
 
       let avail_in = in_len as usize - in_buffer.pos();
       let avail_out = out_len as usize - out_buffer.pos();
@@ -1527,12 +1545,24 @@ impl ZstdDecompress {
     let mut in_buffer = InBuffer::around(input_slice);
     let mut out_buffer = OutBuffer::around(output_slice);
 
-    ctx
-      .decoder
-      .run(&mut in_buffer, &mut out_buffer)
-      .map_err(|e| {
-        JsErrorBox::generic(format!("Zstd decompress error: {}", e))
-      })?;
+    // See `write` above: loop so a single write decodes every frame in
+    // the input instead of stopping after the first one.
+    loop {
+      let in_before = in_buffer.pos();
+      let out_before = out_buffer.pos();
+      ctx
+        .decoder
+        .run(&mut in_buffer, &mut out_buffer)
+        .map_err(|e| {
+          JsErrorBox::generic(format!("Zstd decompress error: {}", e))
+        })?;
+      if in_buffer.pos() >= in_len as usize
+        || out_buffer.pos() >= out_len as usize
+        || (in_buffer.pos() == in_before && out_buffer.pos() == out_before)
+      {
+        break;
+      }
+    }
 
     let avail_in = in_len as usize - in_buffer.pos();
     let avail_out = out_len as usize - out_buffer.pos();
