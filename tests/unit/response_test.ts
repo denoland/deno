@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertStrictEquals,
   assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
@@ -71,6 +72,104 @@ Deno.test(function responseNullInit() {
   // @ts-expect-error
   const response = new Response("", null);
   assertEquals(response.status, 200);
+});
+
+for (
+  const [name, create] of [
+    ["Response", (init: ResponseInit) => new Response(null, init)],
+    ["Response.json", (init: ResponseInit) => Response.json(null, init)],
+  ] as const
+) {
+  for (const proxy of [false, true]) {
+    Deno.test(`${name} converts ResponseInit members in order (proxy: ${proxy})`, () => {
+      const calls: string[] = [];
+      const init = {
+        get headers() {
+          calls.push("headers");
+          return {
+            get "X-Test"() {
+              calls.push("header value");
+              return "value";
+            },
+          };
+        },
+        get status() {
+          calls.push("status");
+          return 200;
+        },
+        get statusText() {
+          calls.push("statusText");
+          return "OK";
+        },
+      };
+      const response = create(proxy ? new Proxy(init, {}) : init);
+      assertEquals(calls, ["headers", "header value", "status", "statusText"]);
+      assertEquals(response.headers.get("x-test"), "value");
+    });
+  }
+
+  Deno.test(`${name} converts headers before reading status`, () => {
+    const calls: string[] = [];
+    const headerError = new Error("header conversion");
+    const init = {
+      get headers() {
+        calls.push("headers");
+        return {
+          get "X-Test"(): string {
+            calls.push("header value");
+            throw headerError;
+          },
+        };
+      },
+      get status(): number {
+        calls.push("status");
+        throw new Error("status getter");
+      },
+    };
+    assertStrictEquals(assertThrows(() => create(init)), headerError);
+    assertEquals(calls, ["headers", "header value"]);
+  });
+}
+
+Deno.test(function responseJsonConvertsInitBeforeSerializingData() {
+  const calls: string[] = [];
+  const data = {
+    toJSON() {
+      calls.push("toJSON");
+      return { ok: true };
+    },
+  };
+  const init = {
+    get headers() {
+      calls.push("headers");
+      return {};
+    },
+    get status() {
+      calls.push("status");
+      return 200;
+    },
+    get statusText() {
+      calls.push("statusText");
+      return "OK";
+    },
+  };
+  Response.json(data, init);
+  assertEquals(calls, ["headers", "status", "statusText", "toJSON"]);
+});
+
+Deno.test(function responseJsonInitErrorPrecedesSerialization() {
+  const initError = new Error("init getter");
+  const data = {
+    toJSON() {
+      throw new Error("toJSON");
+    },
+  };
+  const init = {
+    get headers(): HeadersInit {
+      throw initError;
+    },
+  };
+  assertStrictEquals(assertThrows(() => Response.json(data, init)), initError);
 });
 
 Deno.test(function customInspectFunction() {
