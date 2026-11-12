@@ -128,6 +128,7 @@ declare module "ext:deno_web/00_url.js" {
   const URLPrototype: typeof globalThis.URL.prototype;
   const URLSearchParams: typeof globalThis.URLSearchParams;
   function parseUrlEncoded(bytes: Uint8Array): [string, string][];
+  function serializeUrlSearchParams(params: URLSearchParams): string;
 }
 
 declare module "ext:deno_web/01_urlpattern.js" {
