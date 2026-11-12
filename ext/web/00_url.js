@@ -409,7 +409,7 @@ class URLSearchParams {
    */
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
-    return op_url_stringify_search_params(this[_list]);
+    return serializeUrlSearchParams(this);
   }
 
   get size() {
@@ -459,6 +459,10 @@ webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 webidl.configureInterface(URLSearchParams);
 const URLSearchParamsPrototype = URLSearchParams.prototype;
 markNotSerializable(URLSearchParamsPrototype);
+
+function serializeUrlSearchParams(params) {
+  return op_url_stringify_search_params(params[_list]);
+}
 
 webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
   "URLSearchParams",
@@ -1251,6 +1255,7 @@ webidl
 
 return {
   parseUrlEncoded,
+  serializeUrlSearchParams,
   URL,
   URLPrototype,
   URLSearchParams,
