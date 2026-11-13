@@ -365,6 +365,21 @@ Deno.test("createPublicKey dh", function () {
   assertEquals(key.asymmetricKeyType, "dh");
 });
 
+Deno.test("dh key export spki/pkcs8 round-trips", function () {
+  // @ts-ignore: @types/node is broken?
+  const { publicKey, privateKey } = generateKeyPairSync("dh", {
+    group: "modp14",
+  });
+  const spki = publicKey.export({ type: "spki", format: "pem" });
+  const pkcs8 = privateKey.export({ type: "pkcs8", format: "pem" });
+  const importedPublic = createPublicKey(spki);
+  assertEquals(importedPublic.type, "public");
+  assertEquals(importedPublic.asymmetricKeyType, "dh");
+  const importedPrivate = createPrivateKey(pkcs8);
+  assertEquals(importedPrivate.type, "private");
+  assertEquals(importedPrivate.asymmetricKeyType, "dh");
+});
+
 // openssl ecparam -name secp256r1 -genkey -noout -out a.pem
 // openssl pkcs8 -topk8 -nocrypt -in a.pem -out b.pem
 const ecPrivateKey = Deno.readTextFileSync(
