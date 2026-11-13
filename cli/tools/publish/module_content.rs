@@ -182,7 +182,7 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
     super::wasm::unfurl_wasm(data, &mut |module_specifier| {
       self
         .specifier_unfurler
-        .unfurl_specifier_reporting_diagnostic(
+        .unfurl_wasm_import_reporting_diagnostic(
           specifier,
           module_specifier,
           ResolutionKind::Execution,
@@ -536,9 +536,17 @@ mod test {
       .unwrap();
 
     // A Wasm module importing a bare specifier (mapped via the import map), an
-    // npm specifier (mapped via the import map) and a relative specifier (left
-    // as-is).
-    let wasm = build_wasm_with_imports(&["@std/foo", "chalk", "./other.js"]);
+    // npm specifier (mapped via the import map), a relative specifier (left
+    // as-is) and bare module names that the host provides through the import
+    // object (left as-is, not made relative to the Wasm module).
+    let wasm = build_wasm_with_imports(&[
+      "@std/foo",
+      "chalk",
+      "./other.js",
+      "env",
+      "wasi_snapshot_preview1",
+      "wbg",
+    ]);
     in_memory_sys
       .fs_write(get_path("/main.wasm"), &wasm)
       .unwrap();
@@ -560,6 +568,9 @@ mod test {
         "jsr:@std/foo@1".to_string(),
         "npm:chalk@5".to_string(),
         "./other.js".to_string(),
+        "env".to_string(),
+        "wasi_snapshot_preview1".to_string(),
+        "wbg".to_string(),
       ]
     );
   }
