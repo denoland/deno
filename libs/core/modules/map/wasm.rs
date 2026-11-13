@@ -36,7 +36,8 @@ impl ModuleMap {
       return Ok(loaded_source);
     }
     let loaded_key = ModuleSourceKey::from_loaded_source(&mut loaded_source);
-    if let Some(source) = self.data.borrow().sources.get(&loaded_key).cloned() {
+    let existing_source = self.data.borrow().sources.get(&loaded_key).cloned();
+    if let Some(source) = existing_source {
       self.data.borrow_mut().sources.insert(reference_key, source);
       return Ok(loaded_source);
     }
