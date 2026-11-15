@@ -195,6 +195,95 @@ Deno.test({
   device.destroy();
 });
 
+// https://github.com/denoland/deno/issues/37155
+Deno.test({
+  permissions: { read: true, env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function offscreenCanvasConvertToBlobUnpremultipliesAlpha() {
+  const canvas = new OffscreenCanvas(4, 4);
+  const webgpuContext = canvas.getContext("webgpu");
+  assert(webgpuContext);
+
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  webgpuContext.configure({
+    device,
+    format: "rgba8unorm",
+    alphaMode: "premultiplied",
+  });
+
+  const encoder = device.createCommandEncoder();
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: webgpuContext.getCurrentTexture().createView(),
+        storeOp: "store",
+        loadOp: "clear",
+        // premultiplied rgba(255, 85, 0, 153), stored as (153, 51, 0, 153)
+        clearValue: [0.6, 0.2, 0, 0.6],
+      },
+    ],
+  });
+  renderPass.end();
+  device.queue.submit([encoder.finish()]);
+
+  // PNG stores straight (non-premultiplied) alpha.
+  const blob = await canvas.convertToBlob({ type: "image/png" });
+  const imageBitmap = await createImageBitmap(blob);
+  // @ts-ignore: Deno[Deno.internal] allowed
+  const bitmapData: Uint8Array = Deno[Deno.internal].getBitmapData(imageBitmap);
+
+  assertEquals(bitmapData.length, 4 * 4 * 4);
+  for (let i = 0; i < bitmapData.length; i += 4) {
+    assertEquals(
+      Array.from(bitmapData.subarray(i, i + 4)),
+      [255, 85, 0, 153],
+      `pixel ${i / 4}`,
+    );
+  }
+
+  device.destroy();
+});
+
+Deno.test(async function offscreenCanvasConvertToBlobJpegCompositesOverBlack() {
+  const width = 8;
+  const height = 8;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data.set([255, 85, 0, 153], i);
+  }
+  const bitmap = await createImageBitmap(new ImageData(data, width, height));
+
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("bitmaprenderer");
+  assert(ctx);
+  ctx.transferFromImageBitmap(bitmap);
+
+  // JPEG has no alpha channel, so the bitmap is composited over opaque black:
+  // rgba(255, 85, 0, 0.6) becomes rgb(153, 51, 0).
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 1 });
+  const imageBitmap = await createImageBitmap(blob);
+  // @ts-ignore: Deno[Deno.internal] allowed
+  const bitmapData: Uint8Array = Deno[Deno.internal].getBitmapData(imageBitmap);
+
+  const channels = bitmapData.length / (width * height);
+  const expected = [153, 51, 0];
+  for (let i = 0; i < bitmapData.length; i += channels) {
+    for (let c = 0; c < 3; c++) {
+      // allow for JPEG compression error
+      assert(
+        Math.abs(bitmapData[i + c] - expected[c]) <= 3,
+        `pixel ${i / channels}: got ${
+          Array.from(bitmapData.subarray(i, i + 3))
+        }, expected ${expected}`,
+      );
+    }
+  }
+});
+
 Deno.test(function offscreenCanvasConstructor() {
   const canvas = new OffscreenCanvas(100, 50);
   assertEquals(canvas.width, 100);

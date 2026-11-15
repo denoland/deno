@@ -4,6 +4,8 @@ pub mod bitmap;
 mod image_ops;
 pub use image;
 use image::ColorType;
+pub use image_ops::premultiply_rgba8_in_place;
+pub use image_ops::unpremultiply_rgba8_in_place;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ImageError {

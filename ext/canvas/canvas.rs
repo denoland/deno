@@ -250,8 +250,12 @@ impl OffscreenCanvas {
             .map_or(75, |quality| (quality.0 * 100.0).clamp(0.0, 100.0) as u8),
         );
         // JPEG does not support an alpha channel; per the spec the bitmap
-        // is composited over black before encoding.
-        DynamicImage::ImageRgb8(data.to_rgb8())
+        // is composited over black before encoding. The bitmap holds straight
+        // alpha, so premultiply it first: dropping the alpha of a
+        // premultiplied pixel is compositing it over black.
+        let mut rgba = data.to_rgba8();
+        deno_image::premultiply_rgba8_in_place(&mut rgba);
+        DynamicImage::ImageRgb8(DynamicImage::ImageRgba8(rgba).to_rgb8())
           .write_with_encoder(encoder)
           .map_err(encode_err)?;
         "image/jpeg"

@@ -301,7 +301,9 @@ impl GPUCanvasContext {
     };
 
     let configuration = self.configuration.borrow();
-    let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref()
+    let Some(GPUCanvasConfiguration {
+      device, alpha_mode, ..
+    }) = configuration.as_ref()
     else {
       image.replace_with(|image| {
         let (width, height) = image.dimensions();
@@ -347,10 +349,18 @@ impl GPUCanvasContext {
         size,
       )?;
 
+      // With `alphaMode: "premultiplied"` the texture holds premultiplied
+      // colors, while the canvas bitmap (encoded by `convertToBlob()`) uses
+      // straight alpha, so convert it here.
+      let premultiplied =
+        matches!(alpha_mode, GPUCanvasAlphaMode::Premultiplied);
       image.replace_with(|image| {
         let (width, height) = image.dimensions();
-        let image =
+        let mut image =
           deno_image::image::RgbaImage::from_raw(width, height, data).unwrap();
+        if premultiplied {
+          deno_image::unpremultiply_rgba8_in_place(&mut image);
+        }
         DynamicImage::from(image)
       });
     }
