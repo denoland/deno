@@ -682,6 +682,39 @@ function executeLoadHookChain(fileUrl, context) {
   return nextLoad(fileUrl, context);
 }
 
+// The `context.format` hint that Node passes to load hooks for a file URL.
+// A `.js` file whose package.json has no "type" stays `undefined`, so the
+// default loader keeps detecting its syntax.
+function getLoadHookFormat(fileUrl) {
+  if (!StringPrototypeStartsWith(fileUrl, "file:")) {
+    return undefined;
+  }
+  try {
+    const filename = url.fileURLToPath(fileUrl);
+    switch (path.extname(filename)) {
+      case ".json":
+        return "json";
+      case ".cjs":
+        return "commonjs";
+      case ".mjs":
+        return "module";
+      case ".cts":
+        return "commonjs-typescript";
+      case ".mts":
+        return "module-typescript";
+      case ".ts":
+        return op_require_is_maybe_cjs(filename)
+          ? "typescript"
+          : "module-typescript";
+      case ".js":
+        return op_require_is_maybe_cjs(filename) ? undefined : "module";
+    }
+  } catch {
+    // An invalid URL or an unreadable package.json: no hint.
+  }
+  return undefined;
+}
+
 function isValidLoadHookSource(source, format) {
   if (source === null) {
     return format === "builtin";
@@ -881,8 +914,14 @@ function _startEsmLoadLoop() {
           importAttributes[key] = rawAttributes[key];
         }
       }
+      let format = getLoadHookFormat(fileUrl);
+      // A JSON file imported without `with { type: "json" }` must still be
+      // rejected, so only hint "json" when the import asked for it.
+      if (format === "json" && importAttributes.type !== "json") {
+        format = undefined;
+      }
       const context = {
-        format: undefined,
+        format,
         conditions: ["node", "import", "module-sync", "node-addons"],
         importAttributes,
       };
@@ -1950,7 +1989,7 @@ Module.prototype.load = function (filename) {
         fileUrl = url.pathToFileURL(this.filename).href;
       }
       const context = {
-        format: undefined,
+        format: getLoadHookFormat(fileUrl),
         conditions: ["node", "require"],
         importAttributes: { __proto__: null },
       };
