@@ -248,6 +248,66 @@ Deno.test({
   device.destroy();
 });
 
+Deno.test({
+  permissions: { read: true, env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function offscreenCanvasConvertToBlobOpaqueIgnoresAlpha() {
+  const canvas = new OffscreenCanvas(4, 4);
+  const webgpuContext = canvas.getContext("webgpu");
+  assert(webgpuContext);
+
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  webgpuContext.configure({
+    device,
+    format: "rgba8unorm",
+    alphaMode: "opaque",
+  });
+
+  const encoder = device.createCommandEncoder();
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: webgpuContext.getCurrentTexture().createView(),
+        storeOp: "store",
+        loadOp: "clear",
+        clearValue: [0.6, 0.2, 0, 0.6],
+      },
+    ],
+  });
+  renderPass.end();
+  device.queue.submit([encoder.finish()]);
+
+  // With `alphaMode: "opaque"` the alpha channel is ignored.
+  const png = await createImageBitmap(
+    await canvas.convertToBlob({ type: "image/png" }),
+  );
+  // @ts-ignore: Deno[Deno.internal] allowed
+  const pngData: Uint8Array = Deno[Deno.internal].getBitmapData(png);
+  assertEquals(Array.from(pngData.subarray(0, 4)), [153, 51, 0, 255]);
+
+  // ...so JPEG keeps the colors instead of compositing them over black.
+  const jpeg = await createImageBitmap(
+    await canvas.convertToBlob({ type: "image/jpeg", quality: 1 }),
+  );
+  // @ts-ignore: Deno[Deno.internal] allowed
+  const jpegData: Uint8Array = Deno[Deno.internal].getBitmapData(jpeg);
+  const stride = jpegData.length / (4 * 4);
+  for (const [channel, expected] of [153, 51, 0].entries()) {
+    assert(
+      Math.abs(jpegData[channel] - expected) <= 3,
+      `channel ${channel}: ${
+        jpegData[channel]
+      } !~ ${expected} (stride ${stride})`,
+    );
+  }
+
+  device.destroy();
+});
+
 Deno.test(async function offscreenCanvasConvertToBlobJpegCompositesOverBlack() {
   const width = 8;
   const height = 8;

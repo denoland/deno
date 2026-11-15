@@ -349,17 +349,24 @@ impl GPUCanvasContext {
         size,
       )?;
 
+      // The canvas bitmap (encoded by `convertToBlob()`) uses straight alpha.
       // With `alphaMode: "premultiplied"` the texture holds premultiplied
-      // colors, while the canvas bitmap (encoded by `convertToBlob()`) uses
-      // straight alpha, so convert it here.
-      let premultiplied =
-        matches!(alpha_mode, GPUCanvasAlphaMode::Premultiplied);
+      // colors, so convert them; with `alphaMode: "opaque"` the alpha channel
+      // is ignored, so the bitmap is fully opaque.
+      let alpha_mode = alpha_mode.clone();
       image.replace_with(|image| {
         let (width, height) = image.dimensions();
         let mut image =
           deno_image::image::RgbaImage::from_raw(width, height, data).unwrap();
-        if premultiplied {
-          deno_image::unpremultiply_rgba8_in_place(&mut image);
+        match alpha_mode {
+          GPUCanvasAlphaMode::Premultiplied => {
+            deno_image::unpremultiply_rgba8_in_place(&mut image);
+          }
+          GPUCanvasAlphaMode::Opaque => {
+            for pixel in image.pixels_mut() {
+              pixel.0[3] = u8::MAX;
+            }
+          }
         }
         DynamicImage::from(image)
       });
