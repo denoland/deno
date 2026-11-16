@@ -2,7 +2,7 @@
 
 //! ML-DSA (FIPS 204 post-quantum signatures) support.
 //!
-//! This wraps `aws_lc_rs::unstable::signature`, which is only compiled into
+//! This wraps `aws_lc_rs::signature`'s ML-DSA (`Pqdsa*`) API, which is only compiled into
 //! `aws-lc-rs` when its own `fips` cargo feature is OFF (see
 //! `aws-lc-rs-*/src/unstable.rs`: `#[cfg(not(feature = "fips"))] pub mod
 //! signature;`). The AWS-LC-FIPS 3.x validated module does not yet expose
@@ -165,15 +165,15 @@ mod fips_stub {
 mod real {
   use aws_lc_rs::signature::KeyPair;
   use aws_lc_rs::signature::UnparsedPublicKey;
-  use aws_lc_rs::unstable::signature::ML_DSA_44;
-  use aws_lc_rs::unstable::signature::ML_DSA_44_SIGNING;
-  use aws_lc_rs::unstable::signature::ML_DSA_65;
-  use aws_lc_rs::unstable::signature::ML_DSA_65_SIGNING;
-  use aws_lc_rs::unstable::signature::ML_DSA_87;
-  use aws_lc_rs::unstable::signature::ML_DSA_87_SIGNING;
-  use aws_lc_rs::unstable::signature::PqdsaKeyPair;
-  use aws_lc_rs::unstable::signature::PqdsaSigningAlgorithm;
-  use aws_lc_rs::unstable::signature::PqdsaVerificationAlgorithm;
+  use aws_lc_rs::signature::ML_DSA_44;
+  use aws_lc_rs::signature::ML_DSA_44_SIGNING;
+  use aws_lc_rs::signature::ML_DSA_65;
+  use aws_lc_rs::signature::ML_DSA_65_SIGNING;
+  use aws_lc_rs::signature::ML_DSA_87;
+  use aws_lc_rs::signature::ML_DSA_87_SIGNING;
+  use aws_lc_rs::signature::PqdsaKeyPair;
+  use aws_lc_rs::signature::PqdsaSigningAlgorithm;
+  use aws_lc_rs::signature::PqdsaVerificationAlgorithm;
   use spki::der::Encode;
   use spki::der::asn1::BitString;
 
@@ -450,7 +450,7 @@ mod real {
     let p = params(variant)?;
     let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
       .map_err(|_| MlDsaError::InvalidKeyData)?;
-    let pkcs8 = key_pair.to_pkcs8().map_err(|_| MlDsaError::FailedExport)?;
+    let pkcs8 = key_pair.to_pkcs8v1().map_err(|_| MlDsaError::FailedExport)?;
     Ok(pkcs8.as_ref().to_vec())
   }
 
@@ -521,7 +521,7 @@ mod real {
     fn as_raw_bytes_vec(&self) -> Result<Vec<u8>, ()>;
   }
 
-  impl AsRawBytesVec for aws_lc_rs::unstable::signature::PqdsaPrivateKey<'_> {
+  impl AsRawBytesVec for aws_lc_rs::signature::PqdsaPrivateKey<'_> {
     fn as_raw_bytes_vec(&self) -> Result<Vec<u8>, ()> {
       use aws_lc_rs::encoding::AsRawBytes;
       let raw = self.as_raw_bytes().map_err(|_| ())?;

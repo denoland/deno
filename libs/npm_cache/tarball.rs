@@ -216,7 +216,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       // away from `registry.npmjs.org`.
       let fetched_tarball_url = tarball_uri.to_string();
       let result = tarball_cache.http_client
-        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()))
+        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()), None)
         .await;
       if let Some(reporter) = &reporter {
         reporter.downloaded(&package_nv);

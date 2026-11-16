@@ -88,6 +88,7 @@ deno_core::extension!(
     op_node_gen_prime_async,
     op_node_gen_prime,
     op_node_get_hash_size,
+    op_node_get_fips,
     op_node_get_hashes,
     op_node_hash_clone,
     op_node_hash_digest_hex,
@@ -238,6 +239,16 @@ pub fn op_node_create_hash(
   output_length: Option<u32>,
 ) -> Result<digest::Hasher, digest::HashError> {
   digest::Hasher::new(algorithm, output_length.map(|l| l as usize))
+}
+
+/// Reports whether the linked AWS-LC module is running in FIPS mode.
+///
+/// Returns `1` or `0` to match Node's `crypto.getFips()`. This asks the
+/// linked library (`FIPS_mode()`), so it is `1` only in a `--features fips`
+/// build whose AWS-LC-FIPS module actually came up in FIPS mode.
+#[op2(fast)]
+pub fn op_node_get_fips() -> u32 {
+  u32::from(aws_lc_rs::try_fips_mode().is_ok())
 }
 
 #[op2]

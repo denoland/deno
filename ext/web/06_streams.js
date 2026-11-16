@@ -68,8 +68,8 @@ const {
   SafeFinalizationRegistry,
   SafePromiseAll,
   SafeWeakMap,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype,
+  SharedArrayBufferPrototypeGetByteLength,
+  SharedArrayBufferPrototypeSlice,
   String,
   Symbol,
   SymbolAsyncIterator,
@@ -396,9 +396,7 @@ function canTransferArrayBuffer(O) {
  */
 function getArrayBufferByteLength(O) {
   if (isSharedArrayBuffer(O)) {
-    // TODO(petamoriken): use primordials
-    // deno-lint-ignore deno-internal/prefer-primordials
-    return O.byteLength;
+    return SharedArrayBufferPrototypeGetByteLength(O);
   } else {
     return ArrayBufferPrototypeGetByteLength(O);
   }
@@ -1910,9 +1908,11 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
         byteOffset + byteLength,
       );
     } else {
-      // TODO(lucacasonato): add SharedArrayBuffer to primordials
-      // deno-lint-ignore deno-internal/prefer-primordials
-      cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
+      cloneResult = SharedArrayBufferPrototypeSlice(
+        buffer,
+        byteOffset,
+        byteOffset + byteLength,
+      );
     }
   } catch (e) {
     readableByteStreamControllerError(controller, e);
@@ -6177,15 +6177,14 @@ class ReadableStream {
   getReader(options = undefined) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
-    if (options !== undefined) {
-      options = webidl.converters.ReadableStreamGetReaderOptions(
-        options,
-        prefix,
-        "Argument 1",
-      );
-    } else {
-      options = { __proto__: null };
+    if (options === undefined) {
+      return acquireReadableStreamDefaultReader(this);
     }
+    options = webidl.converters.ReadableStreamGetReaderOptions(
+      options,
+      prefix,
+      "Argument 1",
+    );
     if (options.mode === undefined) {
       return acquireReadableStreamDefaultReader(this);
     } else {
@@ -6200,7 +6199,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {ReadableStream<T>}
    */
-  pipeThrough(transform, options = { __proto__: null }) {
+  pipeThrough(transform, options = undefined) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -6239,7 +6238,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {Promise<void>}
    */
-  pipeTo(destination, options = { __proto__: null }) {
+  pipeTo(destination, options = undefined) {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
@@ -6555,7 +6554,7 @@ class ReadableStreamBYOBReader {
    * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view, options = { __proto__: null }) {
+  read(view, options = undefined) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
@@ -7152,8 +7151,8 @@ class TransformStream {
    */
   constructor(
     transformer = undefined,
-    writableStrategy = { __proto__: null },
-    readableStrategy = { __proto__: null },
+    writableStrategy = undefined,
+    readableStrategy = undefined,
   ) {
     if (transformer === _brand) {
       this[_brand] = _brand;

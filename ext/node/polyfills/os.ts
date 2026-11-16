@@ -247,7 +247,7 @@ function uptime() {
 }
 
 function userInfo(
-  options = { __proto__: null, encoding: "utf-8" },
+  options: { encoding?: string } | undefined = undefined,
 ) {
   let uid = Deno.uid();
   let gid = Deno.gid();

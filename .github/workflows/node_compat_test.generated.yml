@@ -120,11 +120,6 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{vars.S3_REGION }}'
         run: 'aws s3 cp tests/node_compat/summary.json.gz s3://dl-deno-land/node-compat-test/summary-$(date +%Y-%m).json.gz'
-      - name: Post message to slack channel
-        env:
-          SLACK_TOKEN: '${{ secrets.NODE_COMPAT_SLACK_TOKEN }}'
-          SLACK_CHANNEL: '${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}'
-        run: deno -A --config tests/config/deno.json tests/node_compat/slack.ts
 
 # gagen:pin actions/checkout@v6 = de0fac2e4500dabe0009e67214ff5f5447ce83dd
 # gagen:pin actions/setup-python@v6 = a309ff8b426b58ec0e2a45f0f869d46889d02405

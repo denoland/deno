@@ -47,6 +47,7 @@ const {
   SetPrototypeAdd,
   SetPrototypeHas,
   SafeWeakRef,
+  SharedArrayBuffer,
   StringPrototypeReplace,
   SymbolFor,
   WeakRefPrototypeDeref,
@@ -56,7 +57,7 @@ const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 const kEnumerableProperty = ObjectCreate(null);
 kEnumerableProperty.enumerable = true;
 
-const kEmptyObject = ObjectFreeze(ObjectCreate(null));
+const kEmptyObject = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 function once(callback) {
   let called = false;
@@ -278,7 +279,6 @@ let _sleepView;
 
 function sleep(msec) {
   if (_sleepView === undefined) {
-    // deno-lint-ignore deno-internal/prefer-primordials
     const buffer = new SharedArrayBuffer(4);
     // deno-lint-ignore deno-internal/prefer-primordials
     _sleepView = new Int32Array(buffer);

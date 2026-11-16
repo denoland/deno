@@ -22,6 +22,7 @@ const { encodeStr, hexTable } = core.loadExtScript(
 const { unhexTable } = core.loadExtScript(
   "ext:deno_node/internal_binding/_utils.ts",
 );
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 /**
  * replaces encodeURIComponent()
@@ -111,7 +112,7 @@ function parse(
   str,
   sep = "&",
   eq = "=",
-  { decodeURIComponent, maxKeys = 1000 } = { __proto__: null },
+  { decodeURIComponent, maxKeys = 1000 } = kEmptyObject,
 ) {
   const obj = ObjectCreate(null);
 

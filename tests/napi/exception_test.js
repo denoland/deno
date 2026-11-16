@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, loadTestLibrary } from "./common.js";
+import { assertEquals, assertThrows, loadTestLibrary } from "./common.js";
 
 const lib = loadTestLibrary();
 
@@ -19,4 +19,12 @@ Deno.test("napi exception propagation through call_function", function () {
     throw new Error("thrown from js");
   });
   assertEquals(result, "thrown from js");
+});
+
+Deno.test("napi return value is ignored while an exception is pending", function () {
+  assertThrows(
+    () => lib.test_throw_return_invalid(),
+    Error,
+    "thrown before return",
+  );
 });

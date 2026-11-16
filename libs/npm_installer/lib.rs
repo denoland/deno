@@ -176,6 +176,7 @@ pub struct NpmInstaller<
   npm_resolution_installer:
     Arc<NpmResolutionInstaller<TNpmCacheHttpClient, TSys>>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+  maybe_node_modules_path: Option<PathBuf>,
   npm_resolution: Arc<NpmResolutionCell>,
   top_level_install_flag: AtomicFlag,
   install_queue: TaskQueue,
@@ -204,6 +205,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
     options: NpmInstallerOptions<TSys>,
   ) -> Self {
+    let maybe_node_modules_path = options.maybe_node_modules_path.clone();
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match options.maybe_node_modules_path {
         Some(node_modules_folder) => {
@@ -272,6 +274,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       npm_resolution_initializer,
       npm_resolution_installer,
       maybe_lockfile: options.maybe_lockfile,
+      maybe_node_modules_path,
       top_level_install_flag: Default::default(),
       install_queue: Default::default(),
       cached_reqs: Default::default(),
@@ -404,11 +407,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       // for `All` caching so the hot path of running a script (which caches a
       // specific subset) keeps short-circuiting.
       if matches!(caching, PackageCaching::All) {
-        return self.fs_installer.cache_packages(caching).await;
+        return self.cache_packages_in_fs(caching).await;
       }
       return Ok(());
     }
-    let result = self.fs_installer.cache_packages(caching).await;
+    let result = self.cache_packages_in_fs(caching).await;
     if result.is_ok() {
       let mut cached_reqs = self.cached_reqs.lock();
       for req in uncached {
@@ -416,6 +419,27 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       }
     }
     result
+  }
+
+  async fn cache_packages_in_fs(
+    &self,
+    caching: PackageCaching<'_>,
+  ) -> Result<(), JsErrorBox> {
+    self.fs_installer.cache_packages(caching).await?;
+    // store a copy of the lockfile in the node_modules directory so that
+    // the npm packages don't need to be re-resolved when the lockfile in
+    // the workspace is deleted
+    if let Some(lockfile) = &self.maybe_lockfile
+      && let Some(node_modules_path) = &self.maybe_node_modules_path
+      && let Err(err) = lockfile.write_node_modules_copy(node_modules_path)
+    {
+      log::debug!(
+        "Failed writing the lockfile copy to '{}': {:#}",
+        node_modules_path.display(),
+        err
+      );
+    }
+    Ok(())
   }
 
   pub async fn cache_package_info(
@@ -436,7 +460,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       self.add_package_reqs(&[], caching).await
     } else {
       self.npm_resolution_initializer.ensure_initialized().await?;
-      self.fs_installer.cache_packages(caching).await
+      self.cache_packages_in_fs(caching).await
     }
   }
 

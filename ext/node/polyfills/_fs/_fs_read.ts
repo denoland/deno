@@ -32,6 +32,7 @@ const {
   BigInt,
   DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
+  ObjectSetPrototypeOf,
   PromisePrototypeThen,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
@@ -42,7 +43,7 @@ function getByteLength(buffer: ArrayBufferView): number {
     : TypedArrayPrototypeGetByteLength(buffer);
 }
 
-const validateOptionArgs = { __proto__: null, nullable: true };
+const validateOptionArgs = ObjectSetPrototypeOf({ nullable: true }, null);
 
 type BinaryCallback = (
   err: Error | null,

@@ -56,7 +56,6 @@ const testJob = job("test", {
 const workflow = createWorkflow({
   name: "ecosystem_compat_test",
   on: {
-    schedule: [{ cron: "0 10 * * 1-5" }],
     workflow_dispatch: {},
   },
   jobs: [

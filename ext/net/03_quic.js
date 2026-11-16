@@ -50,7 +50,9 @@ const {
   BadResourcePrototype,
 } = core;
 const {
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   PromisePrototypeThen,
   ReflectConstruct,
   SafeSet,
@@ -62,6 +64,8 @@ const {
   Symbol,
   SymbolAsyncIterator,
 } = primordials;
+
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 let getEndpointResource;
 
@@ -135,7 +139,7 @@ class QuicEndpoint {
   #endpoint;
 
   constructor(
-    { hostname = "::", port = 0, [kRid]: rid } = { __proto__: null },
+    { hostname = "::", port = 0, [kRid]: rid } = EMPTY_OPTIONS,
   ) {
     this.#endpoint = rid ?? op_quic_endpoint_create({ hostname, port }, true);
   }
@@ -158,7 +162,7 @@ class QuicEndpoint {
     return new QuicListener(listener, this);
   }
 
-  close({ closeCode = 0, reason = "" } = { __proto__: null }) {
+  close({ closeCode = 0, reason = "" } = EMPTY_OPTIONS) {
     op_quic_endpoint_close(this.#endpoint, closeCode, reason);
   }
 
@@ -296,7 +300,7 @@ class QuicConn {
   }
 
   async createBidirectionalStream(
-    { sendOrder, waitUntilAvailable } = { __proto__: null },
+    { sendOrder, waitUntilAvailable } = EMPTY_OPTIONS,
   ) {
     const { 0: txRid, 1: rxRid } = await op_quic_connection_open_bi(
       this.#resource,
@@ -319,7 +323,7 @@ class QuicConn {
   }
 
   async createUnidirectionalStream(
-    { sendOrder, waitUntilAvailable } = { __proto__: null },
+    { sendOrder, waitUntilAvailable } = EMPTY_OPTIONS,
   ) {
     const rid = await op_quic_connection_open_uni(
       this.#resource,
@@ -379,7 +383,7 @@ class QuicConn {
     return this.#closed;
   }
 
-  close({ closeCode = 0, reason = "" } = { __proto__: null }) {
+  close({ closeCode = 0, reason = "" } = EMPTY_OPTIONS) {
     op_quic_connection_close(this.#resource, closeCode, reason);
   }
 

@@ -64,6 +64,9 @@ const {
   NodeRangeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 // OpenSSL BIGNUM max size: INT_MAX / (4 * BN_BITS2) words * 8 bytes/word
 // On 64-bit: (2^31 - 1) / 256 * 8 = 67108856 bytes
@@ -71,7 +74,7 @@ const OPENSSL_BIGNUM_MAX_BYTES = (((2 ** 31 - 1) / (4 * 64)) | 0) * 8;
 
 function checkPrime(
   candidate: any,
-  options: any = { __proto__: null },
+  options: any = kEmptyObject,
   callback?: (err: Error | null, result: boolean) => void,
 ) {
   if (typeof options === "function") {
@@ -134,7 +137,7 @@ function checkPrime(
 
 function checkPrimeSync(
   candidate: any,
-  options: any = { __proto__: null },
+  options: any = kEmptyObject,
 ): boolean {
   validateObject(options, "options");
 
@@ -180,7 +183,7 @@ function checkPrimeSync(
 
 function generatePrime(
   size: number,
-  options: any = { __proto__: null },
+  options: any = kEmptyObject,
   callback?: (err: Error | null, prime: ArrayBuffer | bigint) => void,
 ) {
   validateInt32(size, "size", 1);
@@ -210,7 +213,7 @@ function generatePrime(
 
 function generatePrimeSync(
   size: number,
-  options: any = { __proto__: null },
+  options: any = kEmptyObject,
 ): ArrayBuffer | bigint {
   const {
     bigint,

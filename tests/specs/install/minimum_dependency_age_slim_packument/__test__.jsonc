@@ -5,10 +5,11 @@
   },
   "steps": [
     {
-      // minimumDependencyAge forces the full packument to be requested, since
-      // the abbreviated install manifest omits the `time` field. The full
-      // packument carries a `scripts` map for every version, which should be
-      // stripped before it is cached so the cached registry.json stays small.
+      // The package has a version published after the minimumDependencyAge
+      // date, so the full packument is requested, since the abbreviated
+      // install manifest omits the `time` field. The full packument carries a
+      // `scripts` map for every version, which should be stripped before it
+      // is cached so the cached registry.json stays small.
       "args": "install npm:@denotest/scripts-with-publish-date",
       "output": "[WILDCARD]"
     },

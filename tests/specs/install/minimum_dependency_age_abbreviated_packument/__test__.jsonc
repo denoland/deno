@@ -1,0 +1,40 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      // The package was last modified before the minimum dependency age's
+      // date, so none of its versions can be too new and the abbreviated
+      // install manifest is enough even though it has no publish dates.
+      "args": "run --no-lock old.ts",
+      "output": "old.out"
+    },
+    {
+      // This package was modified after the date, so the full packument is
+      // fetched after the abbreviated one in order to get the publish dates.
+      "args": "run --no-lock latest.ts",
+      "output": "latest.out"
+    },
+    {
+      "args": "run -A check.ts",
+      "output": "check.out"
+    },
+    {
+      // both resolve from the cache without re-fetching
+      "args": "run --no-lock old.ts",
+      "output": "1.0.0\n"
+    },
+    {
+      "args": "run --no-lock latest.ts",
+      "output": "1.0.0\n"
+    },
+    {
+      // reloading a cached full packument requests the full packument again
+      // so that the etag can match instead of downloading it twice
+      "args": "run --no-lock --reload latest.ts",
+      "output": "reload.out"
+    }
+  ]
+}

@@ -530,22 +530,17 @@ impl<
     anyhow::Error,
   > {
     self.registry_info_provider.get_or_try_init(|| {
-      let packument_format = if self
+      let npmrc = self.workspace_factory().npmrc()?;
+      let newest_dependency_date = self
         .resolver_factory
         .minimum_dependency_age_config()
         .ok()
-        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
-        .is_some()
-      {
-        NpmPackumentFormat::Full
-      } else {
-        NpmPackumentFormat::Abbreviated
-      };
+        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()));
       Ok(create_registry_info_provider(
         self.npm_cache()?.clone(),
         self.http_client().clone(),
-        self.workspace_factory().npmrc()?.clone(),
-        packument_format,
+        npmrc.clone(),
+        NpmPackumentFormat::new(npmrc, newest_dependency_date),
       ))
     })
   }

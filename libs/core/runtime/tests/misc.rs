@@ -2192,3 +2192,58 @@ fn foreground_tasks_delivered_without_tokio_handle() {
     runtime.resolve_value(promise).await.unwrap();
   });
 }
+
+/// Function templates built with fast-call overloads keep raw pointers to the
+/// `CFunction`s stored in the op contexts, and a concurrent TurboFan job that
+/// inlines a fast call reads them until the isolate is disposed. The op
+/// contexts must therefore still be alive while the isolate is being dropped,
+/// and be released afterwards.
+#[test]
+fn op_ctxs_outlive_isolate() {
+  struct OpCtxsProbe {
+    op_ctxs: std::rc::Weak<crate::ops::OpCtxs>,
+    alive_at_isolate_drop: Rc<std::cell::Cell<Option<bool>>>,
+  }
+
+  impl Drop for OpCtxsProbe {
+    fn drop(&mut self) {
+      self
+        .alive_at_isolate_drop
+        .set(Some(self.op_ctxs.strong_count() > 0));
+    }
+  }
+
+  let mut runtime = JsRuntime::new(Default::default());
+  runtime
+    .execute_script(
+      "a.js",
+      "for (let i = 0; i < 10_000; i++) Deno.core.ops.op_add(i, 1);",
+    )
+    .unwrap();
+
+  let op_ctxs = Rc::downgrade(&runtime.main_realm().0.context_state.op_ctxs);
+  assert!(
+    op_ctxs
+      .upgrade()
+      .unwrap()
+      .iter()
+      .any(|op_ctx| op_ctx.fast_fn_info().is_some())
+  );
+
+  // Isolate slots are dropped by `OwnedIsolate::drop`, i.e. only once the
+  // runtime has finished its own cleanup and starts disposing the isolate.
+  let alive_at_isolate_drop = Rc::new(std::cell::Cell::new(None));
+  runtime.v8_isolate().set_slot(OpCtxsProbe {
+    op_ctxs: op_ctxs.clone(),
+    alive_at_isolate_drop: alive_at_isolate_drop.clone(),
+  });
+
+  drop(runtime);
+
+  assert_eq!(
+    alive_at_isolate_drop.get(),
+    Some(true),
+    "op contexts were freed before the isolate was disposed"
+  );
+  assert_eq!(op_ctxs.strong_count(), 0, "op contexts were leaked");
+}

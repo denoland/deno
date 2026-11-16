@@ -8,9 +8,12 @@ const { timingSafeEqual } = core.loadExtScript(
 );
 
 const { Error } = primordials;
+const { op_node_get_fips } = core.ops;
 
-function getFipsCrypto(): boolean {
-  return false;
+// Returns 1 when the linked AWS-LC module is in FIPS mode (a `--features
+// fips` build), otherwise 0. Matches Node's `crypto.getFips()`.
+function getFipsCrypto(): 0 | 1 {
+  return op_node_get_fips() === 1 ? 1 : 0;
 }
 
 function setFipsCrypto(_fips: boolean) {
