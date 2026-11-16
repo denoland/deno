@@ -12,6 +12,38 @@
     "deny": {
       "args": "run --no-config --no-prompt --allow-read=file,,with,,commas.txt,plain.txt --allow-write=file,,with,,commas.txt,plain.txt --deny-read=file,,with,,commas.txt --deny-write=file,,with,,commas.txt main.ts",
       "output": "denied.out"
+    },
+    "installed_allow": {
+      "steps": [{
+        "args": "install --no-config --global --root ./bins --name comma-paths --allow-read=file,,with,,commas.txt,plain.txt --allow-write=file,,with,,commas.txt,plain.txt main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "./bins/bin/comma-paths",
+        "args": [],
+        "output": "granted.out"
+      }, {
+        "if": "windows",
+        "commandName": "./bins/bin/comma-paths.cmd",
+        "args": [],
+        "output": "granted.out"
+      }]
+    },
+    "installed_deny": {
+      "steps": [{
+        "args": "install --no-config --global --root ./bins --name comma-paths --allow-read=file,,with,,commas.txt,plain.txt --allow-write=file,,with,,commas.txt,plain.txt --deny-read=file,,with,,commas.txt --deny-write=file,,with,,commas.txt main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "./bins/bin/comma-paths",
+        "args": [],
+        "output": "denied.out"
+      }, {
+        "if": "windows",
+        "commandName": "./bins/bin/comma-paths.cmd",
+        "args": [],
+        "output": "denied.out"
+      }]
     }
   }
 }
