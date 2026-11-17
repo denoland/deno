@@ -1,5 +1,5 @@
 // Only defined for window.
-alert;
+localStorage;
 
 // Only defined for worker.
-WorkerGlobalScope;
+onmessage;

@@ -231,8 +231,7 @@ interface CryptoKey {
  * `deriveKey`, so calling the constructor throws.
  *
  * @category Crypto */
-declare var CryptoKey: typeof globalThis extends
-  { document: any; CryptoKey: infer T } ? T : {
+declare var CryptoKey: {
   readonly prototype: CryptoKey;
   new (): never;
 };
@@ -659,8 +658,7 @@ interface SubtleCrypto {
  * constructor throws.
  *
  * @category Crypto */
-declare var SubtleCrypto: typeof globalThis extends
-  { document: any; SubtleCrypto: infer T } ? T : {
+declare var SubtleCrypto: {
   readonly prototype: SubtleCrypto;
   new (): never;
   /**
@@ -767,9 +765,7 @@ interface Crypto {
  * rather than constructed directly, so calling the constructor throws.
  *
  * @category Crypto */
-declare var Crypto: typeof globalThis extends { document: any; Crypto: infer T }
-  ? T
-  : {
-    readonly prototype: Crypto;
-    new (): never;
-  };
+declare var Crypto: {
+  readonly prototype: Crypto;
+  new (): never;
+};

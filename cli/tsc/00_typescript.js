@@ -492,6 +492,7 @@ __export(typescript_exports, {
   defaultHoverMaximumTruncationLength: () => defaultHoverMaximumTruncationLength,
   defaultInitCompilerOptions: () => defaultInitCompilerOptions,
   defaultMaximumTruncationLength: () => defaultMaximumTruncationLength,
+  deno: () => deno_exports,
   diagnosticCategoryName: () => diagnosticCategoryName,
   diagnosticToString: () => diagnosticToString,
   diagnosticsEqualityComparer: () => diagnosticsEqualityComparer,
@@ -8782,6 +8783,9 @@ function getEncodedRootLength(path) {
     }
     return ~path.length;
   }
+  if (path.startsWith("data:")) {
+    return ~path.length;
+  }
   return 0;
 }
 function getRootLength(path) {
@@ -9009,6 +9013,9 @@ function removeTrailingDirectorySeparator(path) {
 }
 function ensureTrailingDirectorySeparator(path) {
   if (!hasTrailingDirectorySeparator(path)) {
+    if (path.startsWith("data:")) {
+      return path;
+    }
     return path + directorySeparator;
   }
   return path;
@@ -11425,6 +11432,225 @@ var Diagnostics = {
   Deferred_imports_are_only_supported_when_the_module_flag_is_set_to_esnext_or_preserve: diag(18060, 1 /* Error */, "Deferred_imports_are_only_supported_when_the_module_flag_is_set_to_esnext_or_preserve_18060", "Deferred imports are only supported when the '--module' flag is set to 'esnext' or 'preserve'."),
   _0_is_not_a_valid_meta_property_for_keyword_import_Did_you_mean_meta_or_defer: diag(18061, 1 /* Error */, "_0_is_not_a_valid_meta_property_for_keyword_import_Did_you_mean_meta_or_defer_18061", "'{0}' is not a valid meta-property for keyword 'import'. Did you mean 'meta' or 'defer'?")
 };
+
+// src/compiler/deno.ts
+var deno_exports = {};
+__export(deno_exports, {
+  createDenoForkContext: () => createDenoForkContext,
+  enterSpan: () => enterSpan,
+  exitSpan: () => exitSpan,
+  isTypesNodePkgPath: () => isTypesNodePkgPath,
+  parseNpmPackageReference: () => parseNpmPackageReference,
+  setEnterSpan: () => setEnterSpan,
+  setExitSpan: () => setExitSpan,
+  setIsNodeSourceFileCallback: () => setIsNodeSourceFileCallback,
+  setNodeBuiltInModuleNames: () => setNodeBuiltInModuleNames,
+  setNodeOnlyGlobalNames: () => setNodeOnlyGlobalNames,
+  setTypesNodeIgnorableNames: () => setTypesNodeIgnorableNames,
+  spanned: () => spanned,
+  tryParseNpmPackageReference: () => tryParseNpmPackageReference
+});
+var isNodeSourceFile = () => false;
+var nodeBuiltInModuleNames = /* @__PURE__ */ new Set();
+var nodeOnlyGlobalNames = /* @__PURE__ */ new Set();
+var typesNodeIgnorableNames = /* @__PURE__ */ new Set();
+var enterSpan = () => ({});
+var exitSpan = () => {
+};
+function setEnterSpan(f) {
+  enterSpan = f;
+}
+function setExitSpan(f) {
+  exitSpan = f;
+}
+function spanned(name, f) {
+  const span = enterSpan(name);
+  let needsExit = true;
+  try {
+    const result = f();
+    if (result instanceof Promise) {
+      needsExit = false;
+      return result.finally(() => exitSpan(span));
+    } else {
+      return result;
+    }
+  } finally {
+    if (needsExit) {
+      exitSpan(span);
+    }
+  }
+}
+function setIsNodeSourceFileCallback(callback) {
+  isNodeSourceFile = callback;
+}
+function setNodeBuiltInModuleNames(names) {
+  nodeBuiltInModuleNames = new Set(names);
+}
+function setNodeOnlyGlobalNames(names) {
+  nodeBuiltInModuleNames = new Set(names);
+  nodeOnlyGlobalNames = new Set(names);
+}
+function setTypesNodeIgnorableNames(names) {
+  typesNodeIgnorableNames = names;
+}
+function createDenoForkContext({
+  mergeSymbol,
+  globals,
+  nodeGlobals,
+  ambientModuleSymbolRegex: ambientModuleSymbolRegex2
+}) {
+  return {
+    hasNodeSourceFile,
+    getGlobalsForName,
+    mergeGlobalSymbolTable,
+    combinedGlobals: createNodeGlobalsSymbolTable()
+  };
+  function hasNodeSourceFile(node) {
+    if (!node) return false;
+    const sourceFile = getSourceFileOfNode(node);
+    return isNodeSourceFile(sourceFile);
+  }
+  function getGlobalsForName(id) {
+    if (ambientModuleSymbolRegex2.test(id)) {
+      if (id.startsWith('"node:')) {
+        const name = id.slice(6, -1);
+        if (nodeBuiltInModuleNames.has(name)) {
+          return globals;
+        }
+      }
+      return nodeGlobals;
+    }
+    return nodeOnlyGlobalNames.has(id) ? nodeGlobals : globals;
+  }
+  function mergeGlobalSymbolTable(node, source, unidirectional = false) {
+    const sourceFile = getSourceFileOfNode(node);
+    const isNodeFile = hasNodeSourceFile(sourceFile);
+    const isTypesNodeSourceFile = isNodeFile && isTypesNodePkgPath2(sourceFile.path);
+    source.forEach((sourceSymbol, id) => {
+      const target = isNodeFile ? getGlobalsForName(id) : globals;
+      const targetSymbol = target.get(id);
+      if (isTypesNodeSourceFile && targetSymbol !== void 0 && typesNodeIgnorableNames.has(id) && !symbolHasAnyTypesNodePkgDecl(targetSymbol)) {
+        return;
+      }
+      target.set(id, targetSymbol ? mergeSymbol(targetSymbol, sourceSymbol, unidirectional) : sourceSymbol);
+    });
+  }
+  function symbolHasAnyTypesNodePkgDecl(symbol) {
+    if (symbol.declarations) {
+      for (const decl of symbol.declarations) {
+        const sourceFile = getSourceFileOfNode(decl);
+        const isNodeFile = hasNodeSourceFile(sourceFile);
+        if (isNodeFile && isTypesNodePkgPath2(sourceFile.path)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  function isTypesNodePkgPath2(path) {
+    return path.endsWith(".d.ts") && path.includes("/@types/node/");
+  }
+  function createNodeGlobalsSymbolTable() {
+    return new Proxy(globals, {
+      get(target, prop, receiver) {
+        if (prop === "get") {
+          return (key) => {
+            return nodeGlobals.get(key) ?? globals.get(key);
+          };
+        } else if (prop === "has") {
+          return (key) => {
+            return nodeGlobals.has(key) || globals.has(key);
+          };
+        } else if (prop === "size") {
+          let i = 0;
+          for (const _ignore of getEntries((entry) => entry)) {
+            i++;
+          }
+          return i;
+        } else if (prop === "forEach") {
+          return (action) => {
+            for (const [key, value] of getEntries((entry) => entry)) {
+              action(value, key);
+            }
+          };
+        } else if (prop === "entries") {
+          return () => {
+            return getEntries((kv) => kv);
+          };
+        } else if (prop === "keys") {
+          return () => {
+            return getEntries((kv) => kv[0]);
+          };
+        } else if (prop === "values") {
+          return () => {
+            return getEntries((kv) => kv[1]);
+          };
+        } else if (prop === Symbol.iterator) {
+          return () => {
+            return Array.from(getEntries((kv) => kv))[Symbol.iterator]();
+          };
+        } else {
+          const value = target[prop];
+          if (value instanceof Function) {
+            return function(...args) {
+              return value.apply(this === receiver ? target : this, args);
+            };
+          }
+          return value;
+        }
+      }
+    });
+    function* getEntries(transform2) {
+      const foundKeys = /* @__PURE__ */ new Set();
+      for (const entries of [nodeGlobals.entries(), globals.entries()]) {
+        for (const entry of entries) {
+          if (!foundKeys.has(entry[0])) {
+            yield transform2(entry);
+            foundKeys.add(entry[0]);
+          }
+        }
+      }
+    }
+  }
+}
+function isTypesNodePkgPath(path) {
+  return path.endsWith(".d.ts") && path.includes("/@types/node/");
+}
+function tryParseNpmPackageReference(text) {
+  try {
+    return parseNpmPackageReference(text);
+  } catch {
+    return void 0;
+  }
+}
+function parseNpmPackageReference(text) {
+  if (!text.startsWith("npm:")) {
+    throw new Error(`Not an npm specifier: ${text}`);
+  }
+  text = text.replace(/^npm:\/?/, "");
+  const parts = text.split("/");
+  const namePartLen = text.startsWith("@") ? 2 : 1;
+  if (parts.length < namePartLen) {
+    throw new Error(`Not a valid package: ${text}`);
+  }
+  const nameParts = parts.slice(0, namePartLen);
+  const lastNamePart = nameParts[nameParts.length - 1];
+  const lastAtIndex = lastNamePart.lastIndexOf("@");
+  let versionReq;
+  if (lastAtIndex > 0) {
+    versionReq = lastNamePart.substring(lastAtIndex + 1);
+    nameParts[nameParts.length - 1] = lastNamePart.substring(0, lastAtIndex);
+  }
+  const name = nameParts.join("/");
+  if (name.length === 0) {
+    throw new Error(`Npm specifier did not have a name: ${text}`);
+  }
+  return {
+    name,
+    versionReq,
+    subPath: parts.length > nameParts.length ? parts.slice(nameParts.length).join("/") : void 0
+  };
+}
 
 // src/compiler/scanner.ts
 function tokenIsIdentifierOrKeyword(token) {
@@ -22278,12 +22504,17 @@ function getJSXTransformEnabled(options) {
   return jsx === 2 /* React */ || jsx === 4 /* ReactJSX */ || jsx === 5 /* ReactJSXDev */;
 }
 function getJSXImplicitImportBase(compilerOptions, file) {
+  var _a;
   const jsxImportSourcePragmas = file == null ? void 0 : file.pragmas.get("jsximportsource");
   const jsxImportSourcePragma = isArray(jsxImportSourcePragmas) ? jsxImportSourcePragmas[jsxImportSourcePragmas.length - 1] : jsxImportSourcePragmas;
   const jsxRuntimePragmas = file == null ? void 0 : file.pragmas.get("jsxruntime");
   const jsxRuntimePragma = isArray(jsxRuntimePragmas) ? jsxRuntimePragmas[jsxRuntimePragmas.length - 1] : jsxRuntimePragmas;
   if ((jsxRuntimePragma == null ? void 0 : jsxRuntimePragma.arguments.factory) === "classic") {
     return void 0;
+  }
+  {
+    const resolvedJsxImportSource = file && ((_a = compilerOptions.resolveJsxImportSource) == null ? void 0 : _a.call(compilerOptions, file.fileName));
+    if (resolvedJsxImportSource) return resolvedJsxImportSource;
   }
   return compilerOptions.jsx === 4 /* ReactJSX */ || compilerOptions.jsx === 5 /* ReactJSXDev */ || compilerOptions.jsxImportSource || jsxImportSourcePragma || (jsxRuntimePragma == null ? void 0 : jsxRuntimePragma.arguments.factory) === "automatic" ? (jsxImportSourcePragma == null ? void 0 : jsxImportSourcePragma.arguments.factory) || compilerOptions.jsxImportSource || "react" : void 0;
 }
@@ -23638,7 +23869,9 @@ function createNameResolver({
   argumentsSymbol,
   error: error2,
   getSymbolOfDeclaration,
-  globals,
+  denoGlobals,
+  nodeGlobals,
+  denoContext,
   lookup,
   setRequiresScopeChangeCache = returnUndefined,
   getRequiresScopeChangeCache = returnUndefined,
@@ -23894,7 +24127,12 @@ function createNameResolver({
         }
       }
       if (!excludeGlobals) {
-        result = lookup(globals, name, meaning);
+        if (denoContext.hasNodeSourceFile(lastLocation)) {
+          result = lookup(nodeGlobals, name, meaning);
+        }
+        if (!result) {
+          result = lookup(denoGlobals, name, meaning);
+        }
       }
     }
     if (!result) {
@@ -40727,6 +40965,7 @@ var libEntries = [
   ["dom", "lib.dom.d.ts"],
   ["dom.iterable", "lib.dom.iterable.d.ts"],
   ["dom.asynciterable", "lib.dom.asynciterable.d.ts"],
+  ["dom.extras", "lib.dom.extras.d.ts"],
   ["webworker", "lib.webworker.d.ts"],
   ["webworker.importscripts", "lib.webworker.importscripts.d.ts"],
   ["webworker.iterable", "lib.webworker.iterable.d.ts"],
@@ -51120,13 +51359,24 @@ function createTypeChecker(host) {
     evaluateElementAccessExpression,
     evaluateEntityNameExpression
   });
-  var globals = createSymbolTable();
+  var denoGlobals = createSymbolTable();
+  var nodeGlobals = createSymbolTable();
   var undefinedSymbol = createSymbol(4 /* Property */, "undefined");
   undefinedSymbol.declarations = [];
-  var globalThisSymbol = createSymbol(1536 /* Module */, "globalThis", 8 /* Readonly */);
-  globalThisSymbol.exports = globals;
-  globalThisSymbol.declarations = [];
-  globals.set(globalThisSymbol.escapedName, globalThisSymbol);
+  var denoGlobalThisSymbol = createSymbol(1536 /* Module */, "globalThis", 8 /* Readonly */);
+  denoGlobalThisSymbol.exports = denoGlobals;
+  denoGlobalThisSymbol.declarations = [];
+  denoGlobals.set(denoGlobalThisSymbol.escapedName, denoGlobalThisSymbol);
+  const denoContext = deno_exports.createDenoForkContext({
+    globals: denoGlobals,
+    nodeGlobals,
+    mergeSymbol,
+    ambientModuleSymbolRegex
+  });
+  const nodeGlobalThisSymbol = createSymbol(1536 /* Module */, "globalThis", 8 /* Readonly */);
+  nodeGlobalThisSymbol.exports = denoContext.combinedGlobals;
+  nodeGlobalThisSymbol.declarations = [];
+  nodeGlobals.set(nodeGlobalThisSymbol.escapedName, nodeGlobalThisSymbol);
   var argumentsSymbol = createSymbol(4 /* Property */, "arguments");
   var requireSymbol = createSymbol(4 /* Property */, "require");
   var isolatedModulesLikeFlagName = compilerOptions.verbatimModuleSyntax ? "verbatimModuleSyntax" : "isolatedModules";
@@ -51140,7 +51390,9 @@ function createTypeChecker(host) {
     compilerOptions,
     requireSymbol,
     argumentsSymbol,
-    globals,
+    denoGlobals,
+    nodeGlobals,
+    denoContext,
     getSymbolOfDeclaration,
     error: error2,
     getRequiresScopeChangeCache,
@@ -51154,7 +51406,9 @@ function createTypeChecker(host) {
     compilerOptions,
     requireSymbol,
     argumentsSymbol,
-    globals,
+    denoGlobals,
+    nodeGlobals,
+    denoContext,
     getSymbolOfDeclaration,
     error: error2,
     getRequiresScopeChangeCache,
@@ -51967,6 +52221,7 @@ function createTypeChecker(host) {
   var reverseMappedCache = /* @__PURE__ */ new Map();
   var reverseHomomorphicMappedCache = /* @__PURE__ */ new Map();
   var ambientModulesCache;
+  var nodeAmbientModulesCache;
   var patternAmbientModules;
   var patternAmbientModuleAugmentations;
   var globalObjectType;
@@ -52114,7 +52369,8 @@ function createTypeChecker(host) {
       ) || unknownSymbol);
     }
     if (!isIdentifier(node.expression.expression)) return false;
-    return idText(node.expression.name) === "Symbol" && idText(node.expression.expression) === "globalThis" && getResolvedSymbol(node.expression.expression) === globalThisSymbol;
+    const resolvedGlobalThis = getResolvedSymbol(node.expression.expression);
+    return idText(node.expression.name) === "Symbol" && idText(node.expression.expression) === "globalThis" && (resolvedGlobalThis === denoGlobalThisSymbol || resolvedGlobalThis === nodeGlobalThisSymbol);
   }
   function getCachedType(key) {
     return key ? cachedTypes.get(key) : void 0;
@@ -52376,7 +52632,7 @@ function createTypeChecker(host) {
         recordMergedSymbol(target, source);
       }
     } else if (target.flags & 1024 /* NamespaceModule */) {
-      if (target !== globalThisSymbol) {
+      if (target !== denoGlobalThisSymbol && target !== nodeGlobalThisSymbol) {
         error2(
           source.declarations && getNameOfDeclaration(source.declarations[0]),
           Diagnostics.Cannot_augment_module_0_with_value_exports_because_it_resolves_to_a_non_module_entity,
@@ -52470,7 +52726,7 @@ function createTypeChecker(host) {
       return;
     }
     if (isGlobalScopeAugmentation(moduleAugmentation)) {
-      mergeSymbolTable(globals, moduleAugmentation.symbol.exports);
+      denoContext.mergeGlobalSymbolTable(moduleAugmentation, moduleAugmentation.symbol.exports);
     } else {
       const moduleNotFoundError = !(moduleName.parent.parent.flags & 33554432 /* Ambient */) ? Diagnostics.Invalid_module_name_in_augmentation_module_0_cannot_be_found : void 0;
       let mainModule = resolveExternalModuleNameWorker(
@@ -52516,15 +52772,17 @@ function createTypeChecker(host) {
   }
   function addUndefinedToGlobalsOrErrorOnRedeclaration() {
     const name = undefinedSymbol.escapedName;
-    const targetSymbol = globals.get(name);
-    if (targetSymbol) {
-      forEach(targetSymbol.declarations, (declaration) => {
-        if (!isTypeDeclaration(declaration)) {
-          diagnostics.add(createDiagnosticForNode(declaration, Diagnostics.Declaration_name_conflicts_with_built_in_global_identifier_0, unescapeLeadingUnderscores(name)));
-        }
-      });
-    } else {
-      globals.set(name, undefinedSymbol);
+    for (const globals of [nodeGlobals, denoGlobals]) {
+      const targetSymbol = globals.get(name);
+      if (targetSymbol) {
+        forEach(targetSymbol.declarations, (declaration) => {
+          if (!isTypeDeclaration(declaration)) {
+            diagnostics.add(createDiagnosticForNode(declaration, Diagnostics.Declaration_name_conflicts_with_built_in_global_identifier_0, unescapeLeadingUnderscores(name)));
+          }
+        });
+      } else {
+        globals.set(name, undefinedSymbol);
+      }
     }
   }
   function getSymbolLinks(symbol) {
@@ -52827,7 +53085,9 @@ function createTypeChecker(host) {
         }
       }
       if (compilerOptions.isolatedModules && result && isInExternalModule && (meaning & 111551 /* Value */) === 111551 /* Value */) {
-        const isGlobal = getSymbol2(globals, name, meaning) === result;
+        const isNodeFile = denoContext.hasNodeSourceFile(lastLocation);
+        const fileGlobals = isNodeFile ? nodeGlobals : denoGlobals;
+        const isGlobal = getSymbol2(fileGlobals, name, meaning) === result;
         const nonValueSymbol = isGlobal && isSourceFile(lastLocation) && lastLocation.locals && getSymbol2(lastLocation.locals, name, ~111551 /* Value */);
         if (nonValueSymbol) {
           const importDecl = (_a = nonValueSymbol.declarations) == null ? void 0 : _a.find((d) => d.kind === 277 /* ImportSpecifier */ || d.kind === 274 /* ImportClause */ || d.kind === 275 /* NamespaceImport */ || d.kind === 272 /* ImportEqualsDeclaration */);
@@ -53231,7 +53491,7 @@ function createTypeChecker(host) {
     const usageMode = file && getEmitSyntaxForModuleSpecifierExpression(usage);
     if (file && usageMode !== void 0) {
       const targetMode = host.getImpliedNodeFormatForEmit(file);
-      if (usageMode === 99 /* ESNext */ && targetMode === 1 /* CommonJS */ && 100 /* Node16 */ <= moduleKind && moduleKind <= 199 /* NodeNext */) {
+      if (usageMode === 99 /* ESNext */ && targetMode === 1 /* CommonJS */) {
         return true;
       }
       if (usageMode === 99 /* ESNext */ && targetMode === 99 /* ESNext */) {
@@ -54106,6 +54366,25 @@ function createTypeChecker(host) {
     return isStringLiteralLike(moduleReferenceExpression) ? resolveExternalModule(location, moduleReferenceExpression.text, moduleNotFoundError, !ignoreErrors ? moduleReferenceExpression : void 0, isForAugmentation) : void 0;
   }
   function resolveExternalModule(location, moduleReference, moduleNotFoundError, errorNode, isForAugmentation = false) {
+    var _a;
+    const result = resolveExternalModuleInner(location, moduleReference, moduleNotFoundError, errorNode, isForAugmentation);
+    if (moduleReference.startsWith("npm:") && (result === void 0 || ((_a = result == null ? void 0 : result.exports) == null ? void 0 : _a.size) === 0)) {
+      const npmPackageRef = deno_exports.tryParseNpmPackageReference(moduleReference);
+      if (npmPackageRef) {
+        const bareSpecifier = npmPackageRef.name + (npmPackageRef.subPath === void 0 ? "" : "/" + npmPackageRef.subPath);
+        const ambientModule = tryFindAmbientModule(
+          bareSpecifier,
+          /*withAugmentations*/
+          true
+        );
+        if (ambientModule) {
+          return ambientModule;
+        }
+      }
+    }
+    return result;
+  }
+  function resolveExternalModuleInner(location, moduleReference, moduleNotFoundError, errorNode, isForAugmentation = false) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
     if (errorNode && startsWith(moduleReference, "@types/")) {
       const diag2 = Diagnostics.Cannot_import_type_declaration_files_Consider_importing_0_instead_of_1;
@@ -54915,8 +55194,20 @@ function createTypeChecker(host) {
           break;
       }
     }
+    if (denoContext.hasNodeSourceFile(enclosingDeclaration)) {
+      result = callback(
+        nodeGlobals,
+        /*ignoreQualification*/
+        void 0,
+        /*isLocalNameLookup*/
+        true
+      );
+      if (result) {
+        return result;
+      }
+    }
     return callback(
-      globals,
+      denoGlobals,
       /*ignoreQualification*/
       void 0,
       /*isLocalNameLookup*/
@@ -54991,7 +55282,11 @@ function createTypeChecker(host) {
           }
         }
       });
-      return result2 || (symbols === globals ? getCandidateListForSymbol(globalThisSymbol, globalThisSymbol, ignoreQualification) : void 0);
+      if (result2) {
+        return result2;
+      }
+      const globalSymbol = symbols === nodeGlobals ? nodeGlobalThisSymbol : symbols === denoGlobals ? denoGlobalThisSymbol : void 0;
+      return globalSymbol !== void 0 ? getCandidateListForSymbol(globalSymbol, globalSymbol, ignoreQualification) : void 0;
     }
     function getCandidateListForSymbol(symbolFromSymbolTable, resolvedImportedSymbol, ignoreQualification) {
       if (isAccessible(symbolFromSymbolTable, resolvedImportedSymbol, ignoreQualification)) {
@@ -62975,7 +63270,7 @@ function createTypeChecker(host) {
     }
     let members = getExportsOfSymbol(symbol);
     let indexInfos;
-    if (symbol === globalThisSymbol) {
+    if (symbol === denoGlobalThisSymbol || symbol === nodeGlobalThisSymbol) {
       const varsOnly = /* @__PURE__ */ new Map();
       members.forEach((p) => {
         var _a;
@@ -64135,7 +64430,7 @@ function createTypeChecker(host) {
     if (isExternalModuleNameRelative(moduleName)) {
       return void 0;
     }
-    const symbol = getSymbol2(globals, '"' + moduleName + '"', 512 /* ValueModule */);
+    const symbol = getSymbol2(denoContext.combinedGlobals, '"' + moduleName + '"', 512 /* ValueModule */);
     return symbol && withAugmentations ? getMergedSymbol(symbol) : symbol;
   }
   function hasEffectiveQuestionToken(node) {
@@ -66937,7 +67232,9 @@ function createTypeChecker(host) {
             return getUnionType(append(types, undefinedType));
           }
         }
-        if (objectType.symbol === globalThisSymbol && propName !== void 0 && globalThisSymbol.exports.has(propName) && globalThisSymbol.exports.get(propName).flags & 418 /* BlockScoped */) {
+        if (objectType.symbol === denoGlobalThisSymbol && propName !== void 0 && denoGlobalThisSymbol.exports.has(propName) && denoGlobalThisSymbol.exports.get(propName).flags & 418 /* BlockScoped */) {
+          error2(accessExpression, Diagnostics.Property_0_does_not_exist_on_type_1, unescapeLeadingUnderscores(propName), typeToString(objectType));
+        } else if (objectType.symbol === nodeGlobalThisSymbol && propName !== void 0 && nodeGlobalThisSymbol.exports.has(propName) && nodeGlobalThisSymbol.exports.get(propName).flags & 418 /* BlockScoped */) {
           error2(accessExpression, Diagnostics.Property_0_does_not_exist_on_type_1, unescapeLeadingUnderscores(propName), typeToString(objectType));
         } else if (noImplicitAny && !(accessFlags & 128 /* SuppressNoImplicitAnyError */)) {
           if (propName !== void 0 && typeHasStaticProperty(propName, objectType)) {
@@ -76488,7 +76785,7 @@ function createTypeChecker(host) {
         /*isUse*/
         true
       );
-      if (symbol && (symbol === undefinedSymbol || symbol === globalThisSymbol || symbol.declarations && isGlobalSourceFile(getDeclarationContainer(symbol.declarations[0])))) {
+      if (symbol && (symbol === undefinedSymbol || symbol === denoGlobalThisSymbol || symbol === nodeGlobalThisSymbol || symbol.declarations && isGlobalSourceFile(getDeclarationContainer(symbol.declarations[0])))) {
       } else {
         const target = symbol && (symbol.flags & 2097152 /* Alias */ ? resolveAlias(symbol) : symbol);
         if (!target || getSymbolFlags(target) & 111551 /* Value */) {
@@ -77039,8 +77336,8 @@ function createTypeChecker(host) {
       container
     );
     if (noImplicitThis) {
-      const globalThisType2 = getTypeOfSymbol(globalThisSymbol);
-      if (type === globalThisType2 && capturedByArrowFunction) {
+      const globalThisType2 = getTypeOfSymbol(denoGlobalThisSymbol);
+      if ((type === globalThisType2 || type === getTypeOfSymbol(nodeGlobalThisSymbol)) && capturedByArrowFunction) {
         error2(node, Diagnostics.The_containing_arrow_function_captures_the_global_value_of_this);
       } else if (!type) {
         const diag2 = error2(node, Diagnostics.this_implicitly_has_type_any_because_it_does_not_have_a_type_annotation);
@@ -77092,7 +77389,10 @@ function createTypeChecker(host) {
       } else if (container.externalModuleIndicator) {
         return undefinedType;
       } else if (includeGlobalThis) {
-        return getTypeOfSymbol(globalThisSymbol);
+        if (denoContext.hasNodeSourceFile(container)) {
+          return getTypeOfSymbol(nodeGlobalThisSymbol);
+        }
+        return getTypeOfSymbol(denoGlobalThisSymbol);
       }
     }
   }
@@ -79912,12 +80212,15 @@ function createTypeChecker(host) {
         if (!isUncheckedJS && isJSLiteralType(leftType)) {
           return anyType;
         }
-        if (leftType.symbol === globalThisSymbol) {
-          if (globalThisSymbol.exports.has(right.escapedText) && globalThisSymbol.exports.get(right.escapedText).flags & 418 /* BlockScoped */) {
+        if (leftType.symbol === denoGlobalThisSymbol) {
+          if (denoGlobalThisSymbol.exports.has(right.escapedText) && denoGlobalThisSymbol.exports.get(right.escapedText).flags & 418 /* BlockScoped */) {
             error2(right, Diagnostics.Property_0_does_not_exist_on_type_1, unescapeLeadingUnderscores(right.escapedText), typeToString(leftType));
           } else if (noImplicitAny) {
             error2(right, Diagnostics.Element_implicitly_has_an_any_type_because_type_0_has_no_index_signature, typeToString(leftType));
           }
+          return anyType;
+        }
+        if (leftType.symbol === nodeGlobalThisSymbol) {
           return anyType;
         }
         if (right.escapedText && !checkAndReportErrorForExtendingInterface(node)) {
@@ -80158,7 +80461,7 @@ function createTypeChecker(host) {
     const symbol = getSymbol2(symbols, name, meaning);
     if (symbol) return symbol;
     let candidates = arrayFrom(symbols.values());
-    if (symbols === globals) {
+    if (symbols === denoGlobals || symbols == nodeGlobals) {
       const primitives = mapDefined(
         ["string", "number", "boolean", "object", "bigint", "symbol"],
         (s) => symbols.has(s.charAt(0).toUpperCase() + s.slice(1)) ? createSymbol(524288 /* TypeAlias */, s) : void 0
@@ -91012,7 +91315,7 @@ function createTypeChecker(host) {
         /*isUse*/
         true
       );
-      if (symbol && (symbol === undefinedSymbol || symbol === globalThisSymbol || symbol.declarations && isGlobalSourceFile(getDeclarationContainer(symbol.declarations[0])))) {
+      if (symbol && (symbol === undefinedSymbol || symbol === denoGlobalThisSymbol || symbol === nodeGlobalThisSymbol || symbol.declarations && isGlobalSourceFile(getDeclarationContainer(symbol.declarations[0])))) {
         error2(exportedName, Diagnostics.Cannot_export_0_Only_local_declarations_can_be_exported_from_a_module, idText(exportedName));
       } else {
         markLinkedReferences(node, 7 /* ExportSpecifier */);
@@ -91127,7 +91430,9 @@ function createTypeChecker(host) {
       grammarErrorOnNode(node.expression, Diagnostics.The_expression_of_an_export_assignment_must_be_an_identifier_or_qualified_name_in_an_ambient_context);
     }
     if (node.isExportEquals) {
-      if (moduleKind >= 5 /* ES2015 */ && moduleKind !== 200 /* Preserve */ && (node.flags & 33554432 /* Ambient */ && host.getImpliedNodeFormatForEmit(getSourceFileOfNode(node)) === 99 /* ESNext */ || !(node.flags & 33554432 /* Ambient */) && host.getImpliedNodeFormatForEmit(getSourceFileOfNode(node)) !== 1 /* CommonJS */)) {
+      if (moduleKind >= 5 /* ES2015 */ && moduleKind !== 200 /* Preserve */ && // deno: temporarily disable this one until Deno 2.0 (https://github.com/microsoft/TypeScript/pull/52109)
+      /* (node.flags & NodeFlags.Ambient && host.getImpliedNodeFormatForEmit(getSourceFileOfNode(node)) === ModuleKind.ESNext) || */
+      (!(node.flags & 33554432 /* Ambient */) && host.getImpliedNodeFormatForEmit(getSourceFileOfNode(node)) !== 1 /* CommonJS */)) {
         grammarErrorOnNode(node, Diagnostics.Export_assignment_cannot_be_used_when_targeting_ECMAScript_modules_Consider_using_export_default_or_another_module_format_instead);
       } else if (moduleKind === 4 /* System */ && !(node.flags & 33554432 /* Ambient */)) {
         grammarErrorOnNode(node, Diagnostics.Export_assignment_is_not_supported_when_module_flag_is_system);
@@ -91820,7 +92125,10 @@ function createTypeChecker(host) {
         isStaticSymbol = isStatic(location);
         location = location.parent;
       }
-      copySymbols(globals, meaning);
+      if (denoContext.hasNodeSourceFile(location)) {
+        copySymbols(nodeGlobals, meaning);
+      }
+      copySymbols(denoGlobals, meaning);
     }
     function copySymbol(symbol, meaning2) {
       if (getCombinedLocalAndExportSymbolFlags(symbol) & meaning2) {
@@ -93029,7 +93337,7 @@ function createTypeChecker(host) {
     return nodeBuilder.serializeTypeForExpression(expr, enclosingDeclaration, flags | 1024 /* MultilineObjectLiterals */, internalFlags, tracker);
   }
   function hasGlobalName(name) {
-    return globals.has(escapeLeadingUnderscores(name));
+    return denoGlobals.has(escapeLeadingUnderscores(name));
   }
   function getReferencedValueSymbol(reference, startInDeclarationContainer) {
     const resolvedSymbol = getNodeLinks(reference).resolvedSymbol;
@@ -93381,10 +93689,10 @@ function createTypeChecker(host) {
             diagnostics.add(createDiagnosticForNode(declaration, Diagnostics.Declaration_name_conflicts_with_built_in_global_identifier_0, "globalThis"));
           }
         }
-        mergeSymbolTable(globals, file.locals);
+        denoContext.mergeGlobalSymbolTable(file, file.locals);
       }
       if (file.jsGlobalAugmentations) {
-        mergeSymbolTable(globals, file.jsGlobalAugmentations);
+        denoContext.mergeGlobalSymbolTable(file, file.jsGlobalAugmentations);
       }
       if (file.patternAmbientModules && file.patternAmbientModules.length) {
         patternAmbientModules = concatenate(patternAmbientModules, file.patternAmbientModules);
@@ -93394,9 +93702,11 @@ function createTypeChecker(host) {
       }
       if (file.symbol && file.symbol.globalExports) {
         const source = file.symbol.globalExports;
+        const isNodeFile = denoContext.hasNodeSourceFile(file);
         source.forEach((sourceSymbol, id) => {
-          if (!globals.has(id)) {
-            globals.set(id, sourceSymbol);
+          const envGlobals = isNodeFile ? denoContext.getGlobalsForName(id) : denoGlobals;
+          if (!envGlobals.has(id)) {
+            envGlobals.set(id, sourceSymbol);
           }
         });
       }
@@ -93419,7 +93729,8 @@ function createTypeChecker(host) {
       true
     );
     getSymbolLinks(unknownSymbol).type = errorType;
-    getSymbolLinks(globalThisSymbol).type = createObjectType(16 /* Anonymous */, globalThisSymbol);
+    getSymbolLinks(denoGlobalThisSymbol).type = createObjectType(16 /* Anonymous */, denoGlobalThisSymbol);
+    getSymbolLinks(nodeGlobalThisSymbol).type = createObjectType(16 /* Anonymous */, nodeGlobalThisSymbol);
     globalArrayType = getGlobalType(
       "Array",
       /*arity*/
@@ -95017,16 +95328,28 @@ function createTypeChecker(host) {
     }
     return false;
   }
-  function getAmbientModules() {
-    if (!ambientModulesCache) {
-      ambientModulesCache = [];
-      globals.forEach((global2, sym) => {
+  function getAmbientModules(sourceFile) {
+    const isNode = denoContext.hasNodeSourceFile(sourceFile);
+    if (isNode) {
+      if (!nodeAmbientModulesCache) {
+        nodeAmbientModulesCache = getAmbientModulesFromGlobals(denoContext.combinedGlobals);
+      }
+      return nodeAmbientModulesCache;
+    } else {
+      if (!ambientModulesCache) {
+        ambientModulesCache = getAmbientModulesFromGlobals(denoGlobals);
+      }
+      return ambientModulesCache;
+    }
+    function getAmbientModulesFromGlobals(envGlobals) {
+      const result = [];
+      envGlobals.forEach((global2, sym) => {
         if (ambientModuleSymbolRegex.test(sym)) {
-          ambientModulesCache.push(global2);
+          result.push(global2);
         }
       });
+      return result;
     }
-    return ambientModulesCache;
   }
   function checkGrammarImportClause(node) {
     var _a, _b;
@@ -126904,14 +127227,6 @@ function changeCompilerHostLikeToUseCache(host, toPath3, getSourceFile) {
     }
     return sourceFile;
   } : void 0;
-  host.fileExists = (fileName) => {
-    const key = toPath3(fileName);
-    const value = fileExistsCache.get(key);
-    if (value !== void 0) return value;
-    const newValue = originalFileExists.call(host, fileName);
-    fileExistsCache.set(key, !!newValue);
-    return newValue;
-  };
   if (originalWriteFile) {
     host.writeFile = (fileName, data, ...rest) => {
       const key = toPath3(fileName);
@@ -127497,7 +127812,7 @@ function createCreateProgramOptions(rootNames, options, host, oldProgram, config
   };
 }
 function createProgram(_rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
   let _createProgramOptions = isArray(_rootNamesOrOptions) ? createCreateProgramOptions(_rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) : _rootNamesOrOptions;
   const { rootNames, options, configFileParsingDiagnostics, projectReferences, typeScriptVersion: typeScriptVersion3, host: createProgramOptionsHost } = _createProgramOptions;
   let { oldProgram } = _createProgramOptions;
@@ -127632,6 +127947,8 @@ function createProgram(_rootNamesOrOptions, _options, _host, _oldProgram, _confi
   let usesUriStyleNodeCoreModules;
   const filesByName = /* @__PURE__ */ new Map();
   const libFiles = /* @__PURE__ */ new Set();
+  let shouldLoadNodeTypes = false;
+  let foundNodeTypes = false;
   let missingFileNames = /* @__PURE__ */ new Map();
   const filesByNameIgnoreCase = host.useCaseSensitiveFileNames() ? /* @__PURE__ */ new Map() : void 0;
   let resolvedProjectReferences;
@@ -127744,6 +128061,23 @@ function createProgram(_rootNamesOrOptions, _options, _host, _oldProgram, _confi
           );
         });
       }
+    }
+    const hasTypesNodePackage = () => {
+      for (const path of filesByName.keys()) {
+        if (deno_exports.isTypesNodePkgPath(path)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    if (foundNodeTypes && !hasTypesNodePackage()) {
+      shouldLoadNodeTypes = true;
+      processRootFile(
+        "asset:///lib.node.d.ts",
+        /*isDefaultLib*/
+        true,
+        { kind: 6 /* LibFile */, index: ((_o = options.lib) == null ? void 0 : _o.length) ?? 0 }
+      );
     }
     files = toSorted(processingDefaultLibFiles, compareDefaultLibFiles).concat(processingOtherFiles);
     processingDefaultLibFiles = void 0;
@@ -127865,7 +128199,7 @@ function createProgram(_rootNamesOrOptions, _options, _host, _oldProgram, _confi
     readFile,
     directoryExists,
     getSymlinkCache,
-    realpath: (_o = host.realpath) == null ? void 0 : _o.bind(host),
+    realpath: (_p = host.realpath) == null ? void 0 : _p.bind(host),
     useCaseSensitiveFileNames: () => host.useCaseSensitiveFileNames(),
     getCanonicalFileName,
     getFileIncludeReasons: () => programDiagnostics.getFileReasons(),
@@ -127879,7 +128213,7 @@ function createProgram(_rootNamesOrOptions, _options, _host, _oldProgram, _confi
   }
   mark("afterProgram");
   measure("Program", "beforeProgram", "afterProgram");
-  (_p = tracing) == null ? void 0 : _p.pop();
+  (_q = tracing) == null ? void 0 : _q.pop();
   return program;
   function getResolvedModule(file, moduleName, mode) {
     var _a2;
@@ -129084,6 +129418,10 @@ function createProgram(_rootNamesOrOptions, _options, _host, _oldProgram, _confi
     }
   }
   function processSourceFile(fileName, isDefaultLib, packageId, reason) {
+    if (fileName === "asset:///lib.node.d.ts" && !shouldLoadNodeTypes) {
+      foundNodeTypes = true;
+      return;
+    }
     getSourceFileFromReferenceWorker(
       fileName,
       (fileName2) => findSourceFile(fileName2, isDefaultLib, reason, packageId),
@@ -131026,7 +131364,7 @@ var BuilderState;
         addReferenceFromAmbientModule(symbol);
       }
     }
-    for (const ambientModule of program.getTypeChecker().getAmbientModules()) {
+    for (const ambientModule of program.getTypeChecker().getAmbientModules(sourceFile)) {
       if (ambientModule.declarations && ambientModule.declarations.length > 1) {
         addReferenceFromAmbientModule(ambientModule);
       }
@@ -171319,7 +171657,7 @@ function isProbablyGlobalType(type, sourceFile, checker) {
   const globalThisSymbol = checker.resolveName(
     "globalThis",
     /*location*/
-    void 0,
+    sourceFile,
     111551 /* Value */,
     /*excludeGlobals*/
     false
@@ -184444,6 +184782,7 @@ __export(ts_exports2, {
   defaultHoverMaximumTruncationLength: () => defaultHoverMaximumTruncationLength,
   defaultInitCompilerOptions: () => defaultInitCompilerOptions,
   defaultMaximumTruncationLength: () => defaultMaximumTruncationLength,
+  deno: () => deno_exports,
   diagnosticCategoryName: () => diagnosticCategoryName,
   diagnosticToString: () => diagnosticToString,
   diagnosticsEqualityComparer: () => diagnosticsEqualityComparer,
@@ -199242,6 +199581,7 @@ if (typeof console !== "undefined") {
   defaultHoverMaximumTruncationLength,
   defaultInitCompilerOptions,
   defaultMaximumTruncationLength,
+  deno,
   diagnosticCategoryName,
   diagnosticToString,
   diagnosticsEqualityComparer,
