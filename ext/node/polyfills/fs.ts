@@ -162,6 +162,7 @@ const {
   op_node_mkdtemp,
   op_node_mkdtemp_sync,
   op_node_open,
+  op_node_open_as_blob,
   op_node_open_sync,
   op_node_rmdir,
   op_node_rmdir_sync,
@@ -200,7 +201,7 @@ const {
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
-const { Blob, markFileBackedBlob } = core.loadExtScript(
+const { blobFromFilePart } = core.loadExtScript(
   "ext:deno_web/09_file.js",
 );
 // Re-exported under both names for tests.
@@ -2413,10 +2414,10 @@ function openAsBlob(
   validateObject(options, "options");
   const type = options.type || "";
   validateString(type, "options.type");
-  path = getValidatedPath(path);
+  path = getValidatedPathToString(path);
   return PromisePrototypeThen(
-    op_fs_read_file_async(path as string, undefined, 0),
-    (data: Uint8Array) => markFileBackedBlob(new Blob([data], { type })),
+    op_node_open_as_blob(path as string),
+    (part: { uuid: string; size: number }) => blobFromFilePart(part, type),
   );
 }
 

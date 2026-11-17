@@ -476,6 +476,12 @@ core.registerErrorBuilder(
   },
 );
 core.registerErrorBuilder(
+  "DOMExceptionNotReadableError",
+  function DOMExceptionNotReadableError(msg) {
+    return new DOMException(msg, "NotReadableError");
+  },
+);
+core.registerErrorBuilder(
   "DOMExceptionQuotaExceededError",
   function DOMExceptionQuotaExceededError(msg) {
     return new QuotaExceededError(msg);

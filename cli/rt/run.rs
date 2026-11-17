@@ -866,7 +866,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       let requested_module_type = options.requested_module_type.clone();
       return deno_core::ModuleLoadResponse::Async(
         async move {
-          let bytes = blob.read_all().await;
+          let bytes = blob.read_all().await.map_err(JsErrorBox::from_err)?;
           let (media_type, maybe_charset) =
             deno_media_type::resolve_media_type_and_charset_from_content_type(
               &specifier,

@@ -183,7 +183,11 @@ pub fn op_worker_sync_fetch(
 
                 let mime_type = mime_type_essence(&blob.media_type);
 
-                let body = blob.read_all().await;
+                let body = blob.read_all().await.map_err(|err| {
+                  SyncFetchErrorKind::Other(deno_error::JsErrorBox::from_err(
+                    err,
+                  ))
+                })?;
 
                 (Bytes::from(body), Some(mime_type), script)
               }

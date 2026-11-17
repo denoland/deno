@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -10,6 +11,8 @@ use async_trait::async_trait;
 use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
@@ -31,6 +34,9 @@ pub enum BlobError {
   #[class(generic)]
   #[error(transparent)]
   Url(#[from] deno_core::url::ParseError),
+  #[class("DOMExceptionNotReadableError")]
+  #[error("The blob could not be read")]
+  FileRead(#[from] std::io::Error),
 }
 
 use crate::Location;
@@ -157,19 +163,21 @@ pub struct Blob {
 }
 
 impl Blob {
-  // TODO(lucacsonato): this should be a stream!
-  pub async fn read_all(&self) -> Vec<u8> {
+  pub async fn read_all(&self) -> Result<Vec<u8>, BlobError> {
+    if let [part] = self.parts.as_slice() {
+      return Ok(part.read_range(0, part.size()).await?.into_owned());
+    }
     let size = self.size();
     let mut bytes = Vec::with_capacity(size);
 
     for part in &self.parts {
-      let chunk = part.read().await;
-      bytes.extend_from_slice(chunk);
+      let chunk = part.read_range(0, part.size()).await?;
+      bytes.extend_from_slice(&chunk);
     }
 
     assert_eq!(bytes.len(), size);
 
-    bytes
+    Ok(bytes)
   }
 
   fn size(&self) -> usize {
@@ -183,9 +191,27 @@ impl Blob {
 
 #[async_trait]
 pub trait BlobPart: Debug {
-  // TODO(lucacsonato): this should be a stream!
-  async fn read<'a>(&'a self) -> &'a [u8];
+  /// Read exactly this range, without reading any preceding data. In-memory
+  /// parts can lend their bytes; file-backed parts allocate only the range.
+  async fn read_range(
+    &self,
+    start: usize,
+    len: usize,
+  ) -> Result<Cow<'_, [u8]>, BlobError>;
+  /// Open reader-scoped storage when necessary. Memory parts need no resource.
+  async fn open_reader(
+    &self,
+  ) -> Result<Option<Arc<dyn BlobPart + Send + Sync>>, BlobError> {
+    Ok(None)
+  }
   fn size(&self) -> usize;
+}
+
+fn check_range(start: usize, len: usize, size: usize) -> Result<(), BlobError> {
+  if start > size || len > size - start {
+    return Err(BlobError::SizeLargerThanBlobPart);
+  }
+  Ok(())
 }
 
 #[derive(Debug)]
@@ -199,12 +225,183 @@ impl From<Vec<u8>> for InMemoryBlobPart {
 
 #[async_trait]
 impl BlobPart for InMemoryBlobPart {
-  async fn read<'a>(&'a self) -> &'a [u8] {
-    &self.0
+  async fn read_range(
+    &self,
+    start: usize,
+    len: usize,
+  ) -> Result<Cow<'_, [u8]>, BlobError> {
+    check_range(start, len, self.size())?;
+    Ok(Cow::Borrowed(&self.0[start..start + len]))
   }
 
   fn size(&self) -> usize {
     self.0.len()
+  }
+}
+
+/// Opens a file through the embedder's filesystem and permission checks.
+pub trait BlobFileSource: Debug + Send + Sync {
+  fn open(&self) -> std::io::Result<std::fs::File>;
+}
+
+/// A file snapshot whose descriptor is opened only while a reader is active.
+#[derive(Debug)]
+pub struct FileBlobPart(FileBlobStorage);
+
+#[derive(Debug)]
+enum FileBlobStorage {
+  Native {
+    source: Arc<dyn BlobFileSource>,
+    metadata: std::fs::Metadata,
+  },
+  Unreadable(usize),
+}
+
+impl FileBlobPart {
+  pub fn new(
+    source: Arc<dyn BlobFileSource>,
+    file: &std::fs::File,
+  ) -> std::io::Result<Self> {
+    let metadata = file.metadata()?;
+    usize::try_from(metadata.len()).map_err(std::io::Error::other)?;
+    Ok(Self(FileBlobStorage::Native { source, metadata }))
+  }
+
+  /// Match metadata-only blobs (such as directories) that fail when read.
+  pub fn unreadable(size: usize) -> Self {
+    Self(FileBlobStorage::Unreadable(size))
+  }
+
+  async fn open_file(&self) -> Result<OpenFileBlobPart, BlobError> {
+    let FileBlobStorage::Native { source, metadata } = &self.0 else {
+      return Err(BlobError::FileRead(std::io::ErrorKind::IsADirectory.into()));
+    };
+    let source = source.clone();
+    let metadata = metadata.clone();
+    let (file, metadata) = deno_core::unsync::spawn_blocking(move || {
+      let file = source.open()?;
+      OpenFileBlobPart::check_metadata(&file, &metadata)?;
+      Ok::<_, std::io::Error>((file, metadata))
+    })
+    .await
+    .map_err(std::io::Error::other)??;
+    Ok(OpenFileBlobPart {
+      file: Arc::new(file),
+      metadata,
+    })
+  }
+}
+
+#[async_trait]
+impl BlobPart for FileBlobPart {
+  async fn read_range(
+    &self,
+    start: usize,
+    len: usize,
+  ) -> Result<Cow<'_, [u8]>, BlobError> {
+    let reader = self.open_file().await?;
+    Ok(Cow::Owned(
+      reader.read_range(start, len).await?.into_owned(),
+    ))
+  }
+
+  async fn open_reader(
+    &self,
+  ) -> Result<Option<Arc<dyn BlobPart + Send + Sync>>, BlobError> {
+    Ok(Some(Arc::new(self.open_file().await?)))
+  }
+
+  fn size(&self) -> usize {
+    match &self.0 {
+      FileBlobStorage::Native { metadata, .. } => metadata.len() as usize,
+      FileBlobStorage::Unreadable(size) => *size,
+    }
+  }
+}
+
+#[derive(Debug)]
+struct OpenFileBlobPart {
+  file: Arc<std::fs::File>,
+  metadata: std::fs::Metadata,
+}
+
+impl OpenFileBlobPart {
+  fn check_metadata(
+    file: &std::fs::File,
+    original: &std::fs::Metadata,
+  ) -> std::io::Result<()> {
+    let current = file.metadata()?;
+    if current.len() != original.len()
+      || current.modified()? != original.modified()?
+      || current.created().ok() != original.created().ok()
+    {
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "File changed after the blob was created",
+      ));
+    }
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::MetadataExt;
+      if current.dev() != original.dev() || current.ino() != original.ino() {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::InvalidData,
+          "File replaced after the blob was created",
+        ));
+      }
+    }
+    Ok(())
+  }
+}
+
+#[async_trait]
+impl BlobPart for OpenFileBlobPart {
+  async fn read_range(
+    &self,
+    start: usize,
+    len: usize,
+  ) -> Result<Cow<'_, [u8]>, BlobError> {
+    check_range(start, len, self.size())?;
+    let file = self.file.clone();
+    let metadata = self.metadata.clone();
+    let bytes = deno_core::unsync::spawn_blocking(move || {
+      Self::check_metadata(&file, &metadata)?;
+      let mut bytes = vec![0; len];
+      let mut read = 0;
+      while read < len {
+        let position = (start + read) as u64;
+        #[cfg(unix)]
+        let result = {
+          use std::os::unix::fs::FileExt;
+          file.read_at(&mut bytes[read..], position)
+        };
+        #[cfg(windows)]
+        let result = {
+          use std::os::windows::fs::FileExt;
+          file.seek_read(&mut bytes[read..], position)
+        };
+        #[cfg(not(any(unix, windows)))]
+        let result: std::io::Result<usize> = {
+          let _ = position;
+          Err(std::io::ErrorKind::Unsupported.into())
+        };
+        match result {
+          Ok(0) => return Err(std::io::ErrorKind::UnexpectedEof.into()),
+          Ok(n) => read += n,
+          Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+          Err(err) => return Err(err),
+        }
+      }
+      Self::check_metadata(&file, &metadata)?;
+      Ok(bytes)
+    })
+    .await
+    .map_err(std::io::Error::other)??;
+    Ok(Cow::Owned(bytes))
+  }
+
+  fn size(&self) -> usize {
+    self.metadata.len() as usize
   }
 }
 
@@ -217,9 +414,25 @@ pub struct SlicedBlobPart {
 
 #[async_trait]
 impl BlobPart for SlicedBlobPart {
-  async fn read<'a>(&'a self) -> &'a [u8] {
-    let original = self.part.read().await;
-    &original[self.start..self.start + self.len]
+  async fn read_range(
+    &self,
+    start: usize,
+    len: usize,
+  ) -> Result<Cow<'_, [u8]>, BlobError> {
+    check_range(start, len, self.len)?;
+    self.part.read_range(self.start + start, len).await
+  }
+
+  async fn open_reader(
+    &self,
+  ) -> Result<Option<Arc<dyn BlobPart + Send + Sync>>, BlobError> {
+    Ok(self.part.open_reader().await?.map(|part| {
+      Arc::new(Self {
+        part,
+        start: self.start,
+        len: self.len,
+      }) as Arc<dyn BlobPart + Send + Sync>
+    }))
   }
 
   fn size(&self) -> usize {
@@ -257,9 +470,7 @@ pub fn op_blob_slice_part(
   let SliceOptions { start, len } = options;
 
   let size = part.size();
-  if start + len > size {
-    return Err(BlobError::SizeLargerThanBlobPart);
-  }
+  check_range(start, len, size)?;
 
   let sliced_part = SlicedBlobPart { part, start, len };
   let id = blob_store.insert_part(Arc::new(sliced_part));
@@ -271,6 +482,7 @@ pub fn op_blob_slice_part(
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
   #[scoped] id: Uuid,
+  #[scoped] options: SliceOptions,
 ) -> Result<Uint8Array, BlobError> {
   let part = {
     let state = state.borrow();
@@ -278,8 +490,52 @@ pub async fn op_blob_read_part(
     blob_store.get_part(&id)
   }
   .ok_or(BlobError::BlobPartNotFound)?;
-  let buf = part.read().await;
-  Ok(Uint8Array::from(buf.to_vec()))
+  let buf = part.read_range(options.start, options.len).await?;
+  Ok(Uint8Array::from(buf.into_owned()))
+}
+
+struct BlobReader(Arc<dyn BlobPart + Send + Sync>);
+
+impl Resource for BlobReader {
+  fn name(&self) -> Cow<'_, str> {
+    "blobReader".into()
+  }
+}
+
+#[op2]
+#[smi]
+pub async fn op_blob_open_reader(
+  state: Rc<RefCell<OpState>>,
+  #[scoped] id: Uuid,
+) -> Result<Option<ResourceId>, BlobError> {
+  let part = state
+    .borrow()
+    .borrow::<Arc<dyn BlobStoreTrait>>()
+    .get_part(&id)
+    .ok_or(BlobError::BlobPartNotFound)?;
+  let Some(reader) = part.open_reader().await? else {
+    return Ok(None);
+  };
+  Ok(Some(
+    state.borrow_mut().resource_table.add(BlobReader(reader)),
+  ))
+}
+
+#[op2]
+pub async fn op_blob_read_reader(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[scoped] options: SliceOptions,
+) -> Result<Uint8Array, BlobError> {
+  let part = state
+    .borrow()
+    .resource_table
+    .get::<BlobReader>(rid)
+    .map_err(|_| BlobError::BlobPartNotFound)?
+    .0
+    .clone();
+  let bytes = part.read_range(options.start, options.len).await?;
+  Ok(Uint8Array::from(bytes.into_owned()))
 }
 
 #[op2]
@@ -476,8 +732,13 @@ mod tests {
 
     #[async_trait]
     impl BlobPart for MemPart {
-      async fn read<'a>(&'a self) -> &'a [u8] {
-        &self.0
+      async fn read_range(
+        &self,
+        start: usize,
+        len: usize,
+      ) -> Result<Cow<'_, [u8]>, BlobError> {
+        check_range(start, len, self.size())?;
+        Ok(Cow::Borrowed(&self.0[start..start + len]))
       }
       fn size(&self) -> usize {
         self.0.len()
@@ -499,5 +760,60 @@ mod tests {
 
     assert!(store.remove_part(&id).is_some());
     assert!(store.get_part(&id).is_none());
+  }
+
+  #[derive(Debug)]
+  struct TestFileSource {
+    file: tempfile::NamedTempFile,
+    opens: AtomicUsize,
+  }
+
+  impl BlobFileSource for TestFileSource {
+    fn open(&self) -> std::io::Result<std::fs::File> {
+      self.opens.fetch_add(1, Ordering::Relaxed);
+      std::fs::File::open(self.file.path())
+    }
+  }
+
+  #[tokio::test]
+  async fn file_blob_reads_are_lazy_and_ranged() {
+    use std::io::Seek;
+    use std::io::Write;
+
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.as_file().set_len(1024 * 1024).unwrap();
+    file.seek(std::io::SeekFrom::End(-10)).unwrap();
+    file.write_all(b"0123456789").unwrap();
+    let source = Arc::new(TestFileSource {
+      file,
+      opens: AtomicUsize::new(0),
+    });
+    let part = Arc::new(
+      FileBlobPart::new(source.clone(), source.file.as_file()).unwrap(),
+    );
+    assert_eq!(source.opens.load(Ordering::Relaxed), 0);
+    let slice = SlicedBlobPart {
+      part,
+      start: 1024 * 1024 - 100,
+      len: 100,
+    };
+    let reader = slice.open_reader().await.unwrap().unwrap();
+    assert_eq!(source.opens.load(Ordering::Relaxed), 1);
+    assert_eq!(&*reader.read_range(90, 10).await.unwrap(), b"0123456789");
+    assert_eq!(&*reader.read_range(0, 2).await.unwrap(), &[0, 0]);
+    assert_eq!(source.opens.load(Ordering::Relaxed), 1);
+    assert!(reader.read_range(usize::MAX, 2).await.is_err());
+    assert!(reader.read_range(99, 2).await.is_err());
+  }
+
+  #[tokio::test]
+  async fn memory_blob_range_stays_borrowed() {
+    let part = InMemoryBlobPart::from(b"abcdef".to_vec());
+    assert!(matches!(
+      part.read_range(1, 3).await.unwrap(),
+      Cow::Borrowed(b"bcd")
+    ));
+    assert!(part.open_reader().await.unwrap().is_none());
+    assert!(part.read_range(usize::MAX, 2).await.is_err());
   }
 }
