@@ -417,3 +417,106 @@ Deno.test(function eventTargetBrandChecking() {
     TypeError,
   );
 });
+
+Deno.test(function targetCaptureListenersRunBeforeNonCaptureListeners() {
+  for (const bubbles of [false, true]) {
+    const target = new EventTarget();
+    const calls: string[] = [];
+    target.addEventListener("test", () => calls.push("bubble1"));
+    target.addEventListener("test", () => calls.push("capture1"), true);
+    target.addEventListener("test", () => calls.push("bubble2"));
+    target.addEventListener("test", () => calls.push("capture2"), {
+      capture: true,
+    });
+    target.dispatchEvent(new Event("test", { bubbles }));
+    assertEquals(calls, ["capture1", "capture2", "bubble1", "bubble2"]);
+  }
+});
+
+Deno.test(function targetCaptureAndNonCaptureUseAtTargetPhase() {
+  const target = new EventTarget();
+  const event = new Event("test");
+  const calls: number[] = [];
+  const listener = (e: Event) => {
+    assertEquals(e.currentTarget, target);
+    assertEquals(e.target, target);
+    calls.push(e.eventPhase);
+  };
+  target.addEventListener("test", listener);
+  target.addEventListener("test", listener, true);
+  target.dispatchEvent(event);
+  assertEquals(calls, [Event.AT_TARGET, Event.AT_TARGET]);
+  assertEquals(event.eventPhase, Event.NONE);
+  assertEquals(event.currentTarget, null);
+});
+
+Deno.test(function targetCaptureOnceDoesNotRemoveNonCaptureRegistration() {
+  const target = new EventTarget();
+  let calls = 0;
+  const listener = () => calls++;
+  target.addEventListener("test", listener);
+  target.addEventListener("test", listener, { capture: true, once: true });
+  target.dispatchEvent(new Event("test"));
+  target.dispatchEvent(new Event("test"));
+  assertEquals(calls, 3);
+});
+
+Deno.test(function targetCaptureCanRemoveNonCaptureListenerBeforeInvocation() {
+  const target = new EventTarget();
+  const calls: string[] = [];
+  const bubble = () => calls.push("bubble");
+  target.addEventListener("test", bubble);
+  target.addEventListener("test", () => {
+    calls.push("capture");
+    target.removeEventListener("test", bubble);
+  }, true);
+  target.dispatchEvent(new Event("test"));
+  assertEquals(calls, ["capture"]);
+});
+
+Deno.test(function targetCaptureAddsListenersForTheAppropriatePhase() {
+  const target = new EventTarget();
+  const calls: string[] = [];
+  const addedCapture = () => calls.push("added capture");
+  const addedBubble = () => calls.push("added bubble");
+  target.addEventListener("test", () => {
+    calls.push("capture");
+    target.addEventListener("test", addedCapture, true);
+    target.addEventListener("test", addedBubble);
+  }, true);
+  target.dispatchEvent(new Event("test"));
+  assertEquals(calls, ["capture", "added bubble"]);
+  calls.length = 0;
+  target.dispatchEvent(new Event("test"));
+  assertEquals(calls, ["capture", "added capture", "added bubble"]);
+});
+
+Deno.test(function targetCaptureStopImmediatePropagationStopsBothGroups() {
+  const target = new EventTarget();
+  const calls: string[] = [];
+  target.addEventListener("test", () => calls.push("bubble"));
+  target.addEventListener("test", (event) => {
+    calls.push("capture");
+    event.stopImmediatePropagation();
+  }, { capture: true, once: true });
+  target.addEventListener("test", () => calls.push("second capture"), true);
+  const event = new Event("test");
+  target.dispatchEvent(event);
+  assertEquals(calls, ["capture"]);
+  calls.length = 0;
+  target.dispatchEvent(event);
+  assertEquals(calls, ["second capture", "bubble"]);
+});
+
+Deno.test(function targetCaptureStopPropagationPreservesItsListenerGroup() {
+  const target = new EventTarget();
+  const calls: string[] = [];
+  target.addEventListener("test", () => calls.push("bubble"));
+  target.addEventListener("test", (event) => {
+    calls.push("capture");
+    event.stopPropagation();
+  }, true);
+  target.addEventListener("test", () => calls.push("second capture"), true);
+  target.dispatchEvent(new Event("test"));
+  assertEquals(calls, ["capture", "second capture"]);
+});
