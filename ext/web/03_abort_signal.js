@@ -322,7 +322,8 @@ class AbortSignal extends EventTarget {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(AbortSignalPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(AbortSignalPrototype, this) &&
+          this[webidl.brand] === webidl.brand,
         keys: [
           "aborted",
           "reason",
@@ -359,7 +360,9 @@ class AbortController {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(AbortControllerPrototype, this),
+        evaluate:
+          ObjectPrototypeIsPrototypeOf(AbortControllerPrototype, this) &&
+          this[webidl.brand] === webidl.brand,
         keys: [
           "signal",
         ],
