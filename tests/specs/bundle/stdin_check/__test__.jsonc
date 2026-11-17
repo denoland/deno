@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check_stdin": {
+      "if": "unix",
+      "args": "bundle --check /dev/stdin",
+      "input": "const x = 5;\nconsole.log(x);\n",
+      "output": "stdin.out"
+    },
+    "no_check_stdin": {
+      "if": "unix",
+      "args": "bundle /dev/stdin",
+      "input": "const x = 5;\nconsole.log(x);\n",
+      "output": "stdin.out"
+    },
+    // An extensionless entrypoint carries no media type of its own, so this
+    // only fails if the piped source is actually type-checked as TypeScript.
+    "check_stdin_type_error": {
+      "if": "unix",
+      "args": "bundle --check /dev/stdin",
+      "input": "const x: number = \"str\";\nconsole.log(x);\n",
+      "output": "stdin_type_error.out",
+      "exitCode": 1
+    },
+    // ... and TypeScript bundles the same with and without `--check`.
+    "stdin_typescript": {
+      "if": "unix",
+      "args": "bundle /dev/stdin",
+      "input": "const x: number = 5;\nconsole.log(x);\n",
+      "output": "stdin.out"
+    }
+  }
+}
