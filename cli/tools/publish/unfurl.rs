@@ -369,7 +369,65 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     range: PositionOrSourceRangeRef<'_>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> Option<String> {
-    match self.unfurl_specifier(referrer, specifier, resolution_kind) {
+    Self::report_unfurl_result(
+      self.unfurl_specifier(referrer, specifier, resolution_kind),
+      referrer,
+      text_info,
+      range,
+      diagnostic_reporter,
+    )
+  }
+
+  /// Like [`Self::unfurl_specifier_reporting_diagnostic`], for a module name
+  /// in the import section of a Wasm module. A name that the resolver does not
+  /// map is left as is: Wasm hosts provide bare module names such as `env`,
+  /// `wasi_snapshot_preview1` or `wbg` through the import object, so they are
+  /// not paths relative to the Wasm module.
+  pub fn unfurl_wasm_import_reporting_diagnostic(
+    &self,
+    referrer: &ModuleSpecifier,
+    specifier: &str,
+    resolution_kind: deno_resolver::workspace::ResolutionKind,
+    text_info: &SourceTextInfo,
+    range: PositionOrSourceRangeRef<'_>,
+    diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
+  ) -> Option<String> {
+    Self::report_unfurl_result(
+      self.unfurl_specifier_with(
+        referrer,
+        specifier,
+        resolution_kind,
+        Unresolved::Keep,
+      ),
+      referrer,
+      text_info,
+      range,
+      diagnostic_reporter,
+    )
+  }
+
+  fn unfurl_specifier(
+    &self,
+    referrer: &ModuleSpecifier,
+    specifier: &str,
+    resolution_kind: deno_resolver::workspace::ResolutionKind,
+  ) -> Result<Option<String>, UnfurlSpecifierError> {
+    self.unfurl_specifier_with(
+      referrer,
+      specifier,
+      resolution_kind,
+      Unresolved::ResolveAgainstReferrer,
+    )
+  }
+
+  fn report_unfurl_result(
+    result: Result<Option<String>, UnfurlSpecifierError>,
+    referrer: &ModuleSpecifier,
+    text_info: &SourceTextInfo,
+    range: PositionOrSourceRangeRef<'_>,
+    diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
+  ) -> Option<String> {
+    match result {
       Ok(maybe_unfurled) => maybe_unfurled,
       Err(diagnostic) => {
         let range = match range {
@@ -418,11 +476,12 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     }
   }
 
-  fn unfurl_specifier(
+  fn unfurl_specifier_with(
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
     resolution_kind: deno_resolver::workspace::ResolutionKind,
+    unresolved: Unresolved,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
     let resolved = match self.workspace_resolver.resolve(
       specifier,
@@ -614,6 +673,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
+      None if unresolved == Unresolved::Keep => return Ok(None),
       None if is_builtin_node_module(specifier) => {
         format!("node:{specifier}").parse().unwrap()
       }
@@ -1114,6 +1174,17 @@ fn ts_types_comment(types_specifier: &str) -> Option<String> {
   } else {
     Some(format!("/* @ts-types=\"{}\" */ ", types_specifier))
   }
+}
+
+/// What [`SpecifierUnfurler`] does with a specifier that the resolver does not
+/// map.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Unresolved {
+  /// Treat it as a Node.js built-in module, or as a URL relative to the
+  /// referrer.
+  ResolveAgainstReferrer,
+  /// Leave it unchanged.
+  Keep,
 }
 
 fn relative_url(
