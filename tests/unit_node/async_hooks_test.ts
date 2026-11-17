@@ -1,5 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { AsyncLocalStorage, AsyncResource, createHook } from "node:async_hooks";
+import {
+  AsyncLocalStorage,
+  AsyncResource,
+  createHook,
+  executionAsyncResource,
+} from "node:async_hooks";
 import process from "node:process";
 import { clearImmediate, setImmediate } from "node:timers";
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
@@ -417,4 +422,67 @@ Deno.test(async function asyncLocalStoragePreservedInNetCallbacks() {
     serverConnection: "server-context",
     clientConnect: "client-context",
   });
+});
+
+Deno.test(async function asyncResourceCapturePreservesCallerContext() {
+  const als = new AsyncLocalStorage<string>();
+  const parent = new AsyncResource("parent");
+  const outside = executionAsyncResource();
+  await parent.runInAsyncScope(async () => {
+    await als.run("captured", async () => {
+      const child = new AsyncResource("child");
+      assert(executionAsyncResource() === parent);
+      assertEquals(als.getStore(), "captured");
+      // Construction must not mutate the context inherited by promises.
+      await Promise.resolve();
+      assert(executionAsyncResource() === parent);
+      await als.run("caller", async () => {
+        await child.runInAsyncScope(async () => {
+          assert(executionAsyncResource() === child);
+          assertEquals(als.getStore(), "captured");
+          await Promise.resolve();
+          assert(executionAsyncResource() === child);
+          assertEquals(als.getStore(), "captured");
+        }, null);
+        assert(executionAsyncResource() === parent);
+        assertEquals(als.getStore(), "caller");
+      });
+    });
+  }, null);
+  assert(executionAsyncResource() === outside);
+  assertEquals(als.getStore(), undefined);
+});
+
+Deno.test(async function asyncResourceReusesSnapshotAcrossInterleavedScopes() {
+  const als = new AsyncLocalStorage<number>();
+  await Promise.all(
+    Array.from({ length: 8 }, (_, id) =>
+      als.run(id, async () => {
+        const resource = new AsyncResource("interleaved");
+        resource.emitDestroy();
+        for (let i = 0; i < 20; i++) {
+          await als.run(-1, async () => {
+            await resource.runInAsyncScope(async () => {
+              assertEquals(als.getStore(), id);
+              assert(executionAsyncResource() === resource);
+              await new Promise((resolve) => setTimeout(resolve, 0));
+              assertEquals(als.getStore(), id);
+              assert(executionAsyncResource() === resource);
+              // Reentrancy and exceptions must restore the caller's context.
+              assertThrows(() =>
+                resource.runInAsyncScope(() => {
+                  als.enterWith(-2);
+                  throw new Error("nested");
+                }, null)
+              );
+              assertEquals(als.getStore(), id);
+              assert(executionAsyncResource() === resource);
+            }, null);
+            assertEquals(als.getStore(), -1);
+          });
+          assertEquals(als.getStore(), id);
+        }
+      })),
+  );
+  assertEquals(als.getStore(), undefined);
 });
