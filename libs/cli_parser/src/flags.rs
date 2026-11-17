@@ -912,6 +912,8 @@ impl TypeCheckMode {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InternalFlags {
+  /// Preserve global-install context while reusing local dependency installation.
+  pub is_global_install: bool,
   /// Used when the language server is configured with an
   /// explicit cache option.
   pub cache_path: Option<PathBuf>,

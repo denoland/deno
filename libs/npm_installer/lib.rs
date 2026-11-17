@@ -92,6 +92,8 @@ pub struct LifecycleScriptsConfig {
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
   pub explicit_install: bool,
+  /// Use global-install recovery advice for skipped lifecycle scripts.
+  pub is_global_install: bool,
 }
 
 pub trait InstallProgressReporter:
