@@ -850,7 +850,7 @@ impl Extension {
   pub fn init_ops(&mut self) -> &[OpDecl] {
     if !self.enabled {
       for op in self.ops.to_mut() {
-        op.disable();
+        *op = op.disable();
       }
     }
     self.ops.as_ref()
