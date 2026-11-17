@@ -1376,6 +1376,131 @@ setInterval(() => {}, 1000);
   }
 });
 
+Deno.test(
+  "inspector_worker_terminate_while_waiting_for_debugger",
+  async () => {
+    const tempDir = await Deno.makeTempDir();
+    const mainScript = `${tempDir}/main.js`;
+    const workerScript = `${tempDir}/worker.js`;
+    let tester: InspectorTester;
+    try {
+      await Deno.writeTextFile(
+        mainScript,
+        `
+import { Worker } from "node:worker_threads";
+
+globalThis.worker = new Worker(new URL("./worker.js", import.meta.url));
+`,
+      );
+      await Deno.writeTextFile(
+        workerScript,
+        `throw new Error("worker should not start");`,
+      );
+
+      tester = await InspectorTester.create(
+        ["run", "-A", "--inspect-brk=0", mainScript],
+        { notificationFilter: ignoreScriptParsed },
+      );
+    } catch (error) {
+      await Deno.remove(tempDir, { recursive: true });
+      throw error;
+    }
+    let closed = false;
+
+    try {
+      await tester.assertStderrForInspectBrk();
+
+      tester.sendMany([
+        { id: 1, method: "Runtime.enable" },
+        { id: 2, method: "Debugger.enable" },
+        {
+          id: 3,
+          method: "Target.setAutoAttach",
+          params: {
+            autoAttach: true,
+            waitForDebuggerOnStart: true,
+            flatten: true,
+          },
+        },
+        { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+      ]);
+
+      await tester.expectResponse(1);
+      await tester.expectResponse(2);
+      await tester.expectResponse(3);
+      await tester.expectResponse(4);
+      const contextCreated = await tester.expectNotification(
+        "Runtime.executionContextCreated",
+      );
+      const contextId = (contextCreated.params as {
+        context: { id: number };
+      }).context.id;
+      await tester.expectNotification("Debugger.paused");
+
+      tester.send({ id: 5, method: "Debugger.resume" });
+      await tester.expectResponse(5);
+
+      const attached = await tester.expectNotification(
+        "Target.attachedToTarget",
+      );
+      const attachedParams = attached.params as Record<string, unknown>;
+      assertEquals(attachedParams.waitingForDebugger, true);
+      const targetInfo = attachedParams.targetInfo as {
+        type?: unknown;
+      };
+      assertEquals(targetInfo.type, "node_worker");
+      const sessionId = attachedParams.sessionId as string;
+      assert(sessionId, "attachedToTarget should include sessionId");
+
+      tester.send({
+        id: 6,
+        sessionId,
+        method: "Runtime.enable",
+      });
+      const enableResponse = await tester.expectResponse(6);
+      assertEquals(enableResponse.sessionId, sessionId);
+      assertEquals(enableResponse.error, undefined);
+
+      tester.send({
+        id: 7,
+        method: "Runtime.evaluate",
+        params: {
+          expression: "worker.terminate()",
+          awaitPromise: true,
+          contextId,
+          returnByValue: true,
+        },
+      });
+      const terminateResponse = await tester.expectResponse(7);
+      assertEquals(terminateResponse.error, undefined);
+      const evaluationResult = terminateResponse.result as {
+        result: { value?: unknown };
+        exceptionDetails?: unknown;
+      };
+      assertEquals(evaluationResult.exceptionDetails, undefined);
+      assertEquals(evaluationResult.result.value, 1);
+
+      await tester.close();
+      closed = true;
+      const status = await tester.waitForExit();
+      assertEquals(status.success, true);
+    } finally {
+      try {
+        if (!closed) {
+          await tester.close();
+        }
+      } finally {
+        tester.kill();
+        try {
+          await tester.waitForExit();
+        } finally {
+          await Deno.remove(tempDir, { recursive: true });
+        }
+      }
+    }
+  },
+);
+
 Deno.test("inspector_worker_step_over_creation_waits_for_debugger", async () => {
   const tempDir = await Deno.makeTempDir();
   const mainScript = `${tempDir}/main.js`;
