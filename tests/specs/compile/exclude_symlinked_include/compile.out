@@ -1,0 +1,10 @@
+[WILDCARD]
+
+Embedded Files
+
+[WILDLINE]
+├── app/main.ts ([WILDLINE])
+├── folder/* ([WILDLINE])
+└── real ([WILDLINE])
+
+[WILDCARD]
