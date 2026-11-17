@@ -566,8 +566,7 @@ interface ErrorEvent extends Event {
  * scope as `error`.
  *
  * @category Events */
-declare var ErrorEvent: typeof globalThis extends
-  { document: any; ErrorEvent: infer T } ? T : {
+declare var ErrorEvent: {
   readonly prototype: ErrorEvent;
   new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
 };
@@ -874,8 +873,7 @@ interface Performance extends EventTarget {
  * property rather than constructed directly, so calling the constructor throws.
  *
  * @category Performance */
-declare var Performance: typeof globalThis extends
-  { document: any; Performance: infer T } ? T : {
+declare var Performance: {
   readonly prototype: Performance;
   new (): never;
 };
@@ -885,8 +883,7 @@ declare var Performance: typeof globalThis extends
  * measures APIs.
  *
  * @category Performance */
-declare var performance: typeof globalThis extends
-  { document: any; performance: infer T } ? T : Performance;
+declare var performance: Performance;
 
 /** @category Performance */
 interface PerformanceMarkOptions {
@@ -935,8 +932,7 @@ interface PerformanceEntry {
  *
  * @category Performance
  */
-declare var PerformanceEntry: typeof globalThis extends
-  { document: any; PerformanceEntry: infer T } ? T : {
+declare var PerformanceEntry: {
   readonly prototype: PerformanceEntry;
   new (): never;
 };
@@ -960,8 +956,7 @@ interface PerformanceMark extends PerformanceEntry {
  *
  * @category Performance
  */
-declare var PerformanceMark: typeof globalThis extends
-  { document: any; PerformanceMark: infer T } ? T : {
+declare var PerformanceMark: {
   readonly prototype: PerformanceMark;
   new (name: string, options?: PerformanceMarkOptions): PerformanceMark;
 };
@@ -985,8 +980,7 @@ interface PerformanceMeasure extends PerformanceEntry {
  *
  * @category Performance
  */
-declare var PerformanceMeasure: typeof globalThis extends
-  { document: any; PerformanceMeasure: infer T } ? T : {
+declare var PerformanceMeasure: {
   readonly prototype: PerformanceMeasure;
   new (): never;
 };
@@ -1073,8 +1067,7 @@ interface CustomEvent<T = any> extends Event {
  * property.
  *
  * @category Events */
-declare var CustomEvent: typeof globalThis extends
-  { document: any; CustomEvent: infer T } ? T : {
+declare var CustomEvent: {
   readonly prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
 };

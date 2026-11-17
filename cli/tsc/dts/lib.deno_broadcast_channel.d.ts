@@ -67,8 +67,7 @@ interface BroadcastChannel extends EventTarget {
  *
  * @category Messaging
  */
-declare var BroadcastChannel: typeof globalThis extends
-  { document: any; BroadcastChannel: infer T } ? T : {
+declare var BroadcastChannel: {
   readonly prototype: BroadcastChannel;
   new (name: string): BroadcastChannel;
 };

@@ -85,8 +85,7 @@ interface CloseEvent extends Event {
  * @see https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/CloseEvent
  * @category WebSockets
  */
-declare var CloseEvent: typeof globalThis extends
-  { document: any; CloseEvent: infer T } ? T : {
+declare var CloseEvent: {
   readonly prototype: CloseEvent;
   new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
 };
@@ -280,8 +279,7 @@ interface WebSocket extends EventTarget {
  * @see https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/WebSocket
  * @category WebSockets
  */
-declare var WebSocket: typeof globalThis extends
-  { document: any; WebSocket: infer T } ? T : {
+declare var WebSocket: {
   readonly prototype: WebSocket;
   new (
     url: string | URL,

@@ -374,8 +374,7 @@ interface Navigator {
  *
  * @category Platform
  */
-declare var Navigator: typeof globalThis extends
-  { document: any; Navigator: infer T } ? T : {
+declare var Navigator: {
   readonly prototype: Navigator;
   new (): never;
 };
@@ -393,8 +392,7 @@ declare var Navigator: typeof globalThis extends
  *
  * @category Platform
  */
-declare var navigator: typeof globalThis extends
-  { document: any; navigator: infer T } ? T : Navigator;
+declare var navigator: Navigator;
 
 /**
  * Shows the given message and waits for the enter key pressed.

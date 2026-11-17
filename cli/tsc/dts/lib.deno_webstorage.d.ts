@@ -50,8 +50,7 @@ interface Storage {
  *
  * @category Storage
  */
-declare var Storage: typeof globalThis extends
-  { document: any; Storage: infer T } ? T : {
+declare var Storage: {
   readonly prototype: Storage;
   new (): never;
 };

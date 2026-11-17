@@ -154,8 +154,7 @@ declare var WorkerNavigator: {
  *
  * @category Platform
  */
-declare var navigator: typeof globalThis extends
-  { document: any; navigator: infer T } ? T : WorkerNavigator;
+declare var navigator: WorkerNavigator;
 
 /**
  * Event map for DedicatedWorkerGlobalScope event handlers.
@@ -344,8 +343,7 @@ declare function postMessage(
  *
  * @category Platform
  */
-declare var navigator: typeof globalThis extends
-  { document: any; navigator: infer T } ? T : WorkerNavigator;
+declare var navigator: WorkerNavigator;
 
 /**
  * Event handler for error events that occur in the worker.
