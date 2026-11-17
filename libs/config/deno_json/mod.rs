@@ -136,6 +136,9 @@ pub struct IntoResolvedError(pub Box<IntoResolvedErrorKind>);
 
 #[derive(Debug, Error, JsError)]
 pub enum IntoResolvedErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  ImportMap(#[from] import_map::ImportMapError),
   #[class(uri)]
   #[error(transparent)]
   UrlParse(#[from] url::ParseError),

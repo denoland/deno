@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "lint a.ts",
+      "output": "lint.out",
+      "exitCode": 1
+    },
+    {
+      "args": "lint --config deno_external.json a.ts",
+      "output": "lint.out",
+      "exitCode": 1
+    }
+  ]
+}

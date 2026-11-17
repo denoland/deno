@@ -75,13 +75,14 @@ impl LspLinterResolver {
           .as_workspace_resolver()
           .clone();
         let lint_rule_provider =
-          LintRuleProvider::new(Some(workspace_resolver));
+          LintRuleProvider::new(Some(workspace_resolver.clone()));
         let lint_config = config_data
           .and_then(|d| {
             d.member_dir
-              .to_lint_config(FilePatterns::new_with_base(
-                d.member_dir.dir_path(),
-              ))
+              .to_lint_config_with_import_map(
+                FilePatterns::new_with_base(d.member_dir.dir_path()),
+                workspace_resolver.maybe_import_map(),
+              )
               .inspect_err(|err| {
                 lsp_warn!("Couldn't read lint configuration: {}", err)
               })
