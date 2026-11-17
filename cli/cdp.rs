@@ -319,6 +319,8 @@ pub enum Status {
 pub struct ScriptParsed {
   pub script_id: String,
   pub url: String,
+  #[serde(rename = "sourceMapURL")]
+  pub source_map_url: Option<String>,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-CoverageRange>
@@ -407,4 +409,25 @@ pub struct ExecutionContextCreated {
 pub struct ExecutionContextDescription {
   pub id: ExecutionContextId,
   pub aux_data: Value,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::ScriptParsed;
+  use deno_core::serde_json;
+
+  #[test]
+  fn script_parsed_deserializes_source_map_url() {
+    let script: ScriptParsed = serde_json::from_value(serde_json::json!({
+      "scriptId": "1",
+      "url": "file:///main.ts",
+      "sourceMapURL": "data:application/json;base64,abc"
+    }))
+    .unwrap();
+
+    assert_eq!(
+      script.source_map_url.as_deref(),
+      Some("data:application/json;base64,abc")
+    );
+  }
 }

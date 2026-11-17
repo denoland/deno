@@ -77,10 +77,38 @@ enum InspectorMessageState {
   WaitingFor(oneshot::Sender<serde_json::Value>),
 }
 
+#[derive(Clone, Debug)]
+struct ScriptInfo {
+  script_id: String,
+  source_map_url: Option<String>,
+}
+
+fn maybe_append_source_map_url(
+  mut source_code: String,
+  source_map_url: Option<&str>,
+) -> String {
+  let Some(source_map_url) = source_map_url else {
+    return source_code;
+  };
+  if source_map_url.is_empty()
+    || source_map_url.contains('\n')
+    || source_map_url.contains('\r')
+    || source_code.contains("sourceMappingURL=")
+  {
+    return source_code;
+  }
+  if !source_code.ends_with('\n') {
+    source_code.push('\n');
+  }
+  source_code.push_str("//# sourceMappingURL=");
+  source_code.push_str(source_map_url);
+  source_code
+}
+
 #[derive(Debug)]
 pub struct HmrRunnerInner {
   watcher_communicator: Arc<WatcherCommunicator>,
-  script_ids: HashMap<String, String>,
+  script_ids: HashMap<String, ScriptInfo>,
   messages: HashMap<i32, InspectorMessageState>,
   emitter: Arc<CliEmitter>,
   exception_tx: UnboundedSender<JsErrorBox>,
@@ -154,11 +182,13 @@ impl HmrRunnerState {
         if let Ok(canonicalized_file_path) = canonicalize_path(&file_path) {
           let canonicalized_file_url =
             Url::from_file_path(canonicalized_file_path).unwrap();
-          self
-            .0
-            .lock()
-            .script_ids
-            .insert(canonicalized_file_url.into(), params.script_id);
+          self.0.lock().script_ids.insert(
+            canonicalized_file_url.into(),
+            ScriptInfo {
+              script_id: params.script_id,
+              source_map_url: params.source_map_url,
+            },
+          );
         }
       }
     }
@@ -256,7 +286,7 @@ impl HmrRunner {
               continue;
             };
 
-            let Some(id) = self.state.0.lock().script_ids.get(module_url.as_str()).cloned() else {
+            let Some(script_info) = self.state.0.lock().script_ids.get(module_url.as_str()).cloned() else {
               let _ = self.watcher().force_restart();
               continue;
             };
@@ -266,10 +296,14 @@ impl HmrRunner {
               &module_url,
               source_code,
             )?;
+            let source_code = maybe_append_source_map_url(
+              source_code,
+              script_info.source_map_url.as_deref(),
+            );
 
             let mut tries = 1;
             loop {
-              let msg_id = self.set_script_source(&id, source_code.as_str());
+              let msg_id = self.set_script_source(&script_info.script_id, source_code.as_str());
               let value = self.wait_for_response(msg_id).await;
               let result: cdp::SetScriptSourceResponse = serde_json::from_value(value).map_err(|e| {
                 JsErrorBox::from_err(e)
@@ -357,6 +391,47 @@ impl HmrRunner {
         "expression": expr,
         "contextId": Some(1),
       })),
+    );
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::maybe_append_source_map_url;
+
+  #[test]
+  fn appends_original_source_map_url() {
+    assert_eq!(
+      maybe_append_source_map_url(
+        "console.log(1);".to_string(),
+        Some("data:application/json;base64,abc")
+      ),
+      "console.log(1);\n//# sourceMappingURL=data:application/json;base64,abc"
+    );
+  }
+
+  #[test]
+  fn keeps_existing_source_map_url() {
+    let source =
+      "console.log(1);\n//# sourceMappingURL=data:application/json;base64,new";
+    assert_eq!(
+      maybe_append_source_map_url(
+        source.to_string(),
+        Some("data:application/json;base64,old")
+      ),
+      source
+    );
+  }
+
+  #[test]
+  fn skips_empty_or_multiline_source_map_url() {
+    assert_eq!(
+      maybe_append_source_map_url("console.log(1);".to_string(), Some("")),
+      "console.log(1);"
+    );
+    assert_eq!(
+      maybe_append_source_map_url("console.log(1);".to_string(), Some("a\nb")),
+      "console.log(1);"
     );
   }
 }
