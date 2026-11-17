@@ -45,7 +45,6 @@ const {
   isFamily,
   isLookupCallback,
   isLookupOptions,
-  isResolveCallback,
   setDefaultResolver,
   setDefaultResultOrder,
   validateHints,
@@ -414,7 +413,7 @@ function resolver(bindingName: string) {
     options: unknown,
     callback?: unknown,
   ): QueryReqWrap {
-    if (isResolveCallback(options)) {
+    if (arguments.length <= 2) {
       callback = options;
       options = {};
     }
@@ -626,15 +625,11 @@ function resolve4(
     addresses: string[] | RecordWithTtl[],
   ) => void,
 ): void;
-function resolve4(
-  hostname: string,
-  options: unknown,
-  callback?: unknown,
-) {
+function resolve4(...args: unknown[]): QueryReqWrap {
   return ReflectApply(
     Resolver.prototype.resolve4,
     getDefaultResolver() as Resolver,
-    [hostname, options, callback],
+    args,
   );
 }
 
@@ -662,15 +657,11 @@ function resolve6(
     addresses: string[] | RecordWithTtl[],
   ) => void,
 ): void;
-function resolve6(
-  hostname: string,
-  options: unknown,
-  callback?: unknown,
-) {
+function resolve6(...args: unknown[]): QueryReqWrap {
   return ReflectApply(
     Resolver.prototype.resolve6,
     getDefaultResolver() as Resolver,
-    [hostname, options, callback],
+    args,
   );
 }
 

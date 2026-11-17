@@ -324,3 +324,28 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
 });
+
+Deno.test("[node/dns] resolveCname validates the callback argument", () => {
+  const error = assertThrows(
+    () =>
+      Reflect.apply(dns.resolveCname, dns, [
+        "www.github.com",
+        () => {},
+        "ignored",
+        123,
+        null,
+      ]),
+    TypeError,
+    'The "callback" argument must be of type function',
+  );
+  assertEquals((error as ErrnoException).code, "ERR_INVALID_ARG_TYPE");
+});
+
+Deno.test("[node/dns] resolve4 validates the callback in the options overload", () => {
+  const error = assertThrows(
+    () => dns.resolve4("www.github.com", { ttl: true }, "nope" as never),
+    TypeError,
+    'The "callback" argument must be of type function',
+  );
+  assertEquals((error as ErrnoException).code, "ERR_INVALID_ARG_TYPE");
+});
