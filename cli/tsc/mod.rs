@@ -48,7 +48,6 @@ use crate::sys::CliSys;
 use crate::util::path::mapped_specifier_for_tsc;
 
 mod diagnostics;
-pub mod native;
 pub mod tsconfig_gen;
 
 pub use self::diagnostics::Diagnostic;
