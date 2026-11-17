@@ -1192,6 +1192,33 @@ async fn test_stalled_tla() {
   assert_eq!(js_error.frames[0].column_number, Some(1));
 }
 
+/// A pending top-level await must not keep the module map alive after the
+/// runtime is dropped, e.g. when a worker is terminated mid-evaluation.
+#[tokio::test]
+async fn test_stalled_tla_module_map_freed_on_drop() {
+  let loader = StaticModuleLoader::with(
+    Url::parse("file:///test.js").unwrap(),
+    "await new Promise(() => {});",
+  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(loader)),
+    ..Default::default()
+  });
+  let module_id = runtime
+    .load_main_es_module(&crate::resolve_url("file:///test.js").unwrap())
+    .await
+    .unwrap();
+  let evaluation = runtime.mod_evaluate(module_id);
+  let module_map = Rc::downgrade(&runtime.module_map());
+
+  drop(runtime);
+  assert!(module_map.upgrade().is_none(), "ModuleMap leaked");
+  assert!(matches!(
+    evaluation.await.unwrap_err().into_kind(),
+    CoreErrorKind::ExecutionTerminated
+  ));
+}
+
 // Regression test for https://github.com/denoland/deno/issues/20034.
 #[tokio::test]
 async fn test_dynamic_import_module_error_stack() {
