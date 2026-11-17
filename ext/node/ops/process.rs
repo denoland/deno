@@ -293,6 +293,7 @@ fn get_group_id(name: &str) -> Result<Gid, ProcessError> {
 fn serialize_id<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   value: v8::Local<'a, v8::Value>,
+  param: &str,
 ) -> Result<Id, ProcessError> {
   if value.is_number() {
     let num = value.uint32_value(scope).unwrap();
@@ -304,7 +305,7 @@ fn serialize_id<'a>(
     return Ok(Id::Name(name.to_rust_string_lossy(scope)));
   }
 
-  Err(ProcessError::InvalidParam("id".to_string()))
+  Err(ProcessError::InvalidParam(param.to_string()))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
@@ -319,7 +320,7 @@ pub fn op_node_process_setegid<'a>(
     permissions.check_sys("setegid", "node:process.setegid")?;
   }
 
-  let gid = match serialize_id(scope, id)? {
+  let gid = match serialize_id(scope, id, "id")? {
     Id::Number(number) => Gid::from_raw(number),
     Id::Name(name) => get_group_id(&name)?,
   };
@@ -365,7 +366,7 @@ pub fn op_node_process_seteuid<'a>(
     permissions.check_sys("seteuid", "node:process.seteuid")?;
   }
 
-  let uid = match serialize_id(scope, id)? {
+  let uid = match serialize_id(scope, id, "id")? {
     Id::Number(number) => Uid::from_raw(number),
     Id::Name(name) => get_user_id(&name)?,
   };
@@ -397,7 +398,7 @@ pub fn op_node_process_setgid<'a>(
     permissions.check_sys("setgid", "node:process.setgid")?;
   }
 
-  let gid = match serialize_id(scope, id)? {
+  let gid = match serialize_id(scope, id, "id")? {
     Id::Number(number) => Gid::from_raw(number),
     Id::Name(name) => get_group_id(&name)?,
   };
@@ -429,7 +430,7 @@ pub fn op_node_process_setuid<'a>(
     permissions.check_sys("setuid", "node:process.setuid")?;
   }
 
-  let uid = match serialize_id(scope, id)? {
+  let uid = match serialize_id(scope, id, "id")? {
     Id::Number(number) => Uid::from_raw(number),
     Id::Name(name) => get_user_id(&name)?,
   };
@@ -445,6 +446,78 @@ pub fn op_node_process_setuid(
   _scope: &mut v8::PinScope<'_, '_>,
   _state: &mut OpState,
   _id: v8::Local<'_, v8::Value>,
+) -> Result<(), ProcessError> {
+  Err(ProcessError::NotSupported)
+}
+
+/// Upper bound on how much `op_node_process_setgroups` pre-allocates from a
+/// caller-supplied array length. Comfortably above `NGROUPS_MAX` (65536 on
+/// Linux, 16 on macOS), so a real call never reallocates.
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+const GIDS_PREALLOC_LIMIT: u32 = 65536;
+
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setgroups<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  state: &mut OpState,
+  groups: v8::Local<'a, v8::Value>,
+) -> Result<(), ProcessError> {
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("setgroups", "node:process.setgroups")?;
+  }
+
+  // The JS wrapper always passes a freshly built array of numbers and strings
+  // (see `setgroups` in polyfills/process.ts). That matters: reading elements
+  // back out here runs index accessors, so passing the user's own array would
+  // let a getter return a different value than the one the wrapper validated.
+  let arr = v8::Local::<v8::Array>::try_from(groups)
+    .map_err(|_| ProcessError::InvalidParam("groups".to_string()))?;
+  let len = arr.length();
+  // `length` is caller-controlled and says nothing about how many elements
+  // actually exist, so cap the pre-allocation: `new Array(2 ** 32 - 1)` would
+  // otherwise ask the allocator for 16GB before the first element is read.
+  // The list stays exact — the loop below still grows the vec as needed.
+  let mut gids: Vec<libc::gid_t> =
+    Vec::with_capacity(len.min(GIDS_PREALLOC_LIMIT) as usize);
+
+  {
+    // Don't rely on the wrapper alone: an index accessor can run user JS that
+    // throws, and without a TryCatch that exception would stay pending on the
+    // isolate while this op returns an error, for the next V8 call to trip on.
+    // Dropping the TryCatch clears it.
+    v8::tc_scope!(tc, scope);
+    for i in 0..len {
+      let elem = arr
+        .get_index(tc, i)
+        .ok_or_else(|| ProcessError::InvalidParam("groups".to_string()))?;
+      let gid = match serialize_id(tc, elem, "groups")? {
+        Id::Number(n) => Gid::from_raw(n),
+        Id::Name(name) => get_group_id(&name)?,
+      };
+      gids.push(gid.as_raw());
+    }
+  }
+
+  // `nix::unistd::setgroups` is compiled out on Apple targets, so this calls
+  // libc directly to keep macOS working. `ngroups` is `c_int` on the BSDs and
+  // `size_t` elsewhere; `as _` picks the right one per target.
+  //
+  // SAFETY: `gids` is a live, contiguous slice of `ngroups` initialized gid_t
+  // values that outlives the call, and setgroups only reads from it.
+  let res = unsafe { libc::setgroups(gids.len() as _, gids.as_ptr()) };
+  nix::errno::Errno::result(res)?;
+
+  Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "windows"))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setgroups(
+  _scope: &mut v8::PinScope<'_, '_>,
+  _state: &mut OpState,
+  _groups: v8::Local<'_, v8::Value>,
 ) -> Result<(), ProcessError> {
   Err(ProcessError::NotSupported)
 }
