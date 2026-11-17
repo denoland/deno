@@ -2185,6 +2185,89 @@ Deno.test(
   },
 );
 
+// While a response is pending the server reads ahead on the socket to notice a
+// client disconnect. That read-ahead is limited, so a client that keeps writing
+// should see its writes stall until the server gets to them.
+async function assertBackpressureWhileResponsePending(
+  respond: (release: Promise<void>) => Response | Promise<Response>,
+) {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const requestReceived = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+
+  await using server = Deno.serve({
+    handler: () => {
+      requestReceived.resolve();
+      return respond(release.promise);
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+  const conn = await Deno.connect({ port: servePort });
+  await conn.write(
+    new TextEncoder().encode("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"),
+  );
+  await requestReceived.promise;
+
+  // Far more than the kernel socket buffers hold, so writes stall before this.
+  const limit = 64 * 1024 * 1024;
+  const chunk = new Uint8Array(64 * 1024).fill(0x41);
+  let written = 0;
+  let stalledWrite: Promise<number> | undefined;
+  while (written < limit) {
+    const write = conn.write(chunk);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), 1000);
+    });
+    const n = await Promise.race([write, stalled]);
+    clearTimeout(timer);
+    if (n === null) {
+      stalledWrite = write;
+      break;
+    }
+    written += n;
+  }
+  assert(written < limit, `writes never stalled (${written} bytes)`);
+
+  conn.close();
+  await stalledWrite?.catch(() => {});
+  release.resolve();
+  ac.abort();
+  await server.finished;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerBackpressureWhileResponsePending() {
+    await assertBackpressureWhileResponsePending(async (release) => {
+      await release;
+      return new Response("ok");
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerBackpressureWhileStreamingResponse() {
+    await assertBackpressureWhileResponsePending((release) =>
+      new Response(
+        new ReadableStream({
+          async pull(controller) {
+            await release;
+            controller.close();
+          },
+        }),
+      )
+    );
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpConnectionClose() {
