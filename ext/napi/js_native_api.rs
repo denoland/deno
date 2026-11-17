@@ -3828,7 +3828,11 @@ fn napi_create_typedarray<'s>(
         return napi_pending_exception;
       }
 
-      if length * soe + byte_offset > ab.byte_length() {
+      if length
+        .checked_mul(soe)
+        .and_then(|len| len.checked_add(byte_offset))
+        .is_none_or(|end| end > ab.byte_length())
+      {
         let message =
           v8::String::new(scope, "Invalid typed array length")
             .unwrap();
