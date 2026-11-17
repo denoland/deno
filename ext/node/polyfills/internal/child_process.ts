@@ -2051,6 +2051,14 @@ function spawnSync(
   } catch (err) {
     if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)) {
       result.error = _createSpawnError("ENOENT", command, args, true);
+    } else if (typeof err?.code === "string" && codeMap.has(err.code)) {
+      // Any other error from the OS while starting the child, reported the
+      // way libuv reports it: EACCES, EPERM (setuid/setgid), E2BIG and so on.
+      result.error = _createSpawnError(err.code, command, args, true);
+    } else {
+      // Not the OS refusing to start the child, such as a denied run
+      // permission. Node's permission model throws from spawnSync too.
+      throw err;
     }
   }
   return result;
