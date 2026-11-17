@@ -46,6 +46,31 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[util] inspect and format with numericSeparator",
+  fn() {
+    const options = { numericSeparator: true };
+    assertEquals(
+      stripAnsiCode(util.inspect(1234567.891, options)),
+      "1_234_567.891",
+    );
+    assertEquals(stripAnsiCode(util.inspect(-1234n, options)), "-1_234n");
+    assertEquals(
+      stripAnsiCode(util.inspect(new Int32Array([1000, -2000000]), options)),
+      "Int32Array(2) [ 1_000, -2_000_000 ]",
+    );
+    assertEquals(
+      stripAnsiCode(util.inspect(0.000012345, options)),
+      "0.000_012_345",
+    );
+    assertEquals(stripAnsiCode(util.inspect(1.5e-7, options)), "1.5e-7");
+    assertEquals(
+      util.formatWithOptions(options, "%d %i %s", 1234567, 7654321.9, 12345n),
+      "1_234_567 7_654_321 12_345n",
+    );
+  },
+});
+
+Deno.test({
   // https://github.com/denoland/deno/issues/26355
   name: "[util] inspect on Proxy doesn't invoke traps",
   fn() {

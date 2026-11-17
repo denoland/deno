@@ -1054,16 +1054,74 @@ fn readback_ctx<'s>(
 // ---------------------------------------------------------------------------
 // primitives
 
+/// `ctx.numericSeparator`, read as a JS truthy value.
+fn numeric_separator<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  ctx: &Ctx<'s>,
+) -> bool {
+  ctx
+    .numeric_separator
+    .is_some_and(|v| v.boolean_value(scope))
+}
+
+/// `addNumericSeparator`.
+fn add_numeric_separator(integer: &str) -> String {
+  let start = usize::from(integer.starts_with('-'));
+  let mut i = integer.len();
+  let mut result = String::new();
+  while i >= start + 4 {
+    result = format!("_{}{result}", &integer[i - 3..i]);
+    i -= 3;
+  }
+  format!("{}{result}", &integer[..i])
+}
+
+/// `addNumericSeparatorEnd`.
+fn add_numeric_separator_end(fraction: &str) -> String {
+  let mut result = String::new();
+  let mut i = 0;
+  while i + 3 < fraction.len() {
+    result.push_str(&fraction[i..i + 3]);
+    result.push('_');
+    i += 3;
+  }
+  result + &fraction[i..]
+}
+
 fn number_display<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<'s, v8::Value>,
+  numeric_separator: bool,
 ) -> String {
   let n = value.number_value(scope).unwrap_or(f64::NAN);
   if n == 0.0 && n.is_sign_negative() {
-    "-0".to_string()
+    return "-0".to_string();
+  }
+  let num = v8::Number::new(scope, n);
+  let s = num.to_rust_string_lossy(scope);
+  if !numeric_separator || !n.is_finite() || s.contains('e') {
+    return s;
+  }
+  match s.split_once('.') {
+    Some((integer, fraction)) => format!(
+      "{}.{}",
+      add_numeric_separator(integer),
+      add_numeric_separator_end(fraction)
+    ),
+    None => add_numeric_separator(&s),
+  }
+}
+
+fn bigint_display<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+  numeric_separator: bool,
+) -> String {
+  let s = value.to_rust_string_lossy(scope);
+  if numeric_separator {
+    add_numeric_separator(&s)
   } else {
-    let num = v8::Number::new(scope, n);
-    num.to_rust_string_lossy(scope)
+    s
   }
 }
 
@@ -1071,8 +1129,9 @@ pub fn format_number<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
+  numeric_separator: bool,
 ) -> R<String> {
-  let s = number_display(scope, value);
+  let s = number_display(scope, value, numeric_separator);
   ctx.stylize(scope, &s, "number")
 }
 
@@ -1080,8 +1139,9 @@ pub fn format_bigint<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
+  numeric_separator: bool,
 ) -> R<String> {
-  let s = value.to_rust_string_lossy(scope);
+  let s = bigint_display(scope, value, numeric_separator);
   ctx.stylize(scope, &format!("{s}n"), "bigint")
 }
 
@@ -1181,11 +1241,13 @@ pub fn format_primitive<'s>(
     return Ok(style!(scope, quoted, "string")? + &trailer);
   }
   if value.is_number() {
-    let s = number_display(scope, value);
+    let numeric_separator = numeric_separator(scope, ctx);
+    let s = number_display(scope, value, numeric_separator);
     return style!(scope, s, "number");
   }
   if value.is_big_int() {
-    let s = format!("{}n", value.to_rust_string_lossy(scope));
+    let numeric_separator = numeric_separator(scope, ctx);
+    let s = format!("{}n", bigint_display(scope, value, numeric_separator));
     return style!(scope, s, "bigint");
   }
   if value.is_boolean() {
@@ -2177,7 +2239,7 @@ fn format_raw<'s, 'i>(
       } else if keys.is_empty() && proto_props.is_none() {
         let byte_length = any_array_buffer_byte_length(scope, value);
         let num = v8::Number::new(scope, byte_length as f64);
-        let formatted = format_number(scope, ctx, num.into())?;
+        let formatted = format_number(scope, ctx, num.into(), false)?;
         return Ok(format!("{prefix}{{ byteLength: {formatted} }}"));
       }
       formatter.braces.0 = format!("{prefix}{{");
@@ -3185,14 +3247,15 @@ fn format_typed_array<'s, 'i>(
   let mut output = Vec::with_capacity(max_length);
   let is_bigint_array =
     value.is_big_int64_array() || value.is_big_uint64_array();
+  let numeric_separator = numeric_separator(scope, ctx);
   for i in 0..max_length {
     let Some(elem) = value_obj.get_index(scope, i as u32) else {
       continue;
     };
     let s = if is_bigint_array {
-      format_bigint(scope, ctx, elem)?
+      format_bigint(scope, ctx, elem, numeric_separator)?
     } else {
-      format_number(scope, ctx, elem)?
+      format_number(scope, ctx, elem, numeric_separator)?
     };
     output.push(s);
   }
