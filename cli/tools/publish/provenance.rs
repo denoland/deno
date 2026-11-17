@@ -7,7 +7,7 @@ use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
 use aws_lc_rs::signature::KeyPair;
 use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
 use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
@@ -573,7 +573,8 @@ fn extract_jwt_subject(token: &str) -> Result<String, AnyError> {
   let parts: Vec<&str> = token.split('.').collect();
 
   let payload = parts[1];
-  let payload = STANDARD_NO_PAD.decode(payload)?;
+  // JWT segments are base64url encoded (RFC 7519), not standard base64.
+  let payload = URL_SAFE_NO_PAD.decode(payload)?;
 
   let subject: JwtSubject = serde_json::from_slice(&payload)?;
   match subject.iss {
@@ -722,6 +723,19 @@ mod tests {
   use super::ProvenanceAttestation;
   use super::Subject;
   use super::SubjectDigest;
+  use super::extract_jwt_subject;
+
+  #[test]
+  fn extract_jwt_subject_base64url() {
+    // The payload's `workflow` claim contains emoji whose UTF-8 bytes encode
+    // to `-` in base64url, which the standard alphabet rejects.
+    let token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3Rva2VuLmFjdGlvbnMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwic3ViIjoicmVwbzpvd25lci9yZXBvOnJlZjpyZWZzL2hlYWRzL21haW4iLCJ3b3JrZmxvdyI6IvCfp6ogVGVzdCBhbmQg8J-agCBSZWxlYXNlIn0.c2ln";
+    assert!(token.contains('-') || token.contains('_'));
+    assert_eq!(
+      extract_jwt_subject(token).unwrap(),
+      "repo:owner/repo:ref:refs/heads/main"
+    );
+  }
 
   // TODO(dsherret): use sys_traits in the implementation so that this can
   // be properly tested without polluting the process environment
