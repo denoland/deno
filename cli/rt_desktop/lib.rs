@@ -1197,7 +1197,70 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
   false
 }
 
+/// Attaches to the parent's console when `deno desktop` runs the app in
+/// development mode (`--hmr`), so `console.log` output reaches the terminal.
+///
+/// The backend is a GUI-subsystem executable. Windows gives such a process no
+/// console, and no standard handles even when the parent's are inherited, so
+/// its output went nowhere (#36501). Only development runs set
+/// `DENO_DESKTOP_HMR`, so an app launched normally, e.g. from Explorer, keeps
+/// running without a console.
+#[cfg(windows)]
+fn attach_parent_console_in_dev_mode() {
+  use windows_sys::Win32::Foundation::GENERIC_READ;
+  use windows_sys::Win32::Foundation::GENERIC_WRITE;
+  use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+  use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+  use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+  use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE;
+  use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
+  use windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS;
+  use windows_sys::Win32::System::Console::AttachConsole;
+  use windows_sys::Win32::System::Console::GetConsoleWindow;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_ERROR_HANDLE;
+  use windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE;
+  use windows_sys::Win32::System::Console::SetStdHandle;
+
+  if env::var_os("DENO_DESKTOP_HMR").is_none() {
+    return;
+  }
+  // SAFETY: `CreateFileW` gets a NUL-terminated UTF-16 string that outlives
+  // the call; the other functions take no pointers. Failures are reported
+  // through return values, which are checked.
+  unsafe {
+    if !GetConsoleWindow().is_null()
+      || AttachConsole(ATTACH_PARENT_PROCESS) == 0
+    {
+      return;
+    }
+    let conout: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+    for kind in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+      // Keep handles the parent passed explicitly, e.g. pipes or files.
+      let current = GetStdHandle(kind);
+      if !current.is_null() && current != INVALID_HANDLE_VALUE {
+        continue;
+      }
+      let handle = CreateFileW(
+        conout.as_ptr(),
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        std::ptr::null(),
+        OPEN_EXISTING,
+        0,
+        std::ptr::null_mut(),
+      );
+      if handle != INVALID_HANDLE_VALUE {
+        SetStdHandle(kind, handle);
+      }
+    }
+  }
+}
+
 laufey::main!(|| {
+  #[cfg(windows)]
+  attach_parent_console_in_dev_mode();
+
   // Apply any pending update before anything else.
   #[cfg(unix)]
   #[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
