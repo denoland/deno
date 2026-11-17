@@ -809,6 +809,25 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { run: true, read: true } },
+  function commandEnvValueNotString() {
+    for (const value of [undefined, null, 1]) {
+      const command = new Deno.Command(Deno.execPath(), {
+        args: ["eval", ""],
+        env: { FOO: "bar", HELLO: value as unknown as string },
+      });
+      const message =
+        `Cannot set environment variable 'HELLO': value must be a string, received ${
+          value === null ? "null" : typeof value
+        }`;
+      assertThrows(() => command.spawn(), TypeError, message);
+      assertThrows(() => command.output(), TypeError, message);
+      assertThrows(() => command.outputSync(), TypeError, message);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { run: true, read: true, env: true } },
   async function commandClearEnv() {
     Deno.env.set("DENO_COMMAND_CLEAR_ENV_TESTING", "TESTING");
