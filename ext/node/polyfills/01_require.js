@@ -2607,10 +2607,6 @@ Module._initPaths = function () {
   Module.globalPaths = ArrayPrototypeSlice(modulePaths);
 };
 
-function syncBuiltinESMExports() {}
-
-Module.syncBuiltinESMExports = syncBuiltinESMExports;
-
 // Mostly used by tools like ts-node.
 Module.runMain = function () {
   Module._load(process.argv[1], null, true);
@@ -3476,28 +3472,62 @@ function closeIdleConnections() {
 
 internals.closeIdleConnections = closeIdleConnections;
 
+// Live bindings re-assigned by `syncBuiltinESMExports()`. The internal
+// functions keep their own names so internal callers are not affected by
+// user monkey-patching of `Module`.
+let esmCreateRequire = createRequire;
+let esmFindPackageJSON = findPackageJSON;
+let esmIsBuiltin = isBuiltin;
+let esmSourceMap = SourceMap;
+
 export {
   builtinModules,
-  createRequire,
-  findPackageJSON,
+  esmCreateRequire as createRequire,
+  esmFindPackageJSON as findPackageJSON,
   getBuiltinModule,
-  isBuiltin,
+  esmIsBuiltin as isBuiltin,
+  esmSourceMap as SourceMap,
   Module,
-  SourceMap,
   syncBuiltinESMExports,
 };
-export const _cache = Module._cache;
-export const _extensions = Module._extensions;
-export const _findPath = Module._findPath;
-export const _initPaths = Module._initPaths;
-export const _load = Module._load;
-export const _nodeModulePaths = Module._nodeModulePaths;
-export const _pathCache = Module._pathCache;
-export const _preloadModules = Module._preloadModules;
-export const _resolveFilename = Module._resolveFilename;
-export const _resolveLookupPaths = Module._resolveLookupPaths;
-export const _stat = Module._stat;
-export const globalPaths = Module.globalPaths;
-export const runMain = Module.runMain;
+export let _cache = Module._cache;
+export let _extensions = Module._extensions;
+export let _findPath = Module._findPath;
+export let _initPaths = Module._initPaths;
+export let _load = Module._load;
+export let _nodeModulePaths = Module._nodeModulePaths;
+export let _pathCache = Module._pathCache;
+export let _preloadModules = Module._preloadModules;
+export let _resolveFilename = Module._resolveFilename;
+export let _resolveLookupPaths = Module._resolveLookupPaths;
+export let _stat = Module._stat;
+export let globalPaths = Module.globalPaths;
+export let runMain = Module.runMain;
+
+// Updates the named ESM exports from the current properties of `Module`,
+// like Node's `module.syncBuiltinESMExports()`.
+function syncBuiltinESMExports() {
+  esmCreateRequire = Module.createRequire;
+  esmFindPackageJSON = Module.findPackageJSON;
+  esmIsBuiltin = Module.isBuiltin;
+  esmSourceMap = Module.SourceMap;
+  findSourceMap = Module.findSourceMap;
+  registerHooks = Module.registerHooks;
+  stripTypeScriptTypes = Module.stripTypeScriptTypes;
+  _cache = Module._cache;
+  _extensions = Module._extensions;
+  _findPath = Module._findPath;
+  _initPaths = Module._initPaths;
+  _load = Module._load;
+  _nodeModulePaths = Module._nodeModulePaths;
+  _pathCache = Module._pathCache;
+  _preloadModules = Module._preloadModules;
+  _resolveFilename = Module._resolveFilename;
+  _resolveLookupPaths = Module._resolveLookupPaths;
+  _stat = Module._stat;
+  globalPaths = Module.globalPaths;
+  runMain = Module.runMain;
+}
+Module.syncBuiltinESMExports = syncBuiltinESMExports;
 
 export default Module;
