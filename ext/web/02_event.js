@@ -1453,13 +1453,14 @@ class CustomEvent extends Event {
   #detail = null;
 
   constructor(type, eventInitDict = EMPTY_EVENT_INIT) {
+    eventInitDict ??= EMPTY_EVENT_INIT;
     super(type, eventInitDict);
     webidl.requiredArguments(
       arguments.length,
       1,
       "Failed to construct 'CustomEvent'",
     );
-    const { detail } = eventInitDict;
+    const { detail = null } = eventInitDict;
     this.#detail = detail;
   }
 
