@@ -758,10 +758,7 @@
       "ignore": true,
       "reason": "node:crypto sign/verify does not support ML-DSA post-quantum keys"
     },
-    "parallel/test-crypto-sign-verify.js": {
-      "ignore": true,
-      "reason": "Uses the Node 26 raw-private/raw-public KeyObject export format, which Deno does not implement"
-    },
+    "parallel/test-crypto-sign-verify.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-prompt.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-dsa.js": {},
