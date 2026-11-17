@@ -31,6 +31,35 @@ use crate::interface::FsFileType;
 use crate::interface::FsReadDir;
 use crate::interface::FsReadDirRc;
 
+// On Windows, setting file times only requires FILE_WRITE_ATTRIBUTES.
+// filetime::set_file_times opens the path with GENERIC_WRITE, which fails
+// for files with the read-only attribute (such as Git objects).
+#[cfg(windows)]
+fn set_path_file_times(
+  path: &Path,
+  atime: filetime::FileTime,
+  mtime: filetime::FileTime,
+) -> io::Result<()> {
+  use std::os::windows::fs::OpenOptionsExt;
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+  use windows_sys::Win32::Storage::FileSystem::FILE_WRITE_ATTRIBUTES;
+
+  let mut options = fs::OpenOptions::new();
+  options.access_mode(FILE_WRITE_ATTRIBUTES);
+  options.custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
+  let file = options.open(path)?;
+  filetime::set_file_handle_times(&file, Some(atime), Some(mtime))
+}
+
+#[cfg(not(windows))]
+fn set_path_file_times(
+  path: &Path,
+  atime: filetime::FileTime,
+  mtime: filetime::FileTime,
+) -> io::Result<()> {
+  filetime::set_file_times(path, atime, mtime)
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
 
@@ -374,7 +403,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    filetime::set_file_times(path, atime, mtime).map_err(Into::into)
+    set_path_file_times(path, atime, mtime).map_err(Into::into)
   }
   async fn utime_async(
     &self,
@@ -387,7 +416,7 @@ impl FileSystem for RealFs {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
     spawn_blocking(move || {
-      filetime::set_file_times(path, atime, mtime).map_err(Into::into)
+      set_path_file_times(path, atime, mtime).map_err(Into::into)
     })
     .await?
   }

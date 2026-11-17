@@ -93,6 +93,28 @@ Deno.test(
   },
 );
 
+Deno.test({
+  name: "utime updates read-only files on Windows",
+  ignore: Deno.build.os !== "windows",
+  permissions: { read: true, write: true },
+  async fn() {
+    const path = Deno.makeTempFileSync();
+    try {
+      Deno.writeTextFileSync(path, "read-only");
+      Deno.chmodSync(path, 0o444);
+
+      Deno.utimeSync(path, 1000, 50000);
+      assertEquals(Deno.statSync(path).mtime, new Date(50000 * 1000));
+
+      await Deno.utime(path, 2000, 60000);
+      assertEquals(Deno.statSync(path).mtime, new Date(60000 * 1000));
+    } finally {
+      Deno.chmodSync(path, 0o666);
+      Deno.removeSync(path);
+    }
+  },
+});
+
 Deno.test(
   { permissions: { read: true, write: true } },
   function utimeSyncFileSuccess() {
