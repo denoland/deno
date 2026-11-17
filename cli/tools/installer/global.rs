@@ -403,7 +403,7 @@ async fn install_global_compiled(
   let mut new_flags = flags.as_ref().clone();
   new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
 
-  crate::tools::compile::compile(new_flags, compile_flags).await?;
+  Box::pin(crate::tools::compile::compile(new_flags, compile_flags)).await?;
 
   log::info!("Successfully installed {}", output);
 
