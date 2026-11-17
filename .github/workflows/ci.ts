@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 126;
+const cacheVersion = 127;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -27,7 +27,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
 const macosX86Runner = "macos-15-intel";
-const macosArmRunner = "macos-14";
+const macosArmRunner = "macos-15";
 
 // shared conditions
 const isDenoland = conditions.isRepository("denoland/deno");
