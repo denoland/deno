@@ -630,6 +630,24 @@ fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
   Ok(bytes)
 }
 
+/// Returns true if `data` is a SEC1 encoded point that lies on `named_curve`
+/// and is not the point at infinity.
+fn is_valid_ec_public_point(data: &[u8], named_curve: EcNamedCurve) -> bool {
+  match named_curve {
+    EcNamedCurve::P256 => p256::PublicKey::from_sec1_bytes(data).is_ok(),
+    EcNamedCurve::P384 => p384::PublicKey::from_sec1_bytes(data).is_ok(),
+    EcNamedCurve::P521 => p521::PublicKey::from_sec1_bytes(data).is_ok(),
+  }
+}
+
+fn invalid_ec_point_error(named_curve: EcNamedCurve) -> ImportKeyError {
+  match named_curve {
+    EcNamedCurve::P256 => ImportKeyError::InvalidP256ECPoint,
+    EcNamedCurve::P384 => ImportKeyError::InvalidP384ECPoint,
+    EcNamedCurve::P521 => ImportKeyError::InvalidP521ECPoint,
+  }
+}
+
 fn import_key_ec_jwk_to_point(
   x: String,
   y: String,
@@ -655,6 +673,10 @@ fn import_key_ec_jwk_to_point(
       p521::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
     }
   };
+
+  if !is_valid_ec_public_point(&point_bytes, named_curve) {
+    return Err(invalid_ec_point_error(named_curve));
+  }
 
   Ok(point_bytes.to_vec())
 }
@@ -757,6 +779,9 @@ fn import_key_ec(
           }
         }
       };
+      if !is_valid_ec_public_point(&data, named_curve) {
+        return Err(invalid_ec_point_error(named_curve));
+      }
       Ok(ImportKeyResult::Ec {
         raw_data: RustRawKeyData::Public(data.to_vec().into()),
       })
@@ -868,6 +893,10 @@ fn import_key_ec(
         // 11.
         if named_curve != pk_named_curve {
           return Err(ImportKeyError::CurveMismatch);
+        }
+
+        if !is_valid_ec_public_point(&encoded_key, named_curve) {
+          return Err(invalid_ec_point_error(named_curve));
         }
       } else {
         return Err(ImportKeyError::UnsupportedNamedCurve);
