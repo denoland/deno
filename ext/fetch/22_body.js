@@ -33,6 +33,7 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   parseUrlEncoded,
+  serializeUrlSearchParams,
   URLSearchParamsPrototype,
 } = core.loadExtScript("ext:deno_web/00_url.js");
 const {
@@ -530,9 +531,7 @@ function extractBody(object) {
   } else if (
     ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
   ) {
-    // TODO(@satyarohith): not sure what primordial here.
-    // deno-lint-ignore deno-internal/prefer-primordials
-    source = object.toString();
+    source = serializeUrlSearchParams(object);
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
     if (object.locked || isReadableStreamDisturbed(object)) {

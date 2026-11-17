@@ -72,6 +72,180 @@ Deno.test(function formDataSetDeleteManyDuplicatesIsLinear() {
   assertEquals(b.getAll("dup").length, 1);
 });
 
+for (const kind of ["own", "subclass", "prototype"] as const) {
+  Deno.test(`URLSearchParams body ignores ${kind} toString`, async () => {
+    let calls = 0;
+    const wrong = () => {
+      calls++;
+      return "wrong=1";
+    };
+    class Params extends URLSearchParams {
+      override toString() {
+        return wrong();
+      }
+    }
+    const params = kind === "subclass" ? new Params() : new URLSearchParams();
+    params.append("a", "1");
+    params.append("a", "two");
+    params.append("text", "hé & 😺");
+    params.append("surrogate", "\uD800");
+    if (kind === "own") {
+      Object.defineProperty(params, "toString", {
+        get() {
+          throw new Error("unexpected toString lookup");
+        },
+      });
+    }
+
+    const original = Object.getOwnPropertyDescriptor(
+      URLSearchParams.prototype,
+      "toString",
+    )!;
+    let bodies: (Request | Response)[];
+    try {
+      if (kind === "prototype") {
+        Object.defineProperty(URLSearchParams.prototype, "toString", {
+          ...original,
+          value: wrong,
+        });
+      }
+      bodies = [
+        new Request("http://localhost/", { method: "POST", body: params }),
+        new Response(params),
+      ];
+    } finally {
+      Object.defineProperty(URLSearchParams.prototype, "toString", original);
+    }
+    assertEquals(calls, 0, kind);
+    for (const body of bodies) {
+      assertEquals(
+        body.headers.get("content-type"),
+        "application/x-www-form-urlencoded;charset=UTF-8",
+      );
+      const parsed = await body.formData();
+      assertEquals([...parsed.entries()], [
+        ["a", "1"],
+        ["a", "two"],
+        ["text", "hé & 😺"],
+        ["surrogate", "�"],
+      ], kind);
+    }
+  });
+}
+
+for (const kind of ["own", "subclass", "prototype"] as const) {
+  Deno.test(`FormData body ignores ${kind} iterator`, async () => {
+    let calls = 0;
+    const wrong = function* () {
+      calls++;
+      yield ["wrong", "1"] as [string, FormDataEntryValue];
+    };
+    class Form extends FormData {
+      override [Symbol.iterator]() {
+        return wrong();
+      }
+    }
+    const form = kind === "subclass" ? new Form() : new FormData();
+    form.append("a", "1");
+    form.append("a", "two");
+    form.append("text", "hé & 😺");
+    form.append("surrogate", "\uD800");
+    form.append(
+      "file",
+      new File(["file contents"], "café.txt", {
+        type: "text/plain",
+      }),
+    );
+    if (kind === "own") {
+      Object.defineProperty(form, Symbol.iterator, {
+        get() {
+          throw new Error("unexpected iterator lookup");
+        },
+      });
+    }
+
+    const original = Object.getOwnPropertyDescriptor(
+      FormData.prototype,
+      Symbol.iterator,
+    )!;
+    let bodies: (Request | Response)[];
+    try {
+      if (kind === "prototype") {
+        Object.defineProperty(FormData.prototype, Symbol.iterator, {
+          ...original,
+          value: wrong,
+        });
+      }
+      bodies = [
+        new Request("http://localhost/", { method: "POST", body: form }),
+        new Response(form),
+      ];
+    } finally {
+      Object.defineProperty(FormData.prototype, Symbol.iterator, original);
+    }
+    assertEquals(calls, 0, kind);
+    for (const body of bodies) {
+      assert(
+        body.headers.get("content-type")?.startsWith(
+          "multipart/form-data; boundary=",
+        ),
+      );
+      const parsed = await body.formData();
+      assertEquals(
+        [...parsed.keys()],
+        ["a", "a", "text", "surrogate", "file"],
+        kind,
+      );
+      assertEquals(parsed.getAll("a"), ["1", "two"], kind);
+      assertEquals(parsed.get("text"), "hé & 😺", kind);
+      assertEquals(parsed.get("surrogate"), "�", kind);
+      const file = parsed.get("file");
+      assert(file instanceof File);
+      assertEquals(file.name, "café.txt", kind);
+      assertEquals(file.type, "text/plain", kind);
+      assertEquals(await file.text(), "file contents", kind);
+    }
+  });
+}
+
+Deno.test(async function emptyFormAndSearchParamsBodies() {
+  for (const input of [new FormData(), new URLSearchParams()]) {
+    const bodies = [
+      new Request("http://localhost/", { method: "POST", body: input }),
+      new Response(input),
+    ];
+    for (const body of bodies) {
+      assertEquals([...(await body.formData()).entries()], []);
+    }
+  }
+});
+
+Deno.test(async function formAndSearchParamsBodySnapshotsPreserveContentType() {
+  for (const input of [new FormData(), new URLSearchParams()]) {
+    input.append("first", "1");
+    const headers = { "content-type": "application/x-custom" };
+    const bodies = [
+      new Request("http://localhost/", {
+        method: "POST",
+        body: input,
+        headers,
+      }),
+      new Response(input, { headers }),
+    ];
+    input.append("later", "2");
+    for (const body of bodies) {
+      assertEquals(body.headers.get("content-type"), "application/x-custom");
+      const text = await body.text();
+      if (input instanceof URLSearchParams) {
+        assertEquals(text, "first=1");
+      } else {
+        assert(text.includes('name="first"'));
+        assert(!text.includes('name="later"'));
+      }
+    }
+  }
+});
+
 //FormData
 Deno.test(
   { permissions: { net: true } },
