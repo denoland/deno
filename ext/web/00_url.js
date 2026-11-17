@@ -763,7 +763,7 @@ class URL {
     }
     // If initialized with webidl.createBranded, private properties are not be accessible,
     // so it is passed through the constructor
-    const self = new this(skipInit);
+    const self = new URL(skipInit);
     self[webidl.brand] = webidl.brand;
     self.#serialization = getSerialization(status, url, base);
     self.#updateComponents();

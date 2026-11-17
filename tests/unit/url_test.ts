@@ -598,3 +598,20 @@ Deno.test(function urlTakeURLObjectAsParameter() {
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
 });
+
+Deno.test(function urlParseUnbound() {
+  const parse = URL.parse;
+  const parsed = parse("https://example.com/");
+  assert(parsed);
+  assertEquals(parsed.href, "https://example.com/");
+  assertStrictEquals(parsed.constructor, URL);
+});
+
+Deno.test(function urlParseSubclassReturnsUrl() {
+  class MyURL extends URL {}
+  const parsed = MyURL.parse("https://example.com/");
+  assert(parsed);
+  assertEquals(parsed.href, "https://example.com/");
+  assertStrictEquals(parsed.constructor, URL);
+  assertStrictEquals(Object.getPrototypeOf(parsed), URL.prototype);
+});
