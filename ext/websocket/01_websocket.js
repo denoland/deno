@@ -178,6 +178,17 @@ function getInspectorNetwork() {
   return null;
 }
 
+// CloseEvent defaults `code` to 0. A failed handshake, a TCP drop, or a
+// protocol error is not a clean close: the standard requires 1006.
+// https://websockets.spec.whatwg.org/#feedback-from-the-protocol
+function abnormalCloseEvent() {
+  return new CloseEvent("close", {
+    wasClean: false,
+    code: 1006,
+    reason: "",
+  });
+}
+
 function emitWebSocketClosed(ws) {
   const ins = getInspectorNetwork();
   const requestId = ws[_inspectorRequestId];
@@ -542,7 +553,7 @@ class WebSocket extends EventTarget {
               this.dispatchEvent(errEvent);
 
               emitWebSocketClosed(this);
-              const event = new CloseEvent("close");
+              const event = abnormalCloseEvent();
               this.dispatchEvent(event);
               core.tryClose(this[_rid]);
             },
@@ -571,7 +582,7 @@ class WebSocket extends EventTarget {
         }
 
         emitWebSocketClosed(this);
-        const closeEv = new CloseEvent("close");
+        const closeEv = abnormalCloseEvent();
         this.dispatchEvent(closeEv);
       },
     );
@@ -743,7 +754,7 @@ class WebSocket extends EventTarget {
           this.dispatchEvent(errorEv);
 
           emitWebSocketClosed(this);
-          const closeEv = new CloseEvent("close");
+          const closeEv = abnormalCloseEvent();
           this.dispatchEvent(closeEv);
           core.tryClose(this[_rid]);
         },
@@ -763,7 +774,7 @@ class WebSocket extends EventTarget {
         this[_readyState] = CLOSED;
 
         emitWebSocketClosed(this);
-        const event = new CloseEvent("close");
+        const event = abnormalCloseEvent();
         this.dispatchEvent(event);
         core.tryClose(rid);
         break;
@@ -832,7 +843,7 @@ class WebSocket extends EventTarget {
           this.dispatchEvent(errorEv);
 
           emitWebSocketClosed(this);
-          const closeEv = new CloseEvent("close");
+          const closeEv = abnormalCloseEvent();
           this.dispatchEvent(closeEv);
           core.tryClose(rid);
           break;
