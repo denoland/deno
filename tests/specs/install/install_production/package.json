@@ -1,9 +1,12 @@
 {
   "dependencies": {
+    "@denotest/different-nested-dep": "1.0.0",
     "@denotest/esm-basic": "*",
     "@types/denotest__index-export-no-types": "*"
   },
   "devDependencies": {
-    "@denotest/bin": "*"
+    "@denotest/bin": "*",
+    "@denotest/cjs-default-export": "*",
+    "@denotest/different-nested-dep-child": "1.0.0"
   }
 }

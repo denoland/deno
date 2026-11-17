@@ -154,6 +154,7 @@ pub trait NpmInstallerSys:
 
 pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub clean_on_install: bool,
+  pub production: bool,
   pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub linker_mode: NodeModulesLinkerMode,
@@ -181,6 +182,7 @@ pub struct NpmInstaller<
   top_level_install_flag: AtomicFlag,
   install_queue: TaskQueue,
   cached_reqs: Mutex<FxHashSet<PackageReq>>,
+  production_package_reqs: Option<Mutex<FxHashSet<PackageReq>>>,
 }
 
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
@@ -278,6 +280,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       top_level_install_flag: Default::default(),
       install_queue: Default::default(),
       cached_reqs: Default::default(),
+      production_package_reqs: options.production.then(Default::default),
     }
   }
 
@@ -371,6 +374,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       result.dependencies_result = lockfile.error_if_changed();
     }
     if result.dependencies_result.is_ok()
+      && let Some(reqs) = &self.production_package_reqs
+    {
+      reqs.lock().extend(packages.iter().cloned());
+    }
+    if result.dependencies_result.is_ok()
       && let Some(caching) = caching
     {
       result.dependencies_result =
@@ -425,6 +433,15 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
+    // The lockfile resolution may contain development dependencies. Keep it
+    // intact, but only materialize the roots selected for this production
+    // install and their transitive dependencies.
+    let caching = match (caching, &self.production_package_reqs) {
+      (PackageCaching::All, Some(reqs)) => {
+        PackageCaching::Only(Cow::Owned(reqs.lock().iter().cloned().collect()))
+      }
+      (caching, _) => caching,
+    };
     self.fs_installer.cache_packages(caching).await?;
     // store a copy of the lockfile in the node_modules directory so that
     // the npm packages don't need to be re-resolved when the lockfile in
@@ -514,6 +531,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     self.npm_resolution_initializer.ensure_initialized().await?;
 
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
+    if let Some(reqs) = &self.production_package_reqs {
+      reqs
+        .lock()
+        .extend(pkg_json_remote_pkgs.iter().map(|pkg| pkg.req.clone()));
+    }
     if pkg_json_remote_pkgs.is_empty() {
       return Ok(true);
     }
