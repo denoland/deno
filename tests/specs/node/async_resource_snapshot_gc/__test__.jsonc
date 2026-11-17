@@ -1,0 +1,4 @@
+{
+  "args": "run --v8-flags=--expose-gc main.ts",
+  "output": "ok\n"
+}

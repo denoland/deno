@@ -14,7 +14,6 @@ const {
   emitDestroy: emitDestroyHook,
   emitInit,
   enterAsyncResource,
-  exitAsyncResource,
   executionAsyncId: internalExecutionAsyncId,
   executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
@@ -60,7 +59,12 @@ class AsyncResource {
 
   constructor(type: string) {
     this.type = type;
+    // Capture this resource instead of its predecessor. Otherwise a resource
+    // created inside runInAsyncScope retains the previous resource through its
+    // snapshot, forming an unbounded chain across repeated suspensions.
+    const previousContext = enterAsyncResource(this);
     this.#snapshot = getAsyncContext();
+    setAsyncContext(previousContext);
     this.#asyncId = newAsyncId();
     // Fire the init hook so that async_hooks.createHook({ init }) callbacks
     // receive this resource, matching Node.js behaviour.
@@ -84,14 +88,7 @@ class AsyncResource {
     emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
-      // Enter this resource as the current executionAsyncResource() so that
-      // user code inside the scope observes `this` as the active resource.
-      const prevResource = enterAsyncResource(this);
-      try {
-        return ReflectApply(fn, thisArg, args);
-      } finally {
-        exitAsyncResource(prevResource);
-      }
+      return ReflectApply(fn, thisArg, args);
     } finally {
       setAsyncContext(previousContext);
       emitAfter(this.#asyncId);
