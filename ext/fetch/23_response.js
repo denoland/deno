@@ -697,8 +697,8 @@ class Response {
     const prefix = "Failed to execute 'Response.json'";
     data = webidlConvertersAny(data);
     const defaultInit = init === undefined || init === null;
-    const str = serializeJSValueToJSONString(data);
     if (defaultInit) {
+      const str = serializeJSValueToJSONString(data);
       const response = webidl.createBranded(Response);
       initializeResponseBase(response, newInnerResponse(), "response");
       response[_lazyStaticBody] = str;
@@ -714,6 +714,7 @@ class Response {
     }
     init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
+    const str = serializeJSValueToJSONString(data);
     const res = extractBody(str);
     res.contentType = "application/json";
     const response = webidl.createBranded(Response);
@@ -910,13 +911,42 @@ const webidlConvertersResponseInitFast = webidl
     // Fast path, if not a proxy
     if (typeof init === "object" && !core.isProxy(init)) {
       // Not a proxy fast path
-      const status = init.status !== undefined
-        ? webidlConvertersUnsignedShort(init.status)
+      // Dictionary members are converted in lexicographical order. Convert
+      // headers before reading status because header conversion may run user code.
+      const headersValue = init.headers;
+      const headers = headersValue === undefined
+        ? undefined
+        : webidlConvertersHeadersInit(
+          headersValue,
+          prefix,
+          context
+            ? `'headers' of 'ResponseInit' (${context})`
+            : "'headers' of 'ResponseInit'",
+          opts,
+        );
+      const statusValue = init.status;
+      const status = statusValue !== undefined
+        ? webidlConvertersUnsignedShort(
+          statusValue,
+          prefix,
+          context
+            ? `'status' of 'ResponseInit' (${context})`
+            : "'status' of 'ResponseInit'",
+          opts,
+        )
         : 200;
-      const statusText = init.statusText !== undefined
-        ? webidlConvertersByteString(init.statusText)
+      const statusTextValue = init.statusText;
+      const statusText = statusTextValue !== undefined
+        ? webidlConvertersByteString(
+          statusTextValue,
+          prefix,
+          context
+            ? `'statusText' of 'ResponseInit' (${context})`
+            : "'statusText' of 'ResponseInit'",
+          opts,
+        )
         : "";
-      return { status, statusText, headers: init.headers };
+      return { status, statusText, headers };
     }
     // Slow default path
     return webidlConvertersResponseInit(init, prefix, context, opts);
