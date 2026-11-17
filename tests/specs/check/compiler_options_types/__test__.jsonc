@@ -13,7 +13,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDLINE]\n"
+          "output": "Check [WILDCARD]main.ts\n"
         }
       ]
     },
@@ -29,7 +29,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDLINE]\n"
+          "output": "Check [WILDCARD]main.ts\n"
         }
       ]
     },
@@ -45,7 +45,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDLINE]\n"
+          "output": "Check [WILDCARD]main.ts\n"
         }
       ]
     }

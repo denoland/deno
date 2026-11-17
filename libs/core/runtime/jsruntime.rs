@@ -120,6 +120,7 @@ use crate::modules::SideModuleKind;
 use crate::modules::ValidateImportAttributesCb;
 use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::script_origin;
+use crate::ops::OpCtxs;
 use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::ops_metrics::dispatch_metrics_async;
 use crate::runtime::ContextState;
@@ -218,6 +219,11 @@ pub(crate) struct InnerIsolateState {
   source_count: usize,
   addl_refs_count: usize,
   main_realm: ManuallyDrop<JsRealm>,
+  /// The main realm's op contexts, handed back by `JsRealmInner::destroy`.
+  /// Function templates with fast-call overloads hold raw pointers into
+  /// them, which concurrent TurboFan jobs may read until the isolate is
+  /// disposed, so they are dropped only after `v8_isolate`.
+  retired_op_ctxs: Option<Rc<OpCtxs>>,
   pub(crate) state: ManuallyDropRc<JsRuntimeState>,
   v8_isolate: ManuallyDrop<v8::OwnedIsolate>,
 }
@@ -260,9 +266,12 @@ impl InnerIsolateState {
     // release the Global<Context> stored in loop.data. If we clear
     // op_state first, the Box<UvLoop> is freed and destroy() would
     // dereference a dangling pointer (use-after-free).
-    unsafe {
-      ManuallyDrop::take(&mut self.main_realm).0.destroy();
-    }
+    //
+    // The op contexts it returns are kept until the isolate has been disposed
+    // (see `retired_op_ctxs`).
+    // SAFETY: `main_realm` is taken exactly once, here, and never used again.
+    let main_realm = unsafe { ManuallyDrop::take(&mut self.main_realm) };
+    self.retired_op_ctxs = Some(main_realm.0.destroy());
 
     // Now safe to clear op_state (drops Box<UvLoop> etc.) since
     // destroy() has already released the Global from loop.data.
@@ -280,6 +289,10 @@ impl InnerIsolateState {
 
   pub fn prepare_for_snapshot(mut self) -> v8::OwnedIsolate {
     self.cleanup();
+    // Templates built for a snapshot have no fast-call overloads (see
+    // `op_ctx_template`), so nothing in the isolate points into the op
+    // contexts. Drop them here rather than leaking them with `self`.
+    drop(self.retired_op_ctxs.take());
 
     // SAFETY: We're copying out of self and then immediately forgetting self
     unsafe {
@@ -314,6 +327,10 @@ impl Drop for InnerIsolateState {
         ManuallyDrop::drop(&mut self.v8_isolate);
       }
     }
+    // Only now that the isolate is disposed (and with it every concurrent
+    // compilation job that could read a fast-call `CFunction`) is it safe to
+    // free the op contexts.
+    drop(self.retired_op_ctxs.take());
   }
 }
 
@@ -1237,6 +1254,7 @@ impl JsRuntime {
         source_count,
         addl_refs_count,
         main_realm: ManuallyDrop::new(main_realm),
+        retired_op_ctxs: None,
         state: ManuallyDropRc(ManuallyDrop::new(state_rc)),
         v8_isolate: ManuallyDrop::new(isolate),
       },

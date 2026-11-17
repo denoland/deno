@@ -1,7 +1,4 @@
 {
-  // ignored: tsc can't resolve the @types/cloudflare compilerOptions.types
-  // entry that deno provides. https://github.com/denoland/deno/issues/36085
-  "ignore": true,
   "args": "check",
   "output": "check.out"
 }
