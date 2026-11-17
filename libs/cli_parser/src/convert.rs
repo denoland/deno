@@ -2127,6 +2127,10 @@ fn compile_parse(
     eszip,
     self_extracting,
     bundle: result.get_bool("bundle"),
+    external: result
+      .get_many("external")
+      .map(|values| values.iter().map(|value| value.to_string()).collect())
+      .unwrap_or_default(),
     app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),

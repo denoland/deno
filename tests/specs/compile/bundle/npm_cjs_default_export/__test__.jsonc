@@ -26,5 +26,25 @@
     "args": [],
     "output": "run.out",
     "exitCode": 0
+  }, {
+    "if": "unix",
+    "args": "compile --bundle --external=npm:@denotest/cjs-default-export --no-check --output external main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./external",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --external=npm:@denotest/cjs-default-export --no-check --output external.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./external.exe",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
   }]
 }

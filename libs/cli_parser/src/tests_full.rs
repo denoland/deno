@@ -5065,6 +5065,7 @@ fn compile() {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
@@ -5174,6 +5175,28 @@ fn desktop_exclude_unused_npm() {
 }
 
 #[test]
+fn compile_bundle_external() {
+  let r = flags_from_vec(svec![
+    "deno",
+    "compile",
+    "--bundle",
+    "--external",
+    "chromium-bidi/*",
+    "--external=node:sea",
+    "main.ts"
+  ]);
+  let DenoSubcommand::Compile(compile) = r.unwrap().subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert_eq!(compile.external, svec!["chromium-bidi/*", "node:sea"]);
+  assert_eq!(compile.source_file, "main.ts");
+  assert!(
+    flags_from_vec(svec!["deno", "compile", "--external=node:sea", "main.ts"])
+      .is_err()
+  );
+}
+
+#[test]
 fn compile_watch_with_no_clear_screen() {
   let r = flags_from_vec(svec![
     "deno",
@@ -5197,6 +5220,7 @@ fn compile_watch_with_no_clear_screen() {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
@@ -5234,6 +5258,7 @@ fn compile_with_flags() {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
@@ -8224,6 +8249,7 @@ fn preload_flag_test() {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,

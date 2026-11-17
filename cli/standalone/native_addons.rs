@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 //! Discovery of npm packages that need to ship in the binary built by
-//! `deno compile --bundle`. Two complementary signals:
+//! `deno compile --bundle`.
 //!
 //! 1. Packages with `.node` native addons can't be tree-shaken into the
 //!    bundle, so we mark them for inclusion eagerly. For managed npm we
@@ -10,6 +10,7 @@
 //! 2. Absolute paths the bundle path-rewriter pointed at — captured at
 //!    bundle time — are mapped back to their owning npm package so the
 //!    binary writer ships only what's actually reached at runtime.
+//! 3. npm imports remaining in the bundled module graph.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -21,6 +22,7 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
+use deno_semver::package::PackageReq;
 
 use crate::npm::CliNpmResolver;
 
@@ -114,6 +116,7 @@ pub fn collect_bundle_required_packages(
   npm_resolver: &CliNpmResolver,
   npm_system_info: &NpmSystemInfo,
   referenced_paths: &[PathBuf],
+  external_npm_reqs: &[&PackageReq],
 ) -> Result<Option<HashSet<NpmPackageId>>, AnyError> {
   let CliNpmResolver::Managed(managed) = npm_resolver else {
     return Ok(None);
@@ -181,6 +184,10 @@ pub fn collect_bundle_required_packages(
       seeds.insert(id.clone());
     }
     path_owner_cache.insert(path, owner);
+  }
+
+  for req in external_npm_reqs {
+    seeds.insert(managed.resolution().resolve_pkg_id_from_pkg_req(req)?);
   }
 
   // BFS through dependency edges from each seed so runtime requires that
