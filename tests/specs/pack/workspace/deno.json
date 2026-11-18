@@ -1,6 +1,0 @@
-{
-  "workspace": [
-    "./package-a",
-    "./package-b"
-  ]
-}

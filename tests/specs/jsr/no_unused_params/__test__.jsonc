@@ -3,7 +3,15 @@
     "args": "check --all main.ts",
     "output": "main.out"
   }, {
+    // unused parameters in the public API output aren't type errors
+    "if": "unix",
     "args": "publish --dry-run",
+    "envs": { "JSR_BIN_PATH": "../../jsr_cli/fake_jsr.sh" },
+    "output": "publish.out"
+  }, {
+    "if": "windows",
+    "args": "publish --dry-run",
+    "envs": { "JSR_BIN_PATH": "../../jsr_cli/fake_jsr.cmd" },
     "output": "publish.out"
   }]
 }

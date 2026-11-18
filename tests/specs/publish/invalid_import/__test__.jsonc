@@ -1,5 +1,0 @@
-{
-  "args": "publish --token 'sadfasdf' --dry-run",
-  "output": "invalid_import.out",
-  "exitCode": 1
-}

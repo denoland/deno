@@ -53,8 +53,6 @@ mod napi;
 mod npm;
 #[path = "pm_tests.rs"]
 mod pm;
-#[path = "publish_tests.rs"]
-mod publish;
 
 #[path = "bump_version_tests.rs"]
 mod bump_version;

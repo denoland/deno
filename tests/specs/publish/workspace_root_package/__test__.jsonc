@@ -1,5 +1,0 @@
-{
-  "args": "publish --dry-run",
-  // should succeed
-  "output": "[WILDCARD]"
-}

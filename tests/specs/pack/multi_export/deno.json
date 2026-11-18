@@ -1,8 +1,0 @@
-{
-  "name": "@test/multi-export",
-  "version": "1.0.0",
-  "exports": {
-    ".": "./mod.ts",
-    "./utils": "./utils.ts"
-  }
-}

@@ -1,5 +1,0 @@
-{
-  "args": "publish --token 'sadfasdf'",
-  "output": "unanalyzable_dynamic_import.out",
-  "exitCode": 0
-}

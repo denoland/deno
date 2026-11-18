@@ -1,4 +1,0 @@
-error: Invalid package name 'project' in 'file:///[WILDCARD]/project/deno.json'
-
-Caused by:
-    package name must use the '@<scope>/<package>' format

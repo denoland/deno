@@ -1,0 +1,2 @@
+Check [WILDLINE]mod.ts
+jsr pack --output out.tgz --dry-run --no-source-maps --ignore=a.ts,b.ts -- mod.ts
