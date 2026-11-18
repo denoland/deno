@@ -268,7 +268,7 @@ class URLSearchParams {
    */
   delete(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
-    const prefix = "Failed to execute 'append' on 'URLSearchParams'";
+    const prefix = "Failed to execute 'delete' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];

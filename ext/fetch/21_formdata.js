@@ -133,7 +133,7 @@ class FormData {
    */
   delete(name) {
     webidl.assertBranded(this, FormDataPrototype);
-    const prefix = "Failed to execute 'name' on 'FormData'";
+    const prefix = "Failed to execute 'delete' on 'FormData'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters["USVString"](name, prefix, "Argument 1");
