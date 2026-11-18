@@ -19,6 +19,8 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   SymbolFor,
+  ObjectDefineProperty,
+  SymbolToStringTag,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -416,6 +418,13 @@ class EventSource extends EventTarget {
 }
 
 const EventSourcePrototype = EventSource.prototype;
+ObjectDefineProperty(EventSourcePrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "EventSource",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 ObjectDefineProperties(EventSource, {
   CONNECTING: {

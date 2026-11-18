@@ -12,6 +12,8 @@ const {
   SymbolFor,
   StringPrototypeToUpperCase,
   StringPrototypeSlice,
+  ObjectDefineProperty,
+  SymbolToStringTag,
 } = primordials;
 
 const location = core.loadExtScript("ext:deno_web/12_location.js");
@@ -203,6 +205,13 @@ ObjectDefineProperties(Navigator.prototype, {
   },
 });
 const NavigatorPrototype = Navigator.prototype;
+ObjectDefineProperty(NavigatorPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "Navigator",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
