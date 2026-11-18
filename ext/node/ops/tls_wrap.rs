@@ -2148,6 +2148,21 @@ impl TLSWrap {
       // state machine.  Processing enc_in/enc_out here can corrupt
       // the record stream (Node.js / OpenSSL treats a 0-byte
       // SSL_write the same way).
+      //
+      // Finish this write in this turn. Otherwise the response never emits
+      // `finish`, and the next request on the connection is never answered.
+      let state_global = &op_state.borrow::<StreamBaseState>().array;
+      let state_array = v8::Local::new(scope, state_global);
+      state_array.set_index(
+        scope,
+        StreamBaseStateFields::BytesWritten as u32,
+        v8::Number::new(scope, 0.0).into(),
+      );
+      state_array.set_index(
+        scope,
+        StreamBaseStateFields::LastWriteWasAsync as u32,
+        v8::Integer::new(scope, 0).into(),
+      );
       return 0;
     }
 
