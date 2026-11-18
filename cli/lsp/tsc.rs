@@ -5369,7 +5369,7 @@ fn op_resolve_inner(
     .map(|o| {
       o.map(|(s, mt)| {
         (
-          denormalize_with_auto_import_alias(state, &s, mt, Some(&referrer)),
+          denormalize_with_auto_import_alias(state, &s, mt),
           match mt {
             MediaType::Unknown => None,
             // surface these as .js for typescript so side-effect imports
@@ -5452,29 +5452,18 @@ fn span_with_context(
   }
 }
 
-fn should_alias_node_modules_for_auto_import(
-  state: &State,
-  specifier: &ModuleSpecifier,
-  scope: Option<&ModuleSpecifier>,
-) -> bool {
-  if !state.state_snapshot.resolver.in_node_modules(specifier) {
-    return false;
-  }
-  let scoped_resolver =
-    state.state_snapshot.resolver.get_scoped_resolver(scope);
-  let referrer = scope.unwrap_or(specifier);
-  scoped_resolver
-    .resource_url_to_configured_dep_key(specifier, referrer)
-    .is_some()
-}
-
 fn denormalize_with_auto_import_alias(
   state: &State,
   specifier: &ModuleSpecifier,
   media_type: MediaType,
-  scope: Option<&ModuleSpecifier>,
 ) -> String {
-  if should_alias_node_modules_for_auto_import(state, specifier, scope) {
+  // The denormalized name is the module's identity in tsc, so it must not
+  // depend on which referrer reached the file. See
+  // https://github.com/denoland/deno/issues/36664.
+  let resolver = &state.state_snapshot.resolver;
+  if resolver.in_node_modules(specifier)
+    && resolver.is_configured_dep_resolution(specifier)
+  {
     state
       .specifier_map
       .denormalize_with_node_modules_alias(specifier, media_type)
@@ -5535,7 +5524,6 @@ fn insert_root_module_script_names(
   state: &State,
   script_names: &mut IndexSet<String>,
   module: &DocumentModule,
-  scope: Option<&ModuleSpecifier>,
   is_open: bool,
 ) {
   let types_entry = (|| {
@@ -5559,7 +5547,6 @@ fn insert_root_module_script_names(
       state,
       types_specifier,
       *types_media_type,
-      scope,
     ));
   }
   if types_entry.is_none() || is_open {
@@ -5567,7 +5554,6 @@ fn insert_root_module_script_names(
       state,
       &module.specifier,
       module.media_type,
-      scope,
     ));
     // The auto-import alias hides `node_modules/.deno` from tsc, but
     // requests for open documents (diagnostics, hover, etc.) use the
@@ -5716,7 +5702,6 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           state,
           &module.specifier,
           module.media_type,
-          scope.as_deref(),
         ));
       }
     }
@@ -5736,13 +5721,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       else {
         continue;
       };
-      insert_root_module_script_names(
-        state,
-        script_names,
-        &module,
-        scope.as_deref(),
-        false,
-      );
+      insert_root_module_script_names(state, script_names, &module, false);
     }
   }
 
@@ -5783,7 +5762,6 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         state,
         &module.specifier,
         module.media_type,
-        scope.map(|s| s.as_ref()),
       ))
     }));
 
@@ -5793,11 +5771,11 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  for (scope, modules) in state
+  for modules in state
     .state_snapshot
     .document_modules
     .workspace_file_modules_by_scope()
-    .into_iter()
+    .into_values()
   {
     for module in modules {
       let script_names = result
@@ -5808,7 +5786,6 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         state,
         script_names,
         &module,
-        scope.as_deref(),
         module.open_data.is_some(),
       );
     }
