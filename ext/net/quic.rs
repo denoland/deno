@@ -281,7 +281,24 @@ pub(crate) fn op_quic_endpoint_create(
   }
 
   let config = quinn::EndpointConfig::default();
-  let socket = std::net::UdpSocket::bind(addr)?;
+  let socket = if can_listen {
+    std::net::UdpSocket::bind(addr)?
+  } else {
+    // The implicit endpoint used by `connectQuic` always binds to the IPv6
+    // unspecified address (`::`). quinn maps IPv4 targets to IPv4-mapped IPv6
+    // addresses when the endpoint socket is IPv6, so the socket must be
+    // dual-stack to reach IPv4 destinations (e.g. `127.0.0.1`). Unlike
+    // Linux/macOS, Windows binds IPv6 sockets as v6-only by default, which
+    // would otherwise make connecting to IPv4 addresses time out.
+    let socket = socket2::Socket::new(
+      socket2::Domain::IPV6,
+      socket2::Type::DGRAM,
+      Some(socket2::Protocol::UDP),
+    )?;
+    socket.set_only_v6(false)?;
+    socket.bind(&addr.into())?;
+    std::net::UdpSocket::from(socket)
+  };
   let endpoint = quinn::Endpoint::new(
     config,
     None,
