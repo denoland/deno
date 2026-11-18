@@ -331,10 +331,12 @@ interface PreviewSession {
   close(): void;
 }
 
-// The actual implementation lives in an IIFE-loaded script so it can
-// see the snapshot-time `core.ops` capture -- ES-module polyfills like
-// this file only see the post-`removeImportedOps` view, which doesn't
-// include `op_node_repl_inspector_connect`. See `_repl_preview.js`.
+// The actual implementation lives in an IIFE-loaded script so it can see
+// `core.ops` through the captured `__bootstrap` view. This used to be load
+// bearing: `removeImportedOps()` stripped the live `core.ops` in place, so
+// an ES-module polyfill like this file could not reach
+// `op_node_repl_inspector_connect` at all. `core.ops` is no longer stripped,
+// so the split is now only structural. See `_repl_preview.js`.
 const { createPreviewSession: _createPreviewSession } = core.loadExtScript(
   "ext:deno_node/_repl_preview.js",
 ) as { createPreviewSession(): PreviewSession | null };
