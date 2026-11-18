@@ -122,10 +122,6 @@ where
   let join_handle = rt.spawn(future);
 
   let r = rt.block_on(join_handle).unwrap().into_inner();
-  // Forcefully shutdown the runtime - we're done executing JS code at this
-  // point, but there might be outstanding blocking tasks that were created and
-  // latered "unrefed". They won't terminate on their own, so we're forcing
-  // termination of Tokio runtime at this point.
   rt.shutdown_background();
   r
 }
@@ -137,6 +133,28 @@ where
   R: Send + 'static,
 {
   create_and_run_current_thread_inner(future, false)
+}
+
+#[inline(always)]
+pub(crate) fn create_and_run_worker_thread<F, R>(future: F)
+where
+  F: std::future::Future<Output = R> + 'static,
+  R: 'static,
+{
+  let rt = create_basic_runtime();
+  // SAFETY: The future and its retained state are polled and dropped on this
+  // thread; the executor is current-thread, just as for the main runtime.
+  let future = unsafe { MaskFutureAsSend::new(future) };
+  let retained = rt.block_on(rt.spawn(future)).unwrap().into_inner();
+  let handle = rt.handle().clone();
+  // The future has dropped its JsRuntime after closing callback admission, and
+  // returns only what native calls may still use (callback allocations and
+  // libraries). Dropping the runtime waits for every blocking task, so that
+  // state outlives each managed native call, including libffi's return path.
+  drop(rt);
+  // Resource destructors may need a Tokio context even after its tasks stopped.
+  let _guard = handle.enter();
+  drop(retained);
 }
 
 #[inline(always)]
