@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/using-vuln1-patched",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@denotest/with-vuln1": "1.1.0"
+  }
+}
