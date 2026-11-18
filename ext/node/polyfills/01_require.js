@@ -2143,10 +2143,11 @@ Module.prototype._compile = function (
   format,
   sourceFromHook = false,
 ) {
-  const useSourceImport = sourceFromHook ||
-    SetPrototypeDelete(cjsHookResolvedFilenames, filename);
+  SetPrototypeDelete(cjsHookResolvedFilenames, filename);
+  // A resolve hook supplies a URL. Let the normal ESM loader load its imports
+  // unless a load hook supplied replacement source.
   if (format === "module") {
-    return loadESMFromCJS(this, filename, content, useSourceImport);
+    return loadESMFromCJS(this, filename, content, sourceFromHook);
   }
 
   let compiledWrapper;
@@ -2157,7 +2158,7 @@ Module.prototype._compile = function (
       format !== "commonjs" && err instanceof SyntaxError &&
       (op_require_can_parse_as_esm(content) || isEsmSyntaxError(err))
     ) {
-      return loadESMFromCJS(this, filename, content, useSourceImport);
+      return loadESMFromCJS(this, filename, content, sourceFromHook);
     }
     throw err;
   }
