@@ -297,3 +297,97 @@ Deno.test(
     Deno.removeSync(tempDir, { recursive: true });
   },
 );
+
+// copyFile does not follow a terminal symlink at the destination: the
+// permission check for the destination is performed no-follow, so a symlink at
+// an allowed destination path must not be usable to overwrite the file it
+// points to. The destination is opened with O_NOFOLLOW and fails with
+// FilesystemLoop (ELOOP) on a symlink, leaving the symlink's target untouched.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function copyFileSyncDestDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const source = dir + "/source.txt";
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    writeFileString(source, "new contents");
+    writeFileString(target, "original contents");
+    Deno.symlinkSync(target, link);
+
+    assertThrows(
+      () => Deno.copyFileSync(source, link),
+      Deno.errors.FilesystemLoop,
+    );
+    assertEquals(readFileString(target), "original contents");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function copyFileDestDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const source = dir + "/source.txt";
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    writeFileString(source, "new contents");
+    writeFileString(target, "original contents");
+    Deno.symlinkSync(target, link);
+
+    await assertRejects(
+      () => Deno.copyFile(source, link),
+      Deno.errors.FilesystemLoop,
+    );
+    assertEquals(readFileString(target), "original contents");
+  },
+);
+
+// The same holds for large files (which take the clonefile() fast path on
+// macOS): a terminal symlink destination is refused, not replaced.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function copyFileSyncLargeDestDoesNotFollowSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const source = dir + "/source.txt";
+    const target = dir + "/target.txt";
+    const link = dir + "/link.txt";
+    Deno.writeFileSync(source, new Uint8Array(256 * 1024).fill(1));
+    writeFileString(target, "original contents");
+    Deno.symlinkSync(target, link);
+
+    assertThrows(
+      () => Deno.copyFileSync(source, link),
+      Deno.errors.FilesystemLoop,
+    );
+    assertEquals(readFileString(target), "original contents");
+  },
+);
+
+// O_NOFOLLOW only protects the final path component. A destination reached
+// through a symlinked ancestor directory is still resolved and written.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function copyFileSyncFollowsIntermediateSymlink() {
+    const dir = Deno.makeTempDirSync();
+    const source = dir + "/source.txt";
+    writeFileString(source, "copied contents");
+    const realDir = dir + "/real";
+    Deno.mkdirSync(realDir);
+    const linkDir = dir + "/linkdir";
+    Deno.symlinkSync(realDir, linkDir);
+
+    Deno.copyFileSync(source, linkDir + "/dest.txt");
+    assertEquals(readFileString(realDir + "/dest.txt"), "copied contents");
+  },
+);
