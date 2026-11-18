@@ -169,6 +169,23 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/36810
+Deno.test(
+  "[node/fs writeFileSync] writes a buffer larger than 2^31 bytes",
+  () => {
+    const size = 2 ** 31 + 1024;
+    const data = new Uint8Array(size);
+    const dir = mkdtempSync(join(tmpdir(), "foo-"));
+    const filename = join(dir, "test.bin");
+    try {
+      writeFileSync(filename, data);
+      assertEquals(Deno.statSync(filename).size, size);
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  },
+);
+
 Deno.test(
   "[node/fs existsSync] path",
   { permissions: { read: true } },
