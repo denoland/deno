@@ -34,10 +34,15 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
 const { kKeyObject } = internals;
+markNotSerializable(Crypto.prototype);
+markNotSerializable(SubtleCrypto.prototype);
 
 // op2-generated interface constructors expose the macro's internal
 // new-target signal (`_: bool`) as a formal parameter, giving the
