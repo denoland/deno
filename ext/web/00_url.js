@@ -159,7 +159,7 @@ class URLSearchParams {
         while (true) {
           // deno-lint-ignore deno-internal/prefer-primordials
           const res = iter.next();
-          if (res == null) {
+          if (res == null || typeof res !== "object") {
             const err = new TypeError(
               "Each query pair must be an iterable [name, value] tuple",
             );
