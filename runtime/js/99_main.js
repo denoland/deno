@@ -119,6 +119,7 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import {
+  printConsole,
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
 } from "ext:runtime/98_global_scope_shared.js";
@@ -981,7 +982,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
         // deno-lint-ignore no-global-assign
         console = new internalConsole.Console((msg, level) =>
-          core.print(`${prefix} ` + msg, level > 1)
+          printConsole(`${prefix} ` + msg, level)
         );
       }
     }

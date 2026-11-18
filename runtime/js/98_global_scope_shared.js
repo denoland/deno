@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const { SafeArrayIterator } = primordials;
 
 const event = core.loadExtScript("ext:deno_web/02_event.js");
@@ -12,6 +12,12 @@ const loadEncoding = () =>
 // the same object the program sees, and the serve-worker path in 99_main.js can
 // reassign `console` to add a per-worker log prefix.
 const console = core.loadExtScript("ext:deno_web/01_console.js");
+export function printConsole(msg, level) {
+  const isErr = level > 1;
+  if (!internals.writeNodeConsole?.(msg, isErr)) {
+    core.print(msg, isErr);
+  }
+}
 const worker = core.loadExtScript("ext:runtime/11_workers.js");
 const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 // `internals.kKeyObject` (set by this tiny, dependency-free node module) brands
@@ -313,9 +319,7 @@ const windowOrWorkerGlobalScope = {
     (c) => c.Cache,
     lazyCache,
   ),
-  console: core.propNonEnumerable(
-    new console.Console((msg, level) => core.print(msg, level > 1)),
-  ),
+  console: core.propNonEnumerable(new console.Console(printConsole)),
   crypto: core.propGetterOnly(() => crypto.crypto),
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),

@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "reassigned_write": {
+      "args": "run main.ts",
+      "output": "restored\n"
+    },
+    "replaced_stdout": {
+      "args": "run replaced_stdout.ts",
+      "output": "restored\n"
+    },
+    "delegated_stdout": {
+      "args": "run delegated_stdout.ts",
+      "output": ""
+    }
+  }
+}
