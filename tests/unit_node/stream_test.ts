@@ -7,6 +7,8 @@ import {
   Duplex,
   finished as finishedCallback,
   getDefaultHighWaterMark,
+  isErrored,
+  isReadable,
   promises,
   Readable,
   Stream,
@@ -335,4 +337,39 @@ Deno.test("exported `promises` from node:stream works", async () => {
     assertEquals(chunk, "asd");
   }
   await promise;
+});
+
+// https://github.com/denoland/deno/issues/37150
+Deno.test("isDisturbed, isErrored and isReadable on web streams", async () => {
+  const asNode = (s: ReadableStream) => s as unknown as NodeJS.ReadableStream;
+
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue("a");
+      controller.close();
+    },
+  });
+  assertEquals(Readable.isDisturbed(asNode(stream)), false);
+  assertEquals(isErrored(asNode(stream)), false);
+  assertEquals(isReadable(asNode(stream)), true);
+
+  const reader = stream.getReader();
+  await reader.read();
+  reader.releaseLock();
+  assertEquals(Readable.isDisturbed(asNode(stream)), true);
+  assertEquals(isErrored(asNode(stream)), false);
+  assertEquals(isReadable(asNode(stream)), false);
+
+  const errored = new ReadableStream({
+    start(controller) {
+      controller.error(new Error("boom"));
+    },
+  });
+  assertEquals(Readable.isDisturbed(asNode(errored)), false);
+  assertEquals(isErrored(asNode(errored)), true);
+  assertEquals(isReadable(asNode(errored)), false);
+
+  const cancelled = new ReadableStream();
+  await cancelled.cancel();
+  assertEquals(Readable.isDisturbed(asNode(cancelled)), true);
 });
