@@ -157,14 +157,6 @@ pub struct CheckFlags {
   pub check_js: bool,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct SyncTypesFlags {
-  /// Files, directories, or remote modules to use as module graph roots.
-  /// These scope dependency discovery, not the generated TypeScript project.
-  /// An empty list discovers dependencies from the entire project.
-  pub roots: Vec<String>,
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum JavaScriptEngine {
   #[default]
@@ -812,7 +804,6 @@ pub enum DenoSubcommand {
   Link(LinkFlags),
   Unlink(UnlinkFlags),
   Lsp,
-  SyncTypes(SyncTypesFlags),
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),

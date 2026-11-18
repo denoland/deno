@@ -3276,7 +3276,6 @@ const DENO_SUBCOMMANDS: &[&str] = &[
   "run",
   "sandbox",
   "serve",
-  "sync-types",
   "task",
   "tasks",
   "test",
