@@ -318,7 +318,7 @@ class Worker extends EventTarget {
   };
 
   postMessage(message, transferOrOptions = undefined) {
-    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
+    const prefix = "Failed to execute 'postMessage' on 'Worker'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     if (this.#status !== "RUNNING") return;
     // Fast path: no transferables

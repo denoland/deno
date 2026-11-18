@@ -95,6 +95,17 @@ Deno.test(function setResourceTimingBufferSize() {
   );
 });
 
+Deno.test(function performanceGetEntriesByTypeRequiresArgument() {
+  assertThrows(
+    () => {
+      // @ts-expect-error: testing missing argument
+      performance.getEntriesByType();
+    },
+    TypeError,
+    "Failed to execute 'getEntriesByType' on 'Performance'",
+  );
+});
+
 Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);

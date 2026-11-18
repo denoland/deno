@@ -53,6 +53,17 @@ Deno.test(async function arrayBufferFromByteArrays() {
 // must run in linear time. A quadratic implementation would take many seconds
 // (or minutes) at this size; the linear implementation finishes in
 // milliseconds. The 5s bound is intentionally loose to avoid CI flakes.
+Deno.test(function formDataDeleteRequiresArgument() {
+  assertThrows(
+    () => {
+      // @ts-expect-error: testing missing argument
+      new FormData().delete();
+    },
+    TypeError,
+    "Failed to execute 'delete' on 'FormData'",
+  );
+});
+
 Deno.test(function formDataSetDeleteManyDuplicatesIsLinear() {
   const N = 20_000;
 

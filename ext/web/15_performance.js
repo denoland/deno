@@ -691,7 +691,7 @@ class Performance extends EventTarget {
 
   getEntriesByType(type) {
     webidl.assertBranded(this, PerformancePrototype);
-    const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
+    const prefix = "Failed to execute 'getEntriesByType' on 'Performance'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
     type = webidl.converters.DOMString(type, prefix, "Argument 1");
