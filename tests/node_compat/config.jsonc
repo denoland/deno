@@ -2057,7 +2057,10 @@
     "parallel/test-http2-compat-serverrequest-settimeout.js": {},
     "parallel/test-http2-compat-serverrequest-trailers.js": {},
     "parallel/test-http2-compat-serverrequest.js": {},
-    "parallel/test-http2-compat-serverresponse-close.js": {},
+    "parallel/test-http2-compat-serverresponse-close.js": {
+      "darwin": false,
+      "reason": "Flaky on macOS CI runners (fails in nearly every main-branch node_compat (1/3) macOS job since late Sept 2026; passes on Linux). See denoland/deno#37009"
+    },
     "parallel/test-http2-compat-serverresponse-destroy.js": {},
     "parallel/test-http2-compat-serverresponse-drain.js": {},
     "parallel/test-http2-compat-serverresponse-end-after-statuses-without-body.js": {},
@@ -2167,7 +2170,10 @@
     "parallel/test-http2-perf_hooks.js": {},
     "parallel/test-http2-perform-server-handshake.js": {},
     "parallel/test-http2-ping.js": {},
-    "parallel/test-http2-ping-settings-heapdump.js": {},
+    "parallel/test-http2-ping-settings-heapdump.js": {
+      "darwin": false,
+      "reason": "Flaky on macOS CI runners (fails in nearly every main-branch node_compat (1/3) macOS job since late Sept 2026; passes on Linux). See denoland/deno#37009"
+    },
     "parallel/test-http2-ping-unsolicited-ack.js": {},
     "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-priority-cycle-.js": {},
