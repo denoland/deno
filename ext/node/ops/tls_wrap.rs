@@ -379,7 +379,7 @@ unsafe fn do_emit_read_through_user_buffer(
     let chunk_len = std::cmp::min(data.len() - offset, len);
     // SAFETY: `ptr` references at least `len >= chunk_len` writable
     // bytes (the registered user buffer's backing store, held alive by
-    // its retained `Global<Uint8Array>`). `data[offset..offset+chunk_len]`
+    // its retained `SharedRef<BackingStore>`). `data[offset..offset+chunk_len]`
     // is in-bounds. Source and destination are distinct allocations.
     unsafe {
       std::ptr::copy_nonoverlapping(

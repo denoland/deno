@@ -64,7 +64,7 @@ pub(crate) struct StreamHandleData {
   /// User-supplied static read buffer (Node's `onread.buffer` option).
   /// When set, `on_uv_alloc` directs libuv to read into this buffer and
   /// `on_uv_read` skips ArrayBuffer wrapping / freeing — the buffer's
-  /// backing store is owned by V8 via the held `Global<Uint8Array>`.
+  /// backing store is kept alive by the retained `SharedRef<BackingStore>`.
   pub user_buffer: RefCell<Option<UserBuffer>>,
 }
 
@@ -72,24 +72,32 @@ pub(crate) struct StreamHandleData {
 /// `LibUvStreamWrap::useUserBuffer(buf)` so subsequent reads land in
 /// `buf` instead of a freshly-allocated pool slab.
 ///
-/// `handle` retains the `Uint8Array` (and therefore its backing store)
-/// for the lifetime of this slot, so `ptr`/`len` stay valid.
+/// The retained `backing_store` keeps the memory `ptr` points at alive for
+/// the lifetime of this slot, so `ptr`/`len` stay valid even if the script
+/// later detaches or transfers the underlying `ArrayBuffer`.
 pub(crate) struct UserBuffer {
-  /// Strong retention of the JS Uint8Array; keeps the backing store
-  /// alive so `ptr` is safe to hand to libuv.
+  /// Strong retention of the JS Uint8Array. Keeping the view alive is not
+  /// enough on its own (a detach frees the backing store while the view
+  /// lives on), but it keeps the JS object the script handed us observable.
+  #[allow(dead_code, reason = "retention only")]
+  pub(crate) handle: v8::Global<v8::Uint8Array>,
+  /// Strong retention of the backing store. This is what actually keeps
+  /// `ptr` valid: a `SharedRef<BackingStore>` behaves like `Arc<[u8]>`, so
+  /// the allocation survives a detach/transfer of the `ArrayBuffer`.
   #[allow(
     dead_code,
-    reason = "retention only — handle keeps the backing store alive"
+    reason = "retention only — keeps `ptr` valid after detach"
   )]
-  pub(crate) handle: v8::Global<v8::Uint8Array>,
+  pub(crate) backing_store: v8::SharedRef<v8::BackingStore>,
   pub(crate) ptr: *mut u8,
   pub(crate) len: usize,
 }
 
 impl UserBuffer {
-  /// Capture pointer + length from a `Uint8Array` view and retain the
-  /// view so the backing store stays alive. Returns `None` when the
-  /// view's `ArrayBuffer` has no data pointer (detached / shared).
+  /// Capture pointer + length from a `Uint8Array` view and retain its
+  /// backing store so `ptr` stays valid for the lifetime of this slot.
+  /// Returns `None` when the view's `ArrayBuffer` has no data pointer
+  /// (detached / shared) or is resizable (it could shrink below `len`).
   pub(crate) fn from_view(
     scope: &mut v8::PinScope,
     buffer: v8::Local<v8::Uint8Array>,
@@ -97,6 +105,12 @@ impl UserBuffer {
     let byte_length = buffer.byte_length();
     let byte_offset = buffer.byte_offset();
     let ab = buffer.buffer(scope)?;
+    let backing_store = ab.get_backing_store();
+    // A resizable ArrayBuffer can shrink after registration, leaving `len`
+    // pointing past the live region; fall back to the pooled path for those.
+    if backing_store.is_resizable_by_user_javascript() {
+      return None;
+    }
     let data_ptr = ab.data()?;
     // SAFETY: `data_ptr` is the ArrayBuffer's backing store and
     // `byte_offset + byte_length` is within the allocation per the
@@ -104,6 +118,7 @@ impl UserBuffer {
     let ptr = unsafe { (data_ptr.as_ptr() as *mut u8).add(byte_offset) };
     Some(Self {
       handle: v8::Global::new(scope, buffer),
+      backing_store,
       ptr,
       len: byte_length,
     })
