@@ -988,23 +988,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
 
-      let (exclude_jsr_pkgs, exclude_jsr_pkg_prefixes) =
-        split_minimum_dependency_age_excludes(
-          &minimum_dependency_age_config.exclude,
-          "jsr:",
-        );
-
       Ok(new_rc(deno_graph::packages::JsrVersionResolver {
-        newest_dependency_date_options:
-          deno_graph::packages::NewestDependencyDateOptions {
-            date: minimum_dependency_age_config
-              .age
-              .as_ref()
-              .and_then(|d| d.into_option())
-              .map(deno_graph::packages::NewestDependencyDate),
-            exclude_jsr_pkgs,
-            exclude_jsr_pkg_prefixes,
-          },
+        newest_dependency_date_options: jsr_newest_dependency_date_options(
+          minimum_dependency_age_config,
+        ),
       }))
     })
   }
@@ -1015,7 +1002,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
   ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
     self.minimum_dependency_age.get_or_try_init(|| {
       let workspace_factory = self.workspace_factory();
-      let mut config = if let Some(date) = self.options.newest_dependency_date {
+      let config = if let Some(date) = self.options.newest_dependency_date {
         MinimumDependencyAgeConfig {
           age: Some(date),
           exclude: Vec::new(),
@@ -1024,15 +1011,20 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         let workspace = &workspace_factory.workspace_directory()?.workspace;
         workspace.minimum_dependency_age(workspace_factory.sys())?
       };
-      if config.age.is_none() {
-        apply_minimum_dependency_age_fallbacks(
-          &mut config,
-          workspace_factory.npmrc()?.min_release_age_days,
-          chrono::DateTime::<chrono::Utc>::from(
-            workspace_factory.sys().sys_time_now(),
-          ),
-        );
-      }
+      // Only read `.npmrc` when the age is unset. A configured age does not
+      // depend on it, and a missing npmrc must not fail that path.
+      let npmrc_min_release_age_days = if config.age.is_none() {
+        workspace_factory.npmrc()?.min_release_age_days
+      } else {
+        None
+      };
+      let config = resolve_minimum_dependency_age_config(
+        config,
+        npmrc_min_release_age_days,
+        chrono::DateTime::<chrono::Utc>::from(
+          workspace_factory.sys().sys_time_now(),
+        ),
+      );
       if let Some(newest_dependency_date) =
         config.age.and_then(|d| d.into_option())
       {
@@ -1198,22 +1190,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         ),
       };
 
-      let (exclude, exclude_prefixes) = split_minimum_dependency_age_excludes(
-        &minimum_dependency_age_config.exclude,
-        "npm:",
-      );
-
       Ok(new_rc(NpmVersionResolver {
-        newest_dependency_date_options:
-          deno_npm::resolution::NewestDependencyDateOptions {
-            date: minimum_dependency_age_config
-              .age
-              .as_ref()
-              .and_then(|d| d.into_option())
-              .map(deno_npm::resolution::NewestDependencyDate),
-            exclude,
-            exclude_prefixes,
-          },
+        newest_dependency_date_options: npm_newest_dependency_date_options(
+          minimum_dependency_age_config,
+        ),
         link_packages: self
           .workspace_factory
           .workspace_npm_link_packages()?
@@ -1345,6 +1325,58 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       self.workspace_factory.node_modules_dir_mode()?
         == NodeModulesDirMode::Manual,
     )
+  }
+}
+
+/// Resolves `minimumDependencyAge`, applying the `.npmrc` `min-release-age`
+/// and built-in default when the config does not set an age.
+pub fn resolve_minimum_dependency_age_config(
+  mut config: MinimumDependencyAgeConfig,
+  npmrc_min_release_age_days: Option<u64>,
+  now: chrono::DateTime<chrono::Utc>,
+) -> MinimumDependencyAgeConfig {
+  if config.age.is_none() {
+    apply_minimum_dependency_age_fallbacks(
+      &mut config,
+      npmrc_min_release_age_days,
+      now,
+    );
+  }
+  config
+}
+
+/// npm `NewestDependencyDateOptions` for a resolved minimum dependency age,
+/// including `exclude` entries (`npm:` exact names and `npm:` wildcard prefixes).
+pub fn npm_newest_dependency_date_options(
+  config: &MinimumDependencyAgeConfig,
+) -> deno_npm::resolution::NewestDependencyDateOptions {
+  let (exclude, exclude_prefixes) =
+    split_minimum_dependency_age_excludes(&config.exclude, "npm:");
+  deno_npm::resolution::NewestDependencyDateOptions {
+    date: config
+      .age
+      .and_then(|date| date.into_option())
+      .map(deno_npm::resolution::NewestDependencyDate),
+    exclude,
+    exclude_prefixes,
+  }
+}
+
+/// JSR `NewestDependencyDateOptions` for a resolved minimum dependency age,
+/// including `exclude` entries (`jsr:` exact names and `jsr:` wildcard prefixes).
+#[cfg(feature = "graph")]
+pub fn jsr_newest_dependency_date_options(
+  config: &MinimumDependencyAgeConfig,
+) -> deno_graph::packages::NewestDependencyDateOptions {
+  let (exclude_jsr_pkgs, exclude_jsr_pkg_prefixes) =
+    split_minimum_dependency_age_excludes(&config.exclude, "jsr:");
+  deno_graph::packages::NewestDependencyDateOptions {
+    date: config
+      .age
+      .and_then(|date| date.into_option())
+      .map(deno_graph::packages::NewestDependencyDate),
+    exclude_jsr_pkgs,
+    exclude_jsr_pkg_prefixes,
   }
 }
 

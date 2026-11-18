@@ -63,6 +63,7 @@ use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
+use sys_traits::SystemTimeNow;
 
 use super::cache::LspCache;
 use super::documents::DocumentModule;
@@ -1068,11 +1069,24 @@ impl<'a> ResolverFactory<'a> {
         http_client_provider.clone(),
         pb.clone(),
       ));
+      let minimum_dependency_age = match self.config_data {
+        Some(data) => data.minimum_dependency_age_config(),
+        None => deno_resolver::factory::resolve_minimum_dependency_age_config(
+          Default::default(),
+          npmrc.min_release_age_days,
+          chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now()),
+        ),
+      };
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
-        NpmPackumentFormat::Abbreviated,
+        NpmPackumentFormat::new(
+          &npmrc,
+          minimum_dependency_age
+            .age
+            .and_then(|date| date.into_option()),
+        ),
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data
@@ -1115,7 +1129,10 @@ impl<'a> ResolverFactory<'a> {
         .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         link_packages: link_packages.0.clone(),
-        newest_dependency_date_options: Default::default(),
+        newest_dependency_date_options:
+          deno_resolver::factory::npm_newest_dependency_date_options(
+            &minimum_dependency_age,
+          ),
         overrides: Arc::new(overrides),
         trust_policy: Default::default(),
       });

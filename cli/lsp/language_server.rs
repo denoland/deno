@@ -46,6 +46,7 @@ use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
 use serde_json::from_value;
+use sys_traits::SystemTimeNow;
 use tokio::sync::OnceCell;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
@@ -622,6 +623,47 @@ impl LanguageServer {
   }
 }
 
+/// `minimumDependencyAge` for import completions. The search APIs are
+/// process-global, so this follows the root workspace folder (then any other
+/// loaded scope). Resolution itself is per-scope.
+fn minimum_dependency_age_config(
+  config: &Config,
+) -> deno_config::deno_json::MinimumDependencyAgeConfig {
+  let data = config
+    .root_url()
+    .and_then(|root| config.tree.data_for_specifier(root))
+    .or_else(|| config.tree.data_by_scope().values().next());
+  match data {
+    Some(data) => data.minimum_dependency_age_config(),
+    None => deno_resolver::factory::resolve_minimum_dependency_age_config(
+      Default::default(),
+      None,
+      chrono::DateTime::<chrono::Utc>::from(CliSys::default().sys_time_now()),
+    ),
+  }
+}
+
+fn package_search_apis(
+  file_fetcher: Arc<crate::file_fetcher::CliFileFetcher>,
+  config: &deno_config::deno_json::MinimumDependencyAgeConfig,
+) -> (CliJsrSearchApi, CliNpmSearchApi) {
+  let jsr_search_api = CliJsrSearchApi::new(
+    file_fetcher.clone(),
+    deno_resolver::factory::jsr_newest_dependency_date_options(config),
+  );
+  let npm_search_api = CliNpmSearchApi::new(
+    file_fetcher,
+    Arc::new(NpmVersionResolver {
+      link_packages: Default::default(),
+      newest_dependency_date_options:
+        deno_resolver::factory::npm_newest_dependency_date_options(config),
+      overrides: Default::default(),
+      trust_policy: Default::default(),
+    }),
+  );
+  (jsr_search_api, npm_search_api)
+}
+
 impl Inner {
   fn new(client: Client, performance: Arc<Performance>) -> Self {
     let cache = LspCache::default();
@@ -630,18 +672,11 @@ impl Inner {
       cache.deno_dir().registries_folder_path(),
       http_client_provider.clone(),
     );
-    let jsr_search_api =
-      CliJsrSearchApi::new(module_registry.file_fetcher.clone());
-    let npm_search_api = CliNpmSearchApi::new(
-      module_registry.file_fetcher.clone(),
-      Arc::new(NpmVersionResolver {
-        link_packages: Default::default(),
-        newest_dependency_date_options: Default::default(),
-        overrides: Default::default(),
-        trust_policy: Default::default(),
-      }),
-    );
     let config = Config::default();
+    let (jsr_search_api, npm_search_api) = package_search_apis(
+      module_registry.file_fetcher.clone(),
+      &minimum_dependency_age_config(&config),
+    );
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let initial_cwd = resolve_cwd(None).unwrap().into_owned();
 
@@ -855,21 +890,20 @@ impl Inner {
         self.module_registry.disable(registry);
       }
     }
-    self.jsr_search_api =
-      CliJsrSearchApi::new(self.module_registry.file_fetcher.clone());
-    self.npm_search_api = CliNpmSearchApi::new(
-      self.module_registry.file_fetcher.clone(),
-      Arc::new(NpmVersionResolver {
-        // todo(dsherret): the npm_search_api should probably be specific
-        // to each workspace so that the link packages can be properly
-        // hooked up
-        link_packages: Default::default(),
-        newest_dependency_date_options: Default::default(),
-        overrides: Default::default(),
-        trust_policy: Default::default(),
-      }),
-    );
+    // todo(dsherret): the npm_search_api should probably be specific
+    // to each workspace so that the link packages can be properly
+    // hooked up. minimumDependencyAge follows the root workspace.
+    self.rebuild_package_search_apis();
     self.performance.measure(mark);
+  }
+
+  fn rebuild_package_search_apis(&mut self) {
+    let (jsr_search_api, npm_search_api) = package_search_apis(
+      self.module_registry.file_fetcher.clone(),
+      &minimum_dependency_age_config(&self.config),
+    );
+    self.jsr_search_api = jsr_search_api;
+    self.npm_search_api = npm_search_api;
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1249,6 +1283,10 @@ impl Inner {
         reason,
       )
       .await;
+    // Import-specifier completions read versions through the search APIs,
+    // which are process-global. Rebuild them so a deno.json change (including
+    // `minimumDependencyAge` and its `exclude` list) takes effect.
+    self.rebuild_package_search_apis();
     self
       .client
       .send_did_refresh_deno_configuration_tree_notification(

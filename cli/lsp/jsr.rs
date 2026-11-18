@@ -21,6 +21,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use serde::Deserialize;
+use sys_traits::SystemTimeNow;
 
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
@@ -48,6 +49,8 @@ pub struct JsrCacheResolver {
   info_by_name: DashMap<StackString, Option<Arc<JsrPackageInfo>>>,
   workspace_packages_by_name: HashMap<StackString, WorkspacePackage>,
   cache: Arc<dyn HttpCache>,
+  newest_dependency_date_options:
+    deno_graph::packages::NewestDependencyDateOptions,
 }
 
 impl JsrCacheResolver {
@@ -56,6 +59,22 @@ impl JsrCacheResolver {
     config_data: Option<&ConfigData>,
     workspace_resolver: &WorkspaceResolver<CliSys>,
   ) -> Self {
+    let newest_dependency_date_options = match config_data {
+      Some(config_data) => {
+        deno_resolver::factory::jsr_newest_dependency_date_options(
+          &config_data.minimum_dependency_age_config(),
+        )
+      }
+      None => deno_resolver::factory::jsr_newest_dependency_date_options(
+        &deno_resolver::factory::resolve_minimum_dependency_age_config(
+          Default::default(),
+          None,
+          chrono::DateTime::<chrono::Utc>::from(
+            CliSys::default().sys_time_now(),
+          ),
+        ),
+      ),
+    };
     let nv_by_req = DashMap::new();
     let info_by_nv = DashMap::new();
     let info_by_name = DashMap::new();
@@ -127,6 +146,7 @@ impl JsrCacheResolver {
       info_by_name,
       workspace_packages_by_name,
       cache: cache.clone(),
+      newest_dependency_date_options,
     }
   }
 
@@ -147,6 +167,8 @@ impl JsrCacheResolver {
           &req.version_req,
           &package_info,
         );
+      let newest_dependency_date =
+        self.newest_dependency_date_options.get_for_package(name);
       let version = versions
         .into_iter()
         .rev()
@@ -157,6 +179,12 @@ impl JsrCacheResolver {
               v,
               include_all_prereleases,
             )
+          {
+            return false;
+          }
+          if let Some(cutoff) = newest_dependency_date
+            && let Some(version_info) = package_info.versions.get(*v)
+            && !version_info.matches_newest_dependency_date(cutoff)
           {
             return false;
           }
@@ -372,12 +400,14 @@ pub struct CliJsrSearchApi {
 }
 
 impl CliJsrSearchApi {
-  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
+  pub fn new(
+    file_fetcher: Arc<CliFileFetcher>,
+    newest_dependency_date_options: deno_graph::packages::NewestDependencyDateOptions,
+  ) -> Self {
     let resolver = JsrFetchResolver::new(
       file_fetcher.clone(),
       Arc::new(JsrVersionResolver {
-        // not currently supported in the lsp
-        newest_dependency_date_options: Default::default(),
+        newest_dependency_date_options,
       }),
     );
     Self {
@@ -428,7 +458,18 @@ impl PackageSearchApi for CliJsrSearchApi {
       .package_info(name)
       .await
       .ok_or_else(|| anyhow!("JSR package info not found: {}", name))?;
-    let mut versions = info.versions.keys().cloned().collect::<Vec<_>>();
+    let package_name = deno_semver::package::PackageName::from(name);
+    let version_resolver = self
+      .resolver
+      .version_resolver_for_package(&package_name, &info);
+    let mut versions = info
+      .versions
+      .iter()
+      .filter(|(_, version_info)| {
+        version_resolver.matches_newest_dependency_date(version_info)
+      })
+      .map(|(version, _)| version.clone())
+      .collect::<Vec<_>>();
     versions.sort();
     versions.reverse();
     let versions = Arc::new(versions);
