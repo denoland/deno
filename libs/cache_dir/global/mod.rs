@@ -161,8 +161,13 @@ impl<TSys: GlobalHttpCacheSys> HttpCache for GlobalHttpCache<TSys> {
     if let Some(file) = &maybe_file
       && let Some(expected_checksum) = maybe_checksum
     {
+      let content_type = file
+        .metadata
+        .headers
+        .get("content-type")
+        .map(|s| s.as_str());
       expected_checksum
-        .check(key.url, &file.content)
+        .check_remote(key.url, content_type, &file.content)
         .map_err(CacheReadFileError::ChecksumIntegrity)?;
     }
 
