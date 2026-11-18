@@ -1,0 +1,4 @@
+{
+  "workspace": ["app"],
+  "nodeModulesDir": "auto"
+}
