@@ -1,0 +1,9 @@
+{
+  "unstable": ["sloppy-imports"],
+  "compilerOptions": {
+    "paths": {
+      "@lib": ["lib"],
+      "@lib/*": ["lib/*"]
+    }
+  }
+}
