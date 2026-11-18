@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/optional-lifecycle",
+  "version": "8.0.0",
+  "bin": "index.js",
+  "dependencies": {
+    "@denotest/failing-lifecycle": "1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@denotest/failing-lifecycle": {
+      "optional": true
+    }
+  }
+}

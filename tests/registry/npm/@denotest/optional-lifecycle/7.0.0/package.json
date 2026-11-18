@@ -1,0 +1,16 @@
+{
+  "name": "@denotest/optional-lifecycle",
+  "version": "7.0.0",
+  "bin": "index.js",
+  "dependencies": {
+    "@denotest/failing-lifecycle": "1.0.0"
+  },
+  "peerDependencies": {
+    "@denotest/failing-lifecycle": "1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@denotest/failing-lifecycle": {
+      "optional": true
+    }
+  }
+}

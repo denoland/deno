@@ -1,0 +1,5 @@
+[WILDCARD]Warning: script 'preinstall' in '@denotest/failing-lifecycle@2.0.0' failed with exit code 1
+stdout:
+deliberate failure
+
+[WILDCARD]

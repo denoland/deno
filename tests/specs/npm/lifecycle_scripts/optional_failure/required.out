@@ -1,0 +1,5 @@
+[WILDCARD]error: script 'install' in '@denotest/failing-lifecycle@1.0.0' failed with exit code 1
+stdout:
+deliberate failure
+
+error: failed to run scripts for packages: @denotest/failing-lifecycle@1.0.0
