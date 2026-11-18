@@ -139,6 +139,15 @@ pub trait ModuleLoader {
     false
   }
 
+  /// Like `should_load_synthetic_esm`, with the load's synchronous mode.
+  fn should_load_synthetic_esm_with_mode(
+    &self,
+    specifier: &str,
+    _is_synchronous: bool,
+  ) -> bool {
+    self.should_load_synthetic_esm(specifier)
+  }
+
   /// This hook can be used by implementors to do some preparation
   /// work before starting loading of modules.
   ///

@@ -1557,7 +1557,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         // A `registerHooks` resolve hook may have rewritten this specifier
         // to a URL the initial graph preparation never saw (e.g. appended a
         // fragment for cache busting), so prepare it on demand.
-        if inner.hook_registry.resolve_active()
+        if (inner.hook_registry.resolve_active()
+          || (options.is_synchronous && inner.hook_registry.load_active.get()))
           && !matches!(
             options.requested_module_type,
             RequestedModuleType::Text | RequestedModuleType::Bytes
@@ -1565,9 +1566,20 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           && !inner.shared.in_npm_pkg_checker.in_npm_package(&specifier)
           && inner.graph_container.graph().get(&specifier).is_none()
         {
-          inner
-            .prepare_hooked_specifier(&specifier, options.is_dynamic_import)
-            .await;
+          let prepare = {
+            let inner = inner.clone();
+            let specifier = specifier.clone();
+            async move {
+              inner
+                .prepare_hooked_specifier(&specifier, options.is_dynamic_import)
+                .await;
+            }
+          };
+          if options.is_synchronous {
+            run_future_in_new_runtime(prepare);
+          } else {
+            prepare.await;
+          }
         }
         inner
           .load_inner(
@@ -1608,6 +1620,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     self.0.hook_registry.load_active.get() && specifier.starts_with("node:")
   }
 
+  fn should_load_synthetic_esm_with_mode(
+    &self,
+    specifier: &str,
+    is_synchronous: bool,
+  ) -> bool {
+    !is_synchronous && self.should_load_synthetic_esm(specifier)
+  }
+
   fn prepare_load(
     &self,
     specifier: &ModuleSpecifier,
@@ -1646,7 +1666,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     // graph builder cannot fetch; in that case the load itself will be
     // serviced entirely by hooks, so failure here is fine and must not
     // abort the load.
-    if self.0.hook_registry.load_active.get() {
+    if !options.is_synchronous && self.0.hook_registry.load_active.get() {
       self.0.shared.has_js_execution_started_flag.raise();
       let specifier = specifier.clone();
       let inner = self.0.clone();
@@ -1672,6 +1692,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let specifier = specifier.clone();
     let inner = self.0.clone();
     let is_synchronous = options.is_synchronous;
+    let prepare_hook_source = is_synchronous
+      && maybe_code.is_some()
+      && (inner.hook_registry.resolve_active()
+        || inner.hook_registry.load_active.get());
 
     let future = async move {
       let graph_container = &inner.graph_container;
@@ -1763,7 +1787,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
-        module_load_preparer
+        let result = module_load_preparer
           .prepare_module_load(
             graph,
             specifiers,
@@ -1775,13 +1799,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               ext_overwrite: None,
               allow_unknown_media_types: false,
               allow_sloppy_imports_hints_for_unreferenced_roots,
-              skip_graph_roots_validation: is_dynamic,
+              skip_graph_roots_validation: is_dynamic || prepare_hook_source,
               file_content_overrides: file_overrides,
               file_header_overrides: header_overrides,
             },
           )
-          .await
-          .map_err(JsErrorBox::from_err)?;
+          .await;
+        if !prepare_hook_source {
+          result.map_err(JsErrorBox::from_err)?;
+        }
         graph.prune_types();
         update_permit.commit();
         inner.shared.has_js_execution_started_flag.raise();

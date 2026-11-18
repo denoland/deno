@@ -16,6 +16,7 @@ use futures::stream::StreamExt;
 use futures::stream::TryStreamExt;
 
 use super::loaders::ModuleLoadOptions;
+use crate::ModuleCodeString;
 use crate::ModuleLoadResponse;
 use crate::ModuleLoader;
 use crate::ModuleSource;
@@ -125,6 +126,49 @@ impl RecursiveModuleLoad {
       module_map_rc,
     );
     load.prepare().await?;
+    Ok(load)
+  }
+
+  pub(crate) fn side_from_source(
+    scope: &mut v8::PinScope<'_, '_>,
+    specifier: ModuleSpecifier,
+    code: String,
+    module_map_rc: Rc<ModuleMap>,
+  ) -> Result<Self, CoreError> {
+    let mut load = Self::new_with_resolved_specifier(
+      LoadInit::Side {
+        specifier: specifier.to_string(),
+        kind: SideModuleKind::Sync,
+        code: Some(code.clone()),
+      },
+      module_map_rc.clone(),
+      Ok(specifier.clone()),
+    );
+    futures::executor::block_on(load.prepare())?;
+
+    let (source, referrer_source) =
+      ModuleCodeString::from(code).into_cheap_copy();
+    let module_id = module_map_rc
+      .new_es_module(
+        scope,
+        false,
+        specifier.as_str().to_string().into(),
+        source,
+        false,
+        None,
+      )
+      .map_err(|e| e.into_error(scope, false, false))?;
+    let reference = ModuleReference {
+      specifier,
+      requested_module_type: RequestedModuleType::None,
+    };
+    load.root_module_reference = Some(reference.clone());
+    load.state = LoadState::LoadingRoot;
+    load.finalize_module(
+      module_id,
+      &reference,
+      Some(&ModuleSourceCode::String(referrer_source)),
+    );
     Ok(load)
   }
 
@@ -260,9 +304,10 @@ impl RecursiveModuleLoad {
       || self
         .module_map_rc
         .has_synthetic_esm_module(module_specifier.as_str())
-        && !self
-          .loader
-          .should_load_synthetic_esm(module_specifier.as_str())
+        && !self.loader.should_load_synthetic_esm_with_mode(
+          module_specifier.as_str(),
+          is_synchronous,
+        )
     {
       return Ok(());
     }
@@ -560,7 +605,10 @@ impl RecursiveModuleLoad {
             ))
           } else if module_map_rc
             .has_synthetic_esm_module(resolved_specifier.as_str())
-            && !loader.should_load_synthetic_esm(resolved_specifier.as_str())
+            && !loader.should_load_synthetic_esm_with_mode(
+              resolved_specifier.as_str(),
+              is_synchronous,
+            )
           {
             // Sentinel source. `register_and_recurse` detects the
             // synthetic_esm specifier and constructs the module from
@@ -688,9 +736,10 @@ impl RecursiveModuleLoad {
     } else if inner
       .module_map_rc
       .has_synthetic_esm_module(module_specifier.as_str())
-      && !inner
-        .loader
-        .should_load_synthetic_esm(module_specifier.as_str())
+      && !inner.loader.should_load_synthetic_esm_with_mode(
+        module_specifier.as_str(),
+        inner.is_synchronous(),
+      )
     {
       let module_request = module_request.clone();
       let module_specifier = module_specifier.clone();

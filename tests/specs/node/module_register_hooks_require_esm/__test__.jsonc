@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "resolve_hook": {
+      "args": "run -A main.cjs resolve",
+      "output": "relative import ok\n"
+    },
+    "resolve_hook_reentrant": {
+      "args": "run -A main.cjs resolve-reentrant",
+      "output": "original\nrelative import ok\n"
+    },
+    "load_hook": {
+      "args": "run -A main.cjs load",
+      "output": "relative import ok\n"
+    },
+    "load_hook_replacement": {
+      "args": "run -A main.cjs replace",
+      "output": "package replacement\n"
+    },
+    "load_hook_replacement_local": {
+      "args": "run -A main.cjs replace-local",
+      "output": "local replacement\n"
+    }
+  }
+}
