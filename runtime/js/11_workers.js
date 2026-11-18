@@ -382,7 +382,6 @@ class Worker extends EventTarget {
       inspectOptions,
     );
   }
-
 }
 
 const WorkerPrototype = Worker.prototype;

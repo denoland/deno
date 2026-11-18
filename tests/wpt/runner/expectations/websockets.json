@@ -394,8 +394,7 @@
       "WebSocket interface: attribute onmessage",
       "CloseEvent interface: attribute wasClean",
       "CloseEvent interface: attribute code",
-      "CloseEvent interface: attribute reason",
-      "Stringification of new CloseEvent(\"close\")"
+      "CloseEvent interface: attribute reason"
     ]
   },
   "idlharness.any.worker.html": {
@@ -416,8 +415,7 @@
       "WebSocket interface: attribute onmessage",
       "CloseEvent interface: attribute wasClean",
       "CloseEvent interface: attribute code",
-      "CloseEvent interface: attribute reason",
-      "Stringification of new CloseEvent(\"close\")"
+      "CloseEvent interface: attribute reason"
     ]
   },
   "mixed-content.https.any.html": false,
