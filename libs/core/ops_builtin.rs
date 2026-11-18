@@ -604,13 +604,12 @@ async fn do_load_job<'s, 'i>(
     code,
   )
   .await?
-  .run_to_completion(|load, step| match step {
-    crate::modules::recursive_load::RegisterStep::Register {
-      request,
-      source,
-    } => load
-      .register_and_recurse(scope, request, source)
-      .map_err(|e| e.into_error(scope, false, false)),
+  .run_to_completion(|load, result| {
+    let (request, source) =
+      result.map_err(|error| error.into_error(scope, false, false))?;
+    load
+      .register_and_recurse(scope, &request, source)
+      .map_err(|error| error.into_error(scope, false, false))
   })
   .await?;
 

@@ -32,8 +32,8 @@ struct PendingLoad {
 ///   (fallthrough) and the user changed the URL inside their load hook,
 ///   so the Rust default loader knows which URL to actually fetch from.
 type LoadResult = (Option<String>, Option<String>, Option<String>);
-type LoadSender =
-  deno_core::futures::channel::oneshot::Sender<Result<LoadResult, String>>;
+type LoadReply = Result<LoadResult, v8::Global<v8::Value>>;
+type LoadSender = deno_core::futures::channel::oneshot::Sender<LoadReply>;
 
 /// Callback used to perform the default ESM resolution from JS hooks.
 /// Installed by the embedder so that the JS terminal `nextResolve` fallback
@@ -218,8 +218,7 @@ impl LoaderHookRegistry {
     &self,
     url: String,
     import_attributes: HashMap<String, String>,
-  ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
-  {
+  ) -> deno_core::futures::channel::oneshot::Receiver<LoadReply> {
     // Dedup: if there's already a pending load for this URL, piggyback.
     if self.load_waiters.borrow().contains_key(&url) {
       let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
@@ -317,15 +316,26 @@ pub fn op_module_hooks_respond_load(
   id: u32,
   #[string] source: Option<String>,
   #[string] format: Option<String>,
-  #[string] error: Option<String>,
   #[string] effective_url: Option<String>,
 ) {
-  let registry = state.borrow::<LoaderHookRegistry>().clone();
-  let result: Result<LoadResult, String> = if let Some(err) = error {
-    Err(err)
-  } else {
-    Ok((source, format, effective_url))
-  };
+  let registry = state.borrow::<LoaderHookRegistry>();
+  complete_load(registry, id, Ok((source, format, effective_url)));
+}
+
+/// Reject a load with the same value the JS hook threw, including null or
+/// undefined. The loader and the hook run in the same isolate.
+#[op2(fast)]
+pub fn op_module_hooks_reject_load<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  state: &mut OpState,
+  id: u32,
+  error: v8::Local<'s, v8::Value>,
+) {
+  let registry = state.borrow::<LoaderHookRegistry>();
+  complete_load(registry, id, Err(v8::Global::new(scope, error)));
+}
+
+fn complete_load(registry: &LoaderHookRegistry, id: u32, result: LoadReply) {
   // Fulfill piggybacking waiters.
   if let Some(key) = registry.load_id_keys.borrow_mut().remove(&id)
     && let Some(waiters) = registry.load_waiters.borrow_mut().remove(&key)

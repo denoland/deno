@@ -670,16 +670,13 @@ impl JsRealm {
       None,
     )
     .await?
-    .run_to_completion(|load, step| {
+    .run_to_completion(|load, result| {
       context_scope!(scope, self, isolate);
-      match step {
-        crate::modules::recursive_load::RegisterStep::Register {
-          request,
-          source,
-        } => load
-          .register_and_recurse(scope, request, source)
-          .map_err(|e| e.into_error(scope, false, false)),
-      }
+      let (request, source) =
+        result.map_err(|error| error.into_error(scope, false, false))?;
+      load
+        .register_and_recurse(scope, &request, source)
+        .map_err(|error| error.into_error(scope, false, false))
     })
     .await?;
     context_scope!(scope, self, isolate);

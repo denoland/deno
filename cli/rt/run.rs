@@ -799,6 +799,127 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
   }
 
+  fn load_with_exception(
+    &self,
+    original_specifier: &Url,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
+    options: &ModuleLoadOptions,
+  ) -> Option<std::pin::Pin<Box<deno_core::ModuleSourceFutureWithException>>>
+  {
+    if !self.hook_registry.load_active.get()
+      || options.is_synchronous
+      || matches!(original_specifier.scheme(), "data" | "blob")
+    {
+      return None;
+    }
+
+    // When load hooks are active, delegate to JS hooks first.
+    // Only route through hooks for files that are NOT embedded in the binary
+    // (i.e., external files that may need transformation like TS stripping).
+    // Embedded files load directly from VFS without needing hooks.
+    let is_embedded = if original_specifier.scheme() == "file" {
+      deno_path_util::url_to_file_path(original_specifier)
+        .map(|path| self.shared.vfs.file_entry(&path).is_ok())
+        .unwrap_or(false)
+    } else {
+      // Remote modules in the binary are always embedded
+      self
+        .shared
+        .modules
+        .resolve_specifier(original_specifier)
+        .ok()
+        .flatten()
+        .is_some()
+    };
+    if is_embedded {
+      return None;
+    }
+
+    // The hook function itself is synchronous, but this load path has no V8
+    // scope. The async bridge lets the JS event loop run the hook; blocking
+    // here waiting for JS would deadlock the same runtime.
+    let import_attributes = hook_load_import_attributes(
+      &self.hook_registry,
+      original_specifier.as_str(),
+      &options.requested_module_type,
+    );
+    let receiver = self
+      .hook_registry
+      .push_load(original_specifier.to_string(), import_attributes);
+    let this = self.clone();
+    let specifier = original_specifier.clone();
+    let maybe_referrer = maybe_referrer.cloned();
+    let is_dynamic_import = options.is_dynamic_import;
+    let requested_module_type = options.requested_module_type.clone();
+    Some(
+      async move {
+        let hook_result = match receiver.await {
+          Ok(r) => r,
+          Err(_) => {
+            return Err(deno_core::ModuleError::Core(
+              JsErrorBox::generic("module load hook cancelled").into(),
+            ));
+          }
+        };
+        match hook_result {
+          Ok((Some(source), format, _effective_url)) => {
+            // Hook provided transformed source. Honor a hook-supplied
+            // `format` (Node's hook contract) first, then fall back to
+            // the importer's `with { type: "..." }` attribute, so e.g.
+            // a passthrough hook on a JSON import still parses as JSON.
+            let module_type =
+              pick_hook_module_type(format.as_deref(), &requested_module_type);
+            Ok(deno_core::ModuleSource::new(
+              module_type,
+              ModuleSourceCode::String(source.into()),
+              &specifier,
+              None,
+            ))
+          }
+          Ok((None, _, effective_url)) => {
+            // Fallthrough: hooks didn't intercept; route through the same
+            // default loader that an un-hooked load would use, so npm
+            // packages and embedded modules resolve correctly. If the
+            // user's load hook chain delegated via `nextLoad(newUrl)`,
+            // fetch source from that URL while keeping the module's
+            // identity at the original specifier (matches Node).
+            let fetch_specifier = effective_url
+              .as_deref()
+              .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+              .filter(|u| u != &specifier);
+            let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
+            let response = this.load_default(
+              load_url,
+              maybe_referrer.as_ref(),
+              ModuleLoadOptions {
+                is_dynamic_import,
+                is_synchronous: false,
+                requested_module_type,
+              },
+            );
+            let source = match response {
+              deno_core::ModuleLoadResponse::Sync(result) => result,
+              deno_core::ModuleLoadResponse::Async(future) => future.await,
+            }
+            .map_err(|error| deno_core::ModuleError::Core(error.into()))?;
+            if fetch_specifier.is_some() {
+              Ok(deno_core::ModuleSource::new(
+                source.module_type,
+                source.code,
+                &specifier,
+                source.code_cache,
+              ))
+            } else {
+              Ok(source)
+            }
+          }
+          Err(error) => Err(deno_core::ModuleError::Exception(error)),
+        }
+      }
+      .boxed_local(),
+    )
+  }
+
   fn load(
     &self,
     original_specifier: &Url,
@@ -908,113 +1029,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &specifier,
             None,
           ))
-        }
-        .boxed_local(),
-      );
-    }
-
-    // When load hooks are active, delegate to JS hooks first.
-    // Only route through hooks for files that are NOT embedded in the binary
-    // (i.e., external files that may need transformation like TS stripping).
-    // Embedded files load directly from VFS without needing hooks.
-    let is_embedded = if original_specifier.scheme() == "file" {
-      deno_path_util::url_to_file_path(original_specifier)
-        .map(|path| self.shared.vfs.file_entry(&path).is_ok())
-        .unwrap_or(false)
-    } else {
-      // Remote modules in the binary are always embedded
-      self
-        .shared
-        .modules
-        .resolve_specifier(original_specifier)
-        .ok()
-        .flatten()
-        .is_some()
-    };
-    if self.hook_registry.load_active.get()
-      && !options.is_synchronous
-      && !is_embedded
-    {
-      // The hook function itself is synchronous, but this load path has no V8
-      // scope. The async bridge lets the JS event loop run the hook; blocking
-      // here waiting for JS would deadlock the same runtime.
-      let import_attributes = hook_load_import_attributes(
-        &self.hook_registry,
-        original_specifier.as_str(),
-        &options.requested_module_type,
-      );
-      let receiver = self
-        .hook_registry
-        .push_load(original_specifier.to_string(), import_attributes);
-      let this = self.clone();
-      let specifier = original_specifier.clone();
-      let maybe_referrer = maybe_referrer.cloned();
-      let is_dynamic_import = options.is_dynamic_import;
-      let is_synchronous = options.is_synchronous;
-      let requested_module_type = options.requested_module_type.clone();
-      return deno_core::ModuleLoadResponse::Async(
-        async move {
-          let hook_result = match receiver.await {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module load hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok((Some(source), format, _effective_url)) => {
-              // Hook provided transformed source. Honor a hook-supplied
-              // `format` (Node's hook contract) first, then fall back to
-              // the importer's `with { type: "..." }` attribute, so e.g.
-              // a passthrough hook on a JSON import still parses as JSON.
-              let module_type = pick_hook_module_type(
-                format.as_deref(),
-                &requested_module_type,
-              );
-              Ok(deno_core::ModuleSource::new(
-                module_type,
-                ModuleSourceCode::String(source.into()),
-                &specifier,
-                None,
-              ))
-            }
-            Ok((None, _, effective_url)) => {
-              // Fallthrough: hooks didn't intercept; route through the same
-              // default loader that an un-hooked load would use, so npm
-              // packages and embedded modules resolve correctly. If the
-              // user's load hook chain delegated via `nextLoad(newUrl)`,
-              // fetch source from that URL while keeping the module's
-              // identity at the original specifier (matches Node).
-              let fetch_specifier = effective_url
-                .as_deref()
-                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
-                .filter(|u| u != &specifier);
-              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
-              let response = this.load_default(
-                load_url,
-                maybe_referrer.as_ref(),
-                ModuleLoadOptions {
-                  is_dynamic_import,
-                  is_synchronous,
-                  requested_module_type,
-                },
-              );
-              let source = match response {
-                deno_core::ModuleLoadResponse::Sync(r) => r?,
-                deno_core::ModuleLoadResponse::Async(fut) => fut.await?,
-              };
-              if fetch_specifier.is_some() {
-                Ok(deno_core::ModuleSource::new(
-                  source.module_type,
-                  source.code,
-                  &specifier,
-                  source.code_cache,
-                ))
-              } else {
-                Ok(source)
-              }
-            }
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
         }
         .boxed_local(),
       );
