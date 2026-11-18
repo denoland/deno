@@ -1,13 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
 use console_static_text::ansi::strip_ansi_codes;
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::diagnostics::Diagnostic as _;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -1774,6 +1777,121 @@ async fn generate_document_diagnostics(
   })
 }
 
+/// Apply TypeScript comment directives to graph-derived missing-module errors.
+/// Ambient-module exclusions must run first so they don't consume expectations.
+fn filter_ts_suppressed_diagnostics(
+  module: &DocumentModule,
+  diagnostics: &mut Vec<lsp::Diagnostic>,
+) -> HashSet<u32> {
+  fn is_ts_whitespace(c: char) -> bool {
+    // ECMAScript includes the BOM as whitespace, but not Unicode NEL.
+    c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}')
+  }
+
+  let mut used_expectations = HashSet::new();
+  if diagnostics.is_empty()
+    || !(module.text.contains("@ts-ignore")
+      || module.text.contains("@ts-expect-error"))
+  {
+    return used_expectations;
+  }
+  let parsed_source = module
+    .open_data
+    .as_ref()
+    .and_then(|data| data.parsed_source.as_ref());
+  let fallback;
+  let parsed_source = match parsed_source {
+    Some(parsed_source) => parsed_source,
+    None => {
+      // Pull diagnostics can also be requested for unopened files.
+      fallback = super::documents::parse_source(
+        module.specifier.as_ref().clone(),
+        module.text.to_arc(),
+        module.media_type,
+      );
+      &fallback
+    }
+  };
+  let Ok(parsed_source) = parsed_source else {
+    return used_expectations;
+  };
+  let text_info = parsed_source.text_info_lazy();
+  // TypeScript also treats CR, LS and PS as line breaks. The graph's source
+  // index doesn't, so convert diagnostic and comment offsets before attaching them.
+  let text = text_info.text_str();
+  let mut line_starts = vec![0];
+  for (offset, c) in text.char_indices() {
+    if matches!(c, '\n' | '\u{2028}' | '\u{2029}')
+      || (c == '\r' && text.as_bytes().get(offset + 1) != Some(&b'\n'))
+    {
+      line_starts.push(offset + c.len_utf8());
+    }
+  }
+  let line_at =
+    |offset| line_starts.partition_point(|start| *start <= offset) - 1;
+  let mut directives = HashMap::new();
+  for comment in parsed_source.comments().get_vec() {
+    let text = text_info.range_text(&comment.range());
+    // Match the TypeScript scanner: block directives must be on the final
+    // comment line, and only two or three slashes introduce a line directive.
+    let text = match comment.kind {
+      CommentKind::Line => text
+        .strip_prefix("//")
+        .unwrap()
+        .strip_prefix('/')
+        .unwrap_or(&text[2..]),
+      CommentKind::Block => text
+        .rsplit(['\r', '\n', '\u{2028}', '\u{2029}'])
+        .next()
+        .unwrap()
+        .trim_start_matches(is_ts_whitespace)
+        .trim_start_matches(['/', '*']),
+    };
+    let text = text.trim_start_matches(is_ts_whitespace);
+    let is_expect_error = if text.starts_with("@ts-expect-error") {
+      true
+    } else if text.starts_with("@ts-ignore") {
+      false
+    } else {
+      continue;
+    };
+    directives.insert(
+      line_at(comment.end().as_byte_index(text_info.range().start)),
+      is_expect_error,
+    );
+  }
+  diagnostics.retain(|diagnostic| {
+    // Like TypeScript's markPrecedingCommentDirectiveLine, anchor at the
+    // diagnostic, not the start of a potentially multiline import statement.
+    let line = diagnostic.range.start.line as usize;
+    if line >= text_info.lines_count() {
+      return true;
+    }
+    // These ranges originate in deno_graph and use Unicode scalar columns.
+    let offset = text_info
+      .loc_to_source_pos(deno_ast::LineAndColumnIndex {
+        line_index: line,
+        column_index: diagnostic.range.start.character as usize,
+      })
+      .as_byte_index(text_info.range().start);
+    for line in (0..line_at(offset)).rev() {
+      if let Some(is_expect_error) = directives.get(&line) {
+        if *is_expect_error {
+          used_expectations.insert(line as u32);
+        }
+        return false;
+      }
+      let text = text[line_starts[line]..line_starts[line + 1]]
+        .trim_matches(is_ts_whitespace);
+      if !text.is_empty() && !text.starts_with("//") {
+        break;
+      }
+    }
+    true
+  });
+  used_expectations
+}
+
 pub async fn generate_module_diagnostics(
   module: &Arc<DocumentModule>,
   snapshot: &Arc<StateSnapshot>,
@@ -1903,18 +2021,27 @@ pub async fn generate_module_diagnostics(
           }).ok()
         })
     }).await;
-  if let Some(ambient_modules_regex) = ambient_modules_regex {
-    diagnostics.extend(deferred_deps_diagnostics.into_iter().filter_map(
-      |(import_url, diag)| {
-        if ambient_modules_regex.is_match(import_url.as_str()) {
-          return None;
-        }
-        Some(diag)
-      },
-    ));
-  } else {
-    diagnostics.extend(deferred_deps_diagnostics.into_iter().map(|(_, d)| d));
-  }
+  let mut deferred_deps_diagnostics = deferred_deps_diagnostics
+    .into_iter()
+    .filter_map(|(import_url, diagnostic)| {
+      if ambient_modules_regex
+        .as_ref()
+        .is_some_and(|regex| regex.is_match(&import_url))
+      {
+        None
+      } else {
+        Some(diagnostic)
+      }
+    })
+    .collect();
+  let used_expectations =
+    filter_ts_suppressed_diagnostics(module, &mut deferred_deps_diagnostics);
+  diagnostics.retain(|diagnostic| {
+    !(diagnostic.source.as_deref() == Some("deno-ts")
+      && diagnostic.code == Some(lsp::NumberOrString::Number(2578))
+      && used_expectations.contains(&diagnostic.range.start.line))
+  });
+  diagnostics.extend(deferred_deps_diagnostics);
 
   let lint_diagnostics = lint_handle
     .await

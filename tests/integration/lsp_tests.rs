@@ -22658,6 +22658,184 @@ fn lsp_dts_entrypoint_unresolved_import() {
 }
 
 #[test(timeout = 300)]
+fn lsp_unresolved_import_suppression() {
+  for force_push in [false, true] {
+    let context = TestContextBuilder::new().use_temp_cwd().build();
+    let file = context.temp_dir().source_file(
+    "main.ts",
+    "// @ts-expect-error: optional module\nimport { foo } from 'asdfsdf';\nfoo;\n",
+  );
+    let mut client = context.new_lsp_command().build();
+    client.initialize(|builder| {
+      builder.set_force_push_based_diagnostics(force_push);
+    });
+    let diagnostics = client.did_open_file(&file);
+    assert_eq!(json!(diagnostics.all()), json!([]));
+    client.shutdown();
+  }
+}
+
+#[test(timeout = 300)]
+fn lsp_unresolved_import_suppression_attachment() {
+  let cases = [
+    (
+      "export const text = '😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀'; /* @ts-expect-error */\u{2028}import { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "// @ts-ignore\u{2028}const value = 1;\nimport { foo } from 'missing'; console.log(foo, value);",
+      json!([["import-prefix-missing", 1]]),
+    ),
+    (
+      "// @ts-expect-error\rimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "// @ts-expect-error\u{2029}import { foo } from 'missing'; foo;\n// @ts-expect-error\u{2029}export const value = 1;",
+      json!([[2578, 2]]),
+    ),
+    (
+      "export const text = '😀'; /* @ts-expect-error */\u{2028}import { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "//\u{feff}@ts-ignore\nimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "//\u{85}@ts-ignore\nimport { foo } from 'missing'; foo;",
+      json!([["import-prefix-missing", 1]]),
+    ),
+    (
+      "//// @ts-ignore\nimport { foo } from 'missing'; foo;",
+      json!([["import-prefix-missing", 1]]),
+    ),
+    (
+      "import { foo } from 'missing'; foo;",
+      json!([["import-prefix-missing", 0]]),
+    ),
+    (
+      "// @ts-ignore: optional\nimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "// @ts-expect-error: unused\nexport const foo = 1;",
+      json!([[2578, 0]]),
+    ),
+    (
+      "// @ts-expect-error: optional\n\n// explanation\nimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "// @ts-expect-error: unused\nexport const value = 1;\nimport { foo } from 'missing'; foo;",
+      json!([[2578, 0], ["import-prefix-missing", 2]]),
+    ),
+    (
+      "// @ts-expect-error: unused\nimport {\nfoo\n} from 'missing'; foo;",
+      json!([[2578, 0], ["import-prefix-missing", 3]]),
+    ),
+    (
+      "import {\nfoo\n// @ts-expect-error: optional\n} from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "/* @ts-expect-error: optional */\nimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "/* explanation\n * @ts-expect-error: optional */\nimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "/* @ts-expect-error: not on final line\n */\nimport { foo } from 'missing'; foo;",
+      json!([["import-prefix-missing", 2]]),
+    ),
+    (
+      "export const text = `\n// @ts-ignore\n`; import { foo } from 'missing'; foo;",
+      json!([["import-prefix-missing", 2]]),
+    ),
+    (
+      "// @ts-ignore: optional\nimport { foo } from 'missing';\nimport { bar } from 'missing'; console.log(foo, bar);",
+      json!([["import-prefix-missing", 2]]),
+    ),
+    (
+      "// @ts-expect-error: optional\r\nimport { foo } from 'missing'; foo;\r\nexport const text = 'ä';\r\n// @ts-expect-error: unused\r\nexport const value = 1;",
+      json!([[2578, 3]]),
+    ),
+    (
+      "// @ts-expect-error: optional\nimport { foo } from './missing.ts'; foo;",
+      json!([]),
+    ),
+    (
+      "// @ts-expect-error: optional\nimport { foo } from 'https://example.com/missing.ts'; foo;",
+      json!([]),
+    ),
+    (
+      "/* @ts-expect-error */ /* @ts-ignore */\nimport { foo } from 'missing'; foo;",
+      json!([]),
+    ),
+    (
+      "// @ts-ignore: optional\nimport { foo } from 'missing'; foo;\nexport const value: string = 1;",
+      json!([[2322, 2]]),
+    ),
+    (
+      "// @ts-expect-error: unused ambient import\nimport { foo } from 'ambient'; foo;",
+      json!([[2578, 0]]),
+    ),
+    (
+      "// @ts-expect-error: optional types\n// @ts-types='./missing.d.ts'\nimport { foo } from './local.ts'; foo;",
+      json!([]),
+    ),
+  ];
+  for (text, expected) in cases {
+    let context = TestContextBuilder::new().use_temp_cwd().build();
+    context
+      .temp_dir()
+      .write("local.ts", "export const foo = 1;");
+    context.temp_dir().write(
+      "ambient.d.ts",
+      "declare module 'ambient' { export const foo: number; }",
+    );
+    context.temp_dir().write(
+      "deno.json",
+      r#"{ "compilerOptions": { "types": ["./ambient.d.ts"] } }"#,
+    );
+    let file = context.temp_dir().source_file("main.ts", text);
+    let mut client = context.new_lsp_command().build();
+    client.initialize_default();
+    let diagnostics = client.did_open_file(&file);
+    let actual = diagnostics
+      .all()
+      .into_iter()
+      .filter(|d| d.source.as_deref() != Some("deno-lint"))
+      .map(|d| json!([d.code, d.range.start.line]))
+      .collect::<Vec<_>>();
+    assert_eq!(json!(actual), expected, "{text}");
+    client.shutdown();
+  }
+}
+
+#[test(timeout = 300)]
+fn lsp_unresolved_import_suppression_closed_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let file = context.temp_dir().source_file(
+    "main.ts",
+    "// @ts-expect-error: optional module\nimport { foo } from 'missing';\nfoo;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let report = client.diagnostic(file.uri());
+  let lsp::DocumentDiagnosticReport::Full(report) = report else {
+    panic!("expected full diagnostics");
+  };
+  assert_eq!(
+    json!(report.full_document_diagnostic_report.items),
+    json!([])
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_isolated_declarations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
