@@ -2426,6 +2426,71 @@ Deno.test("inspector_node_open_requires_sys_permission", async () => {
   );
 });
 
+Deno.test("inspector_node_debug_port_requires_sys_permission", async () => {
+  // Regression test for https://github.com/denoland/deno/issues/36519.
+  // `process.debugPort` (backed by `op_inspector_port`) reveals the actual
+  // inspector bound port; it must require `--allow-sys=inspector` to match
+  // the other inspector-state entry points (`inspector.url()`,
+  // `inspector.open()`, `inspector.Session.connect()`). Without the
+  // permission, the polyfill must fall back to the default port (9229) so
+  // the property remains readable (matching Node's behavior), but the
+  // bound inspector port must not be leaked.
+  const script = `console.log("debugPort=" + process.debugPort);`;
+  const scriptUrl = `data:application/javascript,${encodeURIComponent(script)}`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--quiet",
+      "--allow-net",
+      "--inspect=0",
+      scriptUrl,
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const { success, stdout, stderr } = await command.output();
+  assert(success);
+  // Falls back to Node's default inspector port because the syscall is gated.
+  assertEquals(
+    new TextDecoder().decode(stdout).trim(),
+    "debugPort=9229",
+  );
+  assert(!new TextDecoder().decode(stderr).includes("debugPort"));
+});
+
+Deno.test("inspector_node_debug_port_granted_with_sys_permission", async () => {
+  // When `--allow-sys=inspector` is granted, `process.debugPort` reflects
+  // the actual bound inspector port (here an ephemeral one chosen by
+  // `--inspect=0`), which differs from the default 9229.
+  const script = `console.log("debugPort=" + process.debugPort);`;
+  const scriptUrl = `data:application/javascript,${encodeURIComponent(script)}`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--quiet",
+      "--allow-net",
+      "--allow-sys=inspector",
+      "--inspect=0",
+      scriptUrl,
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const { success, stdout } = await command.output();
+  assert(success);
+  const port = parseInt(
+    new TextDecoder().decode(stdout).trim().replace("debugPort=", ""),
+    10,
+  );
+  assert(port !== 9229 && port !== 0, `Expected ephemeral port, got ${port}`);
+});
+
 // Regression test for https://github.com/denoland/deno/issues/30176.
 // `console.group(label)` must emit a paired `log` event so Chrome DevTools
 // renders the label inside the group container; otherwise the group appears
