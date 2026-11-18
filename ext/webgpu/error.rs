@@ -173,6 +173,9 @@ pub enum GPUError {
   // TODO(@crowlKats): consider adding an unreachable value that uses unreachable!()
   #[class("UNREACHABLE")]
   Lost(GPUDeviceLostReason),
+  // These classes are builder-only because their JS constructors establish
+  // Web IDL brands and private state. Keep ops returning them slow-only: a fast
+  // callback cannot invoke the builder and would fall back to a plain Error.
   #[class("GPUValidationError")]
   Validation(String),
   #[class("GPUOutOfMemoryError")]
