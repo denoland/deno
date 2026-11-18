@@ -31,6 +31,26 @@ pub use ops::signal::SignalError;
 const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
   ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
+const RESERVED_INTERNAL_ENV_VARS: [&str; 7] = [
+  "CDN_LOOP",
+  "DENO_CACHE_LSC_ENDPOINT",
+  "DENO_DESKTOP_MUX_WS",
+  "DENO_TRUST_PROXY_HEADERS",
+  "DENO_UNSTABLE_CRON_SOCK",
+  "DENO_WEBGPU_TRACE",
+  "X_DENO_FETCH_TOKEN",
+];
+
+pub fn is_reserved_internal_env_var(key: &str) -> bool {
+  RESERVED_INTERNAL_ENV_VARS.iter().any(|reserved| {
+    if cfg!(windows) {
+      reserved.eq_ignore_ascii_case(key)
+    } else {
+      *reserved == key
+    }
+  })
+}
+
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
 
@@ -141,6 +161,9 @@ pub enum OsError {
   #[class(type)]
   #[error("Value contains invalid characters: {0:?}")]
   EnvInvalidValue(String),
+  #[class(type)]
+  #[error("Key is reserved for internal use: {0:?}")]
+  EnvReservedKey(String),
   #[class(inherit)]
   #[error(transparent)]
   Var(#[from] env::VarError),
@@ -296,6 +319,9 @@ fn op_set_env(
   if value.contains('\0') {
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
+  if is_reserved_internal_env_var(key) {
+    return Err(OsError::EnvReservedKey(key.to_string()));
+  }
 
   let process_env = ProcessEnvGuard::lock();
   process_env.set_var_and_notify_timezone(key, value, || {
@@ -429,6 +455,9 @@ fn op_delete_env(
   }
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
+  }
+  if is_reserved_internal_env_var(key) {
+    return Err(OsError::EnvReservedKey(key.to_string()));
   }
 
   let process_env = ProcessEnvGuard::lock();
