@@ -14,7 +14,7 @@ first. For the conceptual layering behind this layout, see
 | `libs/`        | `deno_core` and the supporting resolution/packaging crates  |
 | `tests/`       | All test suites (see [`testing.md`](./testing.md))          |
 | `tools/`       | Dev scripts: `format.js`, `lint.js`, CI helpers, releases   |
-| `third_party/` | Vendored dependencies and test fixtures                     |
+| `third_party/` | Downloaded prebuilt tools (gitignored)                      |
 | `coverage/`    | Coverage output                                             |
 
 ## Files to understand first
