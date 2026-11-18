@@ -4955,11 +4955,9 @@ async fn serve_http11_raw(
         record_cancel_guard.disarm();
         continue;
       }
-      conn = state.conn;
-      scratch = state.scratch;
-      if parsed.has_body {
-        let _ = conn.discard_body_with_scratch(&mut scratch).await;
-      }
+      // The response cannot keep this connection alive. Drop the connection
+      // instead of draining an unread request body, which may be arbitrarily
+      // large or never finish.
       record_cancel_guard.disarm();
       return Ok(());
     }

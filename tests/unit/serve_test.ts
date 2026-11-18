@@ -3472,6 +3472,55 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerClosesConnectionAfterEarlyResponseWithoutDrainingBody() {
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: () => new Response("too large", { status: 413 }),
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    await writeAll(
+      conn,
+      encoder.encode(
+        "POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 67108864\r\n\r\nx",
+      ),
+    );
+
+    const decoder = new TextDecoder();
+    let response = "";
+    const readToClose = (async () => {
+      const buf = new Uint8Array(1024);
+      while (true) {
+        const read = await conn.read(buf);
+        if (read === null) return;
+        response += decoder.decode(buf.subarray(0, read));
+      }
+    })();
+    const closed = await Promise.race([
+      readToClose.then(() => true),
+      delay(1_000).then(() => false),
+    ]);
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+
+    assertEquals(closed, true, "server kept draining an unread request body");
+    assertStringIncludes(response, "HTTP/1.1 413 Payload Too Large");
+    assertStringIncludes(response.toLowerCase(), "connection: close");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerIgnoredStreamingBodyClosesConnection() {
     const firstDeferred = Promise.withResolvers<void>();
     const listeningDeferred = Promise.withResolvers<void>();
