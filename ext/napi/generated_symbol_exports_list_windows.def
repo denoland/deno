@@ -170,6 +170,7 @@ EXPORTS
   uv_check_stop
   uv_close
   uv_default_loop
+  uv_get_osfhandle
   uv_hrtime
   uv_idle_init
   uv_idle_start
