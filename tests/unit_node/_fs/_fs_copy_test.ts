@@ -63,6 +63,37 @@ Deno.test("[std/node/fs] copyFile reports Node ENOENT metadata", async () => {
   }
 });
 
+Deno.test("[std/node/fs] exclusive copyFile reports Node EEXIST metadata", async () => {
+  const dir = await Deno.makeTempDir();
+  const src = path.join(dir, "source.txt");
+  const dest = path.join(dir, "target.txt");
+  const mode = constants.COPYFILE_EXCL;
+  const expected = {
+    message: `EEXIST: file already exists, copyfile '${src}' -> '${dest}'`,
+    code: "EEXIST",
+    errno: Deno.build.os === "windows" ? -4075 : -17,
+    syscall: "copyfile",
+    path: src,
+    dest,
+  };
+
+  try {
+    await Deno.writeTextFile(src, "source");
+    await Deno.writeTextFile(dest, "target");
+    await assert.rejects(copyFilePromise(src, dest, mode), expected);
+    await assert.rejects(
+      new Promise<void>((resolve, reject) => {
+        copyFile(src, dest, mode, (err) => err ? reject(err) : resolve());
+      }),
+      expected,
+    );
+    assert.throws(() => copyFileSync(src, dest, mode), expected);
+    assertEquals(await Deno.readTextFile(dest), "target");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("[std/node/fs] copyFile callback isn't called twice if error is thrown", async () => {
   // The correct behaviour is not to catch any errors thrown,
   // but that means there'll be an uncaught error and the test will fail.
