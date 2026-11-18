@@ -3372,9 +3372,9 @@ impl JsRuntime {
       .await?;
 
       let Some(load_result) = next_step else { break };
-      let (request, source) = load_result?;
-
       jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      let (request, source) =
+        load_result.map_err(|error| error.into_error(scope, false, false))?;
       load
         .register_and_recurse(scope, &request, source)
         .map_err(|e| e.into_error(scope, false, false))?;

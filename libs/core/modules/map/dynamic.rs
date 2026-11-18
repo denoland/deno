@@ -13,6 +13,7 @@ use v8::Function;
 
 use super::ModuleMap;
 use crate::error::CoreErrorKind;
+use crate::error::preserve_import_exception_key;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleImportPhase;
@@ -319,7 +320,12 @@ impl ModuleMap {
         v8::PromiseState::Rejected => {
           resolved_any = true;
           let exception = v8::Global::new(scope, promise.result(scope));
-          self.dynamic_import_reject(scope, eval.load_id, exception.clone());
+          self.dynamic_import_reject(
+            scope,
+            eval.load_id,
+            exception.clone(),
+            false,
+          );
           self.reject_tla_waiters(scope, eval.module_id, exception);
         }
       }
@@ -375,6 +381,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     id: ModuleLoadId,
     exception: v8::Global<v8::Value>,
+    preserve_exception: bool,
   ) {
     let resolver_handle = self
       .dynamic_import_map
@@ -383,6 +390,12 @@ impl ModuleMap {
       .expect("Invalid dynamic import id")
       .resolver;
     let resolver = resolver_handle.open(scope);
+    if preserve_exception {
+      let promise = resolver.get_promise(scope);
+      let key = preserve_import_exception_key(scope);
+      let value = v8::Boolean::new(scope, true);
+      promise.set_private(scope, key, value.into());
+    }
 
     let exception = v8::Local::new(scope, exception);
     resolver.reject(scope, exception).unwrap();
@@ -500,7 +513,7 @@ impl ModuleMap {
         }
         Err(err) => {
           let exception = err.to_v8_error(scope);
-          self.dynamic_import_reject(scope, dyn_import_id, exception);
+          self.dynamic_import_reject(scope, dyn_import_id, exception, false);
         }
       }
     }
@@ -535,23 +548,25 @@ impl ModuleMap {
                 .push(StreamExt::into_future(load));
             }
             Err(err) => {
-              let exception = match err {
-                ModuleError::Exception(e) => e,
-                ModuleError::Core(e) => e.to_v8_error(scope),
-                ModuleError::Concrete(e) => {
-                  CoreErrorKind::Module(e).to_v8_error(scope)
-                }
-              };
-              self.dynamic_import_reject(scope, dyn_import_id, exception);
+              let exception = err.into_exception(scope);
+              self.dynamic_import_reject(
+                scope,
+                dyn_import_id,
+                exception,
+                false,
+              );
             }
           }
         }
         Some(Err(err)) => {
-          // A non-javascript error occurred; this could be due to an invalid
-          // module specifier, or a problem with the source map, or a failure
-          // to fetch the module source code.
-          let exception = err.to_v8_error(scope);
-          self.dynamic_import_reject(scope, dyn_import_id, exception);
+          let preserve_exception = matches!(&err, ModuleError::Exception(_));
+          let exception = err.into_exception(scope);
+          self.dynamic_import_reject(
+            scope,
+            dyn_import_id,
+            exception,
+            preserve_exception,
+          );
         }
         None => {
           // Stream finished — the full module graph has been loaded.
@@ -567,7 +582,12 @@ impl ModuleMap {
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
               if let Err(exception) = result {
-                self.dynamic_import_reject(scope, dyn_import_id, exception);
+                self.dynamic_import_reject(
+                  scope,
+                  dyn_import_id,
+                  exception,
+                  false,
+                );
               }
               self.dynamic_import_module_evaluate(
                 scope,
@@ -586,7 +606,12 @@ impl ModuleMap {
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
               if let Err(exception) = result {
-                self.dynamic_import_reject(scope, dyn_import_id, exception);
+                self.dynamic_import_reject(
+                  scope,
+                  dyn_import_id,
+                  exception,
+                  false,
+                );
                 continue;
               }
               let module_handle =
@@ -606,7 +631,12 @@ impl ModuleMap {
               let Some(promise_val) = maybe_promise else {
                 let exception = tc_scope.exception().unwrap();
                 let exception = v8::Global::new(tc_scope, exception);
-                self.dynamic_import_reject(tc_scope, dyn_import_id, exception);
+                self.dynamic_import_reject(
+                  tc_scope,
+                  dyn_import_id,
+                  exception,
+                  false,
+                );
                 continue;
               };
 
@@ -634,7 +664,12 @@ impl ModuleMap {
                 v8::PromiseState::Rejected => {
                   let err = promise.result(tc_scope);
                   let err = v8::Global::new(tc_scope, err);
-                  self.dynamic_import_reject(tc_scope, dyn_import_id, err);
+                  self.dynamic_import_reject(
+                    tc_scope,
+                    dyn_import_id,
+                    err,
+                    false,
+                  );
                 }
                 v8::PromiseState::Pending => {
                   // Async deps still loading. Store for later resolution.

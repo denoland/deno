@@ -16,7 +16,6 @@ use futures::stream::StreamExt;
 use futures::stream::TryStreamExt;
 
 use super::loaders::ModuleLoadOptions;
-use crate::ModuleLoadResponse;
 use crate::ModuleLoader;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
@@ -32,6 +31,7 @@ use crate::modules::ModuleRequest;
 use crate::modules::RequestedModuleType;
 use crate::modules::ResolutionKind;
 use crate::modules::loaders::ModuleLoadReferrer;
+use crate::modules::loaders::load_for_graph;
 use crate::modules::map::ModuleMap;
 use crate::modules::map::NewModuleResult;
 use crate::modules::module_map_data::ModuleSourceKind;
@@ -39,7 +39,7 @@ use crate::source_map::SourceMapApplication;
 use crate::source_map::SourceMapper;
 
 type ModuleLoadFuture = dyn Future<
-  Output = Result<Option<(ModuleRequest, ModuleSource)>, ModuleLoaderError>,
+  Output = Result<Option<(ModuleRequest, ModuleSource)>, ModuleError>,
 >;
 
 #[derive(Debug, Copy, Clone)]
@@ -573,7 +573,8 @@ impl RecursiveModuleLoad {
               None,
             ))
           } else {
-            let load_response = loader.load(
+            load_for_graph(
+              loader.as_ref(),
               &resolved_specifier,
               referrer_info.as_ref(),
               ModuleLoadOptions {
@@ -581,11 +582,8 @@ impl RecursiveModuleLoad {
                 is_synchronous,
                 requested_module_type,
               },
-            );
-            match load_response {
-              ModuleLoadResponse::Sync(result) => result,
-              ModuleLoadResponse::Async(fut) => fut.await,
-            }
+            )
+            .await
           };
           if let Ok(source) = &load_result
             && let Some(found_specifier) = &source.module_url_found
@@ -601,42 +599,20 @@ impl RecursiveModuleLoad {
     }
   }
 
-  /// Drives the module load stream to completion, calling `on_module` for each
-  /// loaded module. Returns the root module ID once the full graph is loaded.
+  /// Drive the load stream and register each module with the caller's V8
+  /// scope. The caller also converts any JavaScript load exception there.
   pub(crate) async fn run_to_completion(
     mut self,
     mut step: impl FnMut(
       &mut Self,
-      RegisterStep<'_>,
+      Result<(ModuleRequest, ModuleSource), ModuleError>,
     ) -> Result<RegisterOutcome, CoreError>,
   ) -> Result<ModuleId, CoreError> {
     while let Some(load_result) = self.next().await {
-      let (request, source) = load_result?;
-      match step(
-        &mut self,
-        RegisterStep::Register {
-          request: &request,
-          source,
-        },
-      )? {
-        RegisterOutcome::Done => {}
-      }
+      step(&mut self, load_result)?;
     }
     Ok(self.root_module_id.expect("Root module should be loaded"))
   }
-}
-
-/// Action requested by [`RecursiveModuleLoad::run_to_completion`] of its
-/// driver. A single `FnMut` closure handles both — passing one closure rather
-/// than two side-steps the borrow checker (both phases need `&mut isolate`,
-/// but they're never active simultaneously).
-pub(crate) enum RegisterStep<'a> {
-  /// Compile a freshly-loaded module's source, resolve its imports, and
-  /// register it. Returns [`RegisterOutcome`].
-  Register {
-    request: &'a ModuleRequest,
-    source: ModuleSource,
-  },
 }
 
 /// Outcome of a single `register_and_recurse` call.
@@ -651,7 +627,7 @@ impl RecursiveModuleLoad {
     inner: &mut Self,
     module_specifier: ModuleSpecifier,
     cx: &mut Context,
-  ) -> Poll<Option<Result<(ModuleRequest, ModuleSource), CoreError>>> {
+  ) -> Poll<Option<Result<(ModuleRequest, ModuleSource), ModuleError>>> {
     let (requested_module_type, phase) = match &inner.init {
       LoadInit::DynamicImport(_, _, module_type, phase) => {
         (module_type.clone(), *phase)
@@ -712,7 +688,8 @@ impl RecursiveModuleLoad {
       let is_synchronous = inner.is_synchronous();
       let requested_module_type = requested_module_type.clone();
       async move {
-        let load_response = loader.load(
+        load_for_graph(
+          loader.as_ref(),
           &module_specifier,
           None,
           ModuleLoadOptions {
@@ -720,12 +697,9 @@ impl RecursiveModuleLoad {
             is_synchronous,
             requested_module_type,
           },
-        );
-        let result = match load_response {
-          ModuleLoadResponse::Sync(result) => result,
-          ModuleLoadResponse::Async(fut) => fut.await,
-        };
-        result.map(|s| Some((module_request, s)))
+        )
+        .await
+        .map(|source| Some((module_request, source)))
       }
       .boxed_local()
     };
@@ -736,7 +710,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<(ModuleRequest, ModuleSource), CoreError>;
+  type Item = Result<(ModuleRequest, ModuleSource), ModuleError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -750,7 +724,7 @@ impl Stream for RecursiveModuleLoad {
         let module_specifier = match inner.resolved_specifier.take() {
           Some(Ok(spec)) => spec,
           Some(Err(error)) => {
-            return Poll::Ready(Some(Err(error)));
+            return Poll::Ready(Some(Err(ModuleError::Core(error))));
           }
           None => unreachable!("root specifier is resolved before polling"),
         };

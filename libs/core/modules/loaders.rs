@@ -17,15 +17,36 @@ use crate::error::CoreErrorKind;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::IntoModuleCodeString;
 use crate::modules::ModuleCodeString;
+use crate::modules::ModuleError;
 use crate::modules::ModuleName;
 use crate::modules::ModuleSource;
 use crate::modules::ModuleSourceFuture;
+use crate::modules::ModuleSourceFutureWithException;
 use crate::modules::ModuleType;
 use crate::modules::RequestedModuleType;
 use crate::modules::ResolutionKind;
 use crate::resolve_import;
 
 pub type ModuleLoaderError = JsErrorBox;
+
+pub(super) async fn load_for_graph(
+  loader: &dyn ModuleLoader,
+  specifier: &ModuleSpecifier,
+  referrer: Option<&ModuleLoadReferrer>,
+  options: ModuleLoadOptions,
+) -> Result<ModuleSource, ModuleError> {
+  if let Some(result) =
+    loader.load_with_exception(specifier, referrer, &options)
+  {
+    return result.await;
+  }
+
+  match loader.load(specifier, referrer, options) {
+    ModuleLoadResponse::Sync(result) => result,
+    ModuleLoadResponse::Async(result) => result.await,
+  }
+  .map_err(|error| ModuleError::Core(error.into()))
+}
 
 /// Result of calling `ModuleLoader::resolve`.
 pub type ModuleResolveResponse = Result<ModuleSpecifier, ModuleLoaderError>;
@@ -129,6 +150,18 @@ pub trait ModuleLoader {
     maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> ModuleLoadResponse;
+
+  /// Optionally load a graph module through JavaScript hooks. Return
+  /// `None` to use the ordinary loader. This allows a hook's thrown
+  /// value to reach the importing isolate without being serialized.
+  fn load_with_exception(
+    &self,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<&ModuleLoadReferrer>,
+    _options: &ModuleLoadOptions,
+  ) -> Option<Pin<Box<ModuleSourceFutureWithException>>> {
+    None
+  }
 
   /// Whether modules from the extension `synthetic_esm` registry should go
   /// through `load()` instead of being instantiated directly by the module map.

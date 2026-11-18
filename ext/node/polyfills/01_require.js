@@ -11,6 +11,7 @@ import {
   op_module_default_resolve,
   op_module_hooks_poll_load,
   op_module_hooks_register,
+  op_module_hooks_reject_load,
   op_module_hooks_respond_load,
   op_napi_open,
   op_node_has_child_ipc_pipe,
@@ -891,20 +892,20 @@ function _startEsmLoadLoop() {
         const result = chainResult?.result ?? null;
         const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
-          op_module_hooks_respond_load(id, null, "builtin", null, null);
+          op_module_hooks_respond_load(id, null, "builtin", null);
         } else if (result !== null && result.source != null) {
           const source = loadHookSourceToString(result.source);
           const format = result.format || null;
-          op_module_hooks_respond_load(id, source, format, null, null);
+          op_module_hooks_respond_load(id, source, format, null);
         } else {
           // Fallthrough: tell Rust to use default loading. Pass the URL the
           // hook chain ultimately delegated to (may differ from the original
           // when a hook called `nextLoad(newUrl)`) so source is fetched from
           // there while the module keeps the original URL as its identity.
-          op_module_hooks_respond_load(id, null, null, null, effectiveUrl);
+          op_module_hooks_respond_load(id, null, null, effectiveUrl);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, null, String(e), null);
+        op_module_hooks_reject_load(id, e);
       }
     }
   })();

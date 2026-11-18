@@ -25,6 +25,7 @@ v8_static_strings!(
   DEFAULT = "default",
   DIRNAME = "dirname",
   ERR_MODULE_NOT_FOUND = "ERR_MODULE_NOT_FOUND",
+  PRESERVE_IMPORT_EXCEPTION = "deno_core::preserve_import_exception",
   ERRORS = "errors",
   EVENT_LOOP_TICK = "__eventLoopTick",
   PROCESS_TIMERS = "__processTimers",
