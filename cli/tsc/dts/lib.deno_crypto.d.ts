@@ -193,6 +193,16 @@ interface Pbkdf2Params extends Algorithm {
 }
 
 /** @category Crypto */
+interface Argon2Params extends Algorithm {
+  memory: number;
+  passes: number;
+  parallelism: number;
+  nonce: BufferSource;
+  secretValue?: BufferSource;
+  associatedData?: BufferSource;
+}
+
+/** @category Crypto */
 interface AesDerivedKeyParams extends Algorithm {
   length: number;
 }
@@ -560,6 +570,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HkdfParams
       | Pbkdf2Params
+      | Argon2Params
       | EcdhKeyDeriveParams,
     baseKey: CryptoKey,
     length: number,
