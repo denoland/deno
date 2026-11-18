@@ -136,22 +136,23 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg0 = unsafe {
-                    let (input_ptr, input_len) = arg0
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg0_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u8, true>(arg0, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg0 = arg0_temp.as_mut();
                 let arg0 = arg0;
                 let Ok(arg1) = arg1.try_cast::<deno_core::v8::ArrayBufferView>() else {
                     {
@@ -168,22 +169,23 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg1 = unsafe {
-                    let (input_ptr, input_len) = arg1
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg1_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u8, false>(arg1, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg1 = arg1_temp.as_mut();
                 let arg1 = arg1;
                 let Ok(arg2) = arg2.try_cast::<deno_core::v8::ArrayBufferView>() else {
                     {
@@ -200,22 +202,23 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg2 = unsafe {
-                    let (input_ptr, input_len) = arg2
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg2_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u8, false>(arg2, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg2 = arg2_temp.as_mut();
                 let arg2 = if arg2.len() == 0 {
                     ::std::ptr::null_mut()
                 } else {
@@ -236,22 +239,23 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg3 = unsafe {
-                    let (input_ptr, input_len) = arg3
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg3_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u8, false>(arg3, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg3 = arg3_temp.as_mut();
                 let arg3 = if arg3.len() == 0 {
                     ::std::ptr::null_mut()
                 } else {
@@ -278,7 +282,9 @@ const fn op_buffers() -> ::deno_core::_ops::OpDecl {
             let result = {
                 let arg0 = args.get(0usize as i32);
                 let mut arg0_temp;
-                arg0_temp = match unsafe { deno_core::_ops::to_v8_slice::<u8>(arg0) } {
+                arg0_temp = match unsafe {
+                    deno_core::_ops::to_v8_slice_or_copy::<u8>(arg0)
+                } {
                     Ok(arg0) => arg0,
                     Err(arg0_err) => {
                         deno_core::_ops::throw_error_one_byte_info(&info, arg0_err);
@@ -478,22 +484,23 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg0 = unsafe {
-                    let (input_ptr, input_len) = arg0
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg0_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u32, true>(arg0, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg0 = arg0_temp.as_mut();
                 let arg0 = arg0;
                 let Ok(arg1) = arg1.try_cast::<deno_core::v8::ArrayBufferView>() else {
                     {
@@ -510,22 +517,23 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg1 = unsafe {
-                    let (input_ptr, input_len) = arg1
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg1_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u32, false>(arg1, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg1 = arg1_temp.as_mut();
                 let arg1 = arg1;
                 let Ok(arg2) = arg2.try_cast::<deno_core::v8::ArrayBufferView>() else {
                     {
@@ -542,22 +550,23 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg2 = unsafe {
-                    let (input_ptr, input_len) = arg2
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg2_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u32, false>(arg2, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg2 = arg2_temp.as_mut();
                 let arg2 = if arg2.len() == 0 {
                     ::std::ptr::null_mut()
                 } else {
@@ -578,22 +587,23 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
                     }
                 };
                 let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
-                let arg3 = unsafe {
-                    let (input_ptr, input_len) = arg3
-                        .get_contents_raw_parts(&mut buffer);
-                    let input_ptr = if input_ptr.is_null() {
-                        ::std::ptr::dangling_mut()
-                    } else {
-                        input_ptr
-                    };
-                    let slice = ::std::slice::from_raw_parts_mut::<
-                        's,
-                    >(input_ptr, input_len);
-                    let (before, slice, after) = slice.align_to_mut();
-                    debug_assert!(before.is_empty());
-                    debug_assert!(after.is_empty());
-                    slice
+                let Ok(mut arg3_temp) = (unsafe {
+                    deno_core::_ops::to_fast_v8_slice::<u32, false>(arg3, &mut buffer)
+                }) else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "resizable or shared buffers are not supported for this operation",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
                 };
+                let arg3 = arg3_temp.as_mut();
                 let arg3 = if arg3.len() == 0 {
                     ::std::ptr::null_mut()
                 } else {
@@ -620,7 +630,9 @@ const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
             let result = {
                 let arg0 = args.get(0usize as i32);
                 let mut arg0_temp;
-                arg0_temp = match unsafe { deno_core::_ops::to_v8_slice::<u32>(arg0) } {
+                arg0_temp = match unsafe {
+                    deno_core::_ops::to_v8_slice_or_copy::<u32>(arg0)
+                } {
                     Ok(arg0) => arg0,
                     Err(arg0_err) => {
                         deno_core::_ops::throw_error_one_byte_info(&info, arg0_err);
@@ -733,7 +745,7 @@ const fn op_buffers_option() -> ::deno_core::_ops::OpDecl {
                     None
                 } else {
                     arg0_temp = match unsafe {
-                        deno_core::_ops::to_v8_slice::<u8>(arg0)
+                        deno_core::_ops::to_v8_slice_or_copy::<u8>(arg0)
                     } {
                         Ok(arg0) => arg0,
                         Err(arg0_err) => {
