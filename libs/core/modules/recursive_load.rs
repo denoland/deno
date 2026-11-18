@@ -144,6 +144,8 @@ impl RecursiveModuleLoad {
       module_map_rc.clone(),
       Ok(specifier.clone()),
     );
+    // No JS execution within block_on in the CLI: preparation builds the
+    // graph, and resolve hooks run below when registering the source with V8.
     futures::executor::block_on(load.prepare())?;
 
     let (source, referrer_source) =

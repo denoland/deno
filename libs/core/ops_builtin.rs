@@ -596,6 +596,8 @@ fn load_sync_graph<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   mut load: RecursiveModuleLoad,
 ) -> Result<ModuleId, CoreError> {
+  // No JS execution within block_on in the CLI: synchronous loads bypass the
+  // async load-hook bridge, and resolve hooks run during registration below.
   while let Some(load_result) = futures::executor::block_on(load.next()) {
     let (request, source) = load_result?;
     load
@@ -611,6 +613,7 @@ fn do_load_job<'s, 'i>(
   specifier: &str,
   code: Option<String>,
 ) -> Result<ModuleId, CoreError> {
+  // No JS execution within block_on in the CLI: preparation builds the graph.
   let load = futures::executor::block_on(RecursiveModuleLoad::side(
     specifier.to_string(),
     module_map_rc.clone(),
