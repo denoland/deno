@@ -1101,7 +1101,7 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(EXECUTABLE_EXTS))
-.help("Specify the file extension to lint when reading from stdin.For example, use `jsx` to lint JSX files or `tsx` for TSX files.This argument is necessary because stdin input does not automatically infer the file type.Example usage: `cat file.jsx | deno lint - --ext=jsx`."),
+.help("Specify the file extension to lint when reading from stdin. For example, use `jsx` to lint JSX files or `tsx` for TSX files. This argument is necessary because stdin input does not automatically infer the file type. Example usage: `cat file.jsx | deno lint - --ext=jsx`."),
     ArgDef::new("allow-import")
       .short('I')
       .long("allow-import")
@@ -2302,14 +2302,14 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .conflicts_with(&["kernel"])
-.help("Set a name for the kernel (defaults to 'deno'). Useful when maintaing multiple Deno kernels."),
+.help("Set a name for the kernel (defaults to 'deno'). Useful when maintaining multiple Deno kernels."),
     ArgDef::new("display")
       .short('d')
       .long("display")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .requires(&["install"])
-.help("Set a display name for the kernel (defaults to 'Deno'). Useful when maintaing multiple Deno kernels."),
+.help("Set a display name for the kernel (defaults to 'Deno'). Useful when maintaining multiple Deno kernels."),
     ArgDef::new("kernel")
       .long("kernel")
       .set_true()
@@ -2783,7 +2783,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
       .long("output")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-.help("Output path`"),
+.help("Output path"),
     ArgDef::new("outdir")
       .long("outdir")
       .action(ArgAction::Set)
