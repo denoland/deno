@@ -2611,6 +2611,27 @@ function syncBuiltinESMExports() {}
 
 Module.syncBuiltinESMExports = syncBuiltinESMExports;
 
+const constants = {
+  compileCacheStatus: {
+    FAILED: 0,
+    ENABLED: 1,
+    ALREADY_ENABLED: 2,
+    DISABLED: 3,
+  },
+};
+
+// Deno has no compile cache, so report it as disabled, the same as Node with
+// NODE_DISABLE_COMPILE_CACHE set.
+function enableCompileCache(_cacheDir) {
+  return {
+    status: constants.compileCacheStatus.DISABLED,
+    message: "Deno does not support the compile cache",
+  };
+}
+
+Module.constants = constants;
+Module.enableCompileCache = enableCompileCache;
+
 // Mostly used by tools like ts-node.
 Module.runMain = function () {
   Module._load(process.argv[1], null, true);
@@ -3478,7 +3499,9 @@ internals.closeIdleConnections = closeIdleConnections;
 
 export {
   builtinModules,
+  constants,
   createRequire,
+  enableCompileCache,
   findPackageJSON,
   getBuiltinModule,
   isBuiltin,
