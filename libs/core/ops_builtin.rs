@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use bytes::BytesMut;
 use deno_error::JsErrorBox;
+use futures::StreamExt;
 use serde_v8::ByteString;
 
 use crate::CancelHandle;
@@ -591,28 +592,35 @@ fn op_is_terminal(state: &mut OpState, #[smi] rid: ResourceId) -> bool {
   }
 }
 
-async fn do_load_job<'s, 'i>(
+fn load_sync_graph<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  mut load: RecursiveModuleLoad,
+) -> Result<ModuleId, CoreError> {
+  // No JS execution within block_on in the CLI: synchronous loads bypass the
+  // async load-hook bridge, and resolve hooks run during registration below.
+  while let Some(load_result) = futures::executor::block_on(load.next()) {
+    let (request, source) = load_result?;
+    load
+      .register_and_recurse(scope, &request, source)
+      .map_err(|e| e.into_error(scope, false, false))?;
+  }
+  Ok(load.root_module_id().expect("Root module should be loaded"))
+}
+
+fn do_load_job<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   module_map_rc: Rc<ModuleMap>,
   specifier: &str,
   code: Option<String>,
 ) -> Result<ModuleId, CoreError> {
-  let root_id = RecursiveModuleLoad::side(
+  // No JS execution within block_on in the CLI: preparation builds the graph.
+  let load = futures::executor::block_on(RecursiveModuleLoad::side(
     specifier.to_string(),
     module_map_rc.clone(),
     crate::modules::SideModuleKind::Sync,
     code,
-  )
-  .await?
-  .run_to_completion(|load, step| match step {
-    crate::modules::recursive_load::RegisterStep::Register {
-      request,
-      source,
-    } => load
-      .register_and_recurse(scope, request, source)
-      .map_err(|e| e.into_error(scope, false, false)),
-  })
-  .await?;
+  ))?;
+  let root_id = load_sync_graph(scope, load)?;
 
   let module = module_map_rc
     .get_module(scope, root_id)
@@ -734,13 +742,7 @@ fn op_import_sync<'s, 'i>(
 ) -> Result<v8::Local<'s, v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
 
-  // no js execution within block_on
-  let module_id = futures::executor::block_on(do_load_job(
-    scope,
-    module_map_rc.clone(),
-    specifier,
-    code,
-  ))?;
+  let module_id = do_load_job(scope, module_map_rc.clone(), specifier, code)?;
 
   // Check for re-entrant require() cycle: if this module is already on
   // the op_import_sync call stack, it means CJS code required an ESM
@@ -839,17 +841,15 @@ fn op_import_sync_with_source<'s, 'i>(
 ) -> Result<v8::Local<'s, v8::Value>, CoreError> {
   let module_map_rc = JsRealm::module_map_from(scope);
 
-  let module_id = module_map_rc
-    .new_module_from_js_source(
-      scope,
-      false,
-      crate::modules::ModuleType::JavaScript,
-      crate::modules::ModuleName::from(specifier.to_string()),
-      crate::modules::ModuleCodeString::from(code),
-      false,
-      None,
-    )
-    .map_err(|e| e.into_error(scope, false, false))?;
+  let specifier =
+    crate::resolve_url(specifier).map_err(JsErrorBox::from_err)?;
+  let load = RecursiveModuleLoad::side_from_source(
+    scope,
+    specifier,
+    code,
+    module_map_rc.clone(),
+  )?;
+  let module_id = load_sync_graph(scope, load)?;
 
   module_map_rc
     .instantiate_module(scope, module_id)
