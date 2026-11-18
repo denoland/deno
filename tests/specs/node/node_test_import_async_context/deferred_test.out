@@ -1,0 +1,5 @@
+TAP version 14
+# ./deferred_test.mjs
+ok 1 - the deferred module keeps the importing test's async context
+ok 2 - the next test has no inherited async context
+1..2

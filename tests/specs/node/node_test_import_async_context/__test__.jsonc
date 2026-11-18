@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "dynamic_import": {
+      "args": "test --no-check --reporter tap test.mjs",
+      "output": "test.out"
+    },
+    "deferred_import": {
+      "args": "test --no-check --reporter tap deferred_test.mjs",
+      "output": "deferred_test.out"
+    }
+  }
+}
