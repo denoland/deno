@@ -20,6 +20,9 @@ const { fs } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { denoErrorToNodeError } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 export function copyFile(
@@ -47,6 +50,19 @@ export function copyFile(
   const destStr = getValidatedPathToString(dest, "dest");
   const modeNum = getValidMode(mode, "copyFile");
   const cb = makeCallback(callback);
+  const copy = () => {
+    PromisePrototypeThen(
+      Deno.copyFile(srcStr, destStr),
+      () => cb(null),
+      (e: Error) => {
+        cb(denoErrorToNodeError(e, {
+          syscall: "copyfile",
+          path: srcStr,
+          dest: destStr,
+        }));
+      },
+    );
+  };
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
     PromisePrototypeThen(Deno.lstat(destStr), () => {
@@ -60,17 +76,13 @@ export function copyFile(
       cb(e);
     }, (e) => {
       if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-        PromisePrototypeThen(
-          Deno.copyFile(srcStr, destStr),
-          () => cb(null),
-          cb,
-        );
+        copy();
       } else {
         cb(e);
       }
     });
   } else {
-    PromisePrototypeThen(Deno.copyFile(srcStr, destStr), () => cb(null), cb);
+    copy();
   }
 }
 
@@ -94,13 +106,19 @@ export function copyFileSync(
       Deno.lstatSync(destStr);
       throw new Error(`A file exists at the destination: ${destStr}`);
     } catch (e) {
-      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-        Deno.copyFileSync(srcStr, destStr);
-      } else {
+      if (!ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
         throw e;
       }
     }
-  } else {
+  }
+
+  try {
     Deno.copyFileSync(srcStr, destStr);
+  } catch (e) {
+    throw denoErrorToNodeError(e, {
+      syscall: "copyfile",
+      path: srcStr,
+      dest: destStr,
+    });
   }
 }

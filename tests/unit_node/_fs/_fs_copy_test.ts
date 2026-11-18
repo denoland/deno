@@ -3,8 +3,8 @@ import * as path from "@std/path";
 import { assertEquals } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import assert from "node:assert";
-import { copyFile, copyFileSync, cpSync, existsSync } from "node:fs";
-import { cp } from "node:fs/promises";
+import { constants, copyFile, copyFileSync, cpSync, existsSync } from "node:fs";
+import { copyFile as copyFilePromise, cp } from "node:fs/promises";
 
 const destFile = "./destination.txt";
 
@@ -31,6 +31,36 @@ Deno.test({
     Deno.removeSync(sourceFile);
     Deno.removeSync(destFile);
   },
+});
+
+Deno.test("[std/node/fs] copyFile reports Node ENOENT metadata", async () => {
+  const dir = await Deno.makeTempDir();
+  const src = path.join(dir, "missing.txt");
+  const dest = path.join(dir, "target.txt");
+  const expected = {
+    message:
+      `ENOENT: no such file or directory, copyfile '${src}' -> '${dest}'`,
+    code: "ENOENT",
+    errno: Deno.build.os === "windows" ? -4058 : -2,
+    syscall: "copyfile",
+    path: src,
+    dest,
+  };
+
+  try {
+    for (const mode of [0, constants.COPYFILE_EXCL]) {
+      await assert.rejects(copyFilePromise(src, dest, mode), expected);
+      await assert.rejects(
+        new Promise<void>((resolve, reject) => {
+          copyFile(src, dest, mode, (err) => err ? reject(err) : resolve());
+        }),
+        expected,
+      );
+      assert.throws(() => copyFileSync(src, dest, mode), expected);
+    }
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("[std/node/fs] copyFile callback isn't called twice if error is thrown", async () => {
