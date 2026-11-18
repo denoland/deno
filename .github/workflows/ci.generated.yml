@@ -838,6 +838,13 @@ jobs:
           shasum -a 256 libdenort-quickjs-x86_64-apple-darwin.zip > libdenort-quickjs-x86_64-apple-darwin.zip.sha256sum
           restore_v8_runtimes
           trap - EXIT
+      - name: Generate SBOMs
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked
+          sbom-attest generate -p deno --target x86_64-apple-darwin --features deno/panic-trace --locked --binary target/release/deno --author "Deno Land Inc." --cdx target/release/deno-x86_64-apple-darwin.cdx.json --spdx target/release/deno-x86_64-apple-darwin.spdx.json
+          sbom-attest generate -p denort --target x86_64-apple-darwin --locked --binary target/release/denort --author "Deno Land Inc." --cdx target/release/denort-x86_64-apple-darwin.cdx.json --spdx target/release/denort-x86_64-apple-darwin.spdx.json
+          sbom-attest generate -p denort_desktop --target x86_64-apple-darwin --locked --binary target/release/libdenort.dylib --author "Deno Land Inc." --cdx target/release/libdenort-x86_64-apple-darwin.cdx.json --spdx target/release/libdenort-x86_64-apple-darwin.spdx.json
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -968,6 +975,8 @@ jobs:
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
             target/release/deno-*.bsdiff.sha256sum
+            target/release/*.cdx.json
+            target/release/*.spdx.json
           body_path: target/release/release-notes.md
           draft: true
           prerelease: '${{ contains(github.ref_name, ''-'') }}'
@@ -1947,6 +1956,13 @@ jobs:
           shasum -a 256 libdenort-quickjs-aarch64-apple-darwin.zip > libdenort-quickjs-aarch64-apple-darwin.zip.sha256sum
           restore_v8_runtimes
           trap - EXIT
+      - name: Generate SBOMs
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked
+          sbom-attest generate -p deno --target aarch64-apple-darwin --features deno/panic-trace --locked --binary target/release/deno --author "Deno Land Inc." --cdx target/release/deno-aarch64-apple-darwin.cdx.json --spdx target/release/deno-aarch64-apple-darwin.spdx.json
+          sbom-attest generate -p denort --target aarch64-apple-darwin --locked --binary target/release/denort --author "Deno Land Inc." --cdx target/release/denort-aarch64-apple-darwin.cdx.json --spdx target/release/denort-aarch64-apple-darwin.spdx.json
+          sbom-attest generate -p denort_desktop --target aarch64-apple-darwin --locked --binary target/release/libdenort.dylib --author "Deno Land Inc." --cdx target/release/libdenort-aarch64-apple-darwin.cdx.json --spdx target/release/libdenort-aarch64-apple-darwin.spdx.json
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -2077,6 +2093,8 @@ jobs:
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
             target/release/deno-*.bsdiff.sha256sum
+            target/release/*.cdx.json
+            target/release/*.spdx.json
           body_path: target/release/release-notes.md
           draft: true
           prerelease: '${{ contains(github.ref_name, ''-'') }}'
@@ -2966,6 +2984,13 @@ jobs:
             if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }
           }
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
+      - name: Generate SBOMs
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked
+          sbom-attest generate -p deno --target x86_64-pc-windows-msvc --features deno/panic-trace --locked --binary target/release/deno.exe --author "Deno Land Inc." --cdx target/release/deno-x86_64-pc-windows-msvc.cdx.json --spdx target/release/deno-x86_64-pc-windows-msvc.spdx.json
+          sbom-attest generate -p denort --target x86_64-pc-windows-msvc --locked --binary target/release/denort.exe --author "Deno Land Inc." --cdx target/release/denort-x86_64-pc-windows-msvc.cdx.json --spdx target/release/denort-x86_64-pc-windows-msvc.spdx.json
+          sbom-attest generate -p denort_desktop --target x86_64-pc-windows-msvc --locked --binary target/release/denort.dll --author "Deno Land Inc." --cdx target/release/libdenort-x86_64-pc-windows-msvc.cdx.json --spdx target/release/libdenort-x86_64-pc-windows-msvc.spdx.json
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -3098,6 +3123,8 @@ jobs:
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
             target/release/deno-*.bsdiff.sha256sum
+            target/release/*.cdx.json
+            target/release/*.spdx.json
           body_path: target/release/release-notes.md
           draft: true
           prerelease: '${{ contains(github.ref_name, ''-'') }}'
@@ -3845,6 +3872,13 @@ jobs:
             if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }
           }
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
+      - name: Generate SBOMs
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked
+          sbom-attest generate -p deno --target aarch64-pc-windows-msvc --features deno/panic-trace --locked --binary target/release/deno.exe --author "Deno Land Inc." --cdx target/release/deno-aarch64-pc-windows-msvc.cdx.json --spdx target/release/deno-aarch64-pc-windows-msvc.spdx.json
+          sbom-attest generate -p denort --target aarch64-pc-windows-msvc --locked --binary target/release/denort.exe --author "Deno Land Inc." --cdx target/release/denort-aarch64-pc-windows-msvc.cdx.json --spdx target/release/denort-aarch64-pc-windows-msvc.spdx.json
+          sbom-attest generate -p denort_desktop --target aarch64-pc-windows-msvc --locked --binary target/release/denort.dll --author "Deno Land Inc." --cdx target/release/libdenort-aarch64-pc-windows-msvc.cdx.json --spdx target/release/libdenort-aarch64-pc-windows-msvc.spdx.json
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -3977,6 +4011,8 @@ jobs:
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
             target/release/deno-*.bsdiff.sha256sum
+            target/release/*.cdx.json
+            target/release/*.spdx.json
           body_path: target/release/release-notes.md
           draft: true
           prerelease: '${{ contains(github.ref_name, ''-'') }}'
@@ -4494,6 +4530,13 @@ jobs:
           restore_v8_runtimes
           trap - EXIT
           ./deno types > lib.deno.d.ts
+      - name: Generate SBOMs
+        if: github.repository == 'denoland/deno'
+        run: |-
+          env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked
+          sbom-attest generate -p deno --target x86_64-unknown-linux-gnu --features deno/panic-trace-frame-pointer --locked --binary target/release/deno --author "Deno Land Inc." --cdx target/release/deno-x86_64-unknown-linux-gnu.cdx.json --spdx target/release/deno-x86_64-unknown-linux-gnu.spdx.json
+          sbom-attest generate -p denort --target x86_64-unknown-linux-gnu --locked --binary target/release/denort --author "Deno Land Inc." --cdx target/release/denort-x86_64-unknown-linux-gnu.cdx.json --spdx target/release/denort-x86_64-unknown-linux-gnu.spdx.json
+          sbom-attest generate -p denort_desktop --target x86_64-unknown-linux-gnu --locked --binary target/release/libdenort.so --author "Deno Land Inc." --cdx target/release/libdenort-x86_64-unknown-linux-gnu.cdx.json --spdx target/release/libdenort-x86_64-unknown-linux-gnu.spdx.json
       - name: Build bsdiff helper
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -4622,6 +4665,8 @@ jobs:
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
             target/release/deno-*.bsdiff.sha256sum
+            target/release/*.cdx.json
+            target/release/*.spdx.json
           body_path: target/release/release-notes.md
           draft: true
           prerelease: '${{ contains(github.ref_name, ''-'') }}'
@@ -6585,6 +6630,13 @@ jobs:
           restore_v8_runtimes
           trap - EXIT
           ./deno types > lib.deno.d.ts
+      - name: Generate SBOMs
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        run: |-
+          env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked
+          sbom-attest generate -p deno --target aarch64-unknown-linux-gnu --features deno/panic-trace-frame-pointer --locked --binary target/release/deno --author "Deno Land Inc." --cdx target/release/deno-aarch64-unknown-linux-gnu.cdx.json --spdx target/release/deno-aarch64-unknown-linux-gnu.spdx.json
+          sbom-attest generate -p denort --target aarch64-unknown-linux-gnu --locked --binary target/release/denort --author "Deno Land Inc." --cdx target/release/denort-aarch64-unknown-linux-gnu.cdx.json --spdx target/release/denort-aarch64-unknown-linux-gnu.spdx.json
+          sbom-attest generate -p denort_desktop --target aarch64-unknown-linux-gnu --locked --binary target/release/libdenort.so --author "Deno Land Inc." --cdx target/release/libdenort-aarch64-unknown-linux-gnu.cdx.json --spdx target/release/libdenort-aarch64-unknown-linux-gnu.spdx.json
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -6718,6 +6770,8 @@ jobs:
             target/release/lib.deno.d.ts
             target/release/deno-*.bsdiff
             target/release/deno-*.bsdiff.sha256sum
+            target/release/*.cdx.json
+            target/release/*.spdx.json
           body_path: target/release/release-notes.md
           draft: true
           prerelease: '${{ contains(github.ref_name, ''-'') }}'

@@ -928,6 +928,50 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ],
           },
           {
+            // CycloneDX and SPDX SBOMs for the shipped binaries: every crate
+            // linked in, with its declared license and Cargo.lock checksum,
+            // and the SHA-256 of the final (stripped/signed) binary.
+            // See https://github.com/denoland/deno/issues/13515
+            name: "Generate SBOMs",
+            if: isDenoland,
+            run: (() => {
+              const triple = {
+                linux: `${rawBuildItem.arch}-unknown-linux-gnu`,
+                macos: `${rawBuildItem.arch}-apple-darwin`,
+                windows: `${rawBuildItem.arch}-pc-windows-msvc`,
+              }[rawBuildItem.os];
+              const exe = rawBuildItem.os === "windows" ? ".exe" : "";
+              const libdenort = {
+                linux: "libdenort.so",
+                macos: "libdenort.dylib",
+                windows: "denort.dll",
+              }[rawBuildItem.os];
+              const sbom = (
+                name: string,
+                pkg: string,
+                binary: string,
+                features = "",
+              ) =>
+                `sbom-attest generate -p ${pkg} --target ${triple}${features} --locked ` +
+                `--binary target/release/${binary} --author "Deno Land Inc." ` +
+                `--cdx target/release/${name}-${triple}.cdx.json ` +
+                `--spdx target/release/${name}-${triple}.spdx.json`;
+              return [
+                // Build the tool without the release build's RUSTFLAGS and CC
+                // (LTO, sysroot shims); they are only meant for deno itself.
+                "env -u RUSTFLAGS -u RUSTDOCFLAGS -u CC -u CFLAGS cargo install sbom-attest --version 0.2.0 --locked",
+                sbom(
+                  "deno",
+                  "deno",
+                  `deno${exe}`,
+                  ` --features ${panicTraceFeatures}`,
+                ),
+                sbom("denort", "denort", `denort${exe}`),
+                sbom("libdenort", "denort_desktop", libdenort),
+              ];
+            })(),
+          },
+          {
             name: "Build bsdiff helper",
             if: isDenoland.and(isTag),
             run: [
@@ -1300,6 +1344,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "target/release/lib.deno.d.ts",
                 "target/release/deno-*.bsdiff",
                 "target/release/deno-*.bsdiff.sha256sum",
+                "target/release/*.cdx.json",
+                "target/release/*.spdx.json",
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
