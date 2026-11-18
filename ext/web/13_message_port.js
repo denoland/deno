@@ -35,6 +35,8 @@ const {
   SafeArrayIterator,
   SafeSet,
   SafeWeakMap,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
   Symbol,
@@ -595,7 +597,19 @@ const emptyTransferables = ObjectFreeze([]);
 function resolveTransferableResource(type) {
   let resource = core.getTransferableResource(type);
   if (resource === undefined) {
-    core.loadExtScript("ext:deno_web/06_streams.js");
+    switch (type) {
+      case "ReadableStream":
+      case "WritableStream":
+      case "TransformStream":
+        core.loadExtScript("ext:deno_web/06_streams.js");
+        break;
+      case "ImageBitmap":
+        core.loadExtScript("ext:deno_image/01_image.js");
+        break;
+      case "OffscreenCanvas":
+        core.loadExtScript("ext:deno_canvas/01_canvas.js");
+        break;
+    }
     resource = core.getTransferableResource(type);
   }
   return resource;
@@ -917,8 +931,16 @@ function serializeJsMessageData(data, transferables) {
 
   const hostObjects = [];
   const transferredArrayBuffers = [];
+  const seenTransferables = new SafeSet();
   for (let i = 0, j = 0; i < transferables.length; i++) {
     const t = transferables[i];
+    if (SetPrototypeHas(seenTransferables, t)) {
+      throw new DOMException(
+        "Transfer list contains duplicate item",
+        "DataCloneError",
+      );
+    }
+    SetPrototypeAdd(seenTransferables, t);
     if (isArrayBuffer(t)) {
       if (
         ArrayBufferPrototypeGetByteLength(t) === 0 &&
@@ -931,7 +953,11 @@ function serializeJsMessageData(data, transferables) {
       }
       j++;
       ArrayPrototypePush(transferredArrayBuffers, t);
-    } else if (t[core.hostObjectBrand]) {
+    } else if (getHostObjectTransferType(t) !== undefined) {
+      const type = getHostObjectTransferType(t);
+      if (!core.getTransferableResource(type)) {
+        throw new DOMException("Value not transferable", "DataCloneError");
+      }
       ArrayPrototypePush(hostObjects, t);
     }
   }
@@ -949,8 +975,8 @@ function serializeJsMessageData(data, transferables) {
   let arrayBufferI = 0;
   for (let i = 0; i < transferables.length; ++i) {
     const transferable = transferables[i];
-    if (transferable[core.hostObjectBrand]) {
-      const type = transferable[core.hostObjectBrand];
+    const type = getHostObjectTransferType(transferable);
+    if (type !== undefined) {
       const rid = core.getTransferableResource(type).send(transferable);
       if (typeof rid === "number") {
         ArrayPrototypePush(serializedTransferables, {
@@ -978,6 +1004,15 @@ function serializeJsMessageData(data, transferables) {
     data: serializedData,
     transferables: serializedTransferables,
   };
+}
+
+function getHostObjectTransferType(value) {
+  const brand = value?.[core.hostObjectBrand];
+  if (typeof brand === "function") {
+    const data = brand.call(value);
+    return typeof data?.type === "string" ? data.type : undefined;
+  }
+  return typeof brand === "string" ? brand : undefined;
 }
 
 webidl.converters.StructuredSerializeOptions = webidl
