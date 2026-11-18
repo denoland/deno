@@ -165,6 +165,45 @@ type MemberPropsCache = deno_maybe_sync::MaybeArc<
   MaybeDashMap<(Url, u64), deno_maybe_sync::MaybeArc<MemberPropsMap>>,
 >;
 
+fn is_known_non_code_filename(file_name: &str) -> bool {
+  if file_name.starts_with('.') {
+    return true;
+  }
+  let lower = file_name.to_ascii_lowercase();
+  if lower.starts_with("license")
+    || lower.starts_with("licence")
+    || lower.starts_with("readme")
+    || lower.starts_with("changelog")
+    || lower.starts_with("notice")
+  {
+    return true;
+  }
+  const NON_CODE_NAMES: &[&str] = &[
+    "authors",
+    "changes",
+    "code_of_conduct",
+    "containerfile",
+    "contributors",
+    "copying",
+    "dockerfile",
+    "funding",
+    "gnumakefile",
+    "history",
+    "makefile",
+    "patents",
+    "security",
+  ];
+  NON_CODE_NAMES.contains(&lower.as_str())
+}
+
+fn specifier_file_name_and_has_ext(specifier: &Url) -> (&str, bool) {
+  let file_name = specifier.path().rsplit('/').next().unwrap_or("");
+  let has_ext = file_name
+    .rfind('.')
+    .map_or(false, |idx| idx > 0 && idx < file_name.len() - 1);
+  (file_name, has_ext)
+}
+
 /// Whether a source should skip CJS export analysis (treated as ESM) instead of
 /// being parsed for `module.exports`/`require`.
 ///
@@ -172,13 +211,18 @@ type MemberPropsCache = deno_maybe_sync::MaybeArc<
 /// everything except extensionless files (`MediaType::Unknown`), which may be
 /// real modules (an npm `"main"` with no extension — see
 /// `test-module-main-extension-lookup`) OR binary assets a framework happened to
-/// `require()`. Feeding binary to swc panics (it asserts on a backwards span), so
-/// for `Unknown` we only analyze when the source looks like text rather than
-/// blanket-skipping every extensionless module.
+/// `require()`. Feeding binary or large markdown/prose docs to swc panics or
+/// stack-overflows, so for `Unknown` we skip files with unrecognized extensions,
+/// known non-code extensionless files (like LICENSE, README), and extensionless
+/// text that contains no CJS keywords.
 ///
 /// `MediaType::Json` is handled by the caller before this and is not considered
 /// here.
-fn should_skip_cjs_analysis(media_type: MediaType, source: &str) -> bool {
+fn should_skip_cjs_analysis(
+  specifier: &Url,
+  media_type: MediaType,
+  source: &str,
+) -> bool {
   let is_definitely_non_script = !matches!(
     media_type,
     MediaType::JavaScript
@@ -194,8 +238,31 @@ fn should_skip_cjs_analysis(media_type: MediaType, source: &str) -> bool {
       | MediaType::Dcts
       | MediaType::Unknown
   );
-  let looks_binary = source.contains('\0') || source.contains('\u{FFFD}');
-  is_definitely_non_script || (media_type == MediaType::Unknown && looks_binary)
+  if is_definitely_non_script {
+    return true;
+  }
+  if media_type == MediaType::Unknown {
+    let (file_name, has_ext) = specifier_file_name_and_has_ext(specifier);
+    if has_ext {
+      // Has an extension, but MediaType is Unknown (.mdx, .txt, .yaml, etc.) -> non-script
+      return true;
+    }
+    let looks_binary = source.contains('\0') || source.contains('\u{FFFD}');
+    if looks_binary {
+      return true;
+    }
+    if is_known_non_code_filename(file_name) {
+      return true;
+    }
+    if !source.is_empty()
+      && !source.contains("exports")
+      && !source.contains("module")
+      && !source.starts_with("#!")
+    {
+      return true;
+    }
+  }
+  false
 }
 
 pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
@@ -242,7 +309,7 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
       return Ok(DenoCjsAnalysis::Cjs(Default::default()));
     }
 
-    if should_skip_cjs_analysis(media_type, source) {
+    if should_skip_cjs_analysis(specifier, media_type, source) {
       return Ok(DenoCjsAnalysis::Esm);
     }
 
@@ -355,6 +422,9 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
     if media_type == MediaType::Json {
       return Ok(None);
     }
+    if should_skip_cjs_analysis(specifier, media_type, source) {
+      return Ok(None);
+    }
     let source_hash = self.cache.compute_source_hash(source).0;
     let cache_key = (specifier.clone(), source_hash);
     if let Some(map) = self
@@ -421,8 +491,9 @@ mod tests {
   fn skips_non_script_media_types() {
     // Definitely-non-script extensions never carry CJS exports, regardless of
     // whether their bytes happen to look like text.
+    let url = Url::parse("file:///test/file").unwrap();
     for mt in [MediaType::Wasm, MediaType::Css, MediaType::Html] {
-      assert!(should_skip_cjs_analysis(mt, "anything"));
+      assert!(should_skip_cjs_analysis(&url, mt, "anything"));
     }
   }
 
@@ -430,6 +501,7 @@ mod tests {
   fn analyzes_script_media_types() {
     // Real script extensions are always analyzed, even if the source contains
     // bytes the binary heuristic would flag (the extension is authoritative).
+    let url = Url::parse("file:///test/file.js").unwrap();
     for mt in [
       MediaType::JavaScript,
       MediaType::Mjs,
@@ -440,8 +512,8 @@ mod tests {
       MediaType::Cts,
       MediaType::Tsx,
     ] {
-      assert!(!should_skip_cjs_analysis(mt, "module.exports = 1;"));
-      assert!(!should_skip_cjs_analysis(mt, "still\u{FFFD}script"));
+      assert!(!should_skip_cjs_analysis(&url, mt, "module.exports = 1;"));
+      assert!(!should_skip_cjs_analysis(&url, mt, "still\u{FFFD}script"));
     }
   }
 
@@ -449,11 +521,13 @@ mod tests {
   fn analyzes_extensionless_text() {
     // Extensionless npm `"main"` entries (e.g. `test-module-main-extension-lookup`)
     // are real modules and must be analyzed rather than skipped.
+    let url = Url::parse("file:///test/main").unwrap();
     assert!(!should_skip_cjs_analysis(
+      &url,
       MediaType::Unknown,
       "module.exports = function () {};\n",
     ));
-    assert!(!should_skip_cjs_analysis(MediaType::Unknown, ""));
+    assert!(!should_skip_cjs_analysis(&url, MediaType::Unknown, ""));
   }
 
   #[test]
@@ -461,13 +535,82 @@ mod tests {
     // Extensionless binary assets a framework happened to `require()` must be
     // skipped: feeding them to swc panics on a backwards span. Detected via a
     // NUL byte or the U+FFFD replacement char (invalid UTF-8 read lossily).
+    let url = Url::parse("file:///test/main").unwrap();
     assert!(should_skip_cjs_analysis(
+      &url,
       MediaType::Unknown,
       "MZ\u{0}\u{0}binary",
     ));
     assert!(should_skip_cjs_analysis(
+      &url,
       MediaType::Unknown,
       "PNG\u{FFFD}\u{FFFD}",
+    ));
+  }
+
+  #[test]
+  fn skips_unrecognized_extension() {
+    // Files with non-script extensions (e.g. .mdx, .txt, .yaml) map to MediaType::Unknown,
+    // but should be skipped because their extension shows they are not scripts.
+    for ext in ["mdx", "txt", "yaml", "yml", "toml", "c", "h", "png"] {
+      let url = Url::parse(&format!("file:///test/file.{ext}")).unwrap();
+      assert!(should_skip_cjs_analysis(
+        &url,
+        MediaType::Unknown,
+        "module.exports = 1;"
+      ));
+    }
+  }
+
+  #[test]
+  fn skips_known_non_code_extensionless_files() {
+    for name in [
+      "LICENSE",
+      "LICENSE-MIT",
+      "licence",
+      "README",
+      "CHANGELOG",
+      "AUTHORS",
+      "NOTICE",
+      "Makefile",
+      "Dockerfile",
+      ".gitignore",
+    ] {
+      let url = Url::parse(&format!("file:///test/{name}")).unwrap();
+      assert!(should_skip_cjs_analysis(
+        &url,
+        MediaType::Unknown,
+        "some text without cjs keywords"
+      ));
+    }
+  }
+
+  #[test]
+  fn skips_extensionless_without_cjs_keywords() {
+    let url = Url::parse("file:///test/arbitrary_file").unwrap();
+    // Non-code plain text without module/exports/shebang is skipped
+    assert!(should_skip_cjs_analysis(
+      &url,
+      MediaType::Unknown,
+      "hello world\nthis is some random text\n"
+    ));
+    // Extensionless file with shebang is analyzed
+    assert!(!should_skip_cjs_analysis(
+      &url,
+      MediaType::Unknown,
+      "#!/usr/bin/env node\nconsole.log(1);"
+    ));
+    // Extensionless file with module.exports is analyzed
+    assert!(!should_skip_cjs_analysis(
+      &url,
+      MediaType::Unknown,
+      "module.exports = { a: 1 };"
+    ));
+    // Extensionless file with exports is analyzed
+    assert!(!should_skip_cjs_analysis(
+      &url,
+      MediaType::Unknown,
+      "exports.a = 1;"
     ));
   }
 }
