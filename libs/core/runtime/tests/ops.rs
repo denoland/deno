@@ -222,6 +222,192 @@ fn test_op_disabled() {
 }
 
 #[test]
+fn test_disabled_extension() {
+  #[op2(fast)]
+  #[smi]
+  fn op_foo() -> u32 {
+    42
+  }
+
+  struct Foo;
+
+  // SAFETY: zero-sized payload.
+  unsafe impl GarbageCollected for Foo {
+    fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+    fn get_name(&self) -> &'static std::ffi::CStr {
+      c"Foo"
+    }
+  }
+
+  #[op2]
+  impl Foo {
+    #[constructor]
+    #[cppgc]
+    fn new() -> Foo {
+      Foo
+    }
+
+    #[fast]
+    #[smi]
+    fn bar(&self) -> u32 {
+      42
+    }
+
+    #[getter]
+    #[smi]
+    fn baz(&self) -> u32 {
+      42
+    }
+
+    #[fast]
+    #[static_method]
+    #[smi]
+    fn qux() -> u32 {
+      42
+    }
+  }
+
+  deno_core::extension!(test_ext, ops = [op_foo], objects = [Foo]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+  let r = runtime
+    .execute_script(
+      "test.js",
+      r#"
+        const { op_foo, Foo } = Deno.core.ops;
+        const foo = new Foo();
+        op_foo() + foo.bar() + foo.baz + Foo.qux();
+      "#,
+    )
+    .unwrap();
+  {
+    deno_core::scope!(scope, runtime);
+    assert_eq!(r.open(scope).integer_value(scope), Some(168));
+  }
+
+  // Every op of a disabled extension throws, including those of its classes.
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init().disable()],
+    ..Default::default()
+  });
+  let mut ran = vec![];
+  for script in [
+    "Deno.core.ops.op_foo()",
+    "new Deno.core.ops.Foo()",
+    "Deno.core.ops.Foo.prototype.bar.call({})",
+    "Object.getOwnPropertyDescriptor(Deno.core.ops.Foo.prototype, 'baz').get.call({})",
+    "Deno.core.ops.Foo.qux()",
+  ] {
+    // A method called on the wrong receiver throws if it runs, too.
+    let result = runtime.execute_script("test.js", script);
+    if !matches!(result, Err(err) if err.to_string().contains("op is disabled"))
+    {
+      ran.push(script);
+    }
+  }
+  assert!(ran.is_empty(), "ran with the extension disabled: {ran:#?}");
+}
+
+#[test]
+fn test_op_method_middleware() {
+  struct Foo;
+
+  // SAFETY: zero-sized payload.
+  unsafe impl GarbageCollected for Foo {
+    fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
+    fn get_name(&self) -> &'static std::ffi::CStr {
+      c"Foo"
+    }
+  }
+
+  #[op2]
+  impl Foo {
+    #[constructor]
+    #[cppgc]
+    fn new() -> Foo {
+      Foo
+    }
+
+    #[fast]
+    #[smi]
+    fn bar(&self) -> u32 {
+      42
+    }
+
+    #[getter]
+    #[smi]
+    fn baz(&self) -> u32 {
+      42
+    }
+
+    #[fast]
+    #[static_method]
+    #[smi]
+    fn qux() -> u32 {
+      42
+    }
+  }
+
+  deno_core::extension!(test_ext, objects = [Foo]);
+
+  // The middleware sees every op of every class, with the class it belongs
+  // to, and can rewrite it: here it disables the static method.
+  let seen = Rc::new(RefCell::new(vec![]));
+  let record = seen.clone();
+  let mut ext = test_ext::init();
+  ext.method_middleware_fn = Some(Box::new(move |class, kind, op| {
+    let accessor = match op.accessor_type {
+      AccessorType::Getter => " (getter)",
+      AccessorType::Setter => " (setter)",
+      AccessorType::None => "",
+    };
+    record
+      .borrow_mut()
+      .push(format!("{class} {kind:?} {}{accessor}", op.name));
+    match kind {
+      OpMethodKind::StaticMethod => op.disable(),
+      _ => op,
+    }
+  }));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![ext],
+    ..Default::default()
+  });
+  let mut seen = seen.borrow().clone();
+  seen.sort();
+  assert_eq!(
+    seen,
+    [
+      "Foo Constructor new",
+      "Foo Method bar",
+      "Foo Method baz (getter)",
+      "Foo StaticMethod qux",
+    ]
+  );
+
+  let r = runtime
+    .execute_script(
+      "test.js",
+      "const foo = new Deno.core.ops.Foo(); foo.bar() + foo.baz",
+    )
+    .unwrap();
+  {
+    deno_core::scope!(scope, runtime);
+    assert_eq!(r.open(scope).integer_value(scope), Some(84));
+  }
+  let err = runtime
+    .execute_script("test.js", "Deno.core.ops.Foo.qux()")
+    .unwrap_err();
+  assert!(err.to_string().contains("op is disabled"));
+}
+
+#[test]
 fn test_op_detached_buffer() {
   #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
