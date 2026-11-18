@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -527,6 +528,27 @@ async fn setup_config_dir(
       CstInputValue::String(mode.as_str().to_string()),
     );
   }
+
+  // fetch deno.lock from JSR if this is a JSR package
+  let fetched_lockfile = if !flags.no_lock
+    && let Some(fetcher) = jsr_lockfile_fetcher
+  {
+    fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
+  } else {
+    None
+  };
+  // Carry the published lockfile's workspace dependency roots into the
+  // generated config's import map. Without them the local install below would
+  // see an empty workspace, prune those roots from the lockfile, and re-resolve
+  // the pins to newer versions (denoland/deno#33323).
+  if let Some(fetched) = &fetched_lockfile {
+    let imports = config_obj.object_value_or_set("imports");
+    for (key, value) in &fetched.workspace_imports {
+      if imports.get(key).is_none() {
+        imports.append(key, CstInputValue::String(value.clone()));
+      }
+    }
+  }
   fs::write(dir.join("deno.json"), config.to_string())?;
 
   // write package.json for npm specifiers
@@ -543,13 +565,8 @@ async fn setup_config_dir(
     )?;
   }
 
-  // fetch deno.lock from JSR if this is a JSR package
-  if !flags.no_lock
-    && let Some(fetcher) = jsr_lockfile_fetcher
-    && let Some(lockfile_content) =
-      fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
-  {
-    fs::write(dir.join("deno.lock"), lockfile_content)?;
+  if let Some(fetched) = fetched_lockfile {
+    fs::write(dir.join("deno.lock"), fetched.content)?;
   }
 
   // create cloned flags to run cache_top_level_deps
@@ -1366,8 +1383,20 @@ struct JsrLockfileFetcher<'a> {
   npm_package_info_provider: &'a dyn deno_lockfile::NpmPackageInfoProvider,
 }
 
+/// A `deno.lock` fetched from JSR, ready to be written into a global install
+/// directory.
+struct FetchedJsrLockfile {
+  content: String,
+  /// Import map entries (bare package name -> `jsr:`/`npm:` specifier) for the
+  /// workspace dependency roots recorded in the published lockfile.
+  workspace_imports: BTreeMap<String, String>,
+}
+
 impl JsrLockfileFetcher<'_> {
-  async fn fetch_lockfile(&self, module_url: &Url) -> Option<String> {
+  async fn fetch_lockfile(
+    &self,
+    module_url: &Url,
+  ) -> Option<FetchedJsrLockfile> {
     let pkg_ref = JsrPackageReqReference::from_specifier(module_url).ok()?;
     let req = pkg_ref.req();
     let nv = self.jsr_resolver.req_to_nv(req).await.ok().flatten()?;
@@ -1429,7 +1458,14 @@ impl JsrLockfileFetcher<'_> {
     }
 
     log::debug!("Using lockfile from JSR package {}", nv);
-    Some(lockfile.as_json_string())
+    let workspace_imports = lockfile
+      .workspace_dep_reqs()
+      .map(|req| (req.req.name.to_string(), req.to_string()))
+      .collect();
+    Some(FetchedJsrLockfile {
+      content: lockfile.as_json_string(),
+      workspace_imports,
+    })
   }
 }
 
