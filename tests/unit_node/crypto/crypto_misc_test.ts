@@ -1,5 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { randomFillSync, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  getFips,
+  randomFillSync,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
 import {
   assert,
@@ -54,4 +59,9 @@ Deno.test("[node/crypto.timingSafeEqual] RangeError on Buffer with different byt
   const b = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 212, 213, 0]);
 
   assertThrows(() => timingSafeEqual(a, b), RangeError);
+});
+
+Deno.test("[node/crypto.getFips] reports 0 or 1 from the linked crypto module", () => {
+  const fips = getFips();
+  assert(fips === 0 || fips === 1, `unexpected getFips() value: ${fips}`);
 });
