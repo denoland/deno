@@ -2019,6 +2019,110 @@ fn deno_no_prompt_environment_variable() {
 }
 
 #[test]
+fn utime_submillisecond_precision() {
+  use std::time::Duration;
+  use std::time::UNIX_EPOCH;
+
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    include_str!("../testdata/run/utime_submillisecond.ts"),
+  );
+
+  for (kind, atime, mtime, tolerance) in [
+    (
+      "number",
+      UNIX_EPOCH + Duration::new(1_600_000_000, 765_432_000),
+      UNIX_EPOCH + Duration::new(1_700_000_000, 123_456_000),
+      // Allow floating-point error and the 100ns resolution of NTFS, while
+      // requiring precision finer than a microsecond.
+      Duration::from_nanos(999),
+    ),
+    (
+      "date",
+      UNIX_EPOCH + Duration::new(1_600_000_000, 765_000_000),
+      UNIX_EPOCH + Duration::new(1_700_000_000, 123_000_000),
+      Duration::ZERO,
+    ),
+    #[cfg(unix)]
+    (
+      "edge-date",
+      UNIX_EPOCH - Duration::from_millis(2_007),
+      UNIX_EPOCH + Duration::from_millis(1_001),
+      Duration::ZERO,
+    ),
+  ] {
+    for api in [
+      "deno_sync",
+      "deno_async",
+      "file_sync",
+      "file_async",
+      "node_sync",
+      "node_callback",
+      "node_promise",
+      #[cfg(unix)]
+      "link_sync",
+      #[cfg(unix)]
+      "link_callback",
+      #[cfg(unix)]
+      "link_promise",
+    ] {
+      let is_link = api.starts_with("link_");
+      if kind == "edge-date" && !is_link {
+        continue;
+      }
+      let path = if is_link {
+        format!("{api}-{kind}")
+      } else {
+        "file.txt".into()
+      };
+      #[cfg(unix)]
+      if is_link {
+        std::os::unix::fs::symlink("file.txt", temp_dir.path().join(&path))
+          .unwrap();
+      }
+      context
+        .new_command()
+        .args_vec(["run", "--allow-write", "main.ts", api, kind])
+        .run()
+        .skip_output_check()
+        .assert_exit_code(0);
+
+      // Read native metadata because Deno.stat truncates the written times.
+      let metadata =
+        std::fs::symlink_metadata(temp_dir.path().join(path)).unwrap();
+      if is_link {
+        assert!(metadata.file_type().is_symlink());
+        let target =
+          std::fs::metadata(temp_dir.path().join("file.txt")).unwrap();
+        assert_eq!(
+          target.accessed().unwrap(),
+          UNIX_EPOCH + Duration::from_secs(100)
+        );
+        assert_eq!(
+          target.modified().unwrap(),
+          UNIX_EPOCH + Duration::from_secs(200)
+        );
+      }
+      for (name, actual, expected) in [
+        ("atime", metadata.accessed().unwrap(), atime),
+        ("mtime", metadata.modified().unwrap(), mtime),
+      ] {
+        let difference = actual
+          .duration_since(expected)
+          .or_else(|_| expected.duration_since(actual))
+          .unwrap();
+        assert!(
+          difference <= tolerance,
+          "{api} {kind} {name}: expected {expected:?}, got {actual:?}"
+        );
+      }
+    }
+  }
+}
+
+#[test]
 fn running_declaration_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

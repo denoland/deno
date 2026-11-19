@@ -531,7 +531,9 @@ function toUnixTimeFromEpoch(value) {
   }
 
   const seconds = MathFloor(value);
-  const nanoseconds = MathTrunc((value * 1e3) - (seconds * 1e3)) * 1e6;
+  // Node fs wrappers convert Date to numeric seconds before calling this
+  // function. Keep the millisecond arithmetic and truncate only after scaling.
+  const nanoseconds = MathTrunc(((value * 1e3) - (seconds * 1e3)) * 1e6);
 
   return [
     seconds,
