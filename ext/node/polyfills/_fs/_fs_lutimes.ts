@@ -11,7 +11,9 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 
 const {
+  DatePrototypeGetTime,
   Error,
+  MathFloor,
   MathTrunc,
   Number,
   NumberIsFinite,
@@ -39,10 +41,11 @@ function getValidUnixTime(
     );
   }
 
-  const unixSeconds = toUnixTimestamp(value);
-
-  const seconds = MathTrunc(unixSeconds);
-  const nanoseconds = MathTrunc((unixSeconds * 1e3) - (seconds * 1e3)) * 1e6;
+  const milliseconds = core.isDate(value)
+    ? DatePrototypeGetTime(value)
+    : toUnixTimestamp(value) * 1e3;
+  const seconds = MathFloor(milliseconds / 1e3);
+  const nanoseconds = MathTrunc((milliseconds - (seconds * 1e3)) * 1e6);
 
   return [
     seconds,

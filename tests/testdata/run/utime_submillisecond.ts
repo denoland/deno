@@ -1,18 +1,28 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { utimes, utimesSync } from "node:fs";
-import { utimes as utimesPromise } from "node:fs/promises";
+import { lutimes, lutimesSync, utimes, utimesSync } from "node:fs";
+import {
+  lutimes as lutimesPromise,
+  utimes as utimesPromise,
+} from "node:fs/promises";
 
-const path = "file.txt";
-const atime = Deno.args[1] === "date"
-  ? new Date(1_600_000_000_765)
-  : 1_600_000_000.7654321;
-const mtime = Deno.args[1] === "date"
-  ? new Date(1_700_000_000_123)
-  : 1_700_000_000.1234567;
-Deno.writeTextFileSync(path, "");
+const [api, kind] = Deno.args;
+const times = {
+  number: [1_600_000_000.7654321, 1_700_000_000.1234567],
+  date: [new Date(1_600_000_000_765), new Date(1_700_000_000_123)],
+  "edge-date": [new Date(-2_007), new Date(1_001)],
+} as const;
+const [atime, mtime] = times[kind as keyof typeof times];
 
-switch (Deno.args[0]) {
+const isLink = api.startsWith("link_");
+const target = "file.txt";
+const path = isLink ? `${api}-${kind}` : target;
+Deno.writeTextFileSync(target, "");
+if (isLink) {
+  Deno.utimeSync(target, 100, 200);
+}
+
+switch (api) {
   case "deno_sync":
     Deno.utimeSync(path, atime, mtime);
     break;
@@ -30,19 +40,22 @@ switch (Deno.args[0]) {
     break;
   }
   case "node_sync":
-    utimesSync(path, atime, mtime);
+  case "link_sync":
+    (isLink ? lutimesSync : utimesSync)(path, atime, mtime);
     break;
   case "node_callback":
+  case "link_callback":
     await new Promise<void>((resolve, reject) => {
-      utimes(path, atime, mtime, (error) => {
+      (isLink ? lutimes : utimes)(path, atime, mtime, (error) => {
         if (error) reject(error);
         else resolve();
       });
     });
     break;
   case "node_promise":
-    await utimesPromise(path, atime, mtime);
+  case "link_promise":
+    await (isLink ? lutimesPromise : utimesPromise)(path, atime, mtime);
     break;
   default:
-    throw new Error(`Unknown API: ${Deno.args[0]}`);
+    throw new Error(`Unknown API: ${api}`);
 }
