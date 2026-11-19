@@ -12,6 +12,7 @@ use image::Pixel;
 use image::Primitive;
 use image::Rgb;
 use image::Rgba;
+use image::RgbaImage;
 use lcms2::PixelFormat;
 use lcms2::Pod;
 use lcms2::Profile;
@@ -234,6 +235,27 @@ where
   }
 
   out
+}
+
+/// Invert the premultiplied alpha channel of an RGBA8 image in place.
+///
+/// Unlike [`unpremultiply_alpha`], this does not try to detect whether the
+/// image is premultiplied; the caller must know that it is, e.g. the contents
+/// of a WebGPU canvas configured with `alphaMode: "premultiplied"`.
+pub fn unpremultiply_rgba8_in_place(image: &mut RgbaImage) {
+  for pixel in image.pixels_mut() {
+    *pixel = pixel.unpremultiply_alpha();
+  }
+}
+
+/// Premultiplies the color channels of every pixel by its alpha, in place.
+///
+/// Dropping the alpha channel of the result composites the image over opaque
+/// black, which is what encoders without alpha support (JPEG) need.
+pub fn premultiply_rgba8_in_place(image: &mut RgbaImage) {
+  for pixel in image.pixels_mut() {
+    *pixel = pixel.premultiply_alpha();
+  }
 }
 
 /// Invert the premultiplied alpha channel of the image.
@@ -619,6 +641,30 @@ mod tests {
     let rgba = Rgba::<u8>([255, 0, 0, 0]);
     let rgba = rgba.unpremultiply_alpha();
     assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 0]));
+  }
+
+  #[test]
+  fn test_unpremultiply_rgba8_in_place() {
+    // https://github.com/denoland/deno/issues/37155
+    let mut image = RgbaImage::from_raw(
+      3,
+      1,
+      vec![
+        153, 51, 0, 153, // semi-transparent
+        255, 255, 255, 255, // opaque
+        0, 0, 0, 0, // fully transparent
+      ],
+    )
+    .unwrap();
+    unpremultiply_rgba8_in_place(&mut image);
+    assert_eq!(
+      image.into_raw(),
+      vec![
+        255, 85, 0, 153, //
+        255, 255, 255, 255, //
+        0, 0, 0, 0, //
+      ]
+    );
   }
 
   #[test]
