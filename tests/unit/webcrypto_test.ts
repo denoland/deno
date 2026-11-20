@@ -2171,6 +2171,46 @@ Deno.test(async function testECspkiRoundTrip() {
   await crypto.subtle.importKey("spki", spki, alg, true, []);
 });
 
+Deno.test(async function ecImportRawValidatesPoint() {
+  const fieldPrimes = {
+    "P-256": "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
+    "P-384":
+      "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe" +
+      "ffffffff0000000000000000ffffffff",
+    "P-521": "01" + "ff".repeat(65),
+  };
+  for (const [namedCurve, hex] of Object.entries(fieldPrimes)) {
+    const algorithm = { name: "ECDH", namedCurve };
+    const prime = decodeHex(hex);
+
+    // Each curve has a point with x = 0. Encoding x as p must be rejected
+    // even though it reduces to the same field element.
+    const compressed = new Uint8Array(1 + prime.length);
+    compressed[0] = 0x02;
+    const key = await crypto.subtle.importKey(
+      "raw",
+      compressed,
+      algorithm,
+      true,
+      [],
+    );
+    const nonCanonical = new Uint8Array(
+      await crypto.subtle.exportKey("raw", key),
+    );
+    nonCanonical.set(prime, 1);
+
+    const offCurve = new Uint8Array(1 + 2 * prime.length);
+    offCurve[0] = 0x04; // (0, 0)
+    for (const point of [offCurve, nonCanonical]) {
+      const err = await assertRejects(
+        () => crypto.subtle.importKey("raw", point, algorithm, false, []),
+        DOMException,
+      );
+      assertEquals(err.name, "DataError");
+    }
+  }
+});
+
 // https://github.com/denoland/deno/issues/34044
 Deno.test(async function p521CompressedSpkiExportsUncompressed() {
   // deno-fmt-ignore
