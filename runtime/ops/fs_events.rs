@@ -62,7 +62,7 @@ struct FsEventsResource {
   /// The (path, recursive_mode) pairs this resource registered. Tracked so the
   /// shared watcher unwatches them when the last interested resource closes.
   /// Emptied by [`FsEventsResource::release_watches`].
-  watched: Mutex<Vec<(PathBuf, RecursiveMode)>>,
+  watched: RefCell<Vec<(PathBuf, RecursiveMode)>>,
   /// Set by the watcher callback when the event queue overflowed and events
   /// were dropped; drained by `op_fs_events_poll`, which surfaces the loss as
   /// a `flag: "rescan"` event.
@@ -83,24 +83,33 @@ impl FsEventsResource {
   /// `watch()`, so it would never get events if the path was recreated (see
   /// denoland/deno#36937). It only releases once.
   fn release_watches(&self) {
-    let watched = std::mem::take(&mut *self.watched.lock());
-    if watched.is_empty() {
-      return;
-    }
-    let mut watched_paths = self.inner.watched_paths.lock();
-    let mut watcher = self.inner.watcher.lock();
-    for (path, mode) in &watched {
-      let key = (path.clone(), *mode);
-      let Some(count) = watched_paths.get_mut(&key) else {
-        continue;
-      };
-      *count = count.saturating_sub(1);
-      if *count == 0 {
-        watched_paths.remove(&key);
-        // Best-effort: ignore errors (e.g. the watcher already lost track of
-        // the path because the path was deleted).
-        let _ = watcher.unwatch(path);
-      }
+    let watched = std::mem::take(&mut *self.watched.borrow_mut());
+    release_watch_counts(&self.inner, &watched);
+  }
+}
+
+/// Drop one reference from each `(path, mode)` pair, and unwatch the ones
+/// nobody else depends on.
+fn release_watch_counts(
+  inner: &WatcherInner,
+  watched: &[(PathBuf, RecursiveMode)],
+) {
+  if watched.is_empty() {
+    return;
+  }
+  let mut watched_paths = inner.watched_paths.lock();
+  let mut watcher = inner.watcher.lock();
+  for (path, mode) in watched {
+    let key = (path.clone(), *mode);
+    let Some(count) = watched_paths.get_mut(&key) else {
+      continue;
+    };
+    *count = count.saturating_sub(1);
+    if *count == 0 {
+      watched_paths.remove(&key);
+      // Best-effort: ignore errors (e.g. the watcher already lost track of
+      // the path because the path was deleted).
+      let _ = watcher.unwatch(path);
     }
   }
 }
@@ -615,7 +624,7 @@ fn open_fs_events_resource(
     cancel: Default::default(),
     inner,
     id,
-    watched: Mutex::new(watched),
+    watched: RefCell::new(watched),
     overflowed,
   };
   let rid = state.resource_table.add(resource);
@@ -633,18 +642,7 @@ fn rollback_partial_open(
 ) {
   inner.senders.lock().retain(|ws| ws.id != id);
 
-  let mut watched_paths = inner.watched_paths.lock();
-  let mut watcher = inner.watcher.lock();
-  for (path, mode) in watched {
-    let key = (path.clone(), *mode);
-    if let Some(count) = watched_paths.get_mut(&key) {
-      *count = count.saturating_sub(1);
-      if *count == 0 {
-        watched_paths.remove(&key);
-        let _ = watcher.unwatch(path);
-      }
-    }
-  }
+  release_watch_counts(inner, watched);
 }
 
 #[op2]
@@ -678,7 +676,7 @@ async fn op_fs_events_poll(
     }
     let paths = resource
       .watched
-      .lock()
+      .borrow()
       .iter()
       .map(|(p, _)| p.clone())
       .collect();

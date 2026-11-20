@@ -578,3 +578,48 @@ Deno.test(
     }
   },
 );
+
+// https://github.com/denoland/deno/issues/36937
+//
+// Closing a watcher while a poll is still pending must release its watch right
+// away. Otherwise a watcher opened for the same path in the same tick finds a
+// stale watch count, skips registering the path, and never gets events once
+// the directory has been recreated (inotify drops its watch on delete).
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsReopenAfterCloseWithPendingPoll() {
+    const testDir = await makeTempDir();
+
+    const first = Deno.watchFs(testDir);
+    // Leave a poll in flight, like `for await` does while waiting for events.
+    const pendingPoll = first.next();
+    await delay(100);
+
+    // Nothing between the remove and the close yields, so the poll is still
+    // pending when the watcher is closed.
+    Deno.removeSync(testDir, { recursive: true });
+    Deno.mkdirSync(testDir);
+
+    first.close();
+    using second = Deno.watchFs(testDir);
+    await pendingPoll;
+    await delay(50);
+
+    const file = testDir + "/after-reopen.txt";
+    Deno.writeTextFileSync(file, "hello");
+
+    let sawFile = false;
+    const timeout = setTimeout(() => second.close(), 5000);
+    try {
+      for await (const event of second) {
+        if (event.paths.some((path) => path.endsWith("after-reopen.txt"))) {
+          sawFile = true;
+          break;
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+    assert(sawFile, "the reopened watcher never saw the new file");
+  },
+);
