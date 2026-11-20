@@ -144,6 +144,9 @@
 
   function copyPrototype(src, dest, prefix) {
     for (const key of ReflectOwnKeys(src)) {
+      if (key === "constructor") {
+        continue;
+      }
       const newKey = getNewKey(key);
       const desc = ReflectGetOwnPropertyDescriptor(src, key);
       if ("get" in desc) {
@@ -634,6 +637,56 @@
       throw new Error("queueMicrotask is already defined");
     }
     queueMicrotask = value;
+  };
+
+  // Create getter and setter for `SharedArrayBuffer`, it hasn't been bound yet.
+  // Defer copying prototype methods until first access so isolates with a tight
+  // heap limit do not OOM during 01_core.js.
+  let sharedArrayBufferConstructor = undefined;
+  let sharedArrayBufferPrimordials = undefined;
+  function ensureSharedArrayBufferPrimordials() {
+    if (sharedArrayBufferPrimordials !== undefined) {
+      return;
+    }
+    if (sharedArrayBufferConstructor === undefined) {
+      return;
+    }
+    const dest = { __proto__: null };
+    dest.SharedArrayBuffer = sharedArrayBufferConstructor;
+    copyPropsRenamed(sharedArrayBufferConstructor, dest, "SharedArrayBuffer");
+    copyPrototype(
+      sharedArrayBufferConstructor.prototype,
+      dest,
+      "SharedArrayBufferPrototype",
+    );
+    sharedArrayBufferPrimordials = dest;
+  }
+  [
+    "SharedArrayBuffer",
+    "SharedArrayBufferLength",
+    "SharedArrayBufferName",
+    "SharedArrayBufferPrototype",
+    "SharedArrayBufferGetSymbolSpecies",
+    "SharedArrayBufferPrototypeGetByteLength",
+    "SharedArrayBufferPrototypeGetGrowable",
+    "SharedArrayBufferPrototypeGetMaxByteLength",
+    "SharedArrayBufferPrototypeSlice",
+    "SharedArrayBufferPrototypeGrow",
+    "SharedArrayBufferPrototypeSymbolToStringTag",
+  ].forEach((name) => {
+    ObjectDefineProperty(primordials, name, {
+      __proto__: null,
+      get() {
+        ensureSharedArrayBufferPrimordials();
+        return sharedArrayBufferPrimordials[name];
+      },
+    });
+  });
+  primordials.setSharedArrayBuffer = (value) => {
+    if (sharedArrayBufferConstructor !== undefined) {
+      throw new Error("SharedArrayBuffer is already defined");
+    }
+    sharedArrayBufferConstructor = value;
   };
 
   // Renaming from `eval` is necessary because otherwise it would perform direct

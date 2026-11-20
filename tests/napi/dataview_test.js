@@ -18,3 +18,8 @@ Deno.test("napi create_dataview out of range returns napi_pending_exception", fu
   // [status, exception pending, result set]; 10 is napi_pending_exception
   assertEquals(lib.test_dataview_out_of_range(), [10, true, false]);
 });
+
+Deno.test("napi create_dataview with overflowing offset + length throws", function () {
+  // [status, exception pending, result set]; 10 is napi_pending_exception
+  assertEquals(lib.test_dataview_overflow(), [10, true, false]);
+});

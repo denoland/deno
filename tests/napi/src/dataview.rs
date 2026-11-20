@@ -82,19 +82,22 @@ extern "C" fn test_is_dataview(
   result
 }
 
-/// Test napi_create_dataview past the end of the buffer: it throws a
-/// RangeError, returns napi_pending_exception and leaves the result unset.
+/// Call napi_create_dataview with an out of range byte_length/byte_offset over
+/// a 16 byte buffer: it throws a RangeError, returns napi_pending_exception
+/// and leaves the result unset.
 /// Returns [status, exception pending, result set] after clearing the error.
-extern "C" fn test_dataview_out_of_range(
+fn create_dataview_out_of_range(
   env: napi_env,
-  _info: napi_callback_info,
+  byte_length: usize,
+  byte_offset: usize,
 ) -> napi_value {
   let mut ab: napi_value = ptr::null_mut();
   let mut ab_data: *mut std::ffi::c_void = ptr::null_mut();
   assert_napi_ok!(napi_create_arraybuffer(env, 16, &mut ab_data, &mut ab));
 
   let mut dv: napi_value = ptr::null_mut();
-  let status = unsafe { napi_create_dataview(env, 8, ab, 12, &mut dv) };
+  let status =
+    unsafe { napi_create_dataview(env, byte_length, ab, byte_offset, &mut dv) };
 
   let mut is_pending = false;
   let mut exception: napi_value = ptr::null_mut();
@@ -115,6 +118,22 @@ extern "C" fn test_dataview_out_of_range(
   result
 }
 
+/// Test napi_create_dataview past the end of the buffer.
+extern "C" fn test_dataview_out_of_range(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  create_dataview_out_of_range(env, 8, 12)
+}
+
+/// Test napi_create_dataview where byte_offset + byte_length overflows usize.
+extern "C" fn test_dataview_overflow(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  create_dataview_out_of_range(env, usize::MAX, 12)
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_dataview", test_dataview),
@@ -124,6 +143,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       "test_dataview_out_of_range",
       test_dataview_out_of_range
     ),
+    napi_new_property!(env, "test_dataview_overflow", test_dataview_overflow),
   ];
 
   assert_napi_ok!(napi_define_properties(

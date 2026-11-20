@@ -33,6 +33,7 @@ const {
   ObjectGetPrototypeOf,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   RangeError,
   SafeMap,
   SafeMapIterator,
@@ -45,6 +46,8 @@ const {
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
+
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
 
@@ -234,7 +237,7 @@ class Kv {
       cursor?: string;
       reverse?: boolean;
       consistency?: Deno.KvConsistencyLevel;
-    } = { __proto__: null },
+    } = EMPTY_OPTIONS,
   ): KvListIterator {
     if (
       options.limit !== undefined &&
@@ -374,7 +377,7 @@ class Kv {
     finishMessageOps.clear();
   }
 
-  watch(keys: Deno.KvKey[], options = { __proto__: null }) {
+  watch(keys: Deno.KvKey[], options = EMPTY_OPTIONS) {
     const raw = options.raw ?? false;
     const rid = op_kv_watch(this.#rid, keys);
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = ArrayFrom(

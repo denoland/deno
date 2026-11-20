@@ -53,6 +53,9 @@ const {
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const { isArrayBufferView, isTypedArray } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
@@ -501,7 +504,7 @@ class SecureContext {
     ecdhCurve?: string;
   };
 
-  constructor(options: any = { __proto__: null }) {
+  constructor(options: any = kEmptyObject) {
     if (options.ciphers != null) {
       validateString(options.ciphers, "options.ciphers");
       validateCipherList(options.ciphers);
@@ -680,7 +683,7 @@ class SecureContext {
   }
 }
 
-function createSecureContext(options: any = { __proto__: null }) {
+function createSecureContext(options: any = kEmptyObject) {
   return new SecureContext(options);
 }
 

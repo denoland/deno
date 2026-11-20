@@ -229,6 +229,7 @@ const {
   NumberIsNaN,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
@@ -259,12 +260,11 @@ const {
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
 
-const defaultStatOptions = { __proto__: null, bigint: false };
-const defaultStatSyncOptions = {
-  __proto__: null,
+const defaultStatOptions = ObjectSetPrototypeOf({ bigint: false }, null);
+const defaultStatSyncOptions = ObjectSetPrototypeOf({
   bigint: false,
   throwIfNoEntry: true,
-};
+}, null);
 
 function stat(
   path: string | Buffer | URL,
@@ -632,10 +632,7 @@ function readvPromise(
 
 // -- readFile --
 
-const readFileDefaultOptions = {
-  __proto__: null,
-  flag: "r",
-};
+const readFileDefaultOptions = ObjectSetPrototypeOf({ flag: "r" }, null);
 
 function readFileMaybeDecode(data: Uint8Array, encoding: Encodings): string;
 function readFileMaybeDecode(
@@ -2411,7 +2408,7 @@ function opendirSync(
  */
 function openAsBlob(
   path: string | Buffer | URL,
-  options: { type?: string } = { __proto__: null },
+  options: { type?: string } = kEmptyObject,
 ): Promise<Blob> {
   validateObject(options, "options");
   const type = options.type || "";

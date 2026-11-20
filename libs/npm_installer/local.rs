@@ -685,7 +685,8 @@ impl<
           symlink_package_dir(
             sys.as_ref(),
             &dep_folder_path,
-            &join_package_name(Cow::Borrowed(&sub_node_modules), name),
+            &sub_node_modules,
+            name,
           )?;
         }
       }
@@ -760,13 +761,12 @@ impl<
             sys.fs_create_dir_all(&dest_node_modules)?;
             existing_child_node_modules_dirs.insert(dest_node_modules.clone());
           }
-          let mut dest_path = dest_node_modules;
-          dest_path.push(remote_alias);
 
           symlink_package_dir(
             sys.as_ref(),
             &local_registry_package_path,
-            &dest_path,
+            &dest_node_modules,
+            remote_alias,
           )?;
         } else {
           // symlink the package into `node_modules/<alias>`
@@ -775,10 +775,8 @@ impl<
             symlink_package_dir(
               sys.as_ref(),
               &local_registry_package_path,
-              &join_package_name(
-                Cow::Borrowed(&self.root_node_modules_path),
-                remote_alias,
-              ),
+              &self.root_node_modules_path,
+              remote_alias,
             )?;
           }
         }
@@ -820,10 +818,8 @@ impl<
         symlink_package_dir(
           sys.as_ref(),
           &local_registry_package_path,
-          &join_package_name(
-            Cow::Borrowed(&self.root_node_modules_path),
-            &id.nv.name,
-          ),
+          &self.root_node_modules_path,
+          &id.nv.name,
         )?;
       }
 
@@ -852,10 +848,8 @@ impl<
         symlink_package_dir(
           sys.as_ref(),
           &local_registry_package_path,
-          &join_package_name(
-            Cow::Borrowed(&self.root_node_modules_path),
-            &alias,
-          ),
+          &self.root_node_modules_path,
+          &alias,
         )?;
       }
     }
@@ -906,10 +900,8 @@ impl<
         symlink_package_dir(
           sys.as_ref(),
           &local_registry_package_path,
-          &join_package_name(
-            Cow::Borrowed(&deno_node_modules_dir),
-            &package.id.nv.name,
-          ),
+          &deno_node_modules_dir,
+          &package.id.nv.name,
         )?;
       }
     }
@@ -956,7 +948,8 @@ impl<
         symlink_package_dir(
           sys.as_ref(),
           &pkg.target_dir,
-          &self.root_node_modules_path.join(pkg_alias),
+          &self.root_node_modules_path,
+          pkg_alias,
         )?;
       }
     }
@@ -1055,7 +1048,8 @@ impl<
             symlink_package_dir(
               sys.as_ref(),
               &target_path,
-              &member_node_modules.join(alias.as_str()),
+              &member_node_modules,
+              alias.as_str(),
             )?;
           }
         }
@@ -1676,6 +1670,38 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 }
 
+/// Builds a link destination from an unscoped or scoped package name.
+fn package_link_path(
+  node_modules: &Path,
+  name: &str,
+) -> std::io::Result<PathBuf> {
+  let valid_part = |part: &str| {
+    !part.is_empty()
+      && part != "."
+      && part != ".."
+      && !part.ends_with(['.', ' '])
+      && !part.contains(['\\', ':', '\0'])
+  };
+  let valid = if let Some(scoped) = name.strip_prefix('@') {
+    scoped.split_once('/').is_some_and(|(scope, package)| {
+      valid_part(scope) && valid_part(package) && !package.contains('/')
+    })
+  } else {
+    valid_part(name) && !name.contains('/')
+  };
+  if !valid
+    || [".bin", ".deno", "node_modules"]
+      .iter()
+      .any(|reserved| name.eq_ignore_ascii_case(reserved))
+  {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      format!("Invalid npm package name: {name:?}"),
+    ));
+  }
+  Ok(join_package_name(Cow::Borrowed(node_modules), name))
+}
+
 pub(crate) fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
@@ -1686,8 +1712,11 @@ pub(crate) fn symlink_package_dir(
      + sys_traits::FsCreateJunction
    ),
   old_path: &Path,
-  new_path: &Path,
+  node_modules: &Path,
+  name: &str,
 ) -> Result<(), std::io::Error> {
+  let new_path = package_link_path(node_modules, name)?;
+  let new_path = new_path.as_path();
   let sys = sys.with_paths_in_errors();
   let new_parent = new_path.parent().unwrap();
   if new_parent.file_name().unwrap() != "node_modules" {
@@ -2365,6 +2394,62 @@ mod test {
   }
 
   #[test]
+  fn test_symlink_package_dir_rejects_invalid_names() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+    let target = root.join("target");
+    let outside = root.join("outside");
+    let node_modules = root.join("node_modules");
+    for path in [&target, &outside, &node_modules] {
+      sys.fs_create_dir_all(path).unwrap();
+    }
+    sys.fs_write(outside.join("marker.txt"), "keep").unwrap();
+    let absolute = outside.to_str().unwrap();
+    for name in [
+      "",
+      ".",
+      "..",
+      "../outside",
+      "../../outside",
+      absolute,
+      "@scope/../outside",
+      "@../outside",
+      "@scope/..",
+      "@/pkg",
+      "@scope/",
+      "pkg/child",
+      "pkg/",
+      "pkg\\child",
+      "C:outside",
+      ".. ",
+      "@scope/.. ",
+      "pkg.",
+      ".bin",
+      ".deno",
+      ".DENO",
+      "node_modules",
+    ] {
+      let err =
+        symlink_package_dir(&sys, &target, &node_modules, name).unwrap_err();
+      assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{name:?}");
+      assert_eq!(
+        sys.fs_read_to_string(outside.join("marker.txt")).unwrap(),
+        "keep"
+      );
+    }
+    for name in ["pkg", "@scope/pkg"] {
+      symlink_package_dir(&sys, &outside, &node_modules, name).unwrap();
+      assert_eq!(
+        sys
+          .fs_read_to_string(node_modules.join(name).join("marker.txt"))
+          .unwrap(),
+        "keep"
+      );
+    }
+  }
+
+  #[test]
   fn test_symlink_package_dir_replaces_existing_link() {
     let temp_dir = TempDir::new();
     let sys = sys_traits::impls::RealSys;
@@ -2382,13 +2467,13 @@ mod test {
     let link = node_modules.join("pkg");
 
     // First the link points at target_a.
-    symlink_package_dir(&sys, &target_a, &link).unwrap();
+    symlink_package_dir(&sys, &target_a, &node_modules, "pkg").unwrap();
     assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "a");
 
     // Re-creating over the pre-existing link must succeed (this is what
     // regressed on Windows: a stale directory symlink/junction has to be
     // removed before the new one can be created) and now resolve to target_b.
-    symlink_package_dir(&sys, &target_b, &link).unwrap();
+    symlink_package_dir(&sys, &target_b, &node_modules, "pkg").unwrap();
     assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "b");
   }
 

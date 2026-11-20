@@ -10,11 +10,15 @@ const { op_set_raw } = core.ops;
 const {
   Uint8Array,
   ArrayPrototypePush,
+  ObjectFreeze,
+  ObjectSetPrototypeOf,
   Symbol,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
+
+const EMPTY_OPTIONS = ObjectFreeze(ObjectSetPrototypeOf({}, null));
 
 // Defer loading the 208 KB `06_streams.js` polyfill: the two helpers below
 // are only used inside the `get readable()` / `get writable()` getters on
@@ -156,7 +160,7 @@ class Stdin {
     return this.#readable;
   }
 
-  setRaw(mode, options = { __proto__: null }) {
+  setRaw(mode, options = EMPTY_OPTIONS) {
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }

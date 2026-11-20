@@ -254,7 +254,7 @@ function getPfxAgentKey(pfx: any, passphrase: any) {
 
 Agent.prototype.getName = function getName(
   this: any,
-  options: any = { __proto__: null },
+  options: any = kEmptyObject,
 ) {
   let name = FunctionPrototypeCall(
     HttpAgent.prototype.getName,

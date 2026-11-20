@@ -555,7 +555,7 @@ class EventTarget extends WebEventTarget {
    *   signal?: AbortSignal
    * }} [options]
    */
-  addEventListener(type, listener, options = { __proto__: null }) {
+  addEventListener(type, listener, options = kEmptyObject) {
     if (!isEventTarget(this)) {
       throw new ERR_INVALID_THIS("EventTarget");
     }
@@ -661,7 +661,7 @@ class EventTarget extends WebEventTarget {
    *   capture?: boolean,
    * }} [options]
    */
-  removeEventListener(type, listener, options = { __proto__: null }) {
+  removeEventListener(type, listener, options = undefined) {
     if (!isEventTarget(this)) {
       throw new ERR_INVALID_THIS("EventTarget");
     }
