@@ -1491,3 +1491,74 @@ Deno.test({
     assertEquals(buf.lastIndexOf(0x61, 4.9), 3);
   },
 });
+
+Deno.test({
+  name: "[node/buffer] fill handles undefined offset and edge cases",
+  fn() {
+    assertEquals(
+      Buffer.alloc(3).fill(Buffer.from([1, 2]), undefined, -1),
+      Buffer.from([1, 2, 1]),
+    );
+    assertEquals(
+      Buffer.alloc(3).fill(new Uint8Array([1, 2]), undefined, -2),
+      Buffer.from([1, 2, 1]),
+    );
+    assertEquals(
+      Buffer.alloc(3).fill("ab", undefined, -1),
+      Buffer.from("aba"),
+    );
+    assertEquals(
+      Buffer.alloc(3).fill(1, undefined, -1),
+      Buffer.from([1, 1, 1]),
+    );
+    assertEquals(
+      // @ts-expect-error testing runtime handling of undefined offset with encoding argument
+      Buffer.alloc(3).fill("6162", undefined, "hex"),
+      Buffer.from("616"),
+    );
+    assertEquals(
+      // @ts-expect-error testing null encoding normalization
+      Buffer.alloc(3).fill("ab", 0, 3, null),
+      Buffer.from("aba"),
+    );
+    assertEquals(
+      // @ts-expect-error testing empty string encoding normalization
+      Buffer.alloc(3).fill("6162", ""),
+      Buffer.from("616"),
+    );
+    assertEquals(
+      Buffer.alloc(3, 1, "utf8"),
+      Buffer.from([1, 1, 1]),
+    );
+    assertEquals(
+      Buffer.alloc(6).fill(
+        // @ts-expect-error testing DataView fill
+        new DataView(new Uint8Array([1, 2, 3, 4]).buffer, 1, 2),
+      ),
+      Buffer.from([2, 3, 2, 3, 2, 3]),
+    );
+    const overlap = Buffer.from([1, 2, 3, 4, 5, 6]);
+    assertEquals(
+      overlap.fill(overlap.subarray(0, 2), 1, 5),
+      Buffer.from([1, 1, 2, 1, 2, 6]),
+    );
+    assertThrows(
+      () => Buffer.alloc(3).fill("ab", 0, -1),
+      RangeError,
+    );
+    assertThrows(
+      () => Buffer.alloc(3).fill(1, "utf8"),
+      TypeError,
+    );
+    assertThrows(
+      // @ts-expect-error testing BigInt fill value
+      () => Buffer.alloc(3).fill(1n, undefined, -1),
+      TypeError,
+    );
+    assertThrows(
+      // @ts-expect-error testing Symbol coercion on empty buffer
+      () => Buffer.alloc(0).fill(Symbol()),
+      TypeError,
+    );
+  },
+});

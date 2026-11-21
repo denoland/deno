@@ -437,7 +437,7 @@ function _alloc(size, fill, encoding) {
       );
     }
     // deno-lint-ignore deno-internal/prefer-primordials
-    return buffer.fill(fill, encoding);
+    return buffer.fill(fill, 0, buffer.length, encoding);
   }
   return buffer;
 }
@@ -2231,7 +2231,7 @@ Buffer.prototype.copy = function copy(
 
 Buffer.prototype.fill = function fill(val, start, end, encoding) {
   if (typeof val === "string") {
-    if (typeof start === "string") {
+    if (start === undefined || typeof start === "string") {
       encoding = start;
       start = 0;
       end = this.length;
@@ -2239,77 +2239,141 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
       encoding = end;
       end = this.length;
     }
-    if (encoding !== void 0 && typeof encoding !== "string") {
-      throw new codes.ERR_INVALID_ARG_TYPE("encoding", "string", encoding);
-    }
-    if (typeof encoding === "string" && !BufferIsEncoding(encoding)) {
+
+    const normalizedEncoding = normalizeEncoding(encoding);
+    if (normalizedEncoding === undefined) {
+      if (typeof encoding !== "string") {
+        throw new codes.ERR_INVALID_ARG_TYPE("encoding", "string", encoding);
+      }
       throw new codes.ERR_UNKNOWN_ENCODING(encoding);
     }
-    if (val.length === 1) {
-      const code = StringPrototypeCharCodeAt(val, 0);
-      if (encoding === "utf8" && code < 128 || encoding === "latin1") {
-        val = code;
+
+    if (val.length === 0) {
+      // If val === '' default to zero.
+      val = 0;
+    } else if (val.length === 1) {
+      // Fast path: If `val` fits into a single byte, use that numeric value.
+      if (normalizedEncoding === "utf8") {
+        const code = StringPrototypeCharCodeAt(val, 0);
+        if (code < 128) {
+          val = code;
+        }
+      } else if (normalizedEncoding === "latin1") {
+        val = StringPrototypeCharCodeAt(val, 0);
       }
     }
-  } else if (typeof val === "number") {
-    val = val & 255;
-  } else if (typeof val === "boolean") {
-    val = Number(val);
+    encoding = normalizedEncoding;
+  } else {
+    encoding = undefined;
   }
 
-  if (typeof start === "string") {
-    encoding = start;
+  if (start === undefined) {
     start = 0;
     end = this.length;
-  }
-  if (start !== undefined) {
-    validateNumber(start, "start", 0, kMaxLength);
-    if (end !== undefined) {
-      validateNumber(end, "end", 0, this.length);
-    }
-  }
-
-  if (start < 0 || this.length < start || this.length < end) {
-    throw new RangeError("Out of range index");
-  }
-  if (end <= start) {
-    return this;
-  }
-  start = start >>> 0;
-  end = end === void 0 ? this.length : end >>> 0;
-  if (!val) {
-    val = 0;
-  }
-  let i;
-  if (typeof val === "number") {
-    // OOB check
-    const byteLen = TypedArrayPrototypeGetByteLength(this);
-    const fillLength = end - start;
-    if (start > end || fillLength + start > byteLen) {
-      throw new codes.ERR_BUFFER_OUT_OF_BOUNDS();
-    }
-
-    for (i = start; i < end; ++i) {
-      this[i] = val;
-    }
   } else {
-    if (typeof val !== "string" && !isArrayBufferView(val)) {
-      val = Number(val) & 255;
-      for (i = start; i < end; ++i) {
-        this[i] = val;
-      }
+    validateOffset(start, "offset");
+    if (end === undefined) {
+      end = this.length;
+    } else {
+      validateOffset(end, "end", 0, this.length);
+    }
+    if (start >= end) {
       return this;
     }
-    const bytes = BufferIsBuffer(val) ? val : BufferFrom(val, encoding);
-    const len = bytes.length;
+  }
+
+  // OOB check
+  const byteLen = TypedArrayPrototypeGetByteLength(this);
+  const fillLength = end - start;
+  if (start > end || fillLength + start > byteLen) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS();
+  }
+
+  if (typeof val === "number") {
+    TypedArrayPrototypeFill(this, val, start, end);
+  } else if (typeof val !== "string" && !isArrayBufferView(val)) {
+    if (typeof val === "boolean") {
+      val = val ? 1 : 0;
+    } else {
+      val = +val & 255;
+    }
+    const currentByteLen = TypedArrayPrototypeGetByteLength(this);
+    if (fillLength > 0 && currentByteLen > start) {
+      TypedArrayPrototypeFill(
+        this,
+        val,
+        start,
+        MathMin(end, currentByteLen),
+      );
+    }
+  } else {
+    const fillLen = MathTrunc(fillLength);
+    if (!(fillLen > 0)) {
+      return this;
+    }
+    let bytes;
+    if (typeof val === "string") {
+      bytes = BufferFrom(val, encoding);
+    } else if (isDataView(val)) {
+      let byteOffset;
+      let byteLength;
+      try {
+        byteOffset = DataViewPrototypeGetByteOffset(val);
+        byteLength = DataViewPrototypeGetByteLength(val);
+      } catch {
+        throw new codes.ERR_INVALID_ARG_VALUE("value", val);
+      }
+      if (byteLength === 0) {
+        throw new codes.ERR_INVALID_ARG_VALUE("value", val);
+      }
+      bytes = new Uint8Array(
+        DataViewPrototypeGetBuffer(val),
+        byteOffset,
+        byteLength,
+      );
+    } else {
+      const valByteLen = TypedArrayPrototypeGetByteLength(val);
+      if (valByteLen === 0) {
+        throw new codes.ERR_INVALID_ARG_VALUE("value", val);
+      }
+      bytes = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(val),
+        TypedArrayPrototypeGetByteOffset(val),
+        valByteLen,
+      );
+    }
+    const len = TypedArrayPrototypeGetByteLength(bytes);
     if (len === 0) {
       throw new codes.ERR_INVALID_ARG_VALUE(
         "value",
         val,
       );
     }
-    for (i = 0; i < end - start; ++i) {
-      this[i + start] = bytes[i % len];
+    const target = byteLen === TypedArrayPrototypeGetLength(this)
+      ? this
+      : new Uint8Array(
+        TypedArrayPrototypeGetBuffer(this),
+        TypedArrayPrototypeGetByteOffset(this),
+        byteLen,
+      );
+    const src = len > fillLen
+      ? new Uint8Array(
+        TypedArrayPrototypeGetBuffer(bytes),
+        TypedArrayPrototypeGetByteOffset(bytes),
+        fillLen,
+      )
+      : bytes;
+    TypedArrayPrototypeSet(target, src, start);
+    let copied = len;
+    while (copied < fillLen) {
+      const toCopy = MathMin(copied, fillLen - copied);
+      TypedArrayPrototypeCopyWithin(
+        target,
+        start + copied,
+        start,
+        start + toCopy,
+      );
+      copied += toCopy;
     }
   }
   return this;
