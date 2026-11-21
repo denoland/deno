@@ -78,7 +78,9 @@ impl ModuleMap {
         .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found");
 
-      if module.get_status() == v8::ModuleStatus::Evaluated {
+      if module.get_status() == v8::ModuleStatus::Evaluated
+        && !module.is_graph_async()
+      {
         // Check if this module has a pending TLA (top-level await) evaluation.
         let has_pending_tla = self
           .pending_dyn_mod_evaluations
