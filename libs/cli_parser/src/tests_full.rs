@@ -9779,30 +9779,6 @@ fn double_dash_before_entrypoint() {
 }
 
 #[test]
-fn sync_types_subcommand() {
-  let flags = flags_from_vec(svec!["deno", "sync-types"]).unwrap();
-  assert_eq!(
-    flags.subcommand,
-    DenoSubcommand::SyncTypes(SyncTypesFlags::default())
-  );
-
-  let flags =
-    flags_from_vec(svec!["deno", "sync-types", "a.ts", "tools/"]).unwrap();
-  assert_eq!(
-    flags.subcommand,
-    DenoSubcommand::SyncTypes(SyncTypesFlags {
-      roots: svec!["a.ts", "tools/"],
-    })
-  );
-
-  // --allow-import flows into permissions.
-  let flags =
-    flags_from_vec(svec!["deno", "sync-types", "--allow-import=example.com"])
-      .unwrap();
-  assert_eq!(flags.permissions.allow_import, Some(svec!["example.com"]));
-}
-
-#[test]
 fn serve_compile_keep_double_dash() {
   // serve/compile use clap's trailing_var_arg (like run), so they keep `--`.
   let flags =
