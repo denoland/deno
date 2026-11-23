@@ -129,86 +129,70 @@ async function checkClean() {
 async function* ls(dir = "") {
   let output = run(
     "git",
-    ["-C", dir || ".", "ls-files", "--stage", "--eol", "--full-name", "-z"],
+    ["-C", dir || ".", "ls-files", "--stage", "--e"],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
   output = decode(output, "utf8");
-  output = split(output, "\0");
+  output = split(output, "\n");
   output = filter(output, Boolean);
+  for await (const line of output) {
+    const parts = line.split("\t");
+    if (parts.length !== 2) continue;
+    const [meta, path] = parts;
+    const metaParts = meta.split(" ");
+    if (metaParts.length < 3) continue;
+    const key = metaParts[1];
+    yield { key, path: resolve(dir, path) };
+  }
+}
 
-  for await (const entry of output) {
-    const pat =
-      /^(?<mode>\d{6}) (?<hash>[0-9a-f]{40}) 0\t(?<eol>[^\t]*?)[ ]*\t(?<name>.*)$/;
-    const { mode, hash, eol, name } = pat.exec(entry).groups;
-    const path = dir ? `${dir}/${name}` : name;
+function run(command, args, options) {
+  const child = spawn(command, args, options);
+  return child.stdout;
+}
 
-    switch (mode) {
-      case "120000": // Symbolic link.
-        break;
-      case "160000": // Git submodule.
-        // sometimes we don't checkout all submodules
-        if (existsSync(path)) {
-          yield* ls(path);
-        }
-        break;
-      default: {
-        // Regular file.
-        const key = [mode, hash, eol, path].join("\0");
-        yield { key, path };
+async function* collect(iterable) {
+  for await (const item of iterable) {
+    yield item;
+  }
+}
+
+function decode(stream, encoding) {
+  const decoder = new StringDecoder(encoding);
+  return (async function* () {
+    for await (const chunk of stream) {
+      yield decoder.write(chunk);
+    }
+    const tail = decoder.end();
+    if (tail) {
+      yield tail;
+    }
+  })();
+}
+
+function split(iterable, delimiter) {
+  return (async function* () {
+    let buffer = "";
+    for await (const chunk of iterable) {
+      buffer += chunk;
+      let idx;
+      while ((idx = buffer.indexOf(delimiter)) !== -1) {
+        yield buffer.slice(0, idx);
+        buffer = buffer.slice(idx + delimiter.length);
       }
     }
-  }
+    if (buffer.length > 0) {
+      yield buffer;
+    }
+  })();
 }
 
-async function* run(cmd, args, options) {
-  const child = spawn(cmd, args, options);
-
-  const promise = new Promise((resolve, reject) => {
-    child.on("close", (code, signal) => {
-      if (code === 0 && signal === null) {
-        resolve();
-      } else {
-        const command = [cmd, ...args].join(" ");
-        const how = signal === null ? `exit code ${code}` : `signal ${signal}`;
-        const error = new Error(`Command '${command}' failed: ${how}`);
-        reject(error);
+function filter(iterable, predicate) {
+  return (async function* () {
+    for await (const item of iterable) {
+      if (predicate(item)) {
+        yield item;
       }
-    });
-    child.on("error", reject);
-  });
-
-  yield* child.stdout;
-  await promise;
-}
-
-async function collect(stream) {
-  const array = [];
-  for await (const item of stream) {
-    array.push(item);
-  }
-  return array;
-}
-
-async function* decode(stream, encoding) {
-  const decoder = new StringDecoder(encoding);
-  for await (const chunk of stream) {
-    yield decoder.write(chunk);
-  }
-  yield decoder.end();
-}
-
-async function* filter(stream, fn) {
-  for await (const item of stream) {
-    if (fn(item)) yield item;
-  }
-}
-
-async function* split(stream, separator) {
-  let buf = "";
-  for await (const chunk of stream) {
-    const parts = (buf + chunk).split(separator);
-    buf = parts.pop();
-    yield* parts.values();
-  }
-  yield buf;
+    }
+  })();
 }
