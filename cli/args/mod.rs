@@ -1314,7 +1314,7 @@ impl CliOptions {
     Ok(config_permissions)
   }
 
-    fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
+  fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
     // do not add if the user specified --allow-all or --allow-import
     if options.allow_import.is_some() {
       return;
@@ -2124,7 +2124,7 @@ mod test {
   }
 
   #[test]
-     test_filter_implicit_imports_against_deny() {
+  fn test_filter_implicit_imports_against_deny() {
     fn strings(items: &[&str]) -> Vec<String> {
       items.iter().map(|s| s.to_string()).collect()
     }
