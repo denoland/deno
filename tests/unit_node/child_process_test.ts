@@ -1036,6 +1036,59 @@ Deno.test(function spawnSyncUndefinedValueInEnvVar() {
   assertEquals(ret.stdout.toString("utf-8").trim(), "BAZ");
 });
 
+// Regression test for https://github.com/denoland/deno/issues/36996
+Deno.test(function spawnSyncInheritsEnvWhenEnvNotProvided() {
+  Deno.env.set("BAR", "BAR");
+  try {
+    const ret = spawnSync(
+      `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAR"`,
+      { shell: true },
+    );
+
+    assertEquals(ret.status, 0);
+    assertEquals(ret.stdout.toString("utf-8").trim(), "BAR");
+  } finally {
+    Deno.env.delete("BAR");
+  }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/36996
+Deno.test(function spawnSyncDoesNotInheritEnvWhenEnvProvided() {
+  Deno.env.set("BAZ", "BAZ");
+  try {
+    const ret = spawnSync(
+      `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
+      {
+        env: {},
+        shell: true,
+      },
+    );
+
+    assertEquals(ret.status, 0);
+    assertEquals(ret.stdout.toString("utf-8").trim(), "undefined");
+  } finally {
+    Deno.env.delete("BAZ");
+  }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/36996
+Deno.test(function execFileSyncDoesNotInheritEnvWhenEnvProvided() {
+  Deno.env.set("BAZ", "BAZ");
+  try {
+    const ret = execFileSync(
+      `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
+      {
+        env: {},
+        shell: true,
+      },
+    );
+
+    assertEquals(ret.toString("utf-8").trim(), "undefined");
+  } finally {
+    Deno.env.delete("BAZ");
+  }
+});
+
 Deno.test(function spawnSyncStdioUndefined() {
   const ret = spawnSync(
     `"${Deno.execPath()}" eval "console.log('hello');console.error('world')"`,
