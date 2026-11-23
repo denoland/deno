@@ -1997,7 +1997,7 @@ function spawnSync(
       stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
-      clearEnv: false,
+      clearEnv: true,
       extraStdio: extraStdioNormalized,
       windowsRawArguments: windowsVerbatimArguments,
       windowsHide,
