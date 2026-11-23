@@ -1360,6 +1360,42 @@ Deno.test(async function ipcSerializationAdvanced() {
   await timeout.promise;
   assertEquals(i, expect.length);
 });
+// https://github.com/denoland/deno/issues/37041
+Deno.test({
+  ignore: Deno.build.os !== "linux",
+  name:
+    "[node/child_process fork] grandchild does not inherit the IPC channel fd",
+  async fn() {
+    const timeout = withTimeout<void>();
+    // The forked child spawns `ls` with only stdout piped and sends the
+    // grandchild's fd listing back over IPC. The listing must not contain
+    // the parent's IPC channel socket: the adopted NODE_CHANNEL_FD is
+    // close-on-exec, so `spawn()` from the child must not pass it on.
+    const script = `
+      import { spawnSync } from "node:child_process";
+      const fds = spawnSync("ls", ["-l", "/proc/self/fd"], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      process.send(fds.stdout.toString());
+    `;
+    const file = await Deno.makeTempFile({ suffix: ".mjs" });
+    await Deno.writeTextFile(file, script);
+    const child = CP.fork(file, [], {
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    let received = false;
+    child.on("message", (fds: string) => {
+      received = true;
+      assert(
+        !fds.includes("socket:"),
+        `grandchild inherited the IPC channel:\n${fds}`,
+      );
+    });
+    child.on("close", () => timeout.resolve());
+    await timeout.promise;
+    assert(received, "forked child did not send its grandchild fd listing");
+  },
+});
 
 Deno.test(async function childProcessExitsGracefully() {
   const testdataDir = path.join(
