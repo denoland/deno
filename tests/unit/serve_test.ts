@@ -6398,3 +6398,68 @@ Deno.test(
     assert(!output.includes("WARNED"));
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerChunkedRequestBodyBackpressure() {
+    const payloadSize = 32 * 1024 * 1024;
+    const chunkSize = 1024;
+    const slowReads = 600;
+    const listening = Promise.withResolvers<number>();
+    const serverReadDone = Promise.withResolvers<number>();
+    let pulled = 0;
+    let leadAtSlowPause = 0;
+
+    await using server = Deno.serve(
+      {
+        port: 0,
+        hostname: "127.0.0.1",
+        onListen: ({ port }) => listening.resolve(port),
+      },
+      async (req) => {
+        const reader = req.body!.getReader();
+        let read = 0;
+        for (let i = 0; i < slowReads; i++) {
+          const r = await reader.read();
+          if (r.done) break;
+          read += r.value.byteLength;
+          if (i % 10 === 0) await delay(1);
+        }
+        await delay(50);
+        leadAtSlowPause = pulled - read;
+        while (true) {
+          const r = await reader.read();
+          if (r.done) break;
+          read += r.value.byteLength;
+        }
+        serverReadDone.resolve(read);
+        return new Response("ok");
+      },
+    );
+
+    const port = await listening.promise;
+    const chunk = new Uint8Array(chunkSize).fill(0x61);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= payloadSize) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunk.slice());
+        pulled += chunk.byteLength;
+      },
+    }, { highWaterMark: 0 });
+
+    const res = await fetch(`http://127.0.0.1:${port}/`, {
+      method: "POST",
+      body,
+    });
+    assertEquals(await res.text(), "ok");
+    assertEquals(await serverReadDone.promise, payloadSize);
+    assert(
+      leadAtSlowPause < 16 * 1024 * 1024,
+      `expected bounded client lead, got ${leadAtSlowPause} bytes`,
+    );
+    await server.shutdown();
+  },
+);

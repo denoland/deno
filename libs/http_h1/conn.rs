@@ -39,6 +39,7 @@ use crate::write_response_head;
 const DEFAULT_READ_CAPACITY: usize = 1024;
 const DEFAULT_WRITE_CAPACITY: usize = 512;
 const MAX_HEAD_BYTES: usize = 64 * 1024;
+const MAX_PEER_CLOSED_BUFFERED_BYTES: usize = 64 * 1024;
 // Chunked responses accumulate the head, body chunks and terminator into a
 // single per-connection buffer (`SharedScratch::write_buf`) so a small response
 // is emitted in one write instead of three. Flush once the buffer reaches this
@@ -298,6 +299,9 @@ pub struct SharedConn<I> {
   // waker lets us re-wake the body reader so it drains `buffered`, instead of
   // parking forever with its bytes stranded here.
   body_read_waker: Option<Waker>,
+  // Waker for a caller whose `poll_peer_closed_with` hit
+  // `MAX_PEER_CLOSED_BUFFERED_BYTES`. Woken once `buffered` drains below the cap.
+  peer_closed_waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -335,6 +339,23 @@ impl<I> SharedConn<I> {
       buffered: Vec::new(),
       response_state: ResponseState::Idle,
       body_read_waker: None,
+      peer_closed_waker: None,
+    }
+  }
+
+  pub fn has_buffered_bytes(&self) -> bool {
+    !self.buffered.is_empty()
+  }
+
+  fn drain_buffered(&mut self, count: usize) {
+    if count == 0 {
+      return;
+    }
+    self.buffered.drain(..count);
+    if self.buffered.len() < MAX_PEER_CLOSED_BUFFERED_BYTES
+      && let Some(waker) = self.peer_closed_waker.take()
+    {
+      waker.wake();
     }
   }
 
@@ -359,7 +380,7 @@ impl<I> SharedConn<I> {
         return Ok(None);
       }
       let body = self.buffered[..remaining].to_vec();
-      self.buffered.drain(..remaining);
+      self.drain_buffered(remaining);
       self.protocol.finish_body();
       return Ok(Some(body));
     }
@@ -414,7 +435,7 @@ impl<I> SharedConn<I> {
     }
 
     self.protocol = final_protocol;
-    self.buffered.drain(..consumed_total);
+    self.drain_buffered(consumed_total);
     Ok(Some(body))
   }
 }
@@ -842,7 +863,7 @@ where
         };
         let request = request_from_core(&request);
         let result = callback(request);
-        self.buffered.drain(..consumed);
+        self.drain_buffered(consumed);
         return Poll::Ready(Ok(Some(result)));
       }
 
@@ -945,26 +966,26 @@ where
       }
 
       if !self.buffered.is_empty() {
-        let read = self.buffered.len().min(limit);
-        match body_status_from_buf(&mut self.protocol, &self.buffered[..read])?
-        {
+        match body_status_from_buf_limited(
+          &mut self.protocol,
+          &self.buffered,
+          limit,
+        )? {
           ConnBodyStatus::Chunk {
             offset,
             len,
             consumed,
           } => {
             let result = callback(&self.buffered[offset..offset + len]);
-            self.buffered.drain(..consumed);
+            self.drain_buffered(consumed);
             return Poll::Ready(Ok(SharedBodyChunk::Chunk(result)));
           }
           ConnBodyStatus::Complete { consumed } => {
-            self.buffered.drain(..consumed);
+            self.drain_buffered(consumed);
             return Poll::Ready(Ok(SharedBodyChunk::Complete));
           }
           ConnBodyStatus::Partial { consumed } => {
-            if consumed != 0 {
-              self.buffered.drain(..consumed);
-            }
+            self.drain_buffered(consumed);
           }
         }
       }
@@ -993,10 +1014,10 @@ where
         continue;
       }
 
-      let parse_read = read.min(limit);
-      match body_status_from_buf(
+      match body_status_from_buf_limited(
         &mut self.protocol,
-        &scratch.read_buf[..parse_read],
+        &scratch.read_buf[..read],
+        limit,
       )? {
         ConnBodyStatus::Chunk {
           offset,
@@ -1012,28 +1033,18 @@ where
           return Poll::Ready(Ok(SharedBodyChunk::Chunk(result)));
         }
         ConnBodyStatus::Complete { consumed } => {
-          if consumed < parse_read {
+          if consumed < read {
             self
               .buffered
-              .extend_from_slice(&scratch.read_buf[consumed..parse_read]);
-          }
-          if parse_read < read {
-            self
-              .buffered
-              .extend_from_slice(&scratch.read_buf[parse_read..read]);
+              .extend_from_slice(&scratch.read_buf[consumed..read]);
           }
           return Poll::Ready(Ok(SharedBodyChunk::Complete));
         }
         ConnBodyStatus::Partial { consumed } => {
-          if consumed < parse_read {
+          if consumed < read {
             self
               .buffered
-              .extend_from_slice(&scratch.read_buf[consumed..parse_read]);
-          }
-          if parse_read < read {
-            self
-              .buffered
-              .extend_from_slice(&scratch.read_buf[parse_read..read]);
+              .extend_from_slice(&scratch.read_buf[consumed..read]);
           }
         }
       }
@@ -1461,17 +1472,42 @@ where
     cx: &mut Context<'_>,
     scratch: &mut SharedScratch,
   ) -> Poll<Result<bool, Error>> {
-    let read = ready!(poll_read_into_scratch(&mut self.io, cx, scratch))?;
-    if read != 0 {
-      self.buffered.extend_from_slice(&scratch.read_buf[..read]);
+    if self.buffered.len() >= MAX_PEER_CLOSED_BUFFERED_BYTES {
+      match &self.peer_closed_waker {
+        Some(waker) if waker.will_wake(cx.waker()) => {}
+        _ => self.peer_closed_waker = Some(cx.waker().clone()),
+      }
+      return Poll::Pending;
+    }
+    if scratch.read_buf.is_empty() {
+      scratch.ensure_read_capacity(DEFAULT_READ_CAPACITY);
+    }
+    let max_read = (MAX_PEER_CLOSED_BUFFERED_BYTES - self.buffered.len())
+      .min(scratch.read_buf.len());
+    let read = ready!(poll_read_into_buf(
+      &mut self.io,
+      cx,
+      &mut scratch.read_buf[..max_read]
+    ))?;
+    if read == 0 {
+      self.peer_closed_waker = None;
+      return Poll::Ready(Ok(true));
+    }
+    self.buffered.extend_from_slice(&scratch.read_buf[..read]);
+    if self.buffered.len() < MAX_PEER_CLOSED_BUFFERED_BYTES {
       cx.waker().wake_by_ref();
-      // These bytes may belong to a request body still being read on another
-      // task; wake it so it drains `buffered` instead of stalling.
-      if let Some(waker) = self.body_read_waker.take() {
-        waker.wake();
+    } else {
+      match &self.peer_closed_waker {
+        Some(waker) if waker.will_wake(cx.waker()) => {}
+        _ => self.peer_closed_waker = Some(cx.waker().clone()),
       }
     }
-    Poll::Ready(Ok(read == 0))
+    // These bytes may belong to a request body still being read on another
+    // task; wake it so it drains `buffered` instead of stalling.
+    if let Some(waker) = self.body_read_waker.take() {
+      waker.wake();
+    }
+    Poll::Ready(Ok(false))
   }
 
   pub async fn finish_response_with_scratch(
@@ -1563,7 +1599,17 @@ fn body_status_from_buf(
   protocol: &mut Protocol,
   buf: &[u8],
 ) -> Result<ConnBodyStatus, Error> {
-  let status = protocol.body_chunk(buf).map_err(protocol_error)?;
+  body_status_from_buf_limited(protocol, buf, usize::MAX)
+}
+
+fn body_status_from_buf_limited(
+  protocol: &mut Protocol,
+  buf: &[u8],
+  limit: usize,
+) -> Result<ConnBodyStatus, Error> {
+  let status = protocol
+    .body_chunk_limited(buf, limit)
+    .map_err(protocol_error)?;
   Ok(match status {
     BodyStatus::Chunk { bytes, consumed } => ConnBodyStatus::Chunk {
       offset: consumed - bytes.len(),
@@ -1652,6 +1698,20 @@ where
   .await
 }
 
+fn poll_read_into_buf<I>(
+  io: &mut I,
+  cx: &mut Context<'_>,
+  buf: &mut [u8],
+) -> Poll<Result<usize, io::Error>>
+where
+  I: AsyncRead + Unpin,
+{
+  let mut tokio_buf = TokioReadBuf::new(buf);
+  let before = tokio_buf.filled().len();
+  ready!(Pin::new(io).poll_read(cx, &mut tokio_buf))?;
+  Poll::Ready(Ok(tokio_buf.filled().len() - before))
+}
+
 fn poll_read_into_scratch<I>(
   io: &mut I,
   cx: &mut Context<'_>,
@@ -1660,10 +1720,7 @@ fn poll_read_into_scratch<I>(
 where
   I: AsyncRead + Unpin,
 {
-  let mut tokio_buf = TokioReadBuf::new(&mut scratch.read_buf);
-  let before = tokio_buf.filled().len();
-  ready!(Pin::new(io).poll_read(cx, &mut tokio_buf))?;
-  Poll::Ready(Ok(tokio_buf.filled().len() - before))
+  poll_read_into_buf(io, cx, &mut scratch.read_buf)
 }
 
 #[cfg(test)]
@@ -3211,6 +3268,138 @@ mod tests {
         "{description}: expected no response"
       );
     }
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_peer_closed_poll_caps_buffered_and_wakes_on_drain()
+  -> TestResult<()> {
+    struct WakeFlag(std::sync::atomic::AtomicBool);
+
+    impl std::task::Wake for WakeFlag {
+      fn wake(self: std::sync::Arc<Self>) {
+        self.wake_by_ref();
+      }
+
+      fn wake_by_ref(self: &std::sync::Arc<Self>) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+      }
+    }
+
+    const CHUNK_COUNT: usize = 40;
+    const CHUNK_SIZE: usize = 2048;
+
+    let (mut client, server) = tokio::io::duplex(256 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+
+    let mut request =
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n"
+        .to_vec();
+    let chunk_header = format!("{CHUNK_SIZE:x}\r\n");
+    let chunk_data = vec![b'a'; CHUNK_SIZE];
+    for _ in 0..CHUNK_COUNT {
+      request.extend_from_slice(chunk_header.as_bytes());
+      request.extend_from_slice(&chunk_data);
+      request.extend_from_slice(b"\r\n");
+    }
+    request.extend_from_slice(b"0\r\n\r\n");
+    client.write_all(&request).await?;
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::Chunked);
+
+    let writer_flag = std::sync::Arc::new(WakeFlag(false.into()));
+    let writer_waker = std::task::Waker::from(writer_flag.clone());
+    let mut writer_cx = Context::from_waker(&writer_waker);
+
+    let mut hit_cap = false;
+    for _ in 0..128 {
+      match conn.poll_peer_closed_with(&mut writer_cx, &mut scratch) {
+        Poll::Pending => {
+          hit_cap = true;
+          break;
+        }
+        Poll::Ready(Ok(false)) => {}
+        other => panic!("unexpected poll_peer_closed_with result: {other:?}"),
+      }
+    }
+    assert!(hit_cap, "expected poll_peer_closed_with to cap buffered");
+    assert_eq!(conn.buffered.len(), MAX_PEER_CLOSED_BUFFERED_BYTES);
+
+    writer_flag
+      .0
+      .store(false, std::sync::atomic::Ordering::SeqCst);
+    assert!(
+      conn
+        .poll_peer_closed_with(&mut writer_cx, &mut scratch)
+        .is_pending()
+    );
+    assert!(!writer_flag.0.load(std::sync::atomic::Ordering::SeqCst));
+
+    let SharedBodyChunk::Chunk(first_len) = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_limited_with(cx, &mut scratch, 1024, |chunk| {
+        chunk.len()
+      })
+    })
+    .await?
+    else {
+      panic!("expected first chunk");
+    };
+    assert_eq!(first_len, 1024);
+    assert!(writer_flag.0.load(std::sync::atomic::Ordering::SeqCst));
+
+    let mut total_read = first_len;
+    while let SharedBodyChunk::Chunk(len) = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_limited_with(cx, &mut scratch, 4096, |chunk| {
+        chunk.len()
+      })
+    })
+    .await?
+    {
+      total_read += len;
+    }
+    assert_eq!(total_read, CHUNK_COUNT * CHUNK_SIZE);
+
+    drop(client);
+    assert!(matches!(
+      conn.poll_peer_closed_with(&mut writer_cx, &mut scratch),
+      Poll::Ready(Ok(true))
+    ));
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_chunked_body_with_tiny_read_limit() -> TestResult<()> {
+    let io = FragmentIo::new(&[
+      b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\nX-Trailer: val\r\n\r\n",
+    ]);
+    let mut conn = SharedConn::new(io);
+    let mut scratch = SharedScratch::default();
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::Chunked);
+
+    let mut body = Vec::new();
+    while let SharedBodyChunk::Chunk(chunk) = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_limited_with(cx, &mut scratch, 2, |chunk| {
+        chunk.to_vec()
+      })
+    })
+    .await?
+    {
+      assert!(!chunk.is_empty() && chunk.len() <= 2);
+      body.extend_from_slice(&chunk);
+    }
+    assert_eq!(body, b"hello world");
     Ok(())
   }
 }
