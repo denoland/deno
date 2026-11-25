@@ -440,3 +440,25 @@ Deno.test(function urlSearchParamsRejectsNonObjectIteratorResult() {
     }
   }
 });
+
+// A function is an Object in Web IDL terms, so an iterator result that is a
+// function is a valid one and must not be rejected. The check has to
+// distinguish "not an Object" from "an Object that happens to be callable".
+Deno.test(function urlSearchParamsAcceptsFunctionIteratorResult() {
+  const result = Object.assign(function () {}, {
+    done: false,
+    value: ["a", "b"],
+  });
+
+  const iterable = {
+    [Symbol.iterator]() {
+      return {
+        next() {
+          return result as unknown as IteratorResult<[string, string]>;
+        },
+      };
+    },
+  };
+
+  assertEquals(new URLSearchParams(iterable).toString(), "a=b");
+});
