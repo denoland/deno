@@ -34,6 +34,8 @@ pub enum NpmOverridesError {
     "Override uses dollar reference \"${reference}\" but \"{reference}\" is not a direct dependency of the root package"
   )]
   UnresolvedDollarReference { reference: String },
+  #[error("npm: override for key \"{key}\" requires a package name")]
+  EmptyNpmAlias { key: String },
   #[error(
     "Invalid override value type for key \"{key}\": expected a string or object"
   )]
@@ -390,6 +392,11 @@ fn parse_npm_alias_override(
   key: &str,
   npm_value: &str,
 ) -> Result<NpmOverrideValue, NpmOverridesError> {
+  if npm_value.is_empty() {
+    return Err(NpmOverridesError::EmptyNpmAlias {
+      key: key.to_string(),
+    });
+  }
   let (name, version_str) =
     if let Some((name, version)) = npm_value.rsplit_once('@') {
       if name.is_empty() {
@@ -695,6 +702,19 @@ mod test {
         "1.2.1"
       );
     }
+  }
+
+  #[test]
+  fn parse_dollar_reference_to_empty_npm_alias() {
+    let root_deps = HashMap::from([(
+      PackageName::from("bad-alias"),
+      StackString::from("npm:"),
+    )]);
+    let raw = serde_json::json!({ "source-map": "$bad-alias" });
+    assert!(matches!(
+      NpmOverrides::from_value(raw, &root_deps, &empty_catalogs()),
+      Err(NpmOverridesError::EmptyNpmAlias { key }) if key == "source-map"
+    ));
   }
 
   #[test]
