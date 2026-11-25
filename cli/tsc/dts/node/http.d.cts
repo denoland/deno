@@ -2024,7 +2024,8 @@ declare module "http" {
     let globalAgent: Agent;
     /**
      * Read-only property specifying the maximum allowed size of HTTP headers in bytes.
-     * Defaults to 16KB. Configurable using the `--max-http-header-size` CLI option.
+     * Defaults to 16KB. Deno does not support the `--max-http-header-size` CLI option;
+     * use the `maxHeaderSize` option when creating an HTTP server to override the limit.
      */
     const maxHeaderSize: number;
     /**
