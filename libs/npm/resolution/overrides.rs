@@ -351,15 +351,36 @@ fn parse_override_string(
   catalogs: &Catalogs,
 ) -> Result<NpmOverrideValue, NpmOverridesError> {
   if s.is_empty() {
-    Ok(NpmOverrideValue::Removed)
-  } else if let Some(rest) = s.strip_prefix("npm:") {
-    parse_npm_alias_override(key, rest)
-  } else if let Some(rest) = s.strip_prefix("jsr:") {
-    parse_jsr_override(key, rest)
-  } else if let Some(catalog_name) = s.strip_prefix("catalog:") {
-    resolve_catalog_override(key, catalog_name, catalogs)
+    return Ok(NpmOverrideValue::Removed);
+  }
+  if let Some(catalog_name) = s.strip_prefix("catalog:") {
+    return resolve_catalog_override(key, catalog_name, catalogs);
+  }
+
+  let (package_key, specifier) = if let Some(reference) = s.strip_prefix('$') {
+    let specifier = root_deps.get(reference).ok_or_else(|| {
+      NpmOverridesError::UnresolvedDollarReference {
+        reference: reference.to_string(),
+      }
+    })?;
+    (reference, specifier.as_str())
   } else {
-    let version_req = resolve_override_version_string(key, s, root_deps)?;
+    (key, s)
+  };
+
+  if let Some(rest) = specifier.strip_prefix("npm:") {
+    parse_npm_alias_override(key, rest)
+  } else if let Some(rest) = specifier.strip_prefix("jsr:") {
+    parse_jsr_override(key, package_key, rest)
+  } else {
+    let version_req =
+      VersionReq::parse_from_npm(specifier).map_err(|source| {
+        NpmOverridesError::ValueParse {
+          key: key.to_string(),
+          value: specifier.to_string(),
+          source,
+        }
+      })?;
     Ok(NpmOverrideValue::Version(version_req))
   }
 }
@@ -405,21 +426,14 @@ fn parse_npm_alias_override(
 ///   (e.g. key `@std/path` with value `jsr:1` → `@jsr/std__path` @ `1`)
 fn parse_jsr_override(
   key: &str,
+  package_key: &str,
   jsr_value: &str,
 ) -> Result<NpmOverrideValue, NpmOverridesError> {
-  // When the value is a bare version (doesn't start with '@'), derive
-  // the package name from the key. The key may include a version selector
-  // (e.g. "@std/path@^1.0.0"), so strip that first.
-  let fallback_name = if let Some(rest) = key.strip_prefix('@') {
-    match rest.find('@') {
-      Some(idx) => &key[..idx + 1],
-      None => key,
-    }
-  } else {
-    match key.find('@') {
-      Some(idx) => &key[..idx],
-      None => key,
-    }
+  // A bare version takes its name from the referenced dependency, or from
+  // the override key without its version selector for a direct override.
+  let fallback_name = match package_key.rsplit_once('@') {
+    Some((name, _)) if !name.is_empty() => name,
+    _ => package_key,
   };
 
   let (npm_name, version_str) = parse_jsr_dep_value(fallback_name, jsr_value)
@@ -443,37 +457,6 @@ fn parse_jsr_override(
     package: PackageName::from_str(&npm_name),
     version_req,
   })
-}
-
-/// Resolves a version string value, handling `$pkg` dollar references.
-fn resolve_override_version_string(
-  key: &str,
-  value: &str,
-  root_deps: &HashMap<PackageName, StackString>,
-) -> Result<VersionReq, NpmOverridesError> {
-  if let Some(ref_name) = value.strip_prefix('$') {
-    // dollar reference: look up the root dependency's version
-    let dep_version = root_deps.get(ref_name).ok_or_else(|| {
-      NpmOverridesError::UnresolvedDollarReference {
-        reference: ref_name.to_string(),
-      }
-    })?;
-    VersionReq::parse_from_npm(dep_version).map_err(|source| {
-      NpmOverridesError::ValueParse {
-        key: key.to_string(),
-        value: dep_version.to_string(),
-        source,
-      }
-    })
-  } else {
-    VersionReq::parse_from_npm(value).map_err(|source| {
-      NpmOverridesError::ValueParse {
-        key: key.to_string(),
-        value: value.to_string(),
-        source,
-      }
-    })
-  }
 }
 
 /// Parses the top-level override rules from a JSON object.
@@ -682,6 +665,35 @@ mod test {
         assert_eq!(req.version_text(), "^1.0.0");
       }
       _ => panic!("expected Version from dollar reference"),
+    }
+  }
+
+  #[test]
+  fn parse_dollar_reference_to_alias() {
+    for (name, specifier, expected_package) in [
+      ("source-map", "npm:source-map-js@1.2.1", "source-map-js"),
+      ("path", "jsr:@std/path@1.2.1", "@jsr/std__path"),
+      ("@std/path", "jsr:1.2.1", "@jsr/std__path"),
+    ] {
+      let root_deps = HashMap::from([(
+        PackageName::from(name),
+        StackString::from(specifier),
+      )]);
+      let raw = serde_json::json!({ "target": format!("${name}") });
+      let overrides =
+        NpmOverrides::from_value(raw, &root_deps, &empty_catalogs()).unwrap();
+      let target = PackageName::from("target");
+      assert_eq!(
+        overrides.get_alias_for(&target).unwrap().as_str(),
+        expected_package
+      );
+      assert_eq!(
+        overrides
+          .get_override_for(&target, None)
+          .unwrap()
+          .version_text(),
+        "1.2.1"
+      );
     }
   }
 
