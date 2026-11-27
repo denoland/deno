@@ -293,7 +293,7 @@ async fn run_bundle_for_compile(
   let main_bytes = bundle_one_for_compile(
     bundle_flags.clone(),
     compile_flags.source_file.clone(),
-    compile_flags.minify,
+    compile_flags,
   )
   .await?;
   let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
@@ -318,7 +318,7 @@ async fn run_bundle_for_compile(
     let worker_bytes = bundle_one_for_compile(
       bundle_flags.clone(),
       worker_abs.display().to_string(),
-      compile_flags.minify,
+      compile_flags,
     )
     .await?;
     let worker_rewrite =
@@ -372,16 +372,22 @@ async fn run_bundle_for_compile(
 async fn bundle_one_for_compile(
   flags: Arc<Flags>,
   entrypoint: String,
-  minify: bool,
+  compile_flags: &CompileFlags,
 ) -> Result<Vec<u8>, AnyError> {
   // Always leave `.node` files external. esbuild has no loader for them
   // and would error if it tried to inline a native binary; with this
   // pattern the require() calls are emitted verbatim and resolved at
   // runtime against the embedded VFS by the native addon loader.
-  let external = vec!["*.node".to_string()];
-  super::bundle::bundle_for_compile(flags, entrypoint, external, minify)
-    .boxed_local()
-    .await
+  let mut external = compile_flags.external.clone();
+  external.push("*.node".to_string());
+  super::bundle::bundle_for_compile(
+    flags,
+    entrypoint,
+    external,
+    compile_flags.minify,
+  )
+  .boxed_local()
+  .await
 }
 
 /// Find every `new URL("X.{ts,js,…}", import.meta.url)` in the bundle whose
@@ -1410,6 +1416,7 @@ mod test {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
@@ -1441,6 +1448,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
@@ -1479,6 +1487,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        external: Vec::new(),
         app_name: None,
         minify: false,
         exclude_unused_npm: false,

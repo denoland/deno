@@ -61,6 +61,7 @@ use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::loader::GraphCjsAnalysisSourceProvider;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::analyze::ResolvedCjsAnalysis;
@@ -664,17 +665,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       vfs.add_path(&pkg_json.path)?;
     }
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
-    // With --bundle the JS graph is self-contained, so the whole npm tree
-    // is intentionally left out of the binary. The exception is packages
-    // that ship native (.node) addons: the package JS is still bundled, but
-    // its `.node` file imports stay external (`external = ["*.node"]` in
-    // compile.rs) so the addon loader resolves them against the embedded VFS
-    // at runtime. For that to work the package's installed folder, plus the
-    // closure of its dependencies, must be embedded in the VFS.
     let npm_snapshot = if compile_flags.bundle {
+      let external_npm_reqs = if compile_flags.external.is_empty() {
+        Vec::new()
+      } else {
+        graph
+          .modules()
+          .filter_map(|module| module.npm())
+          .map(|module| module.pkg_req_ref.req())
+          .collect()
+      };
       self
-        .fill_bundle_native_addon_vfs(&mut vfs, &progress_bar)
-        .context("Embedding native addon packages.")?
+        .fill_bundle_npm_vfs(&mut vfs, &progress_bar, &external_npm_reqs)
+        .context("Embedding npm packages for the bundle.")?
     } else {
       match &self.npm_resolver {
         CliNpmResolver::Managed(managed) => {
@@ -1295,23 +1298,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await
   }
 
-  /// Decide what to embed for `deno compile --bundle`. The bundle is
-  /// always shipped; this controls the npm portion. We need it when
-  /// either the CJS-from-ESM wrapper pointed at on-disk paths during
-  /// rewriting, or the resolved tree has a native (`.node`) addon — in
-  /// both cases the compiled binary will do node-module resolution at
-  /// runtime. Pure-ESM bundles with no native addons skip this and ship
-  /// nothing npm-related.
-  ///
-  /// When embedding is needed, we ship only the packages actually
-  /// reached: the rewriter recorded every absolute path it pointed at,
-  /// and we map each path back to its owning npm package and walk that
-  /// closure. The full resolution snapshot still goes in the metadata
-  /// so denort can resolve packages by name at runtime.
-  fn fill_bundle_native_addon_vfs(
+  /// Embed packages needed by native addons, rewritten CJS paths, and
+  /// npm imports that remain in the graph after bundling.
+  fn fill_bundle_npm_vfs(
     &self,
     builder: &mut VfsBuilder,
     progress_bar: &ProgressBar,
+    external_npm_reqs: &[&PackageReq],
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     let needs_for_cjs_wrapper =
       self.cli_options.compile_bundle_embed_node_modules();
@@ -1324,14 +1317,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .root_dir_url()
       .to_file_path()
       .ok();
-    let needs_for_native_addons = !needs_for_cjs_wrapper
-      && !super::native_addons::find_native_addon_packages(
+    if !needs_for_cjs_wrapper
+      && external_npm_reqs.is_empty()
+      && super::native_addons::find_native_addon_packages(
         self.npm_resolver,
         &self.npm_system_info,
         workspace_root.as_deref(),
       )?
-      .is_empty();
-    if !needs_for_cjs_wrapper && !needs_for_native_addons {
+      .is_empty()
+    {
       return Ok(None);
     }
 
@@ -1352,6 +1346,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             self.npm_resolver,
             &self.npm_system_info,
             referenced_paths,
+            external_npm_reqs,
           )?
         else {
           unreachable!(
