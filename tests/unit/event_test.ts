@@ -41,6 +41,54 @@ Deno.test(function eventSubclassWithReadOnlyToStringTag() {
   assertEquals(Object.hasOwn(event, Symbol.toStringTag), false);
 });
 
+Deno.test(function interfacePrototypesHaveToStringTag() {
+  const interfaces = [
+    BroadcastChannel,
+    CloseEvent,
+    CustomEvent,
+    ErrorEvent,
+    EventSource,
+    MessageEvent,
+    Navigator,
+    ProgressEvent,
+    PromiseRejectionEvent,
+    Worker,
+  ];
+  for (const iface of interfaces) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      iface.prototype,
+      Symbol.toStringTag,
+    );
+    assertEquals(descriptor, {
+      value: iface.name,
+      writable: false,
+      enumerable: false,
+      configurable: true,
+    }, iface.name);
+  }
+
+  const event = new CustomEvent("test");
+  assertEquals(Object.hasOwn(event, Symbol.toStringTag), false);
+  assertEquals(
+    Object.prototype.toString.call(event),
+    "[object CustomEvent]",
+  );
+  assertEquals(
+    Object.prototype.toString.call(navigator),
+    "[object Navigator]",
+  );
+
+  class MyEvent extends CustomEvent<unknown> {
+    get [Symbol.toStringTag]() {
+      return "MyEvent";
+    }
+  }
+  assertEquals(
+    Object.prototype.toString.call(new MyEvent("test")),
+    "[object MyEvent]",
+  );
+});
+
 Deno.test(function eventComposedPathSuccess() {
   const type = "click";
   const event = new Event(type);
