@@ -603,46 +603,59 @@ impl ModuleMap {
     scope: &mut v8::PinScope<'s, 'i>,
     name: impl IntoModuleName,
     exports_obj: v8::Local<'s, v8::Object>,
-  ) -> ModuleId {
+  ) -> Result<ModuleId, CoreError> {
+    v8::tc_scope!(let scope, scope);
     let name = name.into_module_name();
     let name_str = name.v8_string(scope).unwrap();
 
     // Enumerate own string-keyed properties of the exports object.
-    let property_names = exports_obj
-      .get_own_property_names(
+    let exports = (|| {
+      let property_names = exports_obj.get_own_property_names(
         scope,
         v8::GetPropertyNamesArgsBuilder::new()
           .mode(v8::KeyCollectionMode::OwnOnly)
           .property_filter(v8::PropertyFilter::SKIP_SYMBOLS)
           .key_conversion(v8::KeyConversionMode::ConvertToString)
           .build(),
-      )
-      .unwrap();
-    let len = property_names.length();
+      )?;
+      let len = property_names.length();
 
-    let mut export_names: Vec<v8::Local<v8::String>> =
-      Vec::with_capacity(len as usize + 1);
-    let mut export_values: Vec<v8::Local<v8::Value>> =
-      Vec::with_capacity(len as usize + 1);
-    // If the IIFE returns `{ default: <ns>, ...named }`, treat the inner
-    // `default` as the ESM default export. This mirrors the manual
-    // `export default mod.default` pattern used by the old `*_esm.ts`
-    // wrappers and Node's behavior for builtins whose `module.exports`
-    // includes a `default` property. Otherwise fall back to the entire
-    // exports object as the default (matches `module.exports = { ... }`
-    // shape).
-    let mut default_value: v8::Local<v8::Value> = exports_obj.into();
-    for i in 0..len {
-      let key_val = property_names.get_index(scope, i).unwrap();
-      let key_str = key_val.to_string(scope).unwrap();
-      let value = exports_obj.get(scope, key_val).unwrap();
-      if key_str.to_rust_string_lossy(scope) == "default" {
-        default_value = value;
-        continue;
+      let mut export_names: Vec<v8::Local<v8::String>> =
+        Vec::with_capacity(len as usize + 1);
+      let mut export_values: Vec<v8::Local<v8::Value>> =
+        Vec::with_capacity(len as usize + 1);
+      // If the IIFE returns `{ default: <ns>, ...named }`, treat the inner
+      // `default` as the ESM default export. This mirrors the manual
+      // `export default mod.default` pattern used by the old `*_esm.ts`
+      // wrappers and Node's behavior for builtins whose `module.exports`
+      // includes a `default` property. Otherwise fall back to the entire
+      // exports object as the default (matches `module.exports = { ... }`
+      // shape).
+      let mut default_value: v8::Local<v8::Value> = exports_obj.into();
+      for i in 0..len {
+        let key_val = property_names.get_index(scope, i)?;
+        let key_str = key_val.to_string(scope)?;
+        let value = exports_obj.get(scope, key_val)?;
+        if key_str.to_rust_string_lossy(scope) == "default" {
+          default_value = value;
+          continue;
+        }
+        export_names.push(key_str);
+        export_values.push(value);
       }
-      export_names.push(key_str);
-      export_values.push(value);
-    }
+      Some((export_names, export_values, default_value))
+    })();
+    let Some((mut export_names, mut export_values, default_value)) = exports
+    else {
+      if scope.has_terminated() || scope.is_execution_terminating() {
+        scope.rethrow();
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+      let exception = scope.exception().unwrap();
+      return Err(
+        crate::error::exception_to_err(scope, exception, false, true).into(),
+      );
+    };
     let default_str = v8::String::new(scope, "default").unwrap();
     export_names.push(default_str);
     export_values.push(default_value);
@@ -677,8 +690,11 @@ impl ModuleMap {
       vec![],
     );
 
-    // Synthetic modules have no imports so their instantation must never fail.
-    self.instantiate_module(scope, id).unwrap();
+    // Even import-free instantiation can be interrupted by external termination.
+    self.instantiate_module(scope, id).map_err(|exception| {
+      let exception = v8::Local::new(scope, exception);
+      crate::error::exception_to_err(scope, exception, false, true)
+    })?;
     // Eagerly evaluate so the `synthetic_module_evaluation_steps` callback
     // fires now (which sets the exports from the staged store) instead of
     // at first read. Important during snapshot creation: V8 needs the
@@ -690,10 +706,19 @@ impl ModuleMap {
     {
       let handle = self.get_handle(id).unwrap();
       let local = v8::Local::new(scope, handle);
-      let _ = local.evaluate(scope);
+      if local.evaluate(scope).is_none() {
+        if scope.has_terminated() || scope.is_execution_terminating() {
+          scope.rethrow();
+          return Err(CoreErrorKind::ExecutionTerminated.into_box());
+        }
+        let exception = scope.exception().unwrap();
+        return Err(
+          crate::error::exception_to_err(scope, exception, false, true).into(),
+        );
+      }
     }
 
-    id
+    Ok(id)
   }
 
   /// Creates a "synthetic module", that contains only a single, "default" export.

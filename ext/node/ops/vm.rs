@@ -57,6 +57,49 @@ pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
 // its entire lifetime. See `keep_wrapper_alive` for why this is necessary.
 const CONTEXTIFY_WRAPPER_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:wrapper");
+#[cfg(test)]
+mod termination_tests {
+  use super::*;
+
+  #[tokio::test]
+  async fn vm_timeout_preserves_external_termination() {
+    let mut runtime = deno_core::JsRuntime::new(Default::default());
+    runtime
+      .v8_isolate()
+      .set_slot(deno_core::ExternalExecutionTermination(
+        std::sync::Arc::new(AtomicBool::new(true)),
+      ));
+    deno_core::scope!(scope, &mut runtime);
+    let source = v8::String::new(scope, "while (true) {}").unwrap();
+    let filename = v8::String::new(scope, "external-stop.js").unwrap();
+    let compiled = ContextifyScript::create(
+      scope,
+      source,
+      filename.into(),
+      0,
+      0,
+      None,
+      false,
+      None,
+      0,
+    )
+    .unwrap();
+    let script = deno_core::cppgc::try_unwrap_cppgc_object::<ContextifyScript>(
+      scope,
+      compiled.value,
+    )
+    .unwrap();
+    assert!(
+      script
+        .run_in_context(scope, None, 1, false, false)
+        .is_none()
+    );
+    assert!(
+      scope.is_execution_terminating(),
+      "a VM timeout must not turn host termination into a catchable error"
+    );
+  }
+}
 
 /// An unbounded script that can be run in a context.
 pub struct ContextifyScript {
@@ -268,8 +311,11 @@ impl ContextifyScript {
     };
 
     if timed_out.load(Ordering::Relaxed) {
-      if scope.has_terminated() {
-        scope.cancel_terminate_execution();
+      if scope.has_terminated()
+        && !deno_core::cancel_local_execution_termination(scope)
+      {
+        scope.rethrow();
+        return None;
       }
       let message = v8::String::new(
         scope,

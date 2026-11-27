@@ -14,6 +14,82 @@ use futures::task::AtomicWaker;
 type UnsendTask = Box<dyn FnOnce(&mut v8::PinScope) + 'static>;
 type SendTask = Box<dyn FnOnce(&mut v8::PinScope) + Send + 'static>;
 
+/// A host-owned stop request registered in the isolate's typed slots. Local
+/// execution timeouts must not clear a concurrent external termination request.
+pub struct ExternalExecutionTermination(pub Arc<AtomicBool>);
+
+/// Whether the host has asked this isolate to stop. Unlike
+/// `is_execution_terminating`, this survives V8 paths that clear a thrown
+/// termination, such as a promise hook run while C++ creates a promise.
+pub(crate) fn external_execution_termination_requested(
+  isolate: &v8::Isolate,
+) -> bool {
+  isolate
+    .get_slot::<ExternalExecutionTermination>()
+    .is_some_and(|request| request.0.load(Ordering::SeqCst))
+}
+
+/// Re-request a host stop and make it take effect at once. A requested
+/// termination is only thrown at V8's next interrupt check, so until then a
+/// caller would report it while nothing is pending, and an op would throw a
+/// catchable error in its place. Entering a script runs that check. The
+/// request is then queued again: V8 drops a thrown termination once it
+/// unwinds to the embedder, and a host stop must also stop later entries.
+/// The caller rethrows the termination its `TryCatch` caught.
+pub(crate) fn raise_external_execution_termination(
+  scope: &mut v8::PinScope<'_, '_>,
+) {
+  scope.terminate_execution();
+  let source = v8::String::new_external_onebyte_static(scope, b"0").unwrap();
+  if let Some(script) = v8::Script::compile(scope, source, None) {
+    let _ = script.run(scope);
+  }
+  scope.terminate_execution();
+}
+
+/// Cancel a local timeout without losing a host-owned stop request.
+/// Returns false when execution must remain terminated.
+pub fn cancel_local_execution_termination(isolate: &v8::Isolate) -> bool {
+  let externally_terminated =
+    || external_execution_termination_requested(isolate);
+  if externally_terminated() {
+    return false;
+  }
+  let cancelled = isolate.cancel_terminate_execution();
+  // Check after cancellation: checking first would let a host request arriving
+  // between that check and cancellation be cleared by the local timeout.
+  if externally_terminated() {
+    isolate.terminate_execution();
+    false
+  } else {
+    cancelled
+  }
+}
+
+struct BlockingTask<F, T> {
+  callback: Option<F>,
+  sender: Option<std::sync::mpsc::SyncSender<T>>,
+}
+
+impl<F, T> BlockingTask<F, T>
+where
+  F: FnOnce(&mut v8::PinScope) -> T,
+{
+  fn run(mut self, scope: &mut v8::PinScope) {
+    let result = self.callback.take().unwrap()(scope);
+    _ = self.sender.take().unwrap().send(result);
+  }
+}
+
+impl<F, T> Drop for BlockingTask<F, T> {
+  fn drop(&mut self) {
+    // Cancellation must finish destroying borrowed callback state before
+    // disconnecting the sender and allowing the calling thread to return.
+    drop(self.callback.take());
+    drop(self.sender.take());
+  }
+}
+
 static_assertions::assert_not_impl_any!(V8TaskSpawnerFactory: Send);
 static_assertions::assert_not_impl_any!(V8TaskSpawner: Send);
 static_assertions::assert_impl_all!(V8CrossThreadTaskSpawner: Send);
@@ -31,6 +107,7 @@ pub(crate) struct V8TaskSpawnerFactory {
   tasks: Mutex<Vec<SendTask>>,
   /// A flag we can poll without any locks.
   has_tasks: AtomicBool,
+  closed: AtomicBool,
   /// The polled waker, woken on task submission.
   waker: AtomicWaker,
   /// Mark as `!Send`. See note above.
@@ -90,11 +167,30 @@ impl V8TaskSpawnerFactory {
     Poll::Ready(tasks)
   }
 
+  pub(crate) fn shutdown(&self) {
+    let tasks = {
+      let mut queue = self.tasks.lock().unwrap();
+      self.closed.store(true, Ordering::Release);
+      self.has_tasks.store(false, Ordering::Release);
+      std::mem::take(&mut *queue)
+    };
+    // Drop on the owning runtime thread, outside the lock: same-thread tasks
+    // may own !Send values, and their destructors may submit another task.
+    drop(tasks);
+  }
+
   fn spawn(&self, task: SendTask) {
-    self.tasks.lock().unwrap().push(task);
+    let mut queue = self.tasks.lock().unwrap();
+    if self.closed.load(Ordering::Acquire) {
+      drop(queue);
+      drop(task);
+      return;
+    }
+    queue.push(task);
     // TODO(mmastrac): can we skip the mutex here?
     // Release ordering means that the writes in the above lock happen-before the atomic store
     self.has_tasks.store(true, Ordering::Release);
+    drop(queue);
     self.waker.wake();
   }
 }
@@ -195,17 +291,41 @@ impl V8CrossThreadTaskSpawner {
     F: FnOnce(&mut v8::PinScope) -> T + Send + 'a,
     T: Send + 'a,
   {
+    self
+      .try_spawn_blocking(f)
+      .expect("JavaScript runtime has stopped")
+  }
+
+  /// Whether the runtime has shut down this spawner. After that its isolate
+  /// may already be gone, so callers must not enter it.
+  pub fn is_closed(&self) -> bool {
+    self.tasks.closed.load(Ordering::Acquire)
+  }
+
+  /// Like `spawn_blocking`, but returns an error when runtime shutdown cancels
+  /// the callback before it executes. This is safe for FFI callers that cannot
+  /// unwind through a native callback boundary.
+  pub fn try_spawn_blocking<'a, F, T>(
+    &self,
+    f: F,
+  ) -> Result<T, std::sync::mpsc::RecvError>
+  where
+    F: FnOnce(&mut v8::PinScope) -> T + Send + 'a,
+    T: Send + 'a,
+  {
     let (tx, rx) = std::sync::mpsc::sync_channel(0);
+    let task = BlockingTask {
+      callback: Some(f),
+      sender: Some(tx),
+    };
     let task: Box<dyn FnOnce(&mut v8::PinScope<'_, '_>) + Send> =
-      Box::new(|scope| {
-        let r = f(scope);
-        _ = tx.send(r);
-      });
-    // SAFETY: We can safely transmute to the 'static lifetime because we guarantee this method will either
-    // complete fully by the time it returns, deadlock or panic.
+      Box::new(move |scope| task.run(scope));
+    // SAFETY: The receive cannot finish until execution completes or cancellation
+    // destroys the borrowed callback before disconnecting its sender. Thus no
+    // callback capture can outlive this call, despite the erased lifetime.
     let task: SendTask = unsafe { std::mem::transmute(task) };
     self.tasks.spawn(task);
-    rx.recv().unwrap()
+    rx.recv()
   }
 }
 
@@ -216,6 +336,56 @@ mod tests {
   use tokio::task::LocalSet;
 
   use super::*;
+
+  // Needs a real V8 isolate, which Miri cannot run.
+  #[cfg(not(miri))]
+  #[test]
+  fn runtime_drop_releases_queued_blocking_callbacks() {
+    let runtime = crate::JsRuntime::new(Default::default());
+    let spawner = runtime
+      .op_state()
+      .borrow()
+      .borrow::<V8CrossThreadTaskSpawner>()
+      .clone();
+    let factory = spawner.tasks.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+      let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+          spawner.spawn_blocking(|_| 7)
+        }));
+      sender.send(result.is_err()).unwrap();
+    });
+    let deadline =
+      std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !factory.has_pending_tasks() && std::time::Instant::now() < deadline {
+      std::thread::yield_now();
+    }
+    assert!(
+      factory.has_pending_tasks(),
+      "callback must be queued before drop"
+    );
+    drop(runtime);
+    let stopped = receiver.recv_timeout(std::time::Duration::from_millis(100));
+    if stopped.is_err() {
+      // This test callback ignores its scope and captures no runtime handles,
+      // so it is safe to execute solely for cleanup in a fresh runtime. The
+      // broken implementation borrows its sender, so dropping it cannot wake
+      // the waiting thread.
+      let tasks = std::mem::take(&mut *factory.tasks.lock().unwrap());
+      let mut cleanup_runtime = crate::JsRuntime::new(Default::default());
+      crate::scope!(scope, &mut cleanup_runtime);
+      for task in tasks {
+        task(scope);
+      }
+    }
+    thread.join().unwrap();
+    assert!(
+      stopped.is_ok(),
+      "runtime drop must release queued blocking callbacks"
+    );
+    assert!(stopped.unwrap(), "shutdown must cancel rather than execute");
+  }
 
   // https://github.com/tokio-rs/tokio/issues/6155
   #[test]
