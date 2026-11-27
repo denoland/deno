@@ -20,15 +20,21 @@ const MAX_SANITIZER_LOOP_SPINS: usize = 16;
 
 /// A stable identity for a runtime activity (op, resource, timer or interval).
 ///
-/// Op promise IDs, resource IDs and timer/interval IDs are all allocated
-/// monotonically within a single isolate, so they uniquely identify a leaked
-/// activity for as long as the isolate lives. This is used to remember leaks
-/// that escaped a sanitizer-ignoring test so that later tests don't attribute
-/// them as their own.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+/// This is used to remember leaks that escaped a sanitizer-ignoring test so
+/// that later tests don't attribute them as their own.
+///
+/// Op promise IDs and timer/interval IDs are allocated monotonically within a
+/// single isolate, so the id alone identifies the activity for as long as the
+/// isolate lives. Resource IDs are not: the resource table is a slab, and a
+/// rid's slot index is reused once the resource is closed (the generation bits
+/// packed into the rid mean the exact value only recurs after that slot has
+/// been vacated 2^11 times). The resource name is therefore carried alongside
+/// the rid, so that a recycled rid belonging to a different kind of resource
+/// is not silently treated as an already-reported leak.
+#[derive(Clone, PartialEq, Eq, Hash)]
 enum LeakKey {
   AsyncOp(i32),
-  Resource(u32),
+  Resource(u32, String),
   Timer(usize),
   Interval(usize),
 }
@@ -36,7 +42,9 @@ enum LeakKey {
 fn leak_key(activity: &RuntimeActivity) -> LeakKey {
   match activity {
     RuntimeActivity::AsyncOp(id, ..) => LeakKey::AsyncOp(*id),
-    RuntimeActivity::Resource(id, ..) => LeakKey::Resource(*id),
+    RuntimeActivity::Resource(id, _, name) => {
+      LeakKey::Resource(*id, name.clone())
+    }
     RuntimeActivity::Timer(id, ..) => LeakKey::Timer(*id),
     RuntimeActivity::Interval(id, ..) => LeakKey::Interval(*id),
   }
