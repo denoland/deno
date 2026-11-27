@@ -43,11 +43,18 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     // on a pool thread. In debug builds, blocking tasks (like swc
     // parsing/emitting via spawn_blocking) can overflow the default 2MB thread
     // stack due to unoptimized stack frames, so give them 8MB there.
-    .thread_stack_size(if cfg!(debug_assertions) {
-      8 * 1024 * 1024
-    } else {
-      2 * 1024 * 1024
-    })
+    // Respect RUST_MIN_STACK or DENO_TOKIO_THREAD_STACK_SIZE if configured.
+    .thread_stack_size(
+      std::env::var("DENO_TOKIO_THREAD_STACK_SIZE")
+        .or_else(|_| std::env::var("RUST_MIN_STACK"))
+        .ok()
+        .and_then(|val| val.parse().ok())
+        .unwrap_or(if cfg!(debug_assertions) {
+          8 * 1024 * 1024
+        } else {
+          4 * 1024 * 1024
+        }),
+    )
     // This limits the number of threads for blocking operations (like for
     // synchronous fs ops) or CPU bound tasks like when we run dprint in
     // parallel for deno fmt.

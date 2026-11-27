@@ -947,26 +947,28 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let specifier = deno_path_util::url_from_file_path(&file_path)?;
       let media_type = MediaType::from_specifier(&specifier);
-      // Only script-flavored files can carry CJS exports. Extensions answer
-      // this for everything except extensionless files (`MediaType::Unknown`),
-      // which may be real modules (an npm `"main"` with no extension — see
-      // test-module-main-extension-lookup); those are disambiguated by content
-      // below rather than skipped outright.
-      if !matches!(
-        media_type,
+      // Only script-flavored files can carry CJS exports.
+      // - Skip declaration files (.d.ts, .d.mts, .d.cts) as they contain no runtime code.
+      // - Skip unknown media types that have an extension (.mdx, .txt, .yaml, etc.).
+      // - Truly extensionless files are only analyzed if they are not known non-code files
+      //   (like LICENSE, README) and contain CJS keywords or a shebang.
+      let is_script = match media_type {
         MediaType::JavaScript
-          | MediaType::Mjs
-          | MediaType::Cjs
-          | MediaType::Jsx
-          | MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Tsx
-          | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
-          | MediaType::Unknown
-      ) {
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::Jsx
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Tsx => true,
+        MediaType::Unknown if file_path.extension().is_none() => {
+          let file_name =
+            file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+          !is_known_non_code_filename(file_name)
+        }
+        _ => false,
+      };
+      if !is_script {
         continue;
       }
       if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
@@ -977,6 +979,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         let Some(bytes) = vfs.file_bytes(file.offset) else {
           continue;
         };
+        // For extensionless files, skip if it doesn't contain CJS keywords
+        // (exports/module) or a shebang, as it cannot define CommonJS exports.
+        if media_type == MediaType::Unknown
+          && !bytes_contain_cjs_keywords(bytes)
+        {
+          continue;
+        }
         let Ok(source) = std::str::from_utf8(bytes) else {
           continue;
         };
@@ -999,7 +1008,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               specifier,
               err
             );
-            CjsExportAnalysisEntry::Error(err.to_string())
+            let err_msg = err.to_string();
+            let err_str = if err_msg.len() > 1024 {
+              format!("{}... (truncated)", &err_msg[..1024])
+            } else {
+              err_msg
+            };
+            CjsExportAnalysisEntry::Error(err_str)
           }
         };
         to_add.push((file_path, bincode::serialize(&analysis)?));
@@ -1859,6 +1874,43 @@ fn get_file_env_vars(
   Ok(file_env_vars)
 }
 
+fn is_known_non_code_filename(file_name: &str) -> bool {
+  if file_name.starts_with('.') {
+    return true;
+  }
+  let lower = file_name.to_ascii_lowercase();
+  if lower.starts_with("license")
+    || lower.starts_with("licence")
+    || lower.starts_with("readme")
+    || lower.starts_with("changelog")
+    || lower.starts_with("notice")
+  {
+    return true;
+  }
+  const NON_CODE_NAMES: &[&str] = &[
+    "authors",
+    "changes",
+    "code_of_conduct",
+    "containerfile",
+    "contributors",
+    "copying",
+    "dockerfile",
+    "funding",
+    "gnumakefile",
+    "history",
+    "makefile",
+    "patents",
+    "security",
+  ];
+  NON_CODE_NAMES.contains(&lower.as_str())
+}
+
+fn bytes_contain_cjs_keywords(bytes: &[u8]) -> bool {
+  bytes.starts_with(b"#!")
+    || memchr::memmem::find(bytes, b"exports").is_some()
+    || memchr::memmem::find(bytes, b"module").is_some()
+}
+
 /// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
 /// For more information about the PE header: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
 fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
@@ -1900,9 +1952,45 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
 
 #[cfg(test)]
 mod tests {
+  use super::bytes_contain_cjs_keywords;
   use super::default_app_name;
+  use super::is_known_non_code_filename;
   use super::runtime_archive_name;
   use crate::args::JavaScriptEngine;
+
+  #[test]
+  fn test_is_known_non_code_filename() {
+    assert!(is_known_non_code_filename("LICENSE"));
+    assert!(is_known_non_code_filename("LICENSE-MIT"));
+    assert!(is_known_non_code_filename("licence"));
+    assert!(is_known_non_code_filename("README"));
+    assert!(is_known_non_code_filename("CHANGELOG"));
+    assert!(is_known_non_code_filename("AUTHORS"));
+    assert!(is_known_non_code_filename("NOTICE"));
+    assert!(is_known_non_code_filename("Makefile"));
+    assert!(is_known_non_code_filename("Dockerfile"));
+    assert!(is_known_non_code_filename(".gitignore"));
+    assert!(is_known_non_code_filename(".npmignore"));
+
+    assert!(!is_known_non_code_filename("index"));
+    assert!(!is_known_non_code_filename("main"));
+    assert!(!is_known_non_code_filename("cli"));
+    assert!(!is_known_non_code_filename("bin"));
+  }
+
+  #[test]
+  fn test_bytes_contain_cjs_keywords() {
+    assert!(bytes_contain_cjs_keywords(b"module.exports = 1;"));
+    assert!(bytes_contain_cjs_keywords(b"exports.foo = 1;"));
+    assert!(bytes_contain_cjs_keywords(
+      b"#!/usr/bin/env node\nconsole.log(1);"
+    ));
+    assert!(!bytes_contain_cjs_keywords(
+      b"MIT License\nCopyright (c) 2026"
+    ));
+    assert!(!bytes_contain_cjs_keywords(b"# Heading\nSome text"));
+    assert!(!bytes_contain_cjs_keywords(b""));
+  }
 
   #[test]
   fn runtime_archive_names_include_engine_suffix() {
