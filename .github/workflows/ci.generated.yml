@@ -378,6 +378,9 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Configure canary build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -1283,6 +1286,9 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Configure canary build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -2389,6 +2395,9 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Configure canary build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -3387,6 +3396,9 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Configure canary build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -5266,6 +5278,9 @@ jobs:
           CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
+      - name: Configure canary build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -5853,6 +5868,9 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Configure canary build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - name: Build debug
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
