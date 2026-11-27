@@ -354,6 +354,42 @@ async fn terminate_execution_webassembly() {
   terminator_thread.join().unwrap();
 }
 
+// Settling the promise of an async `WebAssembly.compile` reads `then` from the
+// module, so the isolate can be terminated while V8 runs the settle callback.
+#[tokio::test]
+async fn terminate_execution_while_wasm_compile_settles() {
+  #[op2(fast)]
+  fn op_terminate(scope: &mut v8::PinScope) {
+    scope.terminate_execution();
+  }
+
+  deno_core::extension!(test_ext, ops = [op_terminate]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+  runtime
+    .execute_script(
+      "wasm_then.js",
+      r#"
+      Object.defineProperty(WebAssembly.Module.prototype, "then", {
+        get() {
+          Deno.core.ops.op_terminate();
+          for (;;) {}
+        },
+      });
+      WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  // The termination ended with the callback, so the isolate is usable.
+  runtime
+    .execute_script("simple.js", "1 + 1")
+    .expect("execution should be possible again");
+}
+
 #[test]
 fn terminate_execution() {
   let (mut isolate, _dispatch_count) = setup(Mode::Async);
