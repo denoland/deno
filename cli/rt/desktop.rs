@@ -110,6 +110,17 @@ pub const DESKTOP_JS: &str = r#"
     }
   }
 
+  class CompositionEvent extends UIEvent {
+    #data = "";
+
+    get data() { return this.#data; }
+
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#data = init.data ?? "";
+    }
+  }
+
   class MouseEvent extends UIEvent {
     #button = 0;
     #clientX = 0;
@@ -191,6 +202,9 @@ pub const DESKTOP_JS: &str = r#"
 
   internals.defineEventHandler(BrowserWindowPrototype, "keydown");
   internals.defineEventHandler(BrowserWindowPrototype, "keyup");
+  internals.defineEventHandler(BrowserWindowPrototype, "compositionstart");
+  internals.defineEventHandler(BrowserWindowPrototype, "compositionupdate");
+  internals.defineEventHandler(BrowserWindowPrototype, "compositionend");
   internals.defineEventHandler(BrowserWindowPrototype, "mousedown");
   internals.defineEventHandler(BrowserWindowPrototype, "mouseup");
   internals.defineEventHandler(BrowserWindowPrototype, "click");
@@ -307,6 +321,7 @@ pub const DESKTOP_JS: &str = r#"
     UIEvent: internals.core.propNonEnumerable(UIEvent),
     FocusEvent: internals.core.propNonEnumerable(FocusEvent),
     KeyboardEvent: internals.core.propNonEnumerable(KeyboardEvent),
+    CompositionEvent: internals.core.propNonEnumerable(CompositionEvent),
     MouseEvent: internals.core.propNonEnumerable(MouseEvent),
     WheelEvent: internals.core.propNonEnumerable(WheelEvent),
   });
@@ -804,6 +819,15 @@ pub const DESKTOP_JS: &str = r#"
               altKey: ev.alt,
               metaKey: ev.meta,
               repeat: ev.repeat,
+              isComposing: ev.isComposing,
+            }));
+            break;
+          }
+          case "compositionEvent": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new CompositionEvent(ev.type, {
+              data: ev.data,
             }));
             break;
           }
@@ -1468,6 +1492,29 @@ mod tests {
     ));
     assert!(DESKTOP_JS.contains("case \"pageLoad\""));
     assert!(DESKTOP_JS.contains("dispatchEvent(new Event(\"load\"))"));
+  }
+
+  #[test]
+  fn desktop_js_installs_composition_events() {
+    assert!(
+      DESKTOP_JS.contains("class CompositionEvent extends UIEvent"),
+      "CompositionEvent must be a real UIEvent subclass"
+    );
+    assert!(DESKTOP_JS.contains(
+      "internals.defineEventHandler(BrowserWindowPrototype, \"compositionstart\")"
+    ));
+    assert!(DESKTOP_JS.contains(
+      "internals.defineEventHandler(BrowserWindowPrototype, \"compositionupdate\")"
+    ));
+    assert!(DESKTOP_JS.contains(
+      "internals.defineEventHandler(BrowserWindowPrototype, \"compositionend\")"
+    ));
+    assert!(DESKTOP_JS.contains("case \"compositionEvent\""));
+    assert!(DESKTOP_JS.contains("new CompositionEvent(ev.type"));
+    assert!(
+      DESKTOP_JS.contains("isComposing: ev.isComposing"),
+      "keydown/keyup must forward isComposing from the native event"
+    );
   }
 
   #[test]
