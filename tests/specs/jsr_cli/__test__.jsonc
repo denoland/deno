@@ -1,0 +1,114 @@
+// `deno publish` and `deno pack` type check, then run the jsr binary. These
+// tests replace it with a script that prints its arguments.
+{
+  "tests": {
+    "publish_args": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "publish --token abc --dry-run --allow-dirty --set-version 1.2.3 --config deno.json --unstable-sloppy-imports",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.sh"
+          },
+          "output": "publish_args.out"
+        },
+        {
+          "if": "windows",
+          "args": "publish --token abc --dry-run --allow-dirty --set-version 1.2.3 --config deno.json --unstable-sloppy-imports",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.cmd"
+          },
+          "output": "publish_args.out"
+        }
+      ]
+    },
+    "publish_no_check": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "publish --dry-run --no-check",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.sh"
+          },
+          "output": "jsr publish --dry-run\n"
+        },
+        {
+          "if": "windows",
+          "args": "publish --dry-run --no-check",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.cmd"
+          },
+          "output": "jsr publish --dry-run\n"
+        }
+      ]
+    },
+    "publish_exit_code": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "publish --dry-run --no-check",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.sh",
+            "FAKE_JSR_EXIT_CODE": "3"
+          },
+          "output": "jsr publish --dry-run\n",
+          "exitCode": 3
+        },
+        {
+          "if": "windows",
+          "args": "publish --dry-run --no-check",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.cmd",
+            "FAKE_JSR_EXIT_CODE": "3"
+          },
+          "output": "jsr publish --dry-run\n",
+          "exitCode": 3
+        }
+      ]
+    },
+    "publish_type_error": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "publish --dry-run",
+          "envs": {
+            "JSR_BIN_PATH": "../fake_jsr.sh"
+          },
+          "output": "type_error.out",
+          "cwd": "type_error",
+          "exitCode": 1
+        },
+        {
+          "if": "windows",
+          "args": "publish --dry-run",
+          "envs": {
+            "JSR_BIN_PATH": "../fake_jsr.cmd"
+          },
+          "output": "type_error.out",
+          "cwd": "type_error",
+          "exitCode": 1
+        }
+      ]
+    },
+    "pack_args": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "pack --dry-run --output out.tgz --ignore=a.ts,b.ts --no-source-maps mod.ts",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.sh"
+          },
+          "output": "pack_args.out"
+        },
+        {
+          "if": "windows",
+          "args": "pack --dry-run --output out.tgz --ignore=a.ts,b.ts --no-source-maps mod.ts",
+          "envs": {
+            "JSR_BIN_PATH": "./fake_jsr.cmd"
+          },
+          "output": "pack_args.out"
+        }
+      ]
+    }
+  }
+}

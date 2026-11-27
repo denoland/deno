@@ -1,4 +1,0 @@
-{
-  "args": "publish --dry-run --no-check --allow-slow-types",
-  "output": "publish.out"
-}

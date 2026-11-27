@@ -1,8 +1,0 @@
-{
-  "name": "@test/npm-specifier",
-  "version": "1.0.0",
-  "exports": "./mod.ts",
-  "imports": {
-    "chalk": "npm:chalk@5"
-  }
-}

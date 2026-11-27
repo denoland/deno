@@ -1,8 +1,0 @@
-{
-  "name": "@test/publish-include-assets",
-  "version": "1.0.0",
-  "exports": "./src/mod.ts",
-  "publish": {
-    "include": ["assets/**", "src/**"]
-  }
-}
