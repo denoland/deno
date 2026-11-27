@@ -538,11 +538,13 @@ mod test {
     // A Wasm module importing a bare specifier (mapped via the import map), an
     // npm specifier (mapped via the import map), a relative specifier (left
     // as-is) and bare module names that the host provides through the import
-    // object (left as-is, not made relative to the Wasm module).
+    // object (left as-is, not made relative to the Wasm module). Built-in
+    // Node.js module names are still unfurled to `node:` specifiers.
     let wasm = build_wasm_with_imports(&[
       "@std/foo",
       "chalk",
       "./other.js",
+      "fs",
       "env",
       "wasi_snapshot_preview1",
       "wbg",
@@ -568,6 +570,7 @@ mod test {
         "jsr:@std/foo@1".to_string(),
         "npm:chalk@5".to_string(),
         "./other.js".to_string(),
+        "node:fs".to_string(),
         "env".to_string(),
         "wasi_snapshot_preview1".to_string(),
         "wbg".to_string(),

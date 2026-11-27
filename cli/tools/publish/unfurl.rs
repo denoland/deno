@@ -379,10 +379,11 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   }
 
   /// Like [`Self::unfurl_specifier_reporting_diagnostic`], for a module name
-  /// in the import section of a Wasm module. A name that the resolver does not
-  /// map is left as is: Wasm hosts provide bare module names such as `env`,
-  /// `wasi_snapshot_preview1` or `wbg` through the import object, so they are
-  /// not paths relative to the Wasm module.
+  /// in the import section of a Wasm module. A Node.js built-in module name
+  /// is still unfurled to a `node:` specifier, but any other name that the
+  /// resolver does not map is left as is: Wasm hosts provide bare module names
+  /// such as `env`, `wasi_snapshot_preview1` or `wbg` through the import
+  /// object, so they are not paths relative to the Wasm module.
   pub fn unfurl_wasm_import_reporting_diagnostic(
     &self,
     referrer: &ModuleSpecifier,
@@ -673,10 +674,10 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
-      None if unresolved == Unresolved::Keep => return Ok(None),
       None if is_builtin_node_module(specifier) => {
         format!("node:{specifier}").parse().unwrap()
       }
+      None if unresolved == Unresolved::Keep => return Ok(None),
       None => match ModuleSpecifier::options()
         .base_url(Some(referrer))
         .parse(specifier)
@@ -1177,11 +1178,10 @@ fn ts_types_comment(types_specifier: &str) -> Option<String> {
 }
 
 /// What [`SpecifierUnfurler`] does with a specifier that the resolver does not
-/// map.
+/// map and that is not a Node.js built-in module name.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Unresolved {
-  /// Treat it as a Node.js built-in module, or as a URL relative to the
-  /// referrer.
+  /// Treat it as a URL relative to the referrer.
   ResolveAgainstReferrer,
   /// Leave it unchanged.
   Keep,
