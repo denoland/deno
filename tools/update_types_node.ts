@@ -350,6 +350,12 @@ function aliasWebStreamGlobals(
 
 function handleInterface(decl: InterfaceDeclaration) {
   switch (decl.getName()) {
+    case "ImportMeta": {
+      // make these align with our ImportMeta, which is optional
+      decl.getPropertyOrThrow("dirname").setHasQuestionToken(true);
+      decl.getPropertyOrThrow("filename").setHasQuestionToken(true);
+      break;
+    }
     case "Blob":
     case "ByteLengthQueuingStrategy":
     case "CompressionStream":
@@ -433,12 +439,7 @@ function handleVarDecl(decl: VariableDeclaration) {
       decl.remove();
       break;
     case "URLPattern":
-      // Unlike its sibling web globals, `@types/node` declares `var URLPattern`
-      // *unconditionally* (no `typeof globalThis extends { onmessage: any; ... }`
-      // guard), so it cannot defer to a Deno declaration. Deno concedes the
-      // `URLPattern` constructor to `@types/node` (keeping only the interface in
-      // its own libs), so keep this declaration - it is the sole provider of the
-      // `URLPattern` value in a single global table.
+      decl.remove();
       break;
     default:
       console.log(decl.getName());
