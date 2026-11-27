@@ -362,6 +362,8 @@ pub struct WriteBinOptions<'a> {
   pub include_paths: &'a [ModuleSpecifier],
   pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
+  pub code_cache_generation: bool,
+  pub embedded_code_cache: Option<&'a [u8]>,
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
@@ -644,6 +646,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       include_paths,
       exclude_paths,
       compile_flags,
+      code_cache_generation,
+      embedded_code_cache,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
       Some(CaData::File(ca_file)) => Some(
@@ -1105,7 +1109,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       aggregated_env_vars
     };
 
-    output_vfs(&vfs, display_output_filename);
+    if !code_cache_generation {
+      output_vfs(&vfs, display_output_filename);
+    }
 
     let preload_modules = self
       .cli_options
@@ -1125,6 +1131,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       argv: compile_flags.args.clone(),
       seed: self.cli_options.seed(),
       code_cache_key,
+      code_cache_generation,
       location: self.cli_options.location_flag().clone(),
       permissions: self.cli_options.permissions_options()?,
       v8_flags: construct_v8_flags(
@@ -1242,6 +1249,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
       &metadata,
       npm_snapshot.map(|s| s.into_serialized()),
+      embedded_code_cache,
       &specifier_store.for_serialization(&root_dir_url),
       &redirects_store,
       &remote_modules_store,
@@ -1249,21 +1257,32 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     )
     .context("Serializing binary data section.")?;
 
-    log::info!(
-      "\n{} {}",
-      crate::colors::bold("Files:"),
-      crate::util::display::human_size(section_sizes.vfs as f64)
-    );
-    log::info!(
-      "{} {}",
-      crate::colors::bold("Metadata:"),
-      crate::util::display::human_size(section_sizes.metadata as f64)
-    );
-    log::info!(
-      "{} {}\n",
-      crate::colors::bold("Remote modules:"),
-      crate::util::display::human_size(section_sizes.remote_modules as f64)
-    );
+    if !code_cache_generation {
+      log::info!(
+        "\n{} {}",
+        crate::colors::bold("Files:"),
+        crate::util::display::human_size(section_sizes.vfs as f64)
+      );
+      log::info!(
+        "{} {}",
+        crate::colors::bold("Metadata:"),
+        crate::util::display::human_size(
+          section_sizes.metadata.saturating_sub(section_sizes.code_cache) as f64
+        )
+      );
+      if section_sizes.code_cache != 0 {
+        log::info!(
+          "{} {}",
+          crate::colors::bold("Code cache:"),
+          crate::util::display::human_size(section_sizes.code_cache as f64)
+        );
+      }
+      log::info!(
+        "{} {}\n",
+        crate::colors::bold("Remote modules:"),
+        crate::util::display::human_size(section_sizes.remote_modules as f64)
+      );
+    }
 
     write_binary_bytes(writer, original_bin, data_section_bytes, compile_flags)
       .context("Writing binary bytes")
@@ -1648,6 +1667,7 @@ fn write_binary_bytes(
 
 struct BinaryDataSectionSizes {
   metadata: usize,
+  code_cache: usize,
   remote_modules: usize,
   vfs: usize,
 }
@@ -1656,6 +1676,7 @@ struct BinaryDataSectionSizes {
 /// * d3n0l4nd
 /// * <metadata_len><metadata>
 /// * <npm_snapshot_len><npm_snapshot>
+/// * <code_cache_len><code_cache>
 /// * <specifiers>
 /// * <redirects>
 /// * <remote_modules>
@@ -1666,6 +1687,7 @@ struct BinaryDataSectionSizes {
 fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
+  code_cache: Option<&[u8]>,
   specifiers: &SpecifierStoreForSerialization,
   redirects: &SpecifierDataStore<SpecifierId>,
   remote_modules: &SpecifierDataStore<RemoteModuleEntry<'_>>,
@@ -1674,6 +1696,7 @@ fn serialize_binary_data_section(
   let metadata = serde_json::to_string(metadata)?;
   let npm_snapshot =
     npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
+  let code_cache = code_cache.unwrap_or_default();
   let serialized_vfs = serde_json::to_string(&vfs.entries)?;
 
   let remote_modules_len = Cell::new(0);
@@ -1692,15 +1715,20 @@ fn serialize_binary_data_section(
       builder.append_le(npm_snapshot.len() as u64);
       builder.append(&npm_snapshot);
     }
+    // 3. Embedded V8 code cache
+    {
+      builder.append_le(code_cache.len() as u64);
+      builder.append(code_cache);
+    }
     metadata_len.set(builder.len());
-    // 3. Specifiers
+    // 4. Specifiers
     builder.append(specifiers);
-    // 4. Redirects
+    // 5. Redirects
     redirects.serialize(builder);
-    // 5. Remote modules
+    // 6. Remote modules
     remote_modules.serialize(builder);
     remote_modules_len.set(builder.len() - metadata_len.get());
-    // 6. VFS
+    // 7. VFS
     {
       builder.append_le(serialized_vfs.len() as u64);
       builder.append(&serialized_vfs);
@@ -1721,6 +1749,7 @@ fn serialize_binary_data_section(
     bytes,
     BinaryDataSectionSizes {
       metadata: metadata_len.get(),
+      code_cache: code_cache.len(),
       remote_modules: remote_modules_len.get(),
       vfs: vfs_len.get(),
     },
