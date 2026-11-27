@@ -21,12 +21,13 @@
 
 use std::io::BufRead;
 use std::path::Path;
-use std::path::PathBuf;
 
 use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
+use sys_traits::FsRead;
 use sys_traits::FsWrite;
 use sys_traits::PathsInErrorsExt;
+use sys_traits::SysWithPathsInErrors;
 
 use crate::bin_entries::EntrySetupOutcome;
 use crate::bin_entries::bin_script_stays_in_package;
@@ -297,7 +298,7 @@ impl ShimData {
 }
 
 pub fn set_up_bin_shim<'a>(
-  sys: &(impl FsOpen + FsWrite + FsMetadata),
+  sys: &(impl FsOpen + FsWrite + FsRead + FsMetadata),
   package: &'a deno_npm::NpmResolutionPackage,
   extra: &'a deno_npm::NpmPackageExtraInfo,
   bin_name: &'a str,
@@ -339,14 +340,33 @@ pub fn set_up_bin_shim<'a>(
   let shebang = resolve_shebang(sys.as_ref(), &target_file);
   let shim = ShimData::new(rel_target.to_string_lossy(), shebang);
 
-  let write_shim =
-    |path: PathBuf, contents: &str| sys.fs_write(&path, contents);
-
-  write_shim(shim_path.with_extension("cmd"), &shim.generate_cmd())?;
-  write_shim(shim_path.clone(), &shim.generate_sh())?;
-  write_shim(shim_path.with_extension("ps1"), &shim.generate_pwsh())?;
+  // Skip rewriting identical shims. Unconditional writes race under concurrent
+  // Deno processes on Windows (ERROR_SHARING_VIOLATION) and bump mtimes even
+  // when nothing changed. See https://github.com/denoland/deno/issues/36423
+  write_shim_if_changed(
+    sys,
+    &shim_path.with_extension("cmd"),
+    &shim.generate_cmd(),
+  )?;
+  write_shim_if_changed(sys, &shim_path, &shim.generate_sh())?;
+  write_shim_if_changed(
+    sys,
+    &shim_path.with_extension("ps1"),
+    &shim.generate_pwsh(),
+  )?;
 
   Ok(EntrySetupOutcome::Success)
+}
+
+fn write_shim_if_changed(
+  sys: SysWithPathsInErrors<'_, impl FsWrite + FsRead>,
+  path: &Path,
+  contents: &str,
+) -> Result<(), std::io::Error> {
+  match sys.fs_read_to_string(path) {
+    Ok(existing) if existing == contents => Ok(()),
+    _ => sys.fs_write(path, contents),
+  }
 }
 
 #[cfg(test)]
@@ -647,5 +667,42 @@ mod tests {
 
     let pwsh = shim.generate_pwsh();
     assert!(pwsh.contains("\"$basedir/node$exe\" --experimental-modules"));
+  }
+
+  /// Regression for https://github.com/denoland/deno/issues/36423
+  #[test]
+  fn write_shim_if_changed_skips_identical_contents() {
+    use std::time::Duration;
+
+    use sys_traits::FsCreateDirAll;
+
+    let sys = sys_traits::impls::RealSys;
+    let dir =
+      sys_traits::EnvTempDir::env_temp_dir(&sys)
+        .unwrap()
+        .join(format!(
+          "deno_test_write_shim_if_changed_{}",
+          std::process::id()
+        ));
+    sys.fs_create_dir_all(&dir).unwrap();
+    let path = dir.join("tool.cmd");
+    let contents = "@ECHO off\r\necho hi\r\n";
+
+    let sys = sys.with_paths_in_errors();
+    write_shim_if_changed(sys, &path, contents).unwrap();
+    let first_mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+    std::thread::sleep(Duration::from_millis(50));
+    write_shim_if_changed(sys, &path, contents).unwrap();
+    let second_mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+    assert_eq!(
+      first_mtime, second_mtime,
+      "identical shim contents must not be rewritten"
+    );
+
+    write_shim_if_changed(sys, &path, "changed").unwrap();
+    assert_eq!(sys.fs_read_to_string(&path).unwrap(), "changed");
+
+    let _ = std::fs::remove_dir_all(&dir);
   }
 }
