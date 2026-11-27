@@ -9,6 +9,7 @@ use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::packages::JsrPackageVersionResolver;
 use deno_graph::packages::JsrVersionResolver;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -16,6 +17,71 @@ use deno_semver::package::PackageReq;
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::PackageInfoLoadError;
+
+fn is_valid_jsr_name_part(part: &str, max_len: usize) -> bool {
+  (2..=max_len).contains(&part.len())
+    && part
+      .bytes()
+      .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+    && !part.starts_with('-')
+    && !part.ends_with('-')
+    && !part.contains("--")
+}
+
+// Keep these constraints in sync with JSR's `ScopedPackageName` validation.
+fn parse_jsr_package_name(name: &str) -> Option<(&str, &str)> {
+  let req_ref =
+    JsrPackageReqReference::from_str(&format!("jsr:{name}")).ok()?;
+  if req_ref.sub_path().is_some() || req_ref.req().name != name {
+    return None;
+  }
+
+  let (scope, package) = name.split_once('/')?;
+  let scope_name = scope.strip_prefix('@')?;
+  if !is_valid_jsr_name_part(scope_name, 20)
+    || !is_valid_jsr_name_part(package, 32)
+  {
+    return None;
+  }
+  Some((scope, package))
+}
+
+pub(crate) fn is_valid_jsr_package_name(name: &str) -> bool {
+  parse_jsr_package_name(name).is_some()
+}
+
+fn jsr_package_metadata_url(
+  registry_url: &deno_core::url::Url,
+  name: &str,
+  file_name: &str,
+) -> Option<deno_core::url::Url> {
+  let (scope, package) = parse_jsr_package_name(name)?;
+  let mut url = registry_url.clone();
+  url.set_query(None);
+  url.set_fragment(None);
+  let mut path = url.path_segments_mut().ok()?;
+  path
+    .pop_if_empty()
+    .push(scope)
+    .push(package)
+    .push(file_name);
+  drop(path);
+  Some(url)
+}
+
+pub(crate) fn jsr_package_meta_url(name: &str) -> Option<deno_core::url::Url> {
+  jsr_package_metadata_url(jsr_url(), name, "meta.json")
+}
+
+pub(crate) fn jsr_package_version_meta_url(
+  nv: &PackageNv,
+) -> Option<deno_core::url::Url> {
+  jsr_package_metadata_url(
+    jsr_url(),
+    &nv.name,
+    &format!("{}_meta.json", nv.version),
+  )
+}
 
 /// This is similar to a subset of `JsrCacheResolver` which fetches rather than
 /// just reads the cache. Keep in sync!
@@ -133,7 +199,7 @@ impl JsrFetchResolver {
   }
 
   fn meta_url(&self, name: &str) -> Option<deno_core::url::Url> {
-    jsr_url().join(&format!("{}/meta.json", name)).ok()
+    jsr_package_meta_url(name)
   }
 
   pub async fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
@@ -189,9 +255,7 @@ impl JsrFetchResolver {
       return info.value().clone();
     }
     let fetch_package_version_info = || async {
-      let meta_url = jsr_url()
-        .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
-        .ok()?;
+      let meta_url = jsr_package_version_meta_url(nv)?;
       let file_fetcher = self.file_fetcher.clone();
       let file = file_fetcher
         .fetch_bypass_permissions(&meta_url)
@@ -221,4 +285,51 @@ pub fn partial_jsr_package_version_info_from_slice(
     module_graph_2: None,
     lockfile_checksum: None,
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use deno_core::url::Url;
+
+  use super::*;
+
+  #[test]
+  fn jsr_package_metadata_url_uses_registry_path() {
+    let registry_url = Url::parse(
+      "https://registry.example:8443/jsr/root/?source=config#fragment",
+    )
+    .unwrap();
+    let url =
+      jsr_package_metadata_url(&registry_url, "@std/assert", "meta.json")
+        .unwrap();
+    assert_eq!(
+      url.as_str(),
+      "https://registry.example:8443/jsr/root/@std/assert/meta.json"
+    );
+    assert_eq!(url.origin(), registry_url.origin());
+  }
+
+  #[test]
+  fn jsr_package_metadata_url_rejects_invalid_names() {
+    let registry_url = Url::parse("https://registry.example/").unwrap();
+    for name in [
+      "http:127.0.0.1:8000?action=delete",
+      "https://example.com/package",
+      "//example.com/package",
+      "@scope/package?query",
+      "@scope/package#fragment",
+      "@scope/../package",
+      "@scope/..",
+      "@scope/%2e%2e",
+      "@scope/package/extra",
+      "@scope/package:extra",
+      "@scope\\package",
+    ] {
+      assert_eq!(
+        jsr_package_metadata_url(&registry_url, name, "meta.json"),
+        None,
+        "accepted invalid package name {name:?}"
+      );
+    }
+  }
 }
