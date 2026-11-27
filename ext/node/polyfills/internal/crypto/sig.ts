@@ -48,7 +48,10 @@ const {
   validateFunction,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+
+const { isAnyArrayBuffer } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const lazyWritable = core.createLazyLoader("node:_stream_writable");
 
@@ -287,11 +290,12 @@ class VerifyImpl {
   ): boolean {
     if (
       typeof signature !== "string" &&
-      !ArrayBufferIsView(signature)
+      !ArrayBufferIsView(signature) &&
+      !ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, signature)
     ) {
       throw new ERR_INVALID_ARG_TYPE(
         "signature",
-        ["Buffer", "TypedArray", "DataView"],
+        ["string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
         signature,
       );
     }
@@ -345,6 +349,21 @@ function Verify(algorithm: string, options?: any) {
 }
 
 Verify.prototype = VerifyImpl.prototype;
+
+function validateUnsupportedContext(key: any) {
+  const keyOpts = typeof key === "object" && key !== null &&
+      !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
+    ? key as Record<string, unknown>
+    : null;
+
+  const context = keyOpts?.context;
+  if (
+    ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, context) &&
+    context.length > 0
+  ) {
+    throw new TypeError("Context parameter is unsupported");
+  }
+}
 
 function signOneShot(
   algorithm: string | null | undefined,
@@ -406,9 +425,21 @@ function signOneShot(
 
     let result: Buffer;
     const keyType = op_node_get_asymmetric_key_type(handle);
+    validateUnsupportedContext(key);
     if (keyType === "ed25519") {
       if (algorithm != null && algorithm !== "sha512") {
         throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+      }
+      const keyOpts = typeof key === "object" && key !== null &&
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
+        ? key as Record<string, unknown>
+        : null;
+      const ctx = keyOpts?.context;
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, ctx) &&
+        ctx.length > 0
+      ) {
+        throw new TypeError("Context parameter is unsupported");
       }
       result = new FastBuffer(64);
       op_node_sign_ed25519(handle, dataBytes, result);
@@ -480,18 +511,26 @@ function verifyOneShot(
     validateFunction(callback, "callback");
   }
 
-  if (!ArrayBufferIsView(data) && typeof data !== "string") {
+  if (
+    typeof data !== "string" &&
+    !ArrayBufferIsView(data) &&
+    !isAnyArrayBuffer(data)
+  ) {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
-      ["Buffer", "TypedArray", "DataView"],
+      ["string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
       data,
     );
   }
 
-  if (!ArrayBufferIsView(signature) && typeof signature !== "string") {
+  if (
+    typeof signature !== "string" &&
+    !ArrayBufferIsView(signature) &&
+    !isAnyArrayBuffer(signature)
+  ) {
     throw new ERR_INVALID_ARG_TYPE(
       "signature",
-      ["Buffer", "TypedArray", "DataView"],
+      ["string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
       signature,
     );
   }
@@ -501,14 +540,20 @@ function verifyOneShot(
   }
 
   // Normalize ArrayBufferView data to Uint8Array for Rust ops
-  const dataBytes = ArrayBufferIsView(data) &&
-      !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
+  const dataBytes = isAnyArrayBuffer(data)
+    ? new Uint8Array(data)
+    : ArrayBufferIsView(data) &&
+        !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
     ? new Uint8Array(
       TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
       TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
       TypedArrayPrototypeGetByteLength(data as ArrayBufferView),
     )
     : data as ArrayBufferView | string;
+
+  const signatureBytes = isAnyArrayBuffer(signature)
+    ? new Uint8Array(signature)
+    : signature;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePublic);
@@ -537,11 +582,23 @@ function verifyOneShot(
 
     let result: boolean;
     const keyType = op_node_get_asymmetric_key_type(handle);
+    validateUnsupportedContext(key);
     if (keyType === "ed25519") {
       if (algorithm != null && algorithm !== "sha512") {
         throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
       }
-      result = op_node_verify_ed25519(handle, dataBytes, signature);
+      const keyOpts = typeof key === "object" && key !== null &&
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
+        ? key as Record<string, unknown>
+        : null;
+      const ctx = keyOpts?.context;
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, ctx) &&
+        ctx.length > 0
+      ) {
+        throw new TypeError("Context parameter is unsupported");
+      }
+      result = op_node_verify_ed25519(handle, dataBytes, signatureBytes);
     } else if (keyType === "ed448") {
       const keyOpts = typeof key === "object" && key !== null &&
           !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
@@ -554,7 +611,7 @@ function verifyOneShot(
       ) {
         throw new TypeError("Context parameter is unsupported");
       }
-      result = op_node_verify_ed448(handle, dataBytes, signature);
+      result = op_node_verify_ed448(handle, dataBytes, signatureBytes);
     } else if (
       keyType === "x25519" || keyType === "x448" || keyType === "dh"
     ) {
@@ -581,7 +638,7 @@ function verifyOneShot(
         ? { ...key, key: publicKeyObject }
         : publicKeyObject;
       result = Verify(digest).update(dataBytes)
-        .verify(verifyKey, signature);
+        .verify(verifyKey, signatureBytes);
     }
 
     if (callback) {
