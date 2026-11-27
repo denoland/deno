@@ -16,7 +16,7 @@ use crate::error::exception_to_err_result;
 use crate::modules::ModuleId;
 use crate::runtime::JsRealm;
 
-struct ModEvaluate {
+pub(super) struct ModEvaluate {
   module_map: Rc<ModuleMap>,
   sender: Option<oneshot::Sender<Result<(), Box<JsError>>>>,
   module: Option<v8::Global<v8::Module>>,
@@ -121,20 +121,29 @@ impl ModuleMap {
         (vec![], None)
       };
 
-      // Create a ModEvaluate instance and stash it in an external
-      let evaluation = v8::External::new(
-        tc_scope,
-        Box::into_raw(Box::new(ModEvaluate {
-          module_map: self.clone(),
-          sender: Some(sender),
-          notify,
-          module,
-        })) as _,
-      );
+      // Create a ModEvaluate instance and stash it in an external. It is
+      // tracked by the module map so it can be freed if neither handler runs.
+      let ptr = Box::into_raw(Box::new(ModEvaluate {
+        module_map: self.clone(),
+        sender: Some(sender),
+        notify,
+        module,
+      }));
+      self.pending_mod_evaluates.borrow_mut().insert(ptr);
+      let evaluation = v8::External::new(tc_scope, ptr as _);
 
       fn get_sender(arg: v8::Local<v8::Value>) -> ModEvaluate {
-        let sender = v8::Local::<v8::External>::try_from(arg).unwrap();
-        *unsafe { Box::from_raw(sender.value() as _) }
+        let ptr = v8::Local::<v8::External>::try_from(arg).unwrap().value()
+          as *mut ModEvaluate;
+        // SAFETY: `ptr` is still tracked in `pending_mod_evaluates`, so it has
+        // not been freed, and only one of the two handlers ever runs.
+        let sender = *unsafe { Box::from_raw(ptr) };
+        sender
+          .module_map
+          .pending_mod_evaluates
+          .borrow_mut()
+          .remove(&ptr);
+        sender
       }
 
       let on_fulfilled = Function::builder(

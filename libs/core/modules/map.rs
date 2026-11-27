@@ -71,6 +71,7 @@ mod wasm;
 use dynamic::DynImportModEvaluate;
 use dynamic::DynImportState;
 use dynamic::PrepareLoadFuture;
+use evaluation::ModEvaluate;
 pub use ext_script::wrap_lazy_ext_script;
 use tracked::TrackedFutures;
 use tracked::TrackedVec;
@@ -121,6 +122,10 @@ pub(crate) struct ModuleMap {
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
   pending_mod_evaluation: Cell<bool>,
+  /// `ModEvaluate`s owned by pending module evaluation promise handlers. Freed
+  /// in `destroy()` if the promise never settles, as they hold a strong
+  /// reference to this map.
+  pending_mod_evaluates: RefCell<HashSet<*mut ModEvaluate>>,
   /// Set to `true` while inside `module.evaluate()` in `mod_evaluate`.
   /// Used to suppress microtask checkpoints in `lazy_load_es_module_with_code`
   /// during module evaluation, preventing premature draining of TLA-related microtasks.
@@ -183,6 +188,15 @@ impl ModuleMap {
     self.pending_dyn_mod_evaluations.clear();
     self.pending_tla_waiters.borrow_mut().clear();
     self.code_cache_ready_futs.clear();
+    let pending_mod_evaluates =
+      std::mem::take(&mut *self.pending_mod_evaluates.borrow_mut());
+    for ptr in pending_mod_evaluates {
+      // SAFETY: `ptr` came from `Box::into_raw` in `mod_evaluate` and is
+      // removed from the set whenever the box is reclaimed elsewhere. The
+      // promise handlers holding it can't run afterwards: no JS executes on
+      // this isolate once the realm is destroyed.
+      drop(unsafe { Box::from_raw(ptr) });
+    }
     std::mem::take(&mut *self.data.borrow_mut());
   }
 
@@ -246,6 +260,7 @@ impl ModuleMap {
       pending_dyn_mod_evaluations: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
+      pending_mod_evaluates: Default::default(),
       evaluating_top_level: Default::default(),
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
