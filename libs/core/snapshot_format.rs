@@ -45,7 +45,7 @@ use crate::FastString;
 /// Bumped whenever the layout below changes. Snapshots are already keyed by a
 /// build hash, so this only exists to turn "silently decoded nonsense" into a
 /// clean panic.
-pub(crate) const SNAPSHOT_FORMAT_VERSION: u32 = 2;
+pub(crate) const SNAPSHOT_FORMAT_VERSION: u32 = 3;
 
 /// A string longer than this cannot be encoded (the top bit of the length
 /// header is the non-ASCII flag).
@@ -316,6 +316,32 @@ mod tests {
     let r: &'static [u8] = Box::leak(b);
     KEEP.0.lock().unwrap().push(r as *const [u8]);
     r
+  }
+
+  #[test]
+  fn roundtrip_module_import_attributes() {
+    use crate::modules::ModuleImportPhase;
+    use crate::modules::ModuleReference;
+    use crate::modules::ModuleRequest;
+    use crate::modules::RequestedModuleType;
+
+    let request = ModuleRequest {
+      reference: ModuleReference {
+        specifier: "file:///messages.json".parse().unwrap(),
+        requested_module_type: RequestedModuleType::Json,
+      },
+      import_attributes: Box::new([
+        ("locale".into(), "fr".into()),
+        ("type".into(), "json".into()),
+      ]),
+      specifier_key: Some("./messages.json".into()),
+      referrer_source_offset: Some(10),
+      phase: ModuleImportPhase::Evaluation,
+    };
+    let mut encoder = Encoder::new();
+    request.encode(&mut encoder);
+    let mut decoder = Decoder::new(leak(encoder.into_bytes())).unwrap();
+    assert_eq!(ModuleRequest::decode(&mut decoder).unwrap(), request);
   }
 
   #[test]

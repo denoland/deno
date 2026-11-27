@@ -33,6 +33,11 @@
       "args": "run -A --import=./hook.mjs main.mjs",
       "output": "import_attributes_custom/main.out"
     },
+    "dynamic_import_attributes_custom": {
+      "cwd": "import_attributes_custom",
+      "args": "run -A dynamic.mjs",
+      "output": ""
+    },
     "load_import_attributes": {
       "cwd": "load_import_attributes",
       "args": "run -A --import=./hook.mjs main.mjs",

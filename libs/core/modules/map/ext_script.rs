@@ -364,15 +364,8 @@ impl ModuleMap {
 
     let specifier = ModuleSpecifier::parse(module_specifier)?;
 
-    let load_response = loader.load(
-      &specifier,
-      None,
-      ModuleLoadOptions {
-        is_dynamic_import: false,
-        is_synchronous: false,
-        requested_module_type: RequestedModuleType::None,
-      },
-    );
+    let load_response =
+      loader.load(&specifier, None, ModuleLoadOptions::default());
 
     let source = match load_response {
       ModuleLoadResponse::Sync(result) => result,

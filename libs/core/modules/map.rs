@@ -1053,11 +1053,15 @@ impl ModuleMap {
           module_specifier.as_str(),
         );
       }
+      // Preserve a deterministic order in the snapshot sidecar.
+      let mut import_attributes: Box<[_]> = attributes.into_iter().collect();
+      import_attributes.sort_unstable();
       let request = ModuleRequest {
         reference: ModuleReference {
           specifier: module_specifier,
           requested_module_type,
         },
+        import_attributes,
         specifier_key: Some(import_specifier.into_owned()),
         referrer_source_offset,
         phase: match module_request.get_phase() {

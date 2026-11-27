@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::task::Waker;
 
 use deno_core::OpState;
+use deno_core::RequestedModuleType;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -16,10 +17,6 @@ use deno_error::JsErrorBox;
 struct PendingLoad {
   id: u32,
   url: String,
-  /// The full set of `with { ... }` import attributes for this load, so the
-  /// JS load hook sees the same `context.importAttributes` Node would (not
-  /// just the `type` attribute). Captured at resolve time keyed by the
-  /// resolved URL (see [`LoaderHookRegistry::record_resolved_attributes`]).
   import_attributes: HashMap<String, String>,
 }
 
@@ -34,6 +31,8 @@ struct PendingLoad {
 type LoadResult = (Option<String>, Option<String>, Option<String>);
 type LoadSender =
   deno_core::futures::channel::oneshot::Sender<Result<LoadResult, String>>;
+
+type LoadKey = (String, RequestedModuleType);
 
 /// Callback used to perform the default ESM resolution from JS hooks.
 /// Installed by the embedder so that the JS terminal `nextResolve` fallback
@@ -62,18 +61,11 @@ pub struct LoaderHookRegistry {
   pending_loads: Rc<RefCell<VecDeque<PendingLoad>>>,
   load_waker: Rc<RefCell<Option<Waker>>>,
   load_senders: Rc<RefCell<HashMap<u32, LoadSender>>>,
-  /// Maps load request ID to URL for dedup tracking.
-  load_id_keys: Rc<RefCell<HashMap<u32, String>>>,
+  /// Maps each load request ID to its module cache key.
+  load_id_keys: Rc<RefCell<HashMap<u32, LoadKey>>>,
   /// Piggybacking senders for duplicate load requests.
-  load_waiters: Rc<RefCell<HashMap<String, Vec<LoadSender>>>>,
+  load_waiters: Rc<RefCell<HashMap<LoadKey, Vec<LoadSender>>>>,
   default_resolve: Rc<RefCell<Option<DefaultResolveCb>>>,
-  /// Import attributes recorded during resolution, keyed by the resolved
-  /// module URL. The module loader's `resolve_with_scope` sees the full
-  /// `with { ... }` clause; `load` (driven by V8) only sees the `type`
-  /// attribute, so we stash the full set here at resolve time and consume it
-  /// when building the load request. This lets the JS load hook observe the
-  /// same `context.importAttributes` as Node.
-  resolved_attributes: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
 }
 
 impl LoaderHookRegistry {
@@ -171,44 +163,6 @@ impl LoaderHookRegistry {
     ))
   }
 
-  /// Record the full import attributes seen while resolving `url`, so the
-  /// later `load` of that URL can forward them to the JS load hook. Only the
-  /// `type` attribute survives into V8's load callback, so without this the
-  /// load hook would never see custom attributes (e.g. `with { x_loader }`).
-  pub fn record_resolved_attributes(
-    &self,
-    url: &str,
-    import_attributes: &HashMap<String, String>,
-  ) {
-    // Only the load-hook path (`take_resolved_attributes`) ever consumes
-    // these. With no load hook registered nothing takes them, so skip
-    // recording to avoid the map growing unbounded — e.g. a resolve-only
-    // hook would otherwise accumulate an entry per resolved import forever.
-    if import_attributes.is_empty() || !self.load_active.get() {
-      return;
-    }
-    // First write wins: when the same URL is imported with different
-    // attributes, the load bridge dedups by URL and V8 serves the first
-    // requesting import, so the load hook should observe that import's
-    // attributes (not a later importer's that gets piggybacked).
-    self
-      .resolved_attributes
-      .borrow_mut()
-      .entry(url.to_string())
-      .or_insert_with(|| import_attributes.clone());
-  }
-
-  /// Take the import attributes recorded for `url` at resolve time, falling
-  /// back to an empty set. Consuming (rather than cloning) keeps the map from
-  /// growing without bound across a long-running process.
-  pub fn take_resolved_attributes(&self, url: &str) -> HashMap<String, String> {
-    self
-      .resolved_attributes
-      .borrow_mut()
-      .remove(url)
-      .unwrap_or_default()
-  }
-
   /// Push a load request and return a receiver for the response.
   /// `Ok((Some(source), format, _))` = hook provided source,
   /// `Ok((None, _, effective_url))` = fallthrough, optionally redirected.
@@ -217,29 +171,25 @@ impl LoaderHookRegistry {
   pub fn push_load(
     &self,
     url: String,
+    requested_module_type: &RequestedModuleType,
     import_attributes: HashMap<String, String>,
   ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
   {
-    // Dedup: if there's already a pending load for this URL, piggyback.
-    if self.load_waiters.borrow().contains_key(&url) {
-      let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
-      self
-        .load_waiters
-        .borrow_mut()
-        .get_mut(&url)
-        .unwrap()
-        .push(sender);
+    // A shared load receives the attributes of its first request.
+    let key = (url.clone(), requested_module_type.clone());
+    let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
+    if let Some(waiters) = self.load_waiters.borrow_mut().get_mut(&key) {
+      waiters.push(sender);
       return receiver;
     }
     self
       .load_waiters
       .borrow_mut()
-      .insert(url.clone(), Vec::new());
+      .insert(key.clone(), Vec::new());
 
     let id = self.next_id();
-    let (sender, receiver) = deno_core::futures::channel::oneshot::channel();
     self.load_senders.borrow_mut().insert(id, sender);
-    self.load_id_keys.borrow_mut().insert(id, url.clone());
+    self.load_id_keys.borrow_mut().insert(id, key);
     self.pending_loads.borrow_mut().push_back(PendingLoad {
       id,
       url,
