@@ -1,0 +1,65 @@
+{
+  "tempDir": true,
+  "tests": {
+    "isolated": {
+      "steps": [
+        {
+          "args": "install -g --no-prompt --node-modules-linker=isolated --root ./bins --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+          "output": "install.out"
+        },
+        {
+          "args": "run --allow-read assert_not_run.js",
+          "output": ""
+        },
+        {
+          "args": "install -g --no-prompt --node-modules-linker=isolated --root ./bins --name lifecycle-scripts-simple --allow-scripts --force npm:@denotest/lifecycle-scripts-simple",
+          "output": "[WILDCARD]Successfully installed lifecycle-scripts-simple[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./bins/bin/lifecycle-scripts-simple",
+          "args": [],
+          "output": "postinstall works\n"
+        },
+        {
+          "if": "windows",
+          "commandName": "./bins/bin/lifecycle-scripts-simple.cmd",
+          "args": [],
+          "output": "postinstall works\n"
+        }
+      ]
+    },
+    "hoisted": {
+      "steps": [
+        {
+          "args": "install -g --node-modules-dir=manual --no-prompt --node-modules-linker=hoisted --root ./bins --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+          "output": "install.out"
+        },
+        {
+          "args": "run --allow-read assert_not_run.js",
+          "output": ""
+        },
+        {
+          "args": "install -g --node-modules-dir=manual --no-prompt --node-modules-linker=hoisted --root ./bins --name lifecycle-scripts-simple --allow-scripts --force npm:@denotest/lifecycle-scripts-simple",
+          "output": "[WILDCARD]Successfully installed lifecycle-scripts-simple[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./bins/bin/lifecycle-scripts-simple",
+          "args": [],
+          "output": "postinstall works\n"
+        },
+        {
+          "if": "windows",
+          "commandName": "./bins/bin/lifecycle-scripts-simple.cmd",
+          "args": [],
+          "output": "postinstall works\n"
+        }
+      ]
+    },
+    "local": {
+      "args": "install --node-modules-dir=auto npm:@denotest/lifecycle-scripts-simple",
+      "output": "[WILDCARD]Run \"deno approve-scripts\" to run build scripts.\n[WILDCARD]"
+    }
+  }
+}
