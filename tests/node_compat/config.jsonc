@@ -3042,6 +3042,7 @@
       "windows": false
     },
     "parallel/test-process-really-exit.js": {},
+    "parallel/test-process-ref-unref.js": {},
     "parallel/test-process-remove-all-signal-listeners.js": {},
     "parallel/test-process-setsourcemapsenabled.js": {},
     "parallel/test-process-title-cli.js": {},
