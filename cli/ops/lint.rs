@@ -160,6 +160,7 @@ impl LintPluginContainer {
     let lint_diagnostic = LintDiagnostic {
       specifier,
       range: Some(range),
+      severity: Default::default(),
       details: LintDiagnosticDetails {
         message,
         code: id,
