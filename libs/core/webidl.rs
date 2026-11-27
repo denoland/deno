@@ -137,15 +137,29 @@ impl std::fmt::Display for WebIdlError {
 
 impl std::error::Error for WebIdlError {}
 
-#[derive(Debug)]
-pub struct SequenceLengthExpectation {
-  first: usize,
-  second: usize,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SequenceLengthExpectation {
+  Exact(usize),
+  AtMost(usize),
+  Range { min: usize, max: usize },
+  OneOf { first: usize, second: usize },
 }
 
 impl std::fmt::Display for SequenceLengthExpectation {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "exactly {} or {} elements", self.first, self.second)
+    match self {
+      Self::Exact(len) => write!(f, "exactly {len} elements"),
+      Self::AtMost(len) => write!(f, "at most {len} elements"),
+      Self::Range { min, max } if min == max => {
+        write!(f, "exactly {min} elements")
+      }
+      Self::Range { min, max } => {
+        write!(f, "between {min} and {max} elements")
+      }
+      Self::OneOf { first, second } => {
+        write!(f, "exactly {first} or {second} elements")
+      }
+    }
   }
 }
 
@@ -465,15 +479,48 @@ fn for_each_in_sequence<'a, 'b, 'i>(
   Ok(len)
 }
 
-// TODO: WebGPU API like `GPUExtent3D`, `GPUOrigin3D`
-// or `GPUColor` could be statically allocated sequence
-// due to its size being known at compile time.
-// Extend this helper with additional fixed-size/size-bounded policies
-// like `SequenceLengthExact<N>`, `SequenceLengthAtMost<N>`, or
-// `SequenceLengthRange<MIN, MAX>` when we need.
 pub trait SequenceLengthPolicy {
   fn accepts(len: usize) -> bool;
   fn expectation() -> SequenceLengthExpectation;
+}
+
+pub struct SequenceLengthExact<const N: usize>;
+
+impl<const N: usize> SequenceLengthPolicy for SequenceLengthExact<N> {
+  fn accepts(len: usize) -> bool {
+    len == N
+  }
+
+  fn expectation() -> SequenceLengthExpectation {
+    SequenceLengthExpectation::Exact(N)
+  }
+}
+
+pub struct SequenceLengthAtMost<const N: usize>;
+
+impl<const N: usize> SequenceLengthPolicy for SequenceLengthAtMost<N> {
+  fn accepts(len: usize) -> bool {
+    len <= N
+  }
+
+  fn expectation() -> SequenceLengthExpectation {
+    SequenceLengthExpectation::AtMost(N)
+  }
+}
+
+pub struct SequenceLengthRange<const MIN: usize, const MAX: usize>;
+
+impl<const MIN: usize, const MAX: usize> SequenceLengthPolicy
+  for SequenceLengthRange<MIN, MAX>
+{
+  fn accepts(len: usize) -> bool {
+    debug_assert!(MIN <= MAX);
+    (MIN..=MAX).contains(&len)
+  }
+
+  fn expectation() -> SequenceLengthExpectation {
+    SequenceLengthExpectation::Range { min: MIN, max: MAX }
+  }
 }
 
 pub struct SequenceLengthOneOf<const A: usize, const B: usize>;
@@ -486,7 +533,7 @@ impl<const A: usize, const B: usize> SequenceLengthPolicy
   }
 
   fn expectation() -> SequenceLengthExpectation {
-    SequenceLengthExpectation {
+    SequenceLengthExpectation::OneOf {
       first: A,
       second: B,
     }
@@ -1800,6 +1847,51 @@ mod tests {
         &Default::default(),
       );
     assert_eq!(&*converted.unwrap(), &[1, 2, 3, 4]);
+  }
+
+  #[test]
+  fn constrained_sequence_exact() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let values = [
+      v8::Number::new(scope, 1.0).into(),
+      v8::Number::new(scope, 2.0).into(),
+      v8::Number::new(scope, 3.0).into(),
+      v8::Number::new(scope, 4.0).into(),
+    ];
+    let val = v8::Array::new_with_elements(scope, &values);
+    let converted =
+      ConstrainedSequence::<u8, SequenceLengthExact<4>, 4>::convert(
+        scope,
+        val.into(),
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      );
+    assert_eq!(&*converted.unwrap(), &[1, 2, 3, 4]);
+  }
+
+  #[test]
+  fn constrained_sequence_at_most() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let values = [
+      v8::Number::new(scope, 1.0).into(),
+      v8::Number::new(scope, 2.0).into(),
+      v8::Number::new(scope, 3.0).into(),
+    ];
+    let val = v8::Array::new_with_elements(scope, &values);
+    let converted =
+      ConstrainedSequence::<u8, SequenceLengthAtMost<4>, 4>::convert(
+        scope,
+        val.into(),
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      );
+    assert_eq!(&*converted.unwrap(), &[1, 2, 3]);
   }
 
   #[test]
