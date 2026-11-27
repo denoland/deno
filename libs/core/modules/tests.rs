@@ -739,6 +739,40 @@ fn test_cached_synthetic_esm_evaluation_allows_dynamic_import() {
     .unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/37172
+///
+/// A Wasm module requested through a new specifier that redirects to an
+/// already loaded Wasm module reuses the compiled source. Registering the new
+/// specifier must not happen while `ModuleMapData` is still borrowed by the
+/// lookup.
+#[test]
+fn test_wasm_module_source_redirect_to_loaded_module() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  let found = resolve_url("file:///a.wasm").unwrap();
+  for specified in ["file:///a.wasm", "file:///b.wasm"] {
+    let specified = resolve_url(specified).unwrap();
+    let reference = crate::modules::ModuleReference {
+      specifier: specified.clone(),
+      requested_module_type: RequestedModuleType::None,
+    };
+    // An empty Wasm module.
+    let code = ModuleCodeBytes::Static(b"\0asm\x01\0\0\0");
+    let source = ModuleSource::new_with_redirect(
+      ModuleType::Wasm,
+      ModuleSourceCode::Bytes(code),
+      &specified,
+      &found,
+      None,
+    );
+    module_map
+      .new_wasm_module_source(scope, &reference, source)
+      .unwrap();
+  }
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/34307
 ///
 /// Two concurrent dynamic `import()` calls each spawn their own
