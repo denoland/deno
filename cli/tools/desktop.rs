@@ -2038,7 +2038,7 @@ impl LaufeyBackendResolver {
       std::fs::remove_dir_all(&dir)?;
     }
 
-    let staging_path = staging.into_path();
+    let staging_path = staging.keep();
     if let Err(e) = std::fs::rename(&staging_path, &dir) {
       // Lost a rename race with a concurrent process — its dir is at
       // our target path now. Drop our staged copy and use theirs.
@@ -7422,7 +7422,7 @@ def456  other.zip
     .unwrap();
     assert_eq!(
       filesystem.compressor,
-      backhand::compression::Compressor::Zstd
+      Some(backhand::traits::Compressor::Zstd)
     );
   }
 

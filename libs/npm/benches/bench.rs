@@ -1,6 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::disallowed_methods, reason = "benchmark code")]
+#![allow(
+  clippy::disallowed_methods,
+  clippy::print_stderr,
+  reason = "benchmark code"
+)]
 
 use std::cell::RefCell;
 use std::collections::HashMap;

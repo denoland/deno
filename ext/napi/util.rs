@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-use libc::INT_MAX;
 
 use crate::*;
 
@@ -115,7 +114,7 @@ pub(crate) unsafe fn check_new_from_utf8_len<'s>(
   let env = unsafe { &mut *env };
   return_error_status_if_false!(
     env,
-    (len == NAPI_AUTO_LENGTH) || len <= INT_MAX as _,
+    (len == NAPI_AUTO_LENGTH) || len <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
   return_error_status_if_false!(env, !str_.is_null(), napi_invalid_arg);
