@@ -35,6 +35,25 @@ __runtime_defaults = ["upgrade", "__vendored_zlib_ng"]
 # 2. Run the executable. It will output a dhat-heap.json file.
 # 3. Open the json file in https://nnethercote.github.io/dh_view/dh_view.html
 dhat-heap = ["dhat"]
+# A feature that switches TLS/crypto to the FIPS 140-validated AWS-LC-FIPS
+# module. Cargo unifies features for a dependency across the whole build, so
+# enabling rustls's own `fips` feature here (which pulls in aws-lc-rs's
+# `fips` feature and, transitively, aws-lc-fips-sys) is sufficient to make
+# every consumer of the shared `rustls` crate --- deno_net, deno_fetch,
+# quinn's rustls-aws-lc-rs backend, hyper-rustls, tokio-rustls --- link
+# against the FIPS module instead of the default aws-lc-sys build. The CLI
+# additionally performs a fail-closed startup check (see boot_phase("fips
+# check") in cli/lib.rs) that aborts if the linked crypto library did not
+# actually come up in FIPS mode.
+#
+# `deno_runtime/fips` forwards to `deno_crypto/fips`, which is a SEPARATE
+# knob from rustls's: aws-lc-rs's own `fips` feature compiles out its
+# `unstable::signature` module (ML-DSA support has not shipped in the
+# FIPS-validated module yet), so deno_crypto needs to know FIPS mode is on
+# to switch ML-DSA to a stub that reports it as unsupported -- otherwise
+# ext/crypto/mldsa.rs fails to compile at all under `--features fips`. See
+# that file's module doc for the full explanation.
+fips = ["rustls/fips", "deno_runtime/fips"]
 # A feature that enables the upgrade subcommand and the background check for
 # available updates (of deno binary). This is typically disabled for (Linux)
 # distribution packages.

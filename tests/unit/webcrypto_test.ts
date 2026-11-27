@@ -3365,7 +3365,10 @@ Deno.test(async function webcryptoRawKeyFormatVariants() {
   assertEquals(importedPublic.type, "public");
   assertEquals(importedPrivate.type, "private");
 
-  // raw-seed: ML-DSA private key seed.
+  // raw-seed: ML-DSA private key seed. Not available under the `fips`
+  // build: aws-lc-rs's FIPS variant doesn't yet expose the unstable ML-DSA
+  // API (see ext/crypto/mldsa.rs), so generateKey throws there.
+  if (!supports("generateKey", "ML-DSA-65")) return;
   const mlDsa = "ML-DSA-65";
   const mlPair = await crypto.subtle.generateKey(
     mlDsa,
@@ -4232,14 +4235,19 @@ Deno.test(function subtleCryptoSupportsBasic() {
 });
 
 Deno.test(function subtleCryptoSupportsPqcAlgorithms() {
-  // ML-DSA
+  // ML-DSA: unsupported under the `fips` build (aws-lc-rs's FIPS variant
+  // doesn't yet expose the unstable ML-DSA API -- see ext/crypto/mldsa.rs).
+  // supports() must honestly reflect that rather than table membership, so
+  // probe it once and assert all ML-DSA ops agree with that probe instead
+  // of hardcoding `true`.
+  const mlDsaSupported = supports("generateKey", "ML-DSA-65");
   for (const name of ["ML-DSA-44", "ML-DSA-65", "ML-DSA-87"]) {
-    assert(supports("generateKey", name));
-    assert(supports("sign", name));
-    assert(supports("verify", name));
-    assert(supports("importKey", name));
-    assert(supports("exportKey", name));
-    assert(supports("getPublicKey", name));
+    assertEquals(supports("generateKey", name), mlDsaSupported);
+    assertEquals(supports("sign", name), mlDsaSupported);
+    assertEquals(supports("verify", name), mlDsaSupported);
+    assertEquals(supports("importKey", name), mlDsaSupported);
+    assertEquals(supports("exportKey", name), mlDsaSupported);
+    assertEquals(supports("getPublicKey", name), mlDsaSupported);
   }
   // ML-KEM
   for (const name of ["ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]) {
@@ -4323,7 +4331,14 @@ Deno.test(function subtleCryptoSupportsCaseInsensitive() {
   // Algorithm name matching is case-insensitive per
   // https://w3c.github.io/webcrypto/#dfn-normalize-an-algorithm
   assert(supports("digest", "sha-256"));
-  assert(supports("generateKey", "ml-dsa-65"));
+  // ML-DSA support itself depends on the build (unavailable under `fips`,
+  // see subtleCryptoSupportsPqcAlgorithms above); what this assertion
+  // actually checks is that the lowercase name agrees with the canonical
+  // one, not that ML-DSA is unconditionally supported.
+  assertEquals(
+    supports("generateKey", "ml-dsa-65"),
+    supports("generateKey", "ML-DSA-65"),
+  );
   assert(supports("encapsulateBits", "ml-kem-768"));
 });
 
@@ -4409,6 +4424,9 @@ Deno.test(function subtleCryptoSupportsThrowsOnMissingArgs() {
 // context. Regression-pin the behavior so a silent acceptance later (e.g.
 // after an aws-lc-rs API change) reads as a vuln, not an enhancement.
 Deno.test(async function subtleMlDsaNonEmptyContextRejected() {
+  // Not available under the `fips` build (see comment on the raw-seed
+  // block in webcryptoRawKeyFormatVariants above for why).
+  if (!supports("generateKey", "ML-DSA-65")) return;
   const { publicKey, privateKey } = await crypto.subtle.generateKey(
     { name: "ML-DSA-65" },
     false,
