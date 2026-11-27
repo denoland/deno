@@ -7,6 +7,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_ast::swc::common::comments::CommentKind;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleEntryRef;
@@ -14,26 +15,33 @@ use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
 use deno_resolver::cache::ParsedSourceCache;
+use deno_resolver::workspace::MappedResolution;
+use deno_resolver::workspace::ResolutionKind;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 
 pub struct GraphDiagnosticsCollector {
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
+  workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
 }
 
 impl GraphDiagnosticsCollector {
   pub fn new(
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
+    workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
   ) -> Self {
     Self {
       npm_resolver,
       parsed_source_cache,
+      workspace_resolver,
     }
   }
 
@@ -44,6 +52,50 @@ impl GraphDiagnosticsCollector {
   ) -> Result<(), AnyError> {
     let mut visited = HashSet::new();
     let mut skip_specifiers: HashSet<Url> = HashSet::new();
+
+    let check_self_import =
+      |specifier_text: &str,
+       resolution: &ResolutionResolved,
+       resolution_kind: ResolutionKind| {
+        if let Some(package) = self
+          .workspace_resolver
+          .jsr_packages()
+          .iter()
+          .filter(|pkg| {
+            resolution
+              .range
+              .specifier
+              .as_str()
+              .starts_with(pkg.base.as_str())
+          })
+          .max_by_key(|pkg| pkg.base.as_str().len())
+        {
+          let reference = match self.workspace_resolver.resolve(
+            specifier_text,
+            &resolution.range.specifier,
+            resolution_kind,
+          ) {
+            Ok(MappedResolution::WorkspaceJsrPackage {
+              pkg_req_ref, ..
+            }) => Some(pkg_req_ref),
+            Ok(MappedResolution::Normal { specifier, .. }) => {
+              JsrPackageReqReference::from_specifier(&specifier).ok()
+            }
+            _ => None,
+          };
+          if let Some(reference) = reference
+            && reference.req().name == package.name
+          {
+            bail!(
+              "Package '{}' cannot import itself through '{}'. Use a relative import instead.\n    at {}",
+              package.name,
+              specifier_text,
+              resolution.range,
+            );
+          }
+        }
+        Ok(())
+      };
 
     let mut collect_if_invalid =
       |skip_specifiers: &mut HashSet<Url>,
@@ -165,6 +217,16 @@ impl GraphDiagnosticsCollector {
         diagnostics_collector,
       );
 
+      if let Some(types_dep) = &module.maybe_types_dependency
+        && let Some(resolved) = types_dep.dependency.ok()
+      {
+        check_self_import(
+          &types_dep.specifier,
+          resolved,
+          ResolutionKind::Types,
+        )?;
+      }
+
       for (specifier_text, dep) in &module.dependencies {
         // text imports are stable, but bytes imports are not yet
         for bytes_import in dep
@@ -179,6 +241,11 @@ impl GraphDiagnosticsCollector {
         }
 
         if let Some(resolved) = dep.maybe_code.ok() {
+          check_self_import(
+            specifier_text,
+            resolved,
+            ResolutionKind::Execution,
+          )?;
           collect_if_invalid(
             &mut skip_specifiers,
             &module.source.text,
@@ -187,6 +254,14 @@ impl GraphDiagnosticsCollector {
           );
         }
         if let Some(resolved) = dep.maybe_type.ok() {
+          check_self_import(
+            dep
+              .maybe_deno_types_specifier
+              .as_deref()
+              .unwrap_or(specifier_text),
+            resolved,
+            ResolutionKind::Types,
+          )?;
           collect_if_invalid(
             &mut skip_specifiers,
             &module.source.text,
