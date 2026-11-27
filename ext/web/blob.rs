@@ -186,6 +186,11 @@ pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
   async fn read<'a>(&'a self) -> &'a [u8];
   fn size(&self) -> usize;
+  /// If this part is a slice of another part, returns that part and the
+  /// offset of the slice in it.
+  fn slice_source(&self) -> Option<(Arc<dyn BlobPart + Send + Sync>, usize)> {
+    None
+  }
 }
 
 #[derive(Debug)]
@@ -225,6 +230,30 @@ impl BlobPart for SlicedBlobPart {
   fn size(&self) -> usize {
     self.len
   }
+
+  fn slice_source(&self) -> Option<(Arc<dyn BlobPart + Send + Sync>, usize)> {
+    Some((self.part.clone(), self.start))
+  }
+}
+
+impl SlicedBlobPart {
+  /// Slices `part`. A slice of a slice refers to the original part, so
+  /// slices never nest: reading or dropping a nested chain recurses once per
+  /// level and can overflow the stack.
+  fn new(
+    part: Arc<dyn BlobPart + Send + Sync>,
+    start: usize,
+    len: usize,
+  ) -> Self {
+    match part.slice_source() {
+      Some((source, offset)) => Self {
+        part: source,
+        start: offset + start,
+        len,
+      },
+      None => Self { part, start, len },
+    }
+  }
 }
 
 #[op2]
@@ -261,7 +290,7 @@ pub fn op_blob_slice_part(
     return Err(BlobError::SizeLargerThanBlobPart);
   }
 
-  let sliced_part = SlicedBlobPart { part, start, len };
+  let sliced_part = SlicedBlobPart::new(part, start, len);
   let id = blob_store.insert_part(Arc::new(sliced_part));
 
   Ok(id)
@@ -499,5 +528,25 @@ mod tests {
 
     assert!(store.remove_part(&id).is_some());
     assert!(store.get_part(&id).is_none());
+  }
+
+  #[test]
+  fn slices_of_slices_do_not_nest() {
+    let mut part: Arc<dyn BlobPart + Send + Sync> =
+      Arc::new(InMemoryBlobPart::from(b"hello world".to_vec()));
+    part = Arc::new(SlicedBlobPart::new(part, 6, 5));
+    // Deep enough to overflow the stack on read or drop if slices nested.
+    for _ in 0..1_000_000 {
+      let len = part.size();
+      part = Arc::new(SlicedBlobPart::new(part, 0, len));
+    }
+    part = Arc::new(SlicedBlobPart::new(part, 1, 3));
+
+    let (source, offset) = part.slice_source().unwrap();
+    assert!(source.slice_source().is_none());
+    assert_eq!(offset, 7);
+    assert_eq!(part.size(), 3);
+    let bytes = futures::executor::block_on(part.read());
+    assert_eq!(bytes, b"orl");
   }
 }
