@@ -59,7 +59,7 @@ pub static UPGRADE_USAGE: &str = cstr!(
 fn join_paths(allowlist: &[String], d: &str) -> String {
   allowlist
     .iter()
-    .map(|path| path.to_string())
+    .map(|path| path.replace(',', ",,"))
     .collect::<Vec<String>>()
     .join(d)
 }
@@ -312,7 +312,7 @@ impl FlagsExt for Flags {
         args.push("--ignore-read".to_string());
       }
       Some(ignorelist) => {
-        let s = format!("--ignore-read={}", ignorelist.join(","));
+        let s = format!("--ignore-read={}", join_paths(ignorelist, ","));
         args.push(s);
       }
       _ => {}
@@ -903,6 +903,46 @@ mod tests {
 
   fn flags_from_vec(args: Vec<OsString>) -> Result<Flags, CliError> {
     flags_from_vec_with_initial_cwd(args, None)
+  }
+
+  #[test]
+  fn path_permission_args_round_trip() {
+    for flag in [
+      "--allow-read",
+      "-R",
+      "--deny-read",
+      "--ignore-read",
+      "--allow-write",
+      "-W",
+      "--deny-write",
+      "--allow-ffi",
+      "--deny-ffi",
+    ] {
+      for value in [
+        "plain.txt",
+        "foo,,bar",
+        "foo,,bar,baz",
+        ",,foo",
+        "foo,,",
+        "foo,,,bar",
+        "foo,,,,bar",
+        "資料,,data",
+      ] {
+        let flags = flags_from_vec(svec![
+          "deno",
+          "run",
+          format!("{flag}={value}"),
+          format!("{flag}=other,,path,plain"),
+          "script.ts",
+        ])
+        .unwrap();
+        let mut args = svec!["deno", "run"];
+        args.extend(flags.to_permission_args().into_iter().map(OsString::from));
+        args.push("script.ts".into());
+        let reparsed = flags_from_vec(args).unwrap();
+        assert_eq!(reparsed.permissions, flags.permissions, "{flag}={value}");
+      }
+    }
   }
 
   /// The bare-run fast path in `flags_from_vec_with_initial_cwd` bypasses the
