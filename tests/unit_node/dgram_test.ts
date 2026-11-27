@@ -7,6 +7,225 @@ import { createSocket, type Socket } from "node:dgram";
 const listenPort = 4503;
 const listenPort2 = 4504;
 
+function bindSocket(socket: Socket, hostname: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => {
+      socket.off("error", onError);
+      reject(error);
+    };
+    socket.once("error", onError);
+    socket.bind(0, hostname, () => {
+      socket.off("error", onError);
+      resolve();
+    });
+  });
+}
+
+function connectSocket(
+  socket: Socket,
+  port: number,
+  hostname: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onConnect = () => {
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      socket.off("error", onError);
+      socket.off("connect", onConnect);
+    };
+    socket.once("error", onError);
+    socket.once("connect", onConnect);
+    socket.connect(port, hostname);
+  });
+}
+
+function receiveMessage(socket: Socket): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("timed out waiting for a UDP message"));
+    }, 5_000);
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onMessage = (message: Uint8Array) => {
+      cleanup();
+      resolve(new TextDecoder().decode(message));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off("error", onError);
+      socket.off("message", onMessage);
+    };
+    socket.once("error", onError);
+    socket.once("message", onMessage);
+  });
+}
+
+function sendTo(
+  socket: Socket,
+  message: string,
+  port: number,
+  hostname: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.send(message, port, hostname, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+function sendConnected(socket: Socket, message: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    socket.send(message, (error, bytes) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(bytes);
+      }
+    });
+  });
+}
+
+async function closeSockets(...sockets: Socket[]): Promise<void> {
+  await Promise.all(sockets.map((socket) =>
+    new Promise<void>((resolve) => {
+      try {
+        socket.close(() => resolve());
+      } catch {
+        resolve();
+      }
+    })
+  ));
+}
+
+async function connectedUdpPeerTest(
+  type: "udp4" | "udp6",
+  hostname: string,
+): Promise<void> {
+  const options = type === "udp6" ? { type, ipv6Only: true } : { type };
+  const client = createSocket(options);
+  const firstPeer = createSocket(options);
+  const secondPeer = createSocket(options);
+
+  try {
+    try {
+      await Promise.all([
+        bindSocket(client, hostname),
+        bindSocket(firstPeer, hostname),
+        bindSocket(secondPeer, hostname),
+      ]);
+    } catch (error) {
+      const code = (error as Error & { code?: string }).code;
+      if (
+        type === "udp6" &&
+        (code === "EAFNOSUPPORT" || code === "EADDRNOTAVAIL")
+      ) {
+        return;
+      }
+      throw error;
+    }
+
+    let clientPort = client.address().port;
+    const firstPeerPort = firstPeer.address().port;
+    const secondPeerPort = secondPeer.address().port;
+
+    await connectSocket(client, firstPeerPort, hostname);
+    assertEquals(client.remoteAddress().port, firstPeerPort);
+
+    const receivedFromFirstPeer = receiveMessage(client);
+    for (let i = 0; i < 8; i++) {
+      await sendTo(secondPeer, `other-${i}`, clientPort, hostname);
+    }
+    await sendTo(firstPeer, "first-peer", clientPort, hostname);
+    assertEquals(await receivedFromFirstPeer, "first-peer");
+
+    const firstPeerReceived = receiveMessage(firstPeer);
+    assertEquals(await sendConnected(client, "connected-send"), 14);
+    assertEquals(await firstPeerReceived, "connected-send");
+
+    const firstPeerReceivedEmpty = receiveMessage(firstPeer);
+    assertEquals(await sendConnected(client, ""), 0);
+    assertEquals(await firstPeerReceivedEmpty, "");
+
+    client.disconnect();
+
+    const secondPeerReceivedAfterDisconnect = receiveMessage(secondPeer);
+    await sendTo(client, "disconnected-send", secondPeerPort, hostname);
+    assertEquals(
+      await secondPeerReceivedAfterDisconnect,
+      "disconnected-send",
+    );
+
+    // Linux releases the local port when a UDP socket is disconnected and
+    // assigns a new one on the next send or connect. Query the live socket.
+    clientPort = client.address().port;
+    assert(clientPort > 0);
+    const receivedAfterDisconnect = receiveMessage(client);
+    await sendTo(secondPeer, "after-disconnect", clientPort, hostname);
+    assertEquals(await receivedAfterDisconnect, "after-disconnect");
+
+    await connectSocket(client, firstPeerPort, hostname);
+    const sentBeforeReconnect = receiveMessage(firstPeer);
+    assertEquals(await sendConnected(client, "before-reconnect"), 16);
+    client.disconnect();
+
+    await connectSocket(client, secondPeerPort, hostname);
+    assertEquals(client.remoteAddress().port, secondPeerPort);
+    clientPort = client.address().port;
+
+    const secondPeerReceived = receiveMessage(secondPeer);
+    assertEquals(await sendConnected(client, "reconnected-send"), 16);
+    assertEquals(await sentBeforeReconnect, "before-reconnect");
+    assertEquals(await secondPeerReceived, "reconnected-send");
+
+    const receivedFromSecondPeer = receiveMessage(client);
+    for (let i = 0; i < 8; i++) {
+      await sendTo(firstPeer, `old-peer-${i}`, clientPort, hostname);
+    }
+    await sendTo(secondPeer, "second-peer", clientPort, hostname);
+    assertEquals(await receivedFromSecondPeer, "second-peer");
+  } finally {
+    await closeSockets(client, firstPeer, secondPeer);
+  }
+}
+
+async function runRestrictedNetCode(
+  code: string,
+  allowNet = "0.0.0.0:0",
+): Promise<string> {
+  const tempFile = Deno.makeTempFileSync({ suffix: ".ts" });
+  Deno.writeTextFileSync(tempFile, code);
+  try {
+    const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--no-prompt",
+        `--allow-net=${allowNet}`,
+        `--allow-read=${tempFile}`,
+        tempFile,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    return new TextDecoder().decode(stdout) +
+      new TextDecoder().decode(stderr);
+  } finally {
+    Deno.removeSync(tempFile);
+  }
+}
+
 Deno.test("[node/dgram] udp ref and unref", {
   permissions: { read: true, run: true, net: true },
 }, async () => {
@@ -56,6 +275,67 @@ Deno.test("[node/dgram] udp unref", {
       });
     `);
   assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/dgram] connected udp4 uses one peer", async () => {
+  await connectedUdpPeerTest("udp4", "127.0.0.1");
+});
+
+Deno.test("[node/dgram] connected udp6 uses one peer", async () => {
+  await connectedUdpPeerTest("udp6", "::1");
+});
+
+Deno.test("[node/dgram] failed connect can be retried", async () => {
+  let useWrongFamily = true;
+  const peer = createSocket("udp4");
+  const socket = createSocket({
+    type: "udp4",
+    lookup(hostname, _family, callback) {
+      const address = hostname === "retry.test" && useWrongFamily
+        ? "::1"
+        : "127.0.0.1";
+      queueMicrotask(() =>
+        callback(
+          null,
+          address,
+          address === "::1" ? 6 : 4,
+        )
+      );
+    },
+  });
+
+  try {
+    await Promise.all([
+      bindSocket(peer, "127.0.0.1"),
+      bindSocket(socket, "127.0.0.1"),
+    ]);
+
+    let connectError: Error | undefined;
+    try {
+      await connectSocket(socket, peer.address().port, "retry.test");
+    } catch (error) {
+      connectError = error as Error;
+    }
+    assert(connectError instanceof Error);
+
+    let remoteAddressFailed = false;
+    try {
+      socket.remoteAddress();
+    } catch {
+      remoteAddressFailed = true;
+    }
+    assert(remoteAddressFailed);
+
+    useWrongFamily = false;
+    await connectSocket(socket, peer.address().port, "retry.test");
+    assertEquals(socket.remoteAddress().port, peer.address().port);
+
+    const received = receiveMessage(peer);
+    await sendConnected(socket, "retry-connected");
+    assertEquals(await received, "retry-connected");
+  } finally {
+    await closeSockets(socket, peer);
+  }
 });
 
 Deno.test("[node/dgram] addMembership works", async () => {
@@ -230,9 +510,7 @@ Deno.test("[node/dgram] send checks destination permission", {
 }, async () => {
   // Verify that a subprocess with restricted --allow-net cannot send to
   // destinations outside the allowed set.
-  const tempFile = Deno.makeTempFileSync({ suffix: ".ts" });
-  Deno.writeTextFileSync(
-    tempFile,
+  const output = await runRestrictedNetCode(
     `import dgram from "node:dgram";
 const socket = dgram.createSocket("udp4");
 socket.bind(0, "0.0.0.0", () => {
@@ -251,27 +529,71 @@ socket.on("error", (err) => {
 });
 `,
   );
-  try {
-    const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
-      args: [
-        "run",
-        "--no-prompt",
-        "--allow-net=0.0.0.0:0",
-        "--allow-read=" + tempFile,
-        tempFile,
-      ],
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
-    const output = new TextDecoder().decode(stdout) +
-      new TextDecoder().decode(stderr);
-    assert(
-      !output.includes("SEND_ALLOWED"),
-      `Send should have been blocked, but got: ${output}`,
-    );
-  } finally {
-    Deno.removeSync(tempFile);
-  }
+  assert(
+    !output.includes("SEND_ALLOWED"),
+    `Send should have been blocked, but got: ${output}`,
+  );
+});
+
+Deno.test("[node/dgram] connect checks destination permission", {
+  permissions: { read: true, write: true, run: true, net: true },
+}, async () => {
+  const output = await runRestrictedNetCode(
+    `import dgram from "node:dgram";
+const socket = dgram.createSocket("udp4");
+socket.bind(0, "0.0.0.0", () => {
+  socket.connect(9999, "127.0.0.1", () => {
+    console.log("CONNECT_ALLOWED");
+    socket.close();
+  });
+});
+socket.on("error", (err) => {
+  console.log("ERROR:" + err.message);
+  socket.close();
+});
+`,
+  );
+  assert(
+    !output.includes("CONNECT_ALLOWED"),
+    `Connect should have been blocked, but got: ${output}`,
+  );
+});
+
+Deno.test("[node/dgram] connected send rechecks destination permission", {
+  permissions: { read: true, write: true, run: true, net: true },
+}, async () => {
+  const output = await runRestrictedNetCode(
+    `import dgram from "node:dgram";
+const peer = dgram.createSocket("udp4");
+const socket = dgram.createSocket("udp4");
+peer.bind(0, "127.0.0.1", () => {
+  socket.bind(0, "0.0.0.0", () => {
+    socket.connect(peer.address().port, "127.0.0.1", async () => {
+      await Deno.permissions.revoke({ name: "net" });
+      let synchronous = true;
+      socket.send("test", (err) => {
+        console.log(err ? "SEND_BLOCKED" : "SEND_ALLOWED");
+        console.log(synchronous ? "CALLBACK_SYNC" : "CALLBACK_ASYNC");
+        socket.close();
+        peer.close();
+      });
+      synchronous = false;
+    });
+  });
+});
+socket.on("error", (err) => {
+  console.log("ERROR:" + err.message);
+  socket.close();
+  peer.close();
+});
+`,
+    "0.0.0.0:0,127.0.0.1",
+  );
+  assert(
+    output.includes("SEND_BLOCKED") && output.includes("CALLBACK_ASYNC") &&
+      !output.includes("SEND_ALLOWED") && !output.includes("CALLBACK_SYNC"),
+    `Connected send should have been blocked, but got: ${output}`,
+  );
 });
 
 Deno.test("[node/dgram] addMembership checks group permission", {
