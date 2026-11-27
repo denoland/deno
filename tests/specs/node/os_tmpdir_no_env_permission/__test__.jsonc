@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "os_tmpdir_no_env_permission": {
+      "args": "run main.mjs",
+      "output": "ok\n"
+    }
+  }
+}
