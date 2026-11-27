@@ -683,7 +683,7 @@ class Response {
     inner.type = "default";
     ArrayPrototypePush(inner.headerList, ["Location", parsedURL.href]);
     const response = webidl.createBranded(Response);
-    initializeResponseBase(response, inner, "immutable");
+    initializeResponseBase(response, inner, "response");
     maybeSetServeNativeFromInner(response);
     return response;
   }
