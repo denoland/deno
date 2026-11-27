@@ -751,6 +751,27 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] utf8 write with length 0 writes nothing",
+  fn() {
+    const buf = Buffer.alloc(4);
+    assertEquals(buf.write("ab", 0, 0), 0);
+    assertEquals(buf, Buffer.alloc(4));
+
+    const bufExplicit = Buffer.alloc(4);
+    assertEquals(bufExplicit.write("ab", 0, 0, "utf8"), 0);
+    assertEquals(bufExplicit, Buffer.alloc(4));
+
+    const bufDirect = Buffer.alloc(4);
+    assertEquals(bufDirect.utf8Write("ab", 0, 0), 0);
+    assertEquals(bufDirect, Buffer.alloc(4));
+
+    const bufSanity = Buffer.alloc(4);
+    assertEquals(bufSanity.write("ab", 0, 1), 1);
+    assertEquals(bufSanity[0], 0x61);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] base64 operations use the actual buffer length",
   fn() {
     const buf = Buffer.from("abcdef");
