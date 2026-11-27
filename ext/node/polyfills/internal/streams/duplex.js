@@ -79,6 +79,7 @@ function Duplex(options) {
   }
 
   this._events ??= {
+    __proto__: null,
     close: undefined,
     error: undefined,
     prefinish: undefined,
