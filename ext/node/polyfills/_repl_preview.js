@@ -1,11 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// Tiny IIFE-wrapped helper for `node:repl`'s inline preview path. Lives
-// here (rather than in `repl.ts`) because the deno_node ops we need are
-// only reachable from scripts loaded via `core.loadExtScript` -- those
-// see the snapshot-time `__bootstrap.core.ops` capture. ES-module
-// polyfills like `repl.ts` only see the post-`removeImportedOps` view,
-// which doesn't include `op_node_repl_inspector_connect`. See the long
+// Tiny IIFE-wrapped helper for `node:repl`'s inline preview path. Lives here
+// (rather than in `repl.ts`) because the deno_node ops we need used to be
+// reachable only from scripts loaded via `core.loadExtScript`, which read ops
+// through the captured `__bootstrap` view: `removeImportedOps()` stripped the
+// live `core.ops` in place, so an ES-module polyfill like `repl.ts` could not
+// see `op_node_repl_inspector_connect`. `core.ops` is no longer stripped (the
+// reduced, user-visible surface is now built separately with
+// `core.createOpsSubset`), so the split is now only structural. See the long
 // comment around `loadExtScript` / `op_set_captured_bootstrap` in
 // `libs/core/01_core.js`.
 
