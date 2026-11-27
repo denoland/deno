@@ -44,6 +44,30 @@ fn pty_multiline() {
 }
 
 #[test(flaky)]
+fn pty_multiline_regex() {
+  // Type each line separately: pasting can take a different path through the
+  // line editor. https://github.com/denoland/deno/issues/22328
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("function replace(input: string): string {");
+    console.write_line("  return input.replace(/a/, 'b');");
+    console.write_line("}");
+    console.expect("undefined");
+    console.write_line("replace('a')");
+    console.expect("\"b\"");
+    console.write_line("if (/regex/) {");
+    console.write_line("  console.log('regex block evaluated');");
+    console.write_line("}");
+    console.expect("regex block evaluated");
+    console.expect("undefined");
+    // Also cover a pasted block with a quote inside the regex (#24963).
+    console.write_line("function quote() {\n  return /[']/;\n}");
+    console.expect("undefined");
+    console.write_line("quote().test(\"'\")");
+    console.expect("true");
+  });
+}
+
+#[test(flaky)]
 fn pty_multiline_dot_chain() {
   // Breaking a method chain right after a `.` should continue reading input
   // instead of throwing a parse error.
