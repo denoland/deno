@@ -21,6 +21,7 @@ import {
   stripTypeScriptTypes,
   syncBuiltinESMExports,
 } from "node:module";
+import * as namedModule from "node:module";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import process from "node:process";
 import * as path from "node:path";
@@ -561,4 +562,38 @@ Deno.test("[node/module Module._stat] override is honored by require resolution"
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
+});
+
+Deno.test("[node/module syncBuiltinESMExports] updates named bindings", () => {
+  const original = Module.isBuiltin;
+  const replacement = () => true;
+  try {
+    assertEquals(namedModule.isBuiltin, original);
+    Module.isBuiltin = replacement;
+    // Not synced until explicitly requested.
+    assertEquals(namedModule.isBuiltin, original);
+    syncBuiltinESMExports();
+    assertEquals(namedModule.isBuiltin, replacement);
+    assertEquals(Module.isBuiltin, replacement);
+  } finally {
+    Module.isBuiltin = original;
+    syncBuiltinESMExports();
+  }
+  assertEquals(namedModule.isBuiltin, original);
+});
+
+Deno.test("[node/module syncBuiltinESMExports] updates registerHooks binding", () => {
+  const original = Module.registerHooks;
+  const replacement = (...args: Parameters<typeof original>) =>
+    original(...args);
+  try {
+    assertEquals(namedModule.registerHooks, original);
+    Module.registerHooks = replacement;
+    syncBuiltinESMExports();
+    assertEquals(namedModule.registerHooks, replacement);
+  } finally {
+    Module.registerHooks = original;
+    syncBuiltinESMExports();
+  }
+  assertEquals(namedModule.registerHooks, original);
 });
