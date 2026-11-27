@@ -265,6 +265,30 @@ Deno.test(
 
 Deno.test(
   {
+    ignore: Deno.build.os !== "windows",
+    permissions: { ffi: true, read: true, write: true },
+  },
+  function statAppExecLink() {
+    const tempDir = Deno.realPathSync(Deno.makeTempDirSync());
+    const path = `${tempDir}\\app_exec_alias.exe`;
+    Deno.writeFileSync(path, new Uint8Array());
+    createAppExecLink(path, Deno.execPath());
+
+    // an app execution alias is a reparse point that only `CreateProcess`
+    // knows how to follow, so the file system reports it as an empty file and
+    // `stat` does not differ from `lstat`
+    for (const info of [Deno.statSync(path), Deno.lstatSync(path)]) {
+      assert(info.isFile);
+      assert(!info.isDirectory);
+      assert(!info.isSymlink);
+      assertEquals(info.size, 0);
+    }
+    assertEquals(Deno.realPathSync(path), path);
+  },
+);
+
+Deno.test(
+  {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
   },
@@ -317,3 +341,89 @@ Deno.test(
     );
   },
 );
+
+/**
+ * Turns the empty file at `path` into a Windows app execution alias pointing
+ * at `target`, the kind of reparse point Microsoft Store apps install into
+ * `%LOCALAPPDATA%\Microsoft\WindowsApps`.
+ */
+function createAppExecLink(path: string, target: string) {
+  const GENERIC_WRITE = 0x40000000;
+  const FILE_SHARE_ALL = 0x00000007;
+  const OPEN_EXISTING = 3;
+  const FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+  const FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+  const FSCTL_SET_REPARSE_POINT = 0x000900a4;
+  const IO_REPARSE_TAG_APPEXECLINK = 0x8000001b;
+
+  // the tag's data is a version followed by a NUL separated list of strings:
+  // the package family name, the app user model id, the target and the
+  // application type
+  const family = "Deno.Test_8wekyb3d8bbwe";
+  const strings = wideCString(`${family}\0${family}!App\0${target}\0` + "0");
+  const reparseData = new Uint8Array(8 + 4 + strings.byteLength);
+  const view = new DataView(reparseData.buffer);
+  view.setUint32(0, IO_REPARSE_TAG_APPEXECLINK, true);
+  view.setUint16(4, 4 + strings.byteLength, true); // ReparseDataLength
+  view.setUint32(8, 3, true); // Version
+  reparseData.set(strings, 12);
+
+  const kernel32 = Deno.dlopen("kernel32.dll", {
+    CreateFileW: {
+      parameters: ["buffer", "u32", "u32", "pointer", "u32", "u32", "pointer"],
+      result: "pointer",
+    },
+    DeviceIoControl: {
+      parameters: [
+        "pointer",
+        "u32",
+        "buffer",
+        "u32",
+        "pointer",
+        "u32",
+        "buffer",
+        "pointer",
+      ],
+      result: "i32",
+    },
+    CloseHandle: { parameters: ["pointer"], result: "i32" },
+  });
+  try {
+    const file = kernel32.symbols.CreateFileW(
+      wideCString(path),
+      GENERIC_WRITE,
+      FILE_SHARE_ALL,
+      null,
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+      null,
+    );
+    try {
+      const result = kernel32.symbols.DeviceIoControl(
+        file,
+        FSCTL_SET_REPARSE_POINT,
+        reparseData,
+        reparseData.byteLength,
+        null,
+        0,
+        new Uint8Array(4),
+        null,
+      );
+      // fails if `CreateFileW` above failed as well, because then `file` is
+      // `INVALID_HANDLE_VALUE`
+      assert(result !== 0, "failed to create the app execution alias");
+    } finally {
+      kernel32.symbols.CloseHandle(file);
+    }
+  } finally {
+    kernel32.close();
+  }
+}
+
+function wideCString(value: string) {
+  const wide = new Uint16Array(value.length + 1);
+  for (let i = 0; i < value.length; i++) {
+    wide[i] = value.charCodeAt(i);
+  }
+  return new Uint8Array(wide.buffer);
+}
