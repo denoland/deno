@@ -1,0 +1,4 @@
+Check [WILDCARD]main.ts
+TS2339 [ERROR]: Property 'BrowserWindow' does not exist on type 'typeof Deno'.
+[WILDCARD]
+error: Type checking failed.
