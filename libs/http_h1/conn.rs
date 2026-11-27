@@ -39,6 +39,9 @@ use crate::write_response_head;
 const DEFAULT_READ_CAPACITY: usize = 1024;
 const DEFAULT_WRITE_CAPACITY: usize = 512;
 const MAX_HEAD_BYTES: usize = 64 * 1024;
+// How far `SharedConn::poll_peer_closed_with` reads ahead into `buffered` while
+// a response is pending. Past this it waits for `buffered` to drain.
+const MAX_READ_AHEAD_BYTES: usize = 64 * 1024;
 // Chunked responses accumulate the head, body chunks and terminator into a
 // single per-connection buffer (`SharedScratch::write_buf`) so a small response
 // is emitted in one write instead of three. Flush once the buffer reaches this
@@ -1461,7 +1464,20 @@ where
     cx: &mut Context<'_>,
     scratch: &mut SharedScratch,
   ) -> Poll<Result<bool, Error>> {
-    let read = ready!(poll_read_into_scratch(&mut self.io, cx, scratch))?;
+    // Bytes read here sit in `buffered` until the body reader or the next
+    // request parse consumes them, so read at most `MAX_READ_AHEAD_BYTES` ahead.
+    // Once full, report "not closed" without reading or self-waking; a close is
+    // picked up after the buffer drains.
+    let room = MAX_READ_AHEAD_BYTES.saturating_sub(self.buffered.len());
+    if room == 0 {
+      return Poll::Ready(Ok(false));
+    }
+    let read = ready!(poll_read_into_scratch_limited(
+      &mut self.io,
+      cx,
+      scratch,
+      room
+    ))?;
     if read != 0 {
       self.buffered.extend_from_slice(&scratch.read_buf[..read]);
       cx.waker().wake_by_ref();
@@ -1660,10 +1676,22 @@ fn poll_read_into_scratch<I>(
 where
   I: AsyncRead + Unpin,
 {
-  let mut tokio_buf = TokioReadBuf::new(&mut scratch.read_buf);
-  let before = tokio_buf.filled().len();
+  poll_read_into_scratch_limited(io, cx, scratch, usize::MAX)
+}
+
+fn poll_read_into_scratch_limited<I>(
+  io: &mut I,
+  cx: &mut Context<'_>,
+  scratch: &mut SharedScratch,
+  limit: usize,
+) -> Poll<Result<usize, io::Error>>
+where
+  I: AsyncRead + Unpin,
+{
+  let len = scratch.read_buf.len().min(limit);
+  let mut tokio_buf = TokioReadBuf::new(&mut scratch.read_buf[..len]);
   ready!(Pin::new(io).poll_read(cx, &mut tokio_buf))?;
-  Poll::Ready(Ok(tokio_buf.filled().len() - before))
+  Poll::Ready(Ok(tokio_buf.filled().len()))
 }
 
 #[cfg(test)]
@@ -2028,6 +2056,78 @@ mod tests {
     assert!(
       matches!(&chunk, SharedBodyChunk::Chunk(chunk) if chunk == b"tes!!!")
     );
+    Ok(())
+  }
+
+  // While a response is pending, `poll_peer_closed_with` reads ahead to spot a
+  // client disconnect. It stops at `MAX_READ_AHEAD_BYTES` and leaves the rest
+  // on the socket for the body reader.
+  #[tokio::test]
+  async fn shared_conn_peer_closed_poll_limits_read_ahead() -> TestResult<()> {
+    struct WakeFlag(std::sync::atomic::AtomicBool);
+
+    impl std::task::Wake for WakeFlag {
+      fn wake(self: std::sync::Arc<Self>) {
+        self.wake_by_ref();
+      }
+
+      fn wake_by_ref(self: &std::sync::Arc<Self>) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+      }
+    }
+
+    const BODY_LEN: usize = 4 * MAX_READ_AHEAD_BYTES;
+
+    let (mut client, server) = tokio::io::duplex(BODY_LEN);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+    client
+      .write_all(
+        format!(
+          "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: {BODY_LEN}\r\n\r\n"
+        )
+        .as_bytes(),
+      )
+      .await?;
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::ContentLength(BODY_LEN as u64));
+    client.write_all(&vec![b'x'; BODY_LEN]).await?;
+
+    // The handler hasn't read the body yet, so only the disconnect poll reads.
+    let mut cx = Context::from_waker(std::task::Waker::noop());
+    while conn.buffered.len() < MAX_READ_AHEAD_BYTES {
+      assert!(matches!(
+        conn.poll_peer_closed_with(&mut cx, &mut scratch),
+        Poll::Ready(Ok(false))
+      ));
+    }
+    assert_eq!(conn.buffered.len(), MAX_READ_AHEAD_BYTES);
+
+    // Once full it neither reads nor self-wakes, so the caller doesn't spin.
+    let flag = std::sync::Arc::new(WakeFlag(false.into()));
+    let waker = std::task::Waker::from(flag.clone());
+    let mut cx = Context::from_waker(&waker);
+    assert!(matches!(
+      conn.poll_peer_closed_with(&mut cx, &mut scratch),
+      Poll::Ready(Ok(false))
+    ));
+    assert_eq!(conn.buffered.len(), MAX_READ_AHEAD_BYTES);
+    assert!(!flag.0.load(std::sync::atomic::Ordering::SeqCst));
+
+    // The body is still read in full: the read-ahead first, then the socket.
+    let mut body_len = 0;
+    while let SharedBodyChunk::Chunk(len) = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_with(cx, &mut scratch, |chunk| chunk.len())
+    })
+    .await?
+    {
+      body_len += len;
+    }
+    assert_eq!(body_len, BODY_LEN);
     Ok(())
   }
 
