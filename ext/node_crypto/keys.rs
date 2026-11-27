@@ -43,7 +43,6 @@ use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use sec1::DecodeEcPrivateKey as _;
 use sec1::LineEnding;
-use sec1::der::Tag;
 use sec1::der::Writer as _;
 use sec1::pem::PemLabel as _;
 use spki::DecodePublicKey as _;
@@ -2252,7 +2251,7 @@ impl AsymmetricPublicKey {
             let spki = SubjectPublicKeyInfoRef {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
-                parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
+                parameters: Some(AnyRef::from_der(&params).unwrap()),
               },
               subject_public_key: BitStringRef::from_bytes(&public_key_der)
                 .map_err(|_| {
@@ -2584,7 +2583,7 @@ impl AsymmetricPrivateKey {
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
-                parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
+                parameters: Some(AnyRef::from_der(&params).unwrap()),
               },
               private_key: &private_key_der,
               public_key: None,
