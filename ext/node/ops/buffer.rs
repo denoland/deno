@@ -49,6 +49,52 @@ pub fn op_transcode(
   }
 }
 
+#[op2(fast)]
+#[number]
+pub fn op_node_buffer_write_utf16le(
+  scope: &mut v8::PinScope<'_, '_>,
+  string: v8::Local<v8::String>,
+  #[buffer] buffer: &mut [u8],
+  #[number] offset: usize,
+  #[number] length: usize,
+) -> usize {
+  let Some(buffer) = buffer.get_mut(offset..) else {
+    return 0;
+  };
+  // Write complete UTF-16 code units, not Unicode scalar values: lone
+  // surrogates and a surrogate pair split by the byte limit must be preserved.
+  let units = string.length().min(length.min(buffer.len()) / 2);
+  if units == 0 {
+    return 0;
+  }
+  let buffer = &mut buffer[..units * 2];
+
+  #[cfg(target_endian = "little")]
+  {
+    // SAFETY: u16 has no invalid bit patterns. align_to_mut checks alignment,
+    // and this uniquely borrowed slice contains exactly the writable bytes.
+    let (prefix, words, suffix) = unsafe { buffer.align_to_mut::<u16>() };
+    if prefix.is_empty() && suffix.is_empty() {
+      string.write_v2(scope, 0, words, v8::WriteFlags::empty());
+      return units * 2;
+    }
+  }
+
+  // Buffer slices and write offsets need not be u16-aligned. Use bounded stack
+  // storage for these writes (and for byte swapping on big-endian targets).
+  let mut scratch = [0u16; 1024];
+  let mut start = 0;
+  for bytes in buffer.chunks_mut(scratch.len() * 2) {
+    let words = &mut scratch[..bytes.len() / 2];
+    string.write_v2(scope, start, words, v8::WriteFlags::empty());
+    for (word, bytes) in words.iter().zip(bytes.chunks_exact_mut(2)) {
+      bytes.copy_from_slice(&word.to_le_bytes());
+    }
+    start += words.len() as u32;
+  }
+  units * 2
+}
+
 fn latin1_ascii_to_utf16le(source: &[u8]) -> Uint8Array {
   let mut result = Vec::with_capacity(source.len() * 2);
   for &byte in source {

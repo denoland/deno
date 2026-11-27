@@ -11,6 +11,105 @@ import { strictEqual } from "node:assert";
 
 const { MAX_STRING_LENGTH } = constants;
 
+Deno.test("[node/buffer] UTF-16LE encoding preserves every code unit", () => {
+  const aliases = ["utf16le", "utf-16le", "ucs2", "ucs-2"] as const;
+  for (let start = 0; start < 65536; start += 1024) {
+    const units = Array.from({ length: 1024 }, (_, i) => start + i);
+    const text = String.fromCharCode(...units);
+    const expected = Buffer.alloc(units.length * 2);
+    for (let i = 0; i < units.length; i++) {
+      expected[i * 2] = units[i] & 255;
+      expected[i * 2 + 1] = units[i] >>> 8;
+    }
+    for (const encoding of aliases) {
+      assertEquals(Buffer.from(text, encoding), expected);
+    }
+  }
+});
+
+Deno.test("[node/buffer] UTF-16LE writes respect byte limits and slice boundaries", () => {
+  for (
+    const text of [
+      "",
+      "ASCII",
+      "café",
+      "漢字",
+      "A\0B",
+      "\ud800",
+      "\udc00",
+      "😀X",
+    ]
+  ) {
+    for (let viewOffset = 0; viewOffset <= 2; viewOffset++) {
+      for (let offset = 0; offset <= 3; offset++) {
+        for (let length = 0; length <= text.length * 2 + 3; length++) {
+          const backing = Buffer.alloc(viewOffset + offset + length + 3, 0xaa);
+          const target = backing.subarray(viewOffset, backing.length - 2);
+          const expected = Buffer.alloc(backing.length, 0xaa);
+          const units = Math.min(text.length, Math.floor(length / 2));
+          for (let i = 0; i < units; i++) {
+            const code = text.charCodeAt(i);
+            expected[viewOffset + offset + i * 2] = code & 255;
+            expected[viewOffset + offset + i * 2 + 1] = code >>> 8;
+          }
+          assertEquals(
+            target.write(text, offset, length, "utf16le"),
+            units * 2,
+          );
+          assertEquals(backing, expected);
+        }
+      }
+    }
+  }
+});
+
+Deno.test("[node/buffer] UTF-16LE handles large and unaligned writes", () => {
+  const text = "ASCII café 漢字 😀\ud800\0".repeat(4096);
+  const expected = Buffer.alloc(text.length * 2);
+  for (let i = 0; i < text.length; i++) {
+    expected[i * 2] = text.charCodeAt(i) & 255;
+    expected[i * 2 + 1] = text.charCodeAt(i) >>> 8;
+  }
+  assertEquals(Buffer.from(text, "utf16le"), expected);
+  // Exercise multiple native scratch-buffer iterations and a final short chunk.
+  for (const offset of [0, 1, 2, 3]) {
+    const backing = Buffer.alloc(expected.length + offset + 1, 0xaa);
+    assertEquals(backing.write(text, offset, "utf16le"), expected.length);
+    assertEquals(backing.subarray(offset, offset + expected.length), expected);
+    assertEquals(backing.subarray(0, offset), Buffer.alloc(offset, 0xaa));
+    assertEquals(backing[backing.length - 1], 0xaa);
+  }
+});
+
+Deno.test("[node/buffer] UTF-16LE writes into shared backing stores", () => {
+  const backing = new SharedArrayBuffer(16);
+  const all = Buffer.from(backing);
+  all.fill(0xaa);
+  const target = Buffer.from(backing, 1, 9);
+  assertEquals(target.write("A😀\ud800", "utf16le"), 8);
+  assertEquals(
+    [...all],
+    [
+      0xaa,
+      0x41,
+      0,
+      0x3d,
+      0xd8,
+      0,
+      0xde,
+      0,
+      0xd8,
+      0xaa,
+      0xaa,
+      0xaa,
+      0xaa,
+      0xaa,
+      0xaa,
+      0xaa,
+    ],
+  );
+});
+
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
   fn() {
