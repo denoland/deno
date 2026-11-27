@@ -14,4 +14,12 @@ self.onmessage = (e) => {
     lib.test_external_buffer();
     self.postMessage("created");
   }
+  if (e.data === "arm_refed_poll") {
+    lib.test_uv_poll_leave_active(false);
+    self.postMessage("armed");
+  }
+  if (e.data === "arm_unrefed_poll") {
+    lib.test_uv_poll_leave_active(true);
+    self.postMessage("armed");
+  }
 };
