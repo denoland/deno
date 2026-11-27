@@ -487,6 +487,11 @@ const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
 const _controllerErrorFunction = SymbolFor(
   "nodejs.webstream.controllerErrorFunction",
 );
+// Read by `isDisturbed`, `isErrored` and `isReadable` from `node:stream` to get
+// the state of a web ReadableStream.
+const _nodeIsDisturbed = SymbolFor("nodejs.stream.disturbed");
+const _nodeIsErrored = SymbolFor("nodejs.stream.errored");
+const _nodeIsReadable = SymbolFor("nodejs.stream.readable");
 
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
 const _abortSteps = Symbol("[[AbortSteps]]");
@@ -6306,6 +6311,18 @@ class ReadableStream {
     iterator[_reader] = reader;
     iterator[_preventCancel] = preventCancel;
     return iterator;
+  }
+
+  get [_nodeIsDisturbed]() {
+    return this[_disturbed];
+  }
+
+  get [_nodeIsErrored]() {
+    return this[_state] === "errored";
+  }
+
+  get [_nodeIsReadable]() {
+    return this[_state] === "readable";
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
