@@ -36,7 +36,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       https://github.com/denoland/deno/actions/workflows/version_bump.generated.yml
   1. Click on the "Run workflow" button.
   1. In the drop down, select the `main` branch.
-  1. For the kind of release, select either `patch` or `minor`.
+  1. For the kind of release, select the appropriate kind (`patch`, `minor`, `major`, `rc`, `alpha`, or `beta`).
   1. Run the workflow.
 
 - [ ] Wait for the workflow to complete and for a pull request to be
