@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -63,6 +64,11 @@ pub struct InstallWorkspacePkg {
   pub is_root: bool,
   pub scripts: std::collections::HashMap<SmallStackString, String>,
   pub deps: Vec<InstallWorkspacePkgDep>,
+  /// Registry packages from `optionalDependencies` that aren't also regular
+  /// dependencies of the workspace. These aren't installed from the
+  /// package.json, but can be in the resolution through
+  /// `deno add --save-optional` or a deno.lock seeded from package-lock.json.
+  pub optional_deps: Vec<(StackString, PackageReq)>,
 }
 
 #[derive(Debug, Error, Clone)]
@@ -405,6 +411,24 @@ impl NpmInstallDepsProvider {
           }
         }
 
+        let optional_deps = pkg_json
+          .optional_dependencies
+          .iter()
+          .flatten()
+          .filter(|(alias, _)| {
+            !deps.dependencies.contains_key(alias.as_str())
+              && !dev_deps.contains_key(alias.as_str())
+          })
+          .filter_map(|(alias, value)| {
+            match PackageJsonDepValue::parse(alias, value) {
+              Ok(PackageJsonDepValue::Req(req)) => {
+                Some((StackString::from_str(alias), req))
+              }
+              _ => None,
+            }
+          })
+          .collect();
+
         // sort within each package as npm does
         pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
         remote_pkgs.extend(pkg_pkgs);
@@ -425,6 +449,7 @@ impl NpmInstallDepsProvider {
             })
             .unwrap_or_default(),
           deps: workspace_pkg_deps,
+          optional_deps,
         });
 
         // Also symlink each non-root workspace member that is itself an npm
@@ -465,6 +490,18 @@ impl NpmInstallDepsProvider {
         },
         target_dir: pkg.dir_path().to_path_buf(),
       })
+    }
+
+    // an optional dependency also requested as a regular dependency, such as
+    // through a deno.json import, is required
+    let required_reqs = remote_pkgs
+      .iter()
+      .map(|pkg| &pkg.req)
+      .collect::<HashSet<_>>();
+    for pkg in &mut workspace_pkgs {
+      pkg
+        .optional_deps
+        .retain(|(_, req)| !required_reqs.contains(req));
     }
 
     remote_pkgs.shrink_to_fit();

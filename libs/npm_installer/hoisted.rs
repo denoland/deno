@@ -59,6 +59,7 @@ use crate::lifecycle_scripts::LifecycleScripts;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
+use crate::lifecycle_scripts::WorkspaceOptionalDeps;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
 use crate::local::InitializingGuard;
@@ -833,6 +834,7 @@ impl<
         )
       })
       .collect::<HashMap<_, _>>();
+    let optional_deps = WorkspaceOptionalDeps::new(snapshot, workspace_pkgs);
     let mut packages = Vec::with_capacity(workspace_pkgs.len());
     for workspace_pkg in workspace_pkgs {
       let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
@@ -850,6 +852,8 @@ impl<
           }
         }
       }
+      let optional_dependencies =
+        optional_deps.add_edges(workspace_pkg, &mut dependencies);
       let id = workspace_pkg_ids
         .get(&workspace_pkg.nv)
         .expect("workspace package id should exist")
@@ -861,7 +865,7 @@ impl<
           system: NpmResolutionPackageSystemInfo::default(),
           dist: None,
           dependencies,
-          optional_dependencies: Default::default(),
+          optional_dependencies,
           optional_peer_dependencies: Default::default(),
           extra: Some(NpmPackageExtraInfo {
             scripts: workspace_pkg.scripts.clone(),

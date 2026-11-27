@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "failing": "npm:@denotest/failing-lifecycle@1"
+  }
+}

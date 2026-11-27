@@ -1,0 +1,8 @@
+[WILDCARD]╭ Warning
+│
+│  Ignored build scripts for packages:
+│  npm:@denotest/failing-lifecycle@1.0.0
+│
+│  Run "deno approve-scripts" to run build scripts.
+╰─
+main ran
