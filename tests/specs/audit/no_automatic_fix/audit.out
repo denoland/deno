@@ -1,0 +1,11 @@
+╭ @denotest/with-vuln1 is susceptible to prototype pollution
+│ Severity:   high
+│ ID:         GHSA-1111-1111-1111
+│ Package:    @denotest/with-vuln1
+│ Vulnerable: <1.1.0
+│ Patched:    >=1.1.0 (inferred)
+│ Info:       https://github.com/advisories/GHSA-1111-1111-1111
+╰ Actions:    no automatic fix available
+
+Found 1 vulnerabilities
+Severity: 0 low, 0 moderate, 1 high, 0 critical

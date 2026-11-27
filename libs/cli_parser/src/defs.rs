@@ -2893,7 +2893,7 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
       .value_delimiter(',')
-.help("Ignore advisories matching the given CVE IDs"),
+.help("Ignore advisories matching the given GHSA or CVE IDs"),
   ],
   arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, LOCK_ARGS],
   subcommands: &[],
