@@ -83,6 +83,22 @@ fn pty_null() {
 }
 
 #[test(flaky)]
+fn pty_stdout_write_non_utf8() {
+  // Writing non-UTF-8 bytes to a Windows console used to leave them in std's
+  // stdout buffer, so the next print of the REPL panicked.
+  // https://github.com/denoland/deno/issues/20134
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "await Deno.stdout.write(new Uint8Array([128])).then(() => 'ok', (e) => e.name)",
+    );
+    // the write errors on a non-UTF-8 Windows console and succeeds elsewhere
+    console.expect_any(&["\"ok\"", "\"InvalidData\""]);
+    console.write_line("'still' + ' alive'");
+    console.expect("\"still alive\"");
+  });
+}
+
+#[test(flaky)]
 fn pty_primordials_protected_from_object_prototype_properties() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Object.prototype.get = function () {}");
