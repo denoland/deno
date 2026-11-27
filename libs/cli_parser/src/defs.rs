@@ -1349,6 +1349,7 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
       .long("unsafely-ignore-certificate-errors")
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
       .value_delimiter(',')
 .help("DANGER: Disables verification of TLS certificates"),
     ArgDef::new("version-or-hash-or-channel")

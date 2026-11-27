@@ -4584,6 +4584,36 @@ fn upgrade_with_ca_file() {
 }
 
 #[test]
+fn upgrade_with_unsafely_ignore_certificate_errors() {
+  // The value must be attached with `=`, so a bare flag doesn't consume the
+  // version positional that follows it.
+  let cases = [
+    ("--unsafely-ignore-certificate-errors", svec![]),
+    (
+      "--unsafely-ignore-certificate-errors=deno.land,localhost",
+      svec!["deno.land", "localhost"],
+    ),
+  ];
+  for (flag, expected) in cases {
+    let flags =
+      flags_from_vec(svec!["deno", "upgrade", flag, "1.46.0"]).unwrap();
+    let DenoSubcommand::Upgrade(u) = &flags.subcommand else {
+      unreachable!()
+    };
+    assert_eq!(
+      u.version_or_hash_or_channel.as_deref(),
+      Some("1.46.0"),
+      "{flag}"
+    );
+    assert_eq!(
+      flags.unsafely_ignore_certificate_errors,
+      Some(expected),
+      "{flag}"
+    );
+  }
+}
+
+#[test]
 fn upgrade_release_candidate() {
   let r = flags_from_vec(svec!["deno", "upgrade", "--rc"]);
   assert_eq!(
