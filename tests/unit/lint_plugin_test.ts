@@ -708,6 +708,14 @@ Deno.test("Plugin - BinaryExpression", async (t) => {
   await testSnapshot(t, "a ** b", "BinaryExpression");
 });
 
+Deno.test("Plugin - BinaryExpression operator excludes ||", () => {
+  const result = testVisit("a || b; a | b", "BinaryExpression");
+  assertEquals(result.map((r) => r.node.operator), ["|"]);
+
+  // @ts-expect-error `||` is a LogicalExpression operator
+  const _operator: Deno.lint.BinaryExpression["operator"] = "||";
+});
+
 Deno.test("Plugin - CallExpression", async (t) => {
   await testSnapshot(t, "foo();", "CallExpression");
   await testSnapshot(t, "foo(a, ...b);", "CallExpression");
