@@ -1243,3 +1243,18 @@ Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () 
 
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/36960
+Deno.test("[node/http2] constants include every HTTP_STATUS_* code", () => {
+  const statuses = Object.keys(http2.constants).filter((key) =>
+    key.startsWith("HTTP_STATUS_")
+  );
+  assertEquals(statuses.length, 63);
+  assertEquals(http2.constants.HTTP_STATUS_NOT_FOUND, 404);
+  assertEquals(http2.constants.HTTP_STATUS_TEAPOT, 418);
+  assertEquals(http2.constants.HTTP_STATUS_INTERNAL_SERVER_ERROR, 500);
+  assertEquals(
+    http2.constants.HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED,
+    511,
+  );
+});
