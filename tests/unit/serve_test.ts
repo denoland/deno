@@ -3359,6 +3359,72 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/37050
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerResponseConnectionClose(t) {
+    for (const bodySize of [0, 5, 4096]) {
+      for (const mode of ["sync", "async", "stream"]) {
+        await t.step(`${mode}, request body ${bodySize}`, async () => {
+          const requests: string[] = [];
+          const ac = new AbortController();
+          const handler = (request: Request) => {
+            requests.push(new URL(request.url).pathname);
+            const response = () =>
+              new Response(mode === "stream" ? stream("ok") : "ok", {
+                headers: { connection: "keep-alive, ClOsE" },
+              });
+            // Exercise direct responses, consumed streaming request bodies,
+            // and streaming responses through the shared connection.
+            if (mode === "async") return request.text().then(response);
+            return response();
+          };
+          await using server = Deno.serve({
+            handler,
+            hostname: "127.0.0.1",
+            port: 0,
+            signal: ac.signal,
+            onListen() {},
+            onError: createOnErrorCb(ac),
+          });
+          using conn = await Deno.connect({
+            hostname: "127.0.0.1",
+            port: server.addr.port,
+          });
+          const body = "x".repeat(bodySize);
+          await writeAll(
+            conn,
+            new TextEncoder().encode(
+              `POST /first HTTP/1.1\r\nHost: localhost\r\nContent-Length: ${bodySize}\r\n\r\n${body}` +
+                "GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            ),
+          );
+          let response = "";
+          try {
+            const buffer = new Uint8Array(1024);
+            while (true) {
+              const n = await conn.read(buffer);
+              if (n === null) break;
+              response += new TextDecoder().decode(buffer.subarray(0, n));
+            }
+          } catch (error) {
+            if (!(error instanceof Deno.errors.ConnectionReset)) throw error;
+          } finally {
+            ac.abort();
+            await server.finished;
+          }
+          assertEquals(requests, ["/first"]);
+          assertEquals(response.split("HTTP/1.1 200 OK").length - 1, 1);
+          assertEquals(response.match(/^connection:.*$/gim), [
+            "connection: keep-alive, ClOsE",
+          ]);
+          assertStringIncludes(response, "ok");
+        });
+      }
+    }
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerPostWithInvalidPrefixContentLength() {
