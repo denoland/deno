@@ -13,6 +13,25 @@ function resolveWorker(worker: string): string {
 
 Deno.test(
   { permissions: { read: true } },
+  function workerPostMessageRequiresArgument() {
+    const w = new Worker(
+      resolveWorker("test_worker.js"),
+      { type: "module" },
+    );
+    assertThrows(
+      () => {
+        // @ts-expect-error: testing missing argument
+        w.postMessage();
+      },
+      TypeError,
+      "Failed to execute 'postMessage' on 'Worker'",
+    );
+    w.terminate();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
       resolveWorker("test_worker.js"),
