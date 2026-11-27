@@ -2,6 +2,12 @@
 
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
+function imageBitmapData(bitmap: ImageBitmap) {
+  return (bitmap as unknown as Record<symbol, () => Uint8Array>)[
+    Symbol.for("Deno_bitmapData")
+  ]();
+}
+
 // Basic tests for the structured clone algorithm. Mainly tests TypeScript
 // typings. Actual functionality is tested in WPT.
 
@@ -75,6 +81,181 @@ Deno.test("structuredClone URL throws DataCloneError", () => {
   );
 });
 
+Deno.test("structuredClone geometry interfaces", () => {
+  const values = [
+    new DOMPointReadOnly(1, 2, 3, 4),
+    new DOMPoint(1, 2, 3, 4),
+    new DOMRectReadOnly(1, 2, 3, 4),
+    new DOMRect(1, 2, 3, 4),
+    new DOMQuad(
+      new DOMPoint(1, 2),
+      new DOMPoint(3, 4),
+      new DOMPoint(5, 6),
+      new DOMPoint(7, 8),
+    ),
+    new DOMMatrixReadOnly([1, 2, 3, 4, 5, 6]),
+    new DOMMatrix([1, 2, 3, 4, 5, 6]),
+    new DOMMatrixReadOnly([
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]),
+  ];
+
+  for (const value of values) {
+    const clone = structuredClone(value);
+    assert(clone !== value);
+    assertEquals(Object.getPrototypeOf(clone), Object.getPrototypeOf(value));
+    assertEquals(clone.toJSON(), value.toJSON());
+    const nested = structuredClone({
+      deep: [value],
+      map: new Map([["value", value]]),
+    });
+    assertEquals(
+      Object.getPrototypeOf(nested.deep[0]),
+      Object.getPrototypeOf(value),
+    );
+    assertEquals(nested.map.get("value")?.toJSON(), value.toJSON());
+    assertThrows(
+      () =>
+        structuredClone(value, {
+          transfer: [value as unknown as Transferable],
+        }),
+      DOMException,
+      "Value not transferable",
+    );
+  }
+
+  const point = new DOMPoint(1, 2, 3, 4);
+  Object.defineProperty(point, "toJSON", {
+    value: () => ({ x: 10, y: 20, z: 30, w: 40 }),
+  });
+  const pointClone = structuredClone(point);
+  assertEquals([pointClone.x, pointClone.y, pointClone.z, pointClone.w], [
+    1,
+    2,
+    3,
+    4,
+  ]);
+
+  const unrestrictedPoint = structuredClone(
+    new DOMPoint(Number.NaN, Infinity, -Infinity, Number.NaN),
+  );
+  assert(Number.isNaN(unrestrictedPoint.x));
+  assertEquals(unrestrictedPoint.y, Infinity);
+  assertEquals(unrestrictedPoint.z, -Infinity);
+  assert(Number.isNaN(unrestrictedPoint.w));
+});
+
+Deno.test("structuredClone ImageData and ImageBitmap", async () => {
+  const data = new ImageData(new Uint8ClampedArray([1, 2, 3, 255]), 1, 1);
+  const clonedData = structuredClone(data);
+  assert(clonedData instanceof ImageData);
+  assertEquals(clonedData.width, 1);
+  assertEquals(clonedData.height, 1);
+  assertEquals([...clonedData.data], [1, 2, 3, 255]);
+  clonedData.data[0] = 9;
+  assertEquals(data.data[0], 1);
+  assertThrows(
+    () =>
+      structuredClone(data, { transfer: [data as unknown as Transferable] }),
+    DOMException,
+    "Value not transferable",
+  );
+
+  const floatData = new ImageData(
+    new Float16Array([0.5, 0.25, 0.125, 1]),
+    1,
+    1,
+    { colorSpace: "display-p3", pixelFormat: "rgba-float16" },
+  );
+  const clonedFloatData = structuredClone(floatData);
+  assertEquals(clonedFloatData.colorSpace, "display-p3");
+  assertEquals(clonedFloatData.pixelFormat, "rgba-float16");
+  assertEquals([...clonedFloatData.data], [...floatData.data]);
+
+  const bitmap = await createImageBitmap(data);
+  const clonedBitmap = structuredClone(bitmap);
+  assert(clonedBitmap instanceof ImageBitmap);
+  assertEquals(clonedBitmap.width, bitmap.width);
+  assertEquals(clonedBitmap.height, bitmap.height);
+  assertEquals([...imageBitmapData(clonedBitmap)], [1, 2, 3, 255]);
+  const nestedBitmap = structuredClone({ bitmap, items: [bitmap] });
+  assert(nestedBitmap.bitmap !== bitmap);
+  assert(nestedBitmap.bitmap === nestedBitmap.items[0]);
+  assertEquals([...imageBitmapData(nestedBitmap.bitmap)], [1, 2, 3, 255]);
+
+  assertThrows(
+    () => structuredClone(bitmap, { transfer: [bitmap, bitmap] }),
+    DOMException,
+    "Transfer list contains duplicate item",
+  );
+  assertEquals(bitmap.width, 1);
+
+  const transferredBitmap = structuredClone(bitmap, { transfer: [bitmap] });
+  assert(transferredBitmap instanceof ImageBitmap);
+  assertEquals(transferredBitmap.width, 1);
+  assertEquals([...imageBitmapData(transferredBitmap)], [1, 2, 3, 255]);
+  assertEquals(bitmap.width, 0);
+  bitmap.close();
+  clonedBitmap.close();
+  transferredBitmap.close();
+});
+
+Deno.test("structuredClone transfers OffscreenCanvas", async () => {
+  const canvas = new OffscreenCanvas(1, 1);
+  const sourceContext = canvas.getContext("bitmaprenderer");
+  assert(sourceContext);
+  sourceContext.transferFromImageBitmap(
+    await createImageBitmap(
+      new ImageData(new Uint8ClampedArray([1, 2, 3, 255]), 1, 1),
+    ),
+  );
+  assertThrows(() => structuredClone(canvas), DOMException);
+  assertThrows(
+    () => structuredClone(canvas, { transfer: [canvas, canvas] }),
+    DOMException,
+    "Transfer list contains duplicate item",
+  );
+  assertEquals(canvas.width, 1);
+  const transferred = structuredClone(canvas, { transfer: [canvas] });
+  assert(transferred instanceof OffscreenCanvas);
+  assertEquals(transferred.width, 1);
+  assertEquals(transferred.height, 1);
+  assertEquals(canvas.width, 0);
+  assertEquals(canvas.height, 0);
+  assertThrows(
+    () => canvas.getContext("bitmaprenderer"),
+    DOMException,
+    "OffscreenCanvas is detached",
+  );
+  const context = transferred.getContext("bitmaprenderer");
+  assert(context);
+  const bitmap = transferred.transferToImageBitmap();
+  assertEquals([...imageBitmapData(bitmap)], [1, 2, 3, 255]);
+  bitmap.close();
+
+  const emptyCanvas = new OffscreenCanvas(0, 0);
+  const transferredEmptyCanvas = structuredClone(emptyCanvas, {
+    transfer: [emptyCanvas],
+  });
+  assertEquals(transferredEmptyCanvas.width, 0);
+  assertEquals(transferredEmptyCanvas.height, 0);
+});
+
 Deno.test("postMessage URL throws DataCloneError", () => {
   // Posting a non-serializable value must take the same path as
   // structuredClone and throw, instead of silently delivering `{}`.
@@ -90,6 +271,38 @@ Deno.test("postMessage URL throws DataCloneError", () => {
       DOMException,
       "Cannot clone object of unsupported type.",
     );
+  } finally {
+    port1.close();
+    port2.close();
+  }
+});
+
+Deno.test("postMessage transfers bitmap and offscreen canvas", async () => {
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const bitmap = await createImageBitmap(
+      new ImageData(new Uint8ClampedArray([4, 5, 6, 255]), 1, 1),
+    );
+    const bitmapMessage = new Promise<ImageBitmap>((resolve) => {
+      port2.onmessage = (event) => resolve(event.data);
+    });
+    port1.postMessage(bitmap, [bitmap]);
+    assertEquals(bitmap.width, 0);
+    const receivedBitmap = await bitmapMessage;
+    assert(receivedBitmap instanceof ImageBitmap);
+    assertEquals([...imageBitmapData(receivedBitmap)], [4, 5, 6, 255]);
+    receivedBitmap.close();
+
+    const canvas = new OffscreenCanvas(2, 3);
+    const canvasMessage = new Promise<OffscreenCanvas>((resolve) => {
+      port2.onmessage = (event) => resolve(event.data);
+    });
+    port1.postMessage(canvas, [canvas]);
+    assertEquals(canvas.width, 0);
+    const receivedCanvas = await canvasMessage;
+    assert(receivedCanvas instanceof OffscreenCanvas);
+    assertEquals(receivedCanvas.width, 2);
+    assertEquals(receivedCanvas.height, 3);
   } finally {
     port1.close();
     port2.close();

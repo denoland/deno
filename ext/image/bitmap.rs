@@ -7,9 +7,15 @@ use std::io::Cursor;
 
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::TransferredResource;
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
+use deno_error::JsErrorBox;
 use image::DynamicImage;
+use image::GenericImageView;
 use image::ImageDecoder;
 use image::RgbaImage;
 use image::codecs::bmp::BmpDecoder;
@@ -540,6 +546,92 @@ pub struct ImageBitmap {
   pub data: RefCell<DynamicImage>,
 }
 
+struct ImageBitmapTransferData {
+  width: u32,
+  height: u32,
+  data: Vec<u8>,
+}
+
+impl Resource for ImageBitmapTransferData {
+  fn transfer(
+    self: std::rc::Rc<Self>,
+  ) -> Result<Box<dyn TransferredResource>, JsErrorBox> {
+    let data = std::rc::Rc::try_unwrap(self).map_err(|_| {
+      JsErrorBox::type_error("ImageBitmap is already being transferred")
+    })?;
+    Ok(Box::new(data))
+  }
+}
+
+impl TransferredResource for ImageBitmapTransferData {
+  fn receive(self: Box<Self>) -> std::rc::Rc<dyn Resource> {
+    std::rc::Rc::new(*self)
+  }
+}
+
+fn image_bitmap_from_rgba(
+  width: u32,
+  height: u32,
+  data: Vec<u8>,
+) -> Result<ImageBitmap, JsErrorBox> {
+  let image = RgbaImage::from_raw(width, height, data)
+    .ok_or_else(|| JsErrorBox::type_error("Invalid ImageBitmap data"))?;
+  Ok(ImageBitmap {
+    detached: OnceCell::new(),
+    data: RefCell::new(DynamicImage::ImageRgba8(image)),
+  })
+}
+
+#[op2]
+#[cppgc]
+pub fn op_image_bitmap_from_clone_data(
+  width: u32,
+  height: u32,
+  #[buffer] data: JsBuffer,
+) -> Result<ImageBitmap, JsErrorBox> {
+  image_bitmap_from_rgba(width, height, data.to_vec())
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_image_bitmap_transfer(
+  state: &mut OpState,
+  #[cppgc] bitmap: &ImageBitmap,
+) -> Result<ResourceId, JsErrorBox> {
+  if bitmap.detached.get().is_some() {
+    return Err(JsErrorBox::type_error("ImageBitmap is detached"));
+  }
+  let image = bitmap.data.borrow();
+  let (width, height) = image.dimensions();
+  let data = image.to_rgba8().into_raw();
+  drop(image);
+  let _ = bitmap.detached.set(());
+  bitmap
+    .data
+    .replace(DynamicImage::new(0, 0, image::ColorType::Rgba8));
+  Ok(state.resource_table.add(ImageBitmapTransferData {
+    width,
+    height,
+    data,
+  }))
+}
+
+#[op2]
+#[cppgc]
+pub fn op_image_bitmap_receive(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<ImageBitmap, JsErrorBox> {
+  let data = state
+    .resource_table
+    .take::<ImageBitmapTransferData>(rid)
+    .map_err(JsErrorBox::from_err)?;
+  let data = std::rc::Rc::try_unwrap(data).map_err(|_| {
+    JsErrorBox::type_error("ImageBitmap transfer is unavailable")
+  })?;
+  image_bitmap_from_rgba(data.width, data.height, data.data)
+}
+
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for ImageBitmap {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
@@ -579,7 +671,7 @@ impl ImageBitmap {
   #[symbol("Deno_bitmapData")]
   fn getData(&self) -> Vec<u8> {
     let data = self.data.borrow();
-    data.as_bytes().to_vec()
+    data.to_rgba8().into_raw()
   }
 }
 

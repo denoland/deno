@@ -1338,6 +1338,8 @@ declare var MessageEvent: {
 
 /** @category Events */
 type Transferable =
+  | OffscreenCanvas
+  | ImageBitmap
   | MessagePort
   | ArrayBuffer
   | ReadableStream
