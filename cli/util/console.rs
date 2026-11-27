@@ -70,13 +70,24 @@ fn is_terminal_unprintable(c: char) -> bool {
   )
 }
 
-/// Strips destructive ANSI escape sequences from user output while preserving
-/// SGR (color/style) sequences. Returns `Cow::Borrowed` when no filtering needed.
+/// Strips destructive terminal control characters from user output while
+/// preserving ordinary text, whitespace (tab and newline), and ESC-prefixed
+/// SGR (color/style) sequences. C1 CSI forms are stripped unconditionally.
+///
+/// This covers the full C0 control range and DEL, the C1 controls (raw and
+/// UTF-8-encoded), and ANSI escape sequences (CSI/OSC/DCS/PM/APC). Only TAB,
+/// LF, and `\r\n` line endings are kept from the control ranges; a bare `\r`
+/// (line-overwrite) is stripped. Returns `Cow::Borrowed` when no filtering is
+/// needed.
 pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
-  if !input
-    .iter()
-    .any(|&b| b == 0x1b || b == 0x07 || b == 0x08 || b == b'\r')
-  {
+  // Trigger the filter for any control byte other than TAB (0x09) and LF
+  // (0x0a), plus raw or UTF-8-encoded C1 controls. Everything else is copied
+  // through unchanged.
+  if !input.iter().enumerate().any(|(i, &b)| {
+    matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | 0x80..=0x9f)
+      || (b == 0xc2
+        && input.get(i + 1).is_some_and(|b| (0x80..=0x9f).contains(b)))
+  }) {
     return Cow::Borrowed(input);
   }
 
@@ -85,7 +96,11 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
 
   while i < input.len() {
     match input[i] {
-      0x07 | 0x08 => i += 1,
+      // Strip destructive C0 controls (BEL, BS, ENQ answerback, VT, FF, SI/SO,
+      // XON/XOFF flow control, CAN, SUB, separators, ...) and DEL. TAB (0x09)
+      // and LF (0x0a) fall through to the default arm and are preserved; CR
+      // (0x0d) and ESC (0x1b) are handled by the arms just below.
+      0x00..=0x08 | 0x0b | 0x0c | 0x0e..=0x1a | 0x1c..=0x1f | 0x7f => i += 1,
       // Strip standalone \r (line-overwrite), keep \r\n
       b'\r' if i + 1 < input.len() && input[i + 1] == b'\n' => {
         out.extend_from_slice(b"\r\n");
@@ -96,7 +111,7 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
       0x1b => {
         match input[i + 1] {
           b'[' => {
-            let seq_end = skip_csi(&input[i..]);
+            let seq_end = skip_csi_after_intro(&input[i..], 2);
             // Keep SGR sequences (final byte 'm', no private marker '?'/'>'/'<')
             let final_byte = input.get(i + seq_end - 1);
             let has_private = input
@@ -108,7 +123,9 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
             i += seq_end;
           }
           // OSC/DCS/PM/APC: string sequences terminated by BEL/ST
-          b']' | b'P' | b'^' | b'_' => i += skip_str_seq(&input[i..]),
+          b']' | b'P' | b'^' | b'_' => {
+            i += skip_str_seq_after_intro(&input[i..], 2)
+          }
           // Two-byte ESC sequences (Fe/Fp/Fs)
           0x30..=0x7E => i += 2,
           // nF: ESC + intermediate bytes (0x20..=0x2F) + final byte
@@ -124,6 +141,34 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
           _ => i += 1,
         }
       }
+      // Strip UTF-8 encoded C1 control characters. Some terminals interpret
+      // U+009B as CSI and related C1 controls as terminal control sequences.
+      0xc2 if input.get(i + 1).is_some_and(|b| (0x80..=0x9f).contains(b)) => {
+        match input[i + 1] {
+          0x90 | 0x9d | 0x9e | 0x9f => {
+            i += skip_str_seq_after_intro(&input[i..], 2)
+          }
+          0x9b => i += skip_csi_after_intro(&input[i..], 2),
+          _ => i += 2,
+        }
+      }
+      // Preserve valid UTF-8 multibyte sequences as a unit so continuation
+      // bytes in normal Unicode output are not mistaken for raw C1 controls.
+      0xc2..=0xf4 => {
+        if let Some(len) = utf8_sequence_len(&input[i..]) {
+          out.extend_from_slice(&input[i..i + len]);
+          i += len;
+        } else {
+          out.push(input[i]);
+          i += 1;
+        }
+      }
+      // Strip raw C1 control characters for byte output that is not UTF-8.
+      0x90 | 0x9d | 0x9e | 0x9f => {
+        i += skip_str_seq_after_intro(&input[i..], 1)
+      }
+      0x9b => i += skip_csi_after_intro(&input[i..], 1),
+      0x80..=0x9f => i += 1,
       b => {
         out.push(b);
         i += 1;
@@ -134,9 +179,8 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
   Cow::Owned(out)
 }
 
-/// Returns the length of a CSI sequence (`ESC [` params final-byte).
-fn skip_csi(data: &[u8]) -> usize {
-  let mut j = 2;
+/// Returns the length of a CSI sequence after a one or two byte introducer.
+fn skip_csi_after_intro(data: &[u8], mut j: usize) -> usize {
   if j < data.len() && matches!(data[j], b'?' | b'>' | b'<') {
     j += 1;
   }
@@ -152,17 +196,39 @@ fn skip_csi(data: &[u8]) -> usize {
   j
 }
 
-/// Skips an OSC/DCS/PM/APC string sequence terminated by BEL, ST (ESC \), or 0x9c.
-fn skip_str_seq(data: &[u8]) -> usize {
-  let mut j = 2;
+/// Skips a string control sequence after a one or two byte introducer.
+fn skip_str_seq_after_intro(data: &[u8], mut j: usize) -> usize {
   while j < data.len() {
     match data[j] {
       0x07 | 0x9c => return j + 1,
+      0xc2 if data.get(j + 1) == Some(&0x9c) => return j + 2,
       0x1b if data.get(j + 1) == Some(&b'\\') => return j + 2,
+      0xc2..=0xf4 => {
+        j += utf8_sequence_len(&data[j..]).unwrap_or(1);
+      }
       _ => j += 1,
     }
   }
   j
+}
+
+/// Returns the length of the leading, genuinely valid UTF-8 sequence, if any.
+///
+/// Overlong, surrogate, and out-of-range encodings are rejected (return `None`)
+/// so that the caller does not preserve them wholesale. This matters for
+/// security: an overlong encoding of a C1 control (e.g. `e0 82 9b` for U+009B /
+/// CSI) is not valid UTF-8, and treating it as a unit would let it survive the
+/// filter and be acted on by a lenient or 8-bit terminal. Rejecting it here
+/// makes those bytes fall through to the C1-stripping arms of the main loop.
+fn utf8_sequence_len(data: &[u8]) -> Option<usize> {
+  let len = match *data.first()? {
+    0xc2..=0xdf => 2,
+    0xe0..=0xef => 3,
+    0xf0..=0xf4 => 4,
+    _ => return None,
+  };
+  let seq = data.get(..len)?;
+  std::str::from_utf8(seq).ok().map(|_| len)
 }
 
 pub struct RawMode {
@@ -658,6 +724,21 @@ mod tests {
   }
 
   #[test]
+  fn filter_destructive_ansi_preserves_utf8_text() {
+    let input = "hello 😀 café\n".as_bytes();
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, input);
+  }
+
+  #[test]
+  fn filter_destructive_ansi_borrows_printable_c2_text() {
+    let input = "hello © ° \u{00a0}\n".as_bytes();
+    let result = filter_destructive_ansi(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(&*result, input);
+  }
+
+  #[test]
   fn filter_destructive_ansi_strips_standalone_cr() {
     // Standalone \r (used by progress bars to overwrite lines) is stripped
     let input = b"progress\roverwrite";
@@ -693,6 +774,90 @@ mod tests {
     let input = b"text\x1b[3Smore";
     let result = filter_destructive_ansi(input);
     assert_eq!(&*result, b"textmore");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_c1_csi_sequences() {
+    let utf8_c1_csi = b"before\xc2\x9b2Jafter";
+    let result = filter_destructive_ansi(utf8_c1_csi);
+    assert_eq!(&*result, b"beforeafter");
+
+    let raw_c1_csi = b"before\x9b2Jafter";
+    let result = filter_destructive_ansi(raw_c1_csi);
+    assert_eq!(&*result, b"beforeafter");
+
+    // Unlike ESC-prefixed SGR, C1 CSI forms are stripped unconditionally.
+    let c1_sgr = b"before\xc2\x9b31mred";
+    let result = filter_destructive_ansi(c1_sgr);
+    assert_eq!(&*result, b"beforered");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_c1_string_sequences() {
+    // A valid UTF-8 character ending in 0x9c must not be mistaken for raw ST;
+    // the UTF-8-encoded ST at the end terminates the sequence.
+    let utf8_c1_osc = b"before\xc2\x9dtitle \xe2\x80\x9chidden\xc2\x9cafter";
+    let result = filter_destructive_ansi(utf8_c1_osc);
+    assert_eq!(&*result, b"beforeafter");
+
+    let raw_c1_osc = b"before\x9d0;evil title\x07after";
+    let result = filter_destructive_ansi(raw_c1_osc);
+    assert_eq!(&*result, b"beforeafter");
+
+    for input in [
+      &b"before\xc2\x90DCS\xc2\x9cafter"[..],
+      &b"before\xc2\x9ePM\xc2\x9cafter"[..],
+      &b"before\xc2\x9fAPC\xc2\x9cafter"[..],
+      &b"before\x90DCS\x9cafter"[..],
+      &b"before\x9ePM\x9cafter"[..],
+      &b"before\x9fAPC\x9cafter"[..],
+    ] {
+      let result = filter_destructive_ansi(input);
+      assert_eq!(&*result, b"beforeafter");
+    }
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_overlong_c1_controls() {
+    // Overlong UTF-8 encodings of C1 controls are invalid UTF-8 and must not be
+    // preserved as multibyte text: a lenient or 8-bit terminal would otherwise
+    // decode `e0 82 9b` as U+009B (CSI) and act on the trailing `2J` (erase
+    // screen). The overlong lead byte is emitted as an inert invalid byte while
+    // the C1 introducer and its parameters are stripped.
+    let overlong_csi = b"before\xe0\x82\x9b2Jafter";
+    let result = filter_destructive_ansi(overlong_csi);
+    assert_eq!(&*result, b"before\xe0after");
+
+    // The 4-byte overlong form of the same control is likewise defanged (here a
+    // `CSI 6 n` cursor-position report, which would otherwise write to stdin).
+    let overlong_csi_4 = b"x\xf0\x80\x82\x9b6nend";
+    let result = filter_destructive_ansi(overlong_csi_4);
+    assert_eq!(&*result, b"x\xf0end");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_shift_in_out() {
+    let input = b"before\x0eshifted\x0fafter";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"beforeshiftedafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_c0_controls() {
+    // ENQ (answerback -> stdin writeback), NUL, VT, FF, XON/XOFF flow control,
+    // CAN, SUB, the separators, and DEL are all stripped.
+    let input = b"a\x00b\x05c\x0bd\x0ce\x11f\x13g\x18h\x1ai\x1cj\x1fk\x7fl";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"abcdefghijkl");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_tab_and_newline_around_controls() {
+    // TAB and LF are legitimate formatting and must survive even when other
+    // control bytes force the slow path.
+    let input = b"col1\tcol2\x05\nnext\tline\n";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"col1\tcol2\nnext\tline\n");
   }
 
   #[test]
