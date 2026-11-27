@@ -1,0 +1,21 @@
+Uncaught error from ./a_error_test.ts FAILED
+running 1 test from ./b_ok_test.ts
+match ... ok ([WILDCARD])
+
+ ERRORS 
+
+./a_error_test.ts (uncaught error)
+error: (in promise) Error: top-level boom
+throw new Error("top-level boom");
+      ^
+    at [WILDCARD]a_error_test.ts:2:7
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+./a_error_test.ts (uncaught error)
+
+FAILED | 1 passed | 1 failed ([WILDCARD])
+
+error: Test failed
