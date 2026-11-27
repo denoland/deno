@@ -64,6 +64,8 @@ class TextDecoder {
 
   /** @type {object | null} */
   #handle = null;
+  // ASCII chunks bypass the streaming decoder, but still consume the BOM position.
+  #hasDecodedAscii = false;
 
   /**
    * @param {string} label
@@ -134,6 +136,7 @@ class TextDecoder {
       options === undefined &&
       this.#utf8SinglePass &&
       this.#handle === null &&
+      !this.#hasDecodedAscii &&
       TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array" &&
       !isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
     ) {
@@ -222,7 +225,10 @@ class TextDecoder {
       if (!stream && this.#handle === null) {
         // Fast path for utf8 single pass encoding.
         if (this.#utf8SinglePass) {
-          return op_encoding_decode_utf8(input, this.#ignoreBOM);
+          return op_encoding_decode_utf8(
+            input,
+            this.#ignoreBOM || this.#hasDecodedAscii,
+          );
         }
 
         return op_encoding_decode_single(
@@ -243,20 +249,24 @@ class TextDecoder {
       // through to the general streaming op (which will create the handle).
       if (stream && this.#utf8SinglePass && this.#handle === null) {
         const ascii = op_encoding_decode_utf8_ascii_only(input);
-        if (ascii !== null) return ascii;
+        if (ascii !== null) {
+          if (ascii.length > 0) this.#hasDecodedAscii = true;
+          return ascii;
+        }
       }
 
       if (this.#handle === null) {
         this.#handle = op_encoding_new_decoder(
           this.#encoding,
           this.#fatal,
-          this.#ignoreBOM,
+          this.#ignoreBOM || this.#hasDecodedAscii,
         );
       }
       return op_encoding_decode(input, this.#handle, stream);
     } finally {
-      if (!stream && this.#handle !== null) {
+      if (!stream) {
         this.#handle = null;
+        this.#hasDecodedAscii = false;
       }
     }
   }
