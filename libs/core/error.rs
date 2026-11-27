@@ -477,6 +477,15 @@ pub(crate) fn call_site_evals_key<'s, 'i>(
   v8::Private::for_api(scope, Some(name))
 }
 
+pub(crate) fn preserve_import_exception_key<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+) -> v8::Local<'s, v8::Private> {
+  let name = v8_static_strings::PRESERVE_IMPORT_EXCEPTION
+    .v8_string(scope)
+    .unwrap();
+  v8::Private::for_api(scope, Some(name))
+}
+
 /// A `JsError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JsError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.

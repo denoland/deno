@@ -592,6 +592,8 @@ impl ModuleSource {
 
 pub type ModuleSourceFuture =
   dyn Future<Output = Result<ModuleSource, ModuleLoaderError>>;
+pub type ModuleSourceFutureWithException =
+  dyn Future<Output = Result<ModuleSource, ModuleError>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolutionKind {
@@ -970,6 +972,17 @@ pub enum ModuleError {
 }
 
 impl ModuleError {
+  pub(crate) fn into_exception(
+    self,
+    scope: &mut v8::PinScope,
+  ) -> v8::Global<v8::Value> {
+    match self {
+      Self::Exception(exception) => exception,
+      Self::Core(error) => error.to_v8_error(scope),
+      Self::Concrete(error) => CoreErrorKind::Module(error).to_v8_error(scope),
+    }
+  }
+
   pub fn into_error(
     self,
     scope: &mut v8::PinScope,

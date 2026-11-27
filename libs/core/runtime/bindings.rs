@@ -29,6 +29,7 @@ use crate::error::JsStackFrame;
 use crate::error::callsite_fns;
 use crate::error::has_call_site;
 use crate::error::is_instance_of_error;
+use crate::error::preserve_import_exception_key;
 use crate::extension_set::LoadedSource;
 use crate::extension_set::LoadedSources;
 use crate::modules::ImportAttributesKind;
@@ -1303,9 +1304,10 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   }
   // Map errors from module resolution (not JS errors from module execution) to
   // ones rethrown from this scope, so they include the call stack of the
-  // dynamic import site. Error objects without any stack frames are assumed to
-  // be module resolution errors, other exception values are left as they are.
-  let builder = v8::FunctionBuilder::new(catch_dynamic_import_promise_error);
+  // dynamic import site. Errors returned by JavaScript load hooks are
+  // marked on the original promise and skip this remapping.
+  let builder = v8::FunctionBuilder::new(catch_dynamic_import_promise_error)
+    .data(promise.into());
 
   let map_err =
     v8::FunctionBuilder::<v8::Function>::build(builder, tc_scope).unwrap();
@@ -1627,7 +1629,11 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
   _rv: v8::ReturnValue,
 ) {
   let arg = args.get(0);
-  if is_instance_of_error(scope, arg) {
+  let promise = args.data().try_cast::<v8::Promise>().unwrap();
+  let key = preserve_import_exception_key(scope);
+  if promise.has_private(scope, key) != Some(true)
+    && is_instance_of_error(scope, arg)
+  {
     let e: crate::error::NativeJsError =
       serde_v8::from_v8(scope, arg).unwrap_or_default();
     let name = e.name.unwrap_or_else(|| {

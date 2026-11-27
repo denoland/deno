@@ -1425,6 +1425,128 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
   }
 
+  fn load_with_exception(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
+    options: &deno_core::ModuleLoadOptions,
+  ) -> Option<std::pin::Pin<Box<deno_core::ModuleSourceFutureWithException>>>
+  {
+    // When load hooks are active, delegate to JS hooks first.
+    // The hook function itself is synchronous, but this load path has no V8
+    // scope. The async bridge lets the JS event loop run the hook; blocking
+    // here waiting for JS would deadlock the same runtime.
+    // Skip the hook bridge for CJS modules — they go through the
+    // default loader which invokes the sync load hook chain
+    // (executeLoadHookChain) in Module._load. Going through both
+    // the ESM bridge AND the CJS path would call hooks twice.
+    if self.0.shared.maybe_eszip_loader.is_some()
+      || !self.0.hook_registry.load_active.get()
+      || options.is_synchronous
+      || {
+        let media_type = deno_media_type::MediaType::from_specifier(specifier);
+        self
+          .0
+          .shared
+          .cjs_tracker
+          .is_maybe_cjs(specifier, media_type)
+          .unwrap_or(false)
+      }
+    {
+      return None;
+    }
+
+    self.0.loaded_files.borrow_mut().insert(specifier.clone());
+
+    let inner = self.0.clone();
+    let specifier = specifier.clone();
+    let maybe_referrer = maybe_referrer.cloned();
+    let requested_module_type = options.requested_module_type.clone();
+    let is_dynamic_import = options.is_dynamic_import;
+    let import_attributes = hook_load_import_attributes(
+      &self.0.hook_registry,
+      specifier.as_str(),
+      &requested_module_type,
+    );
+    let receiver = self
+      .0
+      .hook_registry
+      .push_load(specifier.to_string(), import_attributes);
+    Some(
+      async move {
+        let hook_result = match receiver.await {
+          Ok(r) => r,
+          Err(_) => {
+            return Err(deno_core::ModuleError::Core(
+              JsErrorBox::generic("module load hook cancelled").into(),
+            ));
+          }
+        };
+        match hook_result {
+          Ok((Some(source), format, _effective_url)) => {
+            let module_type =
+              pick_hook_module_type(format.as_deref(), &requested_module_type);
+            Ok(deno_core::ModuleSource::new(
+              module_type,
+              deno_core::ModuleSourceCode::String(source.into()),
+              &specifier,
+              None,
+            ))
+          }
+          Ok((None, Some(format), _effective_url))
+            if format == "builtin" && specifier.scheme() == "node" =>
+          {
+            Ok(deno_core::ModuleSource::new(
+              deno_core::ModuleType::JavaScript,
+              deno_core::ModuleSourceCode::String("".to_string().into()),
+              &specifier,
+              None,
+            ))
+          }
+          Ok((None, _, effective_url)) => {
+            // Fallthrough: hooks didn't intercept. If the user's load hook
+            // chain delegated via `nextLoad(newUrl)`, fetch source from
+            // that URL but keep the module's identity at the original
+            // specifier (matches Node's hook semantics).
+            let fetch_specifier = effective_url
+              .as_deref()
+              .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+              .filter(|u| u != &specifier);
+            if let Some(redirect) = fetch_specifier.as_ref() {
+              // The redirect target wasn't seen by the initial graph
+              // preparation pass; prepare it now so load_inner can find
+              // it in the graph.
+              inner
+                .prepare_hooked_specifier(redirect, is_dynamic_import)
+                .await;
+            }
+            let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
+            let source = inner
+              .load_inner(
+                load_url,
+                maybe_referrer.as_ref().map(|r| &r.specifier),
+                &requested_module_type,
+              )
+              .await
+              .map_err(|error| deno_core::ModuleError::Core(error.into()))?;
+            if fetch_specifier.is_some() {
+              Ok(deno_core::ModuleSource::new(
+                source.module_type,
+                source.code,
+                &specifier,
+                source.code_cache,
+              ))
+            } else {
+              Ok(source)
+            }
+          }
+          Err(error) => Err(deno_core::ModuleError::Exception(error)),
+        }
+      }
+      .boxed_local(),
+    )
+  }
+
   fn load(
     &self,
     specifier: &ModuleSpecifier,
@@ -1441,109 +1563,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
-
-    // When load hooks are active, delegate to JS hooks first.
-    // The hook function itself is synchronous, but this load path has no V8
-    // scope. The async bridge lets the JS event loop run the hook; blocking
-    // here waiting for JS would deadlock the same runtime.
-    // Skip the hook bridge for CJS modules — they go through the
-    // default loader which invokes the sync load hook chain
-    // (executeLoadHookChain) in Module._load. Going through both
-    // the ESM bridge AND the CJS path would call hooks twice.
-    if self.0.hook_registry.load_active.get()
-      && !options.is_synchronous
-      && !{
-        let media_type = deno_media_type::MediaType::from_specifier(&specifier);
-        self
-          .0
-          .shared
-          .cjs_tracker
-          .is_maybe_cjs(&specifier, media_type)
-          .unwrap_or(false)
-      }
-    {
-      let import_attributes = hook_load_import_attributes(
-        &self.0.hook_registry,
-        specifier.as_str(),
-        &options.requested_module_type,
-      );
-      let receiver = self
-        .0
-        .hook_registry
-        .push_load(specifier.to_string(), import_attributes);
-      return deno_core::ModuleLoadResponse::Async(
-        async move {
-          let hook_result = match receiver.await {
-            Ok(r) => r,
-            Err(_) => {
-              return Err(JsErrorBox::generic("module load hook cancelled"));
-            }
-          };
-          match hook_result {
-            Ok((Some(source), format, _effective_url)) => {
-              let module_type = pick_hook_module_type(
-                format.as_deref(),
-                &options.requested_module_type,
-              );
-              Ok(deno_core::ModuleSource::new(
-                module_type,
-                deno_core::ModuleSourceCode::String(source.into()),
-                &specifier,
-                None,
-              ))
-            }
-            Ok((None, Some(format), _effective_url))
-              if format == "builtin" && specifier.scheme() == "node" =>
-            {
-              Ok(deno_core::ModuleSource::new(
-                deno_core::ModuleType::JavaScript,
-                deno_core::ModuleSourceCode::String("".to_string().into()),
-                &specifier,
-                None,
-              ))
-            }
-            Ok((None, _, effective_url)) => {
-              // Fallthrough: hooks didn't intercept. If the user's load hook
-              // chain delegated via `nextLoad(newUrl)`, fetch source from
-              // that URL but keep the module's identity at the original
-              // specifier (matches Node's hook semantics).
-              let fetch_specifier = effective_url
-                .as_deref()
-                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
-                .filter(|u| u != &specifier);
-              if let Some(redirect) = fetch_specifier.as_ref() {
-                // The redirect target wasn't seen by the initial graph
-                // preparation pass; prepare it now so load_inner can find
-                // it in the graph.
-                inner
-                  .prepare_hooked_specifier(redirect, options.is_dynamic_import)
-                  .await;
-              }
-              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
-              let source = inner
-                .load_inner(
-                  load_url,
-                  maybe_referrer.as_ref().map(|r| &r.specifier),
-                  &options.requested_module_type,
-                )
-                .await?;
-              if fetch_specifier.is_some() {
-                Ok(deno_core::ModuleSource::new(
-                  source.module_type,
-                  source.code,
-                  &specifier,
-                  source.code_cache,
-                ))
-              } else {
-                Ok(source)
-              }
-            }
-            Err(err) => Err(JsErrorBox::generic(err)),
-          }
-        }
-        .boxed_local(),
-      );
-    }
 
     if options.is_synchronous
       && let Some(result) =
