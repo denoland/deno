@@ -47,6 +47,8 @@ mod jupyter;
 mod jupyter_client;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "lint_tests.rs"]
+mod lint;
 #[path = "napi_tests.rs"]
 mod napi;
 #[path = "npm_tests.rs"]
