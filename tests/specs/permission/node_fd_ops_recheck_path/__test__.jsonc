@@ -23,6 +23,25 @@
           "output": "futimes_denied.out"
         }
       ]
+    },
+    // the fd's path must be re-checked against the path it was opened with,
+    // not the canonicalized one, otherwise a deny rule through a symlink (or
+    // a Windows short name) doesn't match
+    "fstat_denied_read_through_symlink": {
+      "if": "unix",
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.mkdirSync('real'); Deno.writeTextFileSync('real/secret.txt', 'TOPSECRET-CONTENT\\n'); Deno.symlinkSync('real', 'link')"
+          ],
+          "output": ""
+        },
+        {
+          "args": "run --allow-read --allow-write --deny-read=link/secret.txt fstat_symlink.ts",
+          "output": "fstat_symlink_denied.out"
+        }
+      ]
     }
   }
 }

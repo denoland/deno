@@ -306,6 +306,9 @@ pub struct CheckedPath<'a> {
   // these are private to prevent someone constructing this outside the crate
   path: PathWithRequested<'a>,
   canonicalized: bool,
+  /// The path permissions were checked against, before it was canonicalized.
+  /// Only set when canonicalization changed the path.
+  unresolved: Option<Cow<'a, Path>>,
 }
 
 impl<'a> CheckedPath<'a> {
@@ -316,11 +319,20 @@ impl<'a> CheckedPath<'a> {
         requested: None,
       },
       canonicalized: false,
+      unresolved: None,
     }
   }
 
   pub fn canonicalized(&self) -> bool {
     self.canonicalized
+  }
+
+  /// The path to use when re-checking permissions later on (ex. for an
+  /// already opened file). Deny and allow rules are matched against paths
+  /// before symlinks and Windows short names are resolved, so re-checking the
+  /// canonicalized path could miss a rule that matched the original query.
+  pub fn permission_check_path(&self) -> &Path {
+    self.unresolved.as_deref().unwrap_or(&self.path.path)
   }
 
   pub fn display(&self) -> std::path::Display<'_> {
@@ -335,6 +347,7 @@ impl<'a> CheckedPath<'a> {
     CheckedPathBuf {
       path: self.path.as_owned(),
       canonicalized: self.canonicalized,
+      unresolved: self.unresolved.as_ref().map(|p| p.to_path_buf()),
     }
   }
 
@@ -342,6 +355,7 @@ impl<'a> CheckedPath<'a> {
     CheckedPathBuf {
       path: self.path.into_owned(),
       canonicalized: self.canonicalized,
+      unresolved: self.unresolved.map(|p| p.into_owned()),
     }
   }
 
@@ -378,6 +392,7 @@ impl AsRef<Path> for CheckedPath<'_> {
 pub struct CheckedPathBuf {
   path: PathBufWithRequested,
   canonicalized: bool,
+  unresolved: Option<PathBuf>,
 }
 
 impl CheckedPathBuf {
@@ -385,6 +400,7 @@ impl CheckedPathBuf {
     Self {
       path: PathBufWithRequested::only_path(path),
       canonicalized: false,
+      unresolved: None,
     }
   }
 
@@ -392,6 +408,7 @@ impl CheckedPathBuf {
     CheckedPath {
       path: self.path.as_path_with_requested(),
       canonicalized: self.canonicalized,
+      unresolved: self.unresolved.as_deref().map(Cow::Borrowed),
     }
   }
 
@@ -4358,6 +4375,7 @@ impl PermissionsContainer {
             requested: None,
           },
           canonicalized: false,
+          unresolved: None,
         });
       }
       let should_check_read =
@@ -4405,16 +4423,25 @@ impl PermissionsContainer {
       }
     };
 
-    let special_path = if access_kind.is_no_follow() {
+    if access_kind.is_no_follow() {
       // Don't canonicalize: lstat/readlink/readdir need to operate on the
       // un-resolved path. The /proc, /dev, /sys prefix guard inside
       // `check_special_file` still fires when the caller-supplied path is
       // itself a kernel-magic location (e.g. `/proc/self/root/...`).
-      SpecialFilePathQueryDescriptor::from_path_query_no_canonicalize(path)
+      let special_path =
+        SpecialFilePathQueryDescriptor::from_path_query_no_canonicalize(path);
+      self.check_special_file(special_path, access_kind, api_name)
     } else {
-      self.descriptor_parser.parse_special_file_descriptor(path)?
-    };
-    self.check_special_file(special_path, access_kind, api_name)
+      let unresolved = path.path.clone();
+      let special_path =
+        self.descriptor_parser.parse_special_file_descriptor(path)?;
+      let mut checked =
+        self.check_special_file(special_path, access_kind, api_name)?;
+      if checked.canonicalized && checked.path.path != unresolved {
+        checked.unresolved = Some(unresolved);
+      }
+      Ok(checked)
+    }
   }
 
   #[inline(always)]
@@ -4460,6 +4487,7 @@ impl PermissionsContainer {
           requested: None,
         },
         canonicalized: false,
+        unresolved: None,
       })
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
@@ -4473,6 +4501,7 @@ impl PermissionsContainer {
           requested: desc.0.requested.map(Cow::Owned),
         },
         canonicalized: false,
+        unresolved: None,
       })
     }
   }
@@ -4498,6 +4527,7 @@ impl PermissionsContainer {
           requested: None,
         },
         canonicalized: false,
+        unresolved: None,
       })
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
@@ -4510,6 +4540,7 @@ impl PermissionsContainer {
           requested: desc.0.requested.map(Cow::Owned),
         },
         canonicalized: false,
+        unresolved: None,
       })
     }
   }
@@ -4622,6 +4653,7 @@ impl PermissionsContainer {
           requested: requested.map(Cow::Owned),
         },
         canonicalized,
+        unresolved: None,
       });
     }
 
@@ -4634,6 +4666,7 @@ impl PermissionsContainer {
           requested: requested.map(Cow::Owned),
         },
         canonicalized,
+        unresolved: None,
       });
     }
 
@@ -4671,6 +4704,7 @@ impl PermissionsContainer {
           requested: requested.map(Cow::Owned),
         },
         canonicalized,
+        unresolved: None,
       });
     }
 
@@ -4685,6 +4719,7 @@ impl PermissionsContainer {
             requested: requested.map(Cow::Owned),
           },
           canonicalized,
+          unresolved: None,
         });
       }
       if path.starts_with("/dev")
@@ -4714,6 +4749,7 @@ impl PermissionsContainer {
             requested: requested.map(Cow::Owned),
           },
           canonicalized,
+          unresolved: None,
         });
       }
 
@@ -4746,6 +4782,7 @@ impl PermissionsContainer {
         requested: requested.map(Cow::Owned),
       },
       canonicalized,
+      unresolved: None,
     })
   }
 

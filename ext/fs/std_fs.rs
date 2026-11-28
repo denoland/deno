@@ -103,7 +103,7 @@ impl FileSystem for RealFs {
     let std_file = open_with_checked_path(options, path)?;
     Ok(Rc::new(StdFileResourceInner::file(
       std_file,
-      Some(path.to_path_buf()),
+      Some(path.permission_check_path().to_path_buf()),
     )))
   }
   async fn open_async<'a>(
@@ -122,7 +122,7 @@ impl FileSystem for RealFs {
     let (std_file, path) = std_file;
     Ok(Rc::new(StdFileResourceInner::file(
       std_file,
-      Some(path.to_path_buf()),
+      Some(path.as_checked_path().permission_check_path().to_path_buf()),
     )))
   }
 
