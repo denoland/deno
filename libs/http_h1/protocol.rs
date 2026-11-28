@@ -165,6 +165,15 @@ impl Protocol {
     &mut self,
     input: &'a [u8],
   ) -> Result<BodyStatus<'a>, ProtocolError> {
+    self.body_chunk_limited(input, usize::MAX)
+  }
+
+  pub fn body_chunk_limited<'a>(
+    &mut self,
+    input: &'a [u8],
+    max_bytes: usize,
+  ) -> Result<BodyStatus<'a>, ProtocolError> {
+    let max_bytes = max_bytes.max(1);
     match self.request_body {
       BodyKind::Empty | BodyKind::Upgrade => {
         Ok(BodyStatus::Complete { consumed: 0 })
@@ -177,7 +186,8 @@ impl Protocol {
         if input.is_empty() {
           return Ok(BodyStatus::Partial { consumed: 0 });
         }
-        let take = remaining.min(input.len() as u64) as usize;
+        let take =
+          remaining.min(input.len() as u64).min(max_bytes as u64) as usize;
         let remaining = remaining - take as u64;
         self.request_body = if remaining == 0 {
           BodyKind::Empty
@@ -189,7 +199,7 @@ impl Protocol {
           consumed: take,
         })
       }
-      BodyKind::Chunked => self.chunked_body_chunk(input),
+      BodyKind::Chunked => self.chunked_body_chunk(input, max_bytes),
     }
   }
 
@@ -210,6 +220,7 @@ impl Protocol {
   fn chunked_body_chunk<'a>(
     &mut self,
     input: &'a [u8],
+    max_bytes: usize,
   ) -> Result<BodyStatus<'a>, ProtocolError> {
     if self.chunk_waiting_trailers {
       let trailers = match parse_trailers(input)? {
@@ -268,7 +279,7 @@ impl Protocol {
       return Ok(BodyStatus::Partial { consumed: cursor });
     }
     let available = input.len() - cursor;
-    let take = self.chunk_remaining.min(available);
+    let take = self.chunk_remaining.min(available).min(max_bytes);
     self.chunk_remaining -= take;
     if self.chunk_remaining == 0 {
       self.chunk_needs_crlf = true;

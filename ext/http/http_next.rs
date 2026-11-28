@@ -1653,7 +1653,9 @@ where
       )));
     };
     conn.scratch.ensure_read_capacity(this.limit);
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+    if !conn.conn.has_buffered_bytes()
+      && let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx)
+    {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
         raw_h1_request_body_unavailable(),
@@ -1693,7 +1695,9 @@ where
     };
     let buf_len = this.buf.as_ref().unwrap().len();
     conn.scratch.ensure_read_capacity(buf_len);
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+    if !conn.conn.has_buffered_bytes()
+      && let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx)
+    {
       this.body.cancel();
       return Poll::Ready(Err(HttpNextError::Other(
         raw_h1_request_body_unavailable(),
