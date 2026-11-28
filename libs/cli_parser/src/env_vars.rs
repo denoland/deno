@@ -101,7 +101,7 @@ pub static ENV_VARS: &[EnvVar] = &[
   },
   EnvVar {
     name: "DENO_SERVE_ADDRESS",
-    description: "Override address for Deno.serve",
+    description: "Override address for the first Deno.serve / node:http server in the process",
     example: Some(
       r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
     ),
