@@ -1692,6 +1692,27 @@ fn find_section_in_dylib() -> Result<&'static [u8], AnyError> {
   }
 }
 
+fn in_runtime_framework_dev_paths(
+  is_in_runtime_framework_dev: bool,
+  source_dir: Option<PathBuf>,
+  entrypoint: Option<PathBuf>,
+) -> Result<(Option<PathBuf>, Option<deno_core::url::Url>), AnyError> {
+  if !is_in_runtime_framework_dev {
+    return Ok((None, None));
+  }
+  let entrypoint = entrypoint
+    .map(|path| {
+      deno_core::url::Url::from_file_path(&path).map_err(|_| {
+        deno_core::anyhow::anyhow!(
+          "Invalid framework HMR entrypoint path: {}",
+          path.display()
+        )
+      })
+    })
+    .transpose()?;
+  Ok((source_dir, entrypoint))
+}
+
 async fn run_desktop(
   update_rolled_back: bool,
   desktop_serve_port: u16,
@@ -1781,14 +1802,22 @@ async fn run_desktop(
   //   server inside this runtime on the desktop serve port (so server code
   //   keeps `Deno.desktop`, #35899); use the regular serve-port poll.
   let external_dev_url = env::var("DENO_DESKTOP_DEV_URL").ok();
-  let is_framework_dev = external_dev_url.is_some()
-    || env::var("DENO_DESKTOP_FRAMEWORK_DEV").is_ok();
+  let is_in_runtime_framework_dev =
+    env::var("DENO_DESKTOP_FRAMEWORK_DEV").is_ok();
+  let is_framework_dev =
+    external_dev_url.is_some() || is_in_runtime_framework_dev;
 
   // In dev mode, restore CWD to the source directory so the framework
   // dev server watches the original source files, not the extracted VFS.
   if is_framework_dev && let Ok(source_dir) = env::var("DENO_DESKTOP_HMR") {
     std::env::set_current_dir(&source_dir)?;
   }
+  let (workspace_root_path, framework_entrypoint) =
+    in_runtime_framework_dev_paths(
+      is_in_runtime_framework_dev,
+      hmr_watch_dir.clone(),
+      env::var_os("DENO_DESKTOP_FRAMEWORK_ENTRYPOINT").map(PathBuf::from),
+    )?;
 
   // Shared initial window ID for navigate_fut and HMR reload.
   let initial_window_id = Arc::new(AtomicU32::new(0));
@@ -1854,6 +1883,7 @@ async fn run_desktop(
     auto_serve: true,
     serve_port: Some(desktop_serve_port),
     serve_host: Some("127.0.0.1".to_string()),
+    workspace_root_path,
     hmr_watch_dir: if is_framework_dev {
       None
     } else {
@@ -1918,7 +1948,7 @@ async fn run_desktop(
         state.put(deno_runtime::ops::desktop::DesktopAppName(name));
       }
     })),
-    override_main_module: None,
+    override_main_module: framework_entrypoint,
     auto_update_version,
     auto_update_rolled_back,
     error_reporting_url: data.metadata.error_reporting_url.clone(),
@@ -2063,9 +2093,43 @@ mod tests {
   use super::desktop_menu_item_to_laufey_menu_item;
   use super::desktop_value_to_laufey_value;
   use super::extract_fork_script_path;
+  use super::in_runtime_framework_dev_paths;
   use super::laufey_value_to_desktop_value;
   use super::map_permission_status;
   use super::should_show_native_error_dialog;
+
+  #[test]
+  fn framework_dev_uses_source_workspace_and_entrypoint() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source_dir = temp_dir.path().join("app");
+    let entrypoint = source_dir.join(".deno_desktop_entry-test.ts");
+    let (workspace_root, main_module) = in_runtime_framework_dev_paths(
+      true,
+      Some(source_dir.clone()),
+      Some(entrypoint.clone()),
+    )
+    .unwrap();
+
+    assert_eq!(workspace_root.as_deref(), Some(source_dir.as_path()));
+    assert_eq!(
+      main_module.unwrap(),
+      deno_core::url::Url::from_file_path(entrypoint).unwrap()
+    );
+  }
+
+  #[test]
+  fn non_framework_run_keeps_embedded_workspace_and_entrypoint() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let (workspace_root, main_module) = in_runtime_framework_dev_paths(
+      false,
+      Some(temp_dir.path().to_path_buf()),
+      Some(temp_dir.path().join("entrypoint.ts")),
+    )
+    .unwrap();
+
+    assert!(workspace_root.is_none());
+    assert!(main_module.is_none());
+  }
 
   // --- should_show_native_error_dialog ---
   //
