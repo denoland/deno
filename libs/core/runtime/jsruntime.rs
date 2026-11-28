@@ -920,21 +920,22 @@ impl JsRuntime {
 
     // ...now we're moving on to ops; set them up, create `OpCtx` for each op
     // and get ready to actually create V8 isolate...
-    let (op_decls, mut op_method_decls) =
+    let (op_decls, op_methods) =
       extension_set::init_ops(crate::ops_builtin::BUILTIN_OPS, &mut extensions);
 
     let op_driver = Rc::new(OpDriverImpl::default());
     let op_metrics_factory_fn = options.op_metrics_factory_fn.take();
 
-    let (op_ctxs, methods_ctx_offset) = extension_set::create_op_ctxs(
-      op_decls,
-      &mut op_method_decls,
-      op_metrics_factory_fn,
-      op_driver.clone(),
-      op_state.clone(),
-      state_rc.clone(),
-      enable_stack_trace_in_ops,
-    );
+    let (op_ctxs, methods_ctx_offset, op_method_decls) =
+      extension_set::create_op_ctxs(
+        op_decls,
+        op_methods,
+        op_metrics_factory_fn,
+        op_driver.clone(),
+        op_state.clone(),
+        state_rc.clone(),
+        enable_stack_trace_in_ops,
+      );
 
     // ...ops are now almost fully set up; let's create a V8 isolate...
     let (
