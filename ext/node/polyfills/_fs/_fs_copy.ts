@@ -12,14 +12,18 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 
 const {
-  Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
 } = primordials;
 const { fs } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { UV_EEXIST } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const { denoErrorToNodeError, uvException } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 export function copyFile(
@@ -47,30 +51,28 @@ export function copyFile(
   const destStr = getValidatedPathToString(dest, "dest");
   const modeNum = getValidMode(mode, "copyFile");
   const cb = makeCallback(callback);
+  const ctx = { syscall: "copyfile", path: srcStr, dest: destStr };
+  const onError = (e: Error) => cb(denoErrorToNodeError(e, ctx));
+  const copy = () => {
+    PromisePrototypeThen(
+      Deno.copyFile(srcStr, destStr),
+      () => cb(null),
+      onError,
+    );
+  };
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
     PromisePrototypeThen(Deno.lstat(destStr), () => {
-      // deno-lint-ignore no-explicit-any
-      const e: any = new Error(
-        `EEXIST: file already exists, copyfile '${srcStr}' -> '${destStr}'`,
-      );
-      e.syscall = "copyfile";
-      e.errno = codeMap.get("EEXIST");
-      e.code = "EEXIST";
-      cb(e);
-    }, (e) => {
+      cb(uvException({ errno: UV_EEXIST, ...ctx }));
+    }, (e: Error) => {
       if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-        PromisePrototypeThen(
-          Deno.copyFile(srcStr, destStr),
-          () => cb(null),
-          cb,
-        );
+        copy();
       } else {
-        cb(e);
+        onError(e);
       }
     });
   } else {
-    PromisePrototypeThen(Deno.copyFile(srcStr, destStr), () => cb(null), cb);
+    copy();
   }
 }
 
@@ -88,19 +90,25 @@ export function copyFileSync(
   const srcStr = getValidatedPathToString(src, "src");
   const destStr = getValidatedPathToString(dest, "dest");
   const modeNum = getValidMode(mode, "copyFile");
+  const ctx = { syscall: "copyfile", path: srcStr, dest: destStr };
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
+    let destStat;
     try {
-      Deno.lstatSync(destStr);
-      throw new Error(`A file exists at the destination: ${destStr}`);
+      destStat = Deno.lstatSync(destStr);
     } catch (e) {
-      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-        Deno.copyFileSync(srcStr, destStr);
-      } else {
-        throw e;
+      if (!ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+        throw denoErrorToNodeError(e, ctx);
       }
     }
-  } else {
+    if (destStat) {
+      throw uvException({ errno: UV_EEXIST, ...ctx });
+    }
+  }
+
+  try {
     Deno.copyFileSync(srcStr, destStr);
+  } catch (e) {
+    throw denoErrorToNodeError(e, ctx);
   }
 }
