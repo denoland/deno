@@ -2309,7 +2309,16 @@ pub fn format_stack_trace<'s, 'i>(
     .unwrap();
   }
 
-  let result = v8::String::new(scope, &result).unwrap();
+  let Some(result) = v8::String::new(scope, &result) else {
+    // The trace is too long for a V8 string, as the name and message of an
+    // error can be together.
+    let message =
+      v8::String::new_external_onebyte_static(scope, b"Invalid string length")
+        .unwrap();
+    let exception = v8::Exception::range_error(scope, message);
+    scope.throw_exception(exception);
+    return v8::undefined(scope).into();
+  };
   result.into()
 }
 

@@ -153,3 +153,46 @@ fn fast_call_error_preserves_class() {
     )
     .unwrap();
 }
+
+#[test]
+fn stack_trace_longer_than_a_string() {
+  let mut runtime = JsRuntime::new(Default::default());
+  // Each string fits in a V8 string, the two together do not.
+  let value = runtime
+    .execute_script(
+      "long_stack.js",
+      r#"
+      const long = "a".repeat(2 ** 28 + 16);
+      const error = new Error(long);
+      error.name = long;
+      let outcome;
+      try {
+        outcome = typeof error.stack;
+      } catch (e) {
+        outcome = `${e.name}: ${e.message}`;
+      }
+      outcome
+      "#,
+    )
+    .unwrap();
+  deno_core::scope!(scope, runtime);
+  let outcome = v8::Local::new(scope, value).to_rust_string_lossy(scope);
+  assert_eq!(outcome, "RangeError: Invalid string length");
+}
+
+#[test]
+fn uncaught_error_with_stack_trace_longer_than_a_string() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let error = runtime
+    .execute_script(
+      "long_stack.js",
+      r#"
+      const long = "a".repeat(2 ** 28 + 16);
+      const error = new Error(long);
+      error.name = long;
+      throw error;
+      "#,
+    )
+    .unwrap_err();
+  assert!(error.to_string().starts_with("Uncaught aaaa"));
+}
