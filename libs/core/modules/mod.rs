@@ -608,7 +608,9 @@ pub enum ResolutionKind {
   DynamicImport,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(
+  Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize,
+)]
 pub enum RequestedModuleType {
   /// There was no attribute specified in the import statement.
   ///
@@ -618,6 +620,7 @@ pub enum RequestedModuleType {
   ///
   /// const bar = await import("bar");
   /// ```
+  #[default]
   None,
 
   /// Example:
@@ -772,6 +775,7 @@ pub(crate) enum ModuleImportPhase {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleRequest {
   pub reference: ModuleReference,
+  pub import_attributes: Box<[(String, String)]>,
   /// None if this is a root request.
   pub specifier_key: Option<String>,
   /// None if this is a root request.
@@ -900,6 +904,10 @@ impl ModuleReference {
 impl ModuleRequest {
   pub(crate) fn encode(&self, e: &mut Encoder) {
     self.reference.encode(e);
+    e.seq(self.import_attributes.iter(), |e, (key, value)| {
+      e.str(key);
+      e.str(value);
+    });
     e.option(self.specifier_key.as_deref(), |e, v| e.str(v));
     e.option(self.referrer_source_offset, |e, v| e.i32(v));
     self.phase.encode(e);
@@ -908,6 +916,9 @@ impl ModuleRequest {
   pub(crate) fn decode(d: &mut Decoder) -> SnapshotResult<Self> {
     Ok(Self {
       reference: ModuleReference::decode(d)?,
+      import_attributes: d
+        .seq(|d| Ok((d.str()?.0.to_owned(), d.str()?.0.to_owned())))?
+        .into_boxed_slice(),
       specifier_key: d.option(|d| Ok(d.str()?.0.to_owned()))?,
       referrer_source_offset: d.option(|d| d.i32())?,
       phase: ModuleImportPhase::decode(d)?,

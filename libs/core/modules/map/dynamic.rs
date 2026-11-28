@@ -17,8 +17,9 @@ use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleImportPhase;
 use crate::modules::ModuleLoadId;
-use crate::modules::RequestedModuleType;
 use crate::modules::ResolutionKind;
+use crate::modules::get_requested_module_type_from_attributes;
+use crate::modules::loaders::ModuleLoadOptions;
 use crate::modules::module_map_data::ModuleSourceKey;
 use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::recursive_load::RegisterOutcome;
@@ -48,17 +49,19 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     specifier: String,
     referrer: String,
-    requested_module_type: RequestedModuleType,
+    import_attributes: HashMap<String, String>,
     phase: ModuleImportPhase,
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
+    let requested_module_type =
+      get_requested_module_type_from_attributes(&import_attributes);
     let resolve_response = self.resolve_with_scope(
       scope,
       &specifier,
       &referrer,
       ResolutionKind::DynamicImport,
-      &HashMap::new(),
+      &import_attributes,
     );
 
     // Fast path: if the module is already loaded, resolve the import
@@ -164,7 +167,12 @@ impl ModuleMap {
     let load = RecursiveModuleLoad::new_dynamic_import(
       specifier,
       referrer,
-      requested_module_type,
+      ModuleLoadOptions {
+        requested_module_type,
+        import_attributes,
+        is_dynamic_import: true,
+        is_synchronous: false,
+      },
       phase,
       self.clone(),
       resolve_response,

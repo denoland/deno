@@ -35,7 +35,6 @@ use crate::modules::ImportAttributesKind;
 use crate::modules::ModuleImportPhase;
 use crate::modules::ModuleMap;
 use crate::modules::ModuleName;
-use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::parse_import_attributes;
 use crate::modules::synthetic_module_evaluation_steps;
 use crate::ops::OpCtx;
@@ -1244,7 +1243,7 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  let assertions = parse_import_attributes(
+  let attributes = parse_import_attributes(
     scope,
     import_attributes,
     ImportAttributesKind::DynamicImport,
@@ -1266,7 +1265,7 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
           line_number: None,
           column_number: None,
         };
-        (validate_import_attributes_cb)(tc_scope, &assertions, &context);
+        (validate_import_attributes_cb)(tc_scope, &attributes, &context);
       }
     }
 
@@ -1276,8 +1275,6 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       return Some(promise);
     }
   }
-  let requested_module_type =
-    get_requested_module_type_from_attributes(&assertions);
 
   let resolver_handle = v8::Global::new(tc_scope, resolver);
   let cped_handle = v8::Global::new(tc_scope, cped);
@@ -1290,7 +1287,7 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       tc_scope,
       specifier_str,
       referrer_name_str,
-      requested_module_type,
+      attributes,
       phase,
       resolver_handle,
       cped_handle,

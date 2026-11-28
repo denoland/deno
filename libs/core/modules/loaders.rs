@@ -42,11 +42,14 @@ pub enum ModuleLoadResponse {
   Async(Pin<Box<ModuleSourceFuture>>),
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct ModuleLoadOptions {
   pub is_dynamic_import: bool,
   /// If this is a synchronous ES module load.
   pub is_synchronous: bool,
   pub requested_module_type: RequestedModuleType,
+  /// The import attributes supplied by the requesting module.
+  pub import_attributes: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,8 +85,8 @@ pub trait ModuleLoader {
   /// to synchronously call JavaScript during resolution, such as Node
   /// `module.registerHooks()`, can override this method.
   ///
-  /// `import_attributes` carries the static-import attributes from the
-  /// `with { ... }` clause; the default implementation ignores them.
+  /// `import_attributes` carries the attributes from the static or dynamic
+  /// import. The default implementation ignores them.
   fn resolve_with_scope(
     &self,
     _scope: &mut v8::PinScope,

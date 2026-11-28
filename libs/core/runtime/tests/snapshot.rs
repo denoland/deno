@@ -352,6 +352,7 @@ fn es_snapshot() {
             .unwrap(),
           requested_module_type: RequestedModuleType::None,
         },
+        import_attributes: Box::default(),
         specifier_key: Some(format!("file:///{prev}.js")),
         referrer_source_offset: Some(25 + prev.to_string().len() as i32),
         phase: crate::modules::ModuleImportPhase::Evaluation,

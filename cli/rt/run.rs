@@ -760,7 +760,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     {
       return self.resolve_inner(raw_specifier, referrer.as_str(), kind);
     }
-    let resolved = if let Some(url) = self.hook_registry.resolve(
+    if let Some(url) = self.hook_registry.resolve(
       scope,
       raw_specifier,
       referrer,
@@ -769,15 +769,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
     } else {
       self.resolve_inner(raw_specifier, referrer, kind)
-    };
-    // Stash the full import attributes against the resolved URL so the load
-    // hook (which V8 only hands the `type` attribute) can recover them.
-    if let Ok(resolved) = &resolved {
-      self
-        .hook_registry
-        .record_resolved_attributes(resolved.as_str(), import_attributes);
     }
-    resolved
   }
 
   fn pump_event_loop_during_load(&self) -> bool {
@@ -803,7 +795,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     original_specifier: &Url,
     maybe_referrer: Option<&ModuleLoadReferrer>,
-    options: ModuleLoadOptions,
+    mut options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
       let raw_data_url = match deno_media_type::data_url::RawDataUrl::parse(
@@ -938,20 +930,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
       // The hook function itself is synchronous, but this load path has no V8
       // scope. The async bridge lets the JS event loop run the hook; blocking
       // here waiting for JS would deadlock the same runtime.
-      let import_attributes = hook_load_import_attributes(
-        &self.hook_registry,
-        original_specifier.as_str(),
+      let receiver = self.hook_registry.push_load(
+        original_specifier.to_string(),
         &options.requested_module_type,
+        std::mem::take(&mut options.import_attributes),
       );
-      let receiver = self
-        .hook_registry
-        .push_load(original_specifier.to_string(), import_attributes);
       let this = self.clone();
       let specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.cloned();
-      let is_dynamic_import = options.is_dynamic_import;
-      let is_synchronous = options.is_synchronous;
-      let requested_module_type = options.requested_module_type.clone();
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let hook_result = match receiver.await {
@@ -968,7 +954,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               // a passthrough hook on a JSON import still parses as JSON.
               let module_type = pick_hook_module_type(
                 format.as_deref(),
-                &requested_module_type,
+                &options.requested_module_type,
               );
               Ok(deno_core::ModuleSource::new(
                 module_type,
@@ -989,15 +975,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
                 .filter(|u| u != &specifier);
               let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
-              let response = this.load_default(
-                load_url,
-                maybe_referrer.as_ref(),
-                ModuleLoadOptions {
-                  is_dynamic_import,
-                  is_synchronous,
-                  requested_module_type,
-                },
-              );
+              let response =
+                this.load_default(load_url, maybe_referrer.as_ref(), options);
               let source = match response {
                 deno_core::ModuleLoadResponse::Sync(r) => r?,
                 deno_core::ModuleLoadResponse::Async(fut) => fut.await?,
@@ -2061,24 +2040,6 @@ fn resolve_child_entrypoint(
     }
     Err(_) => fallback(),
   }
-}
-
-/// Build the `importAttributes` object handed to a `module.registerHooks()`
-/// load hook. V8 only surfaces the `type` attribute at load time, so recover
-/// the full `with { ... }` clause recorded during resolution and make sure
-/// `type` is present for the common JSON/text/bytes case.
-fn hook_load_import_attributes(
-  registry: &LoaderHookRegistry,
-  specifier: &str,
-  requested_module_type: &RequestedModuleType,
-) -> std::collections::HashMap<String, String> {
-  let mut attrs = registry.take_resolved_attributes(specifier);
-  if let Some(ty) = requested_module_type.as_str() {
-    attrs
-      .entry("type".to_string())
-      .or_insert_with(|| ty.to_string());
-  }
-  attrs
 }
 
 /// Pick the `ModuleType` for source returned by a `module.registerHooks()`

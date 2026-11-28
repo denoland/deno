@@ -59,9 +59,7 @@ enum LoadInit {
     kind: SideModuleKind,
     code: Option<String>,
   },
-  /// Dynamic import specifier with referrer and expected
-  /// module type (which is determined by import assertion).
-  DynamicImport(String, String, RequestedModuleType, ModuleImportPhase),
+  DynamicImport(String, String, ModuleLoadOptions, ModuleImportPhase),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -131,18 +129,13 @@ impl RecursiveModuleLoad {
   pub(crate) fn new_dynamic_import(
     specifier: String,
     referrer: String,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
     phase: ModuleImportPhase,
     module_map_rc: Rc<ModuleMap>,
     resolved_specifier: Result<ModuleSpecifier, ModuleLoaderError>,
   ) -> Self {
     Self::new_with_resolved_specifier(
-      LoadInit::DynamicImport(
-        specifier,
-        referrer,
-        requested_module_type,
-        phase,
-      ),
+      LoadInit::DynamicImport(specifier, referrer, options, phase),
       module_map_rc,
       resolved_specifier,
     )
@@ -197,7 +190,9 @@ impl RecursiveModuleLoad {
 
   fn requested_module_type_from_init(init: &LoadInit) -> &RequestedModuleType {
     match init {
-      LoadInit::DynamicImport(_, _, module_type, _) => module_type,
+      LoadInit::DynamicImport(_, _, options, _) => {
+        &options.requested_module_type
+      }
       _ => &RequestedModuleType::None,
     }
   }
@@ -230,25 +225,6 @@ impl RecursiveModuleLoad {
         unreachable!("root specifier is resolved in RecursiveModuleLoad::new")
       }
     };
-    let (maybe_referrer, maybe_code, requested_module_type, is_synchronous) =
-      match &mut self.init {
-        LoadInit::Main(_) => (None, None, RequestedModuleType::None, false),
-        LoadInit::Side { kind, code, .. } => (
-          None,
-          code.take(),
-          RequestedModuleType::None,
-          match kind {
-            SideModuleKind::Async => false,
-            SideModuleKind::Sync => true,
-          },
-        ),
-        LoadInit::DynamicImport(_, referrer, requested_module_type, _) => (
-          Some(referrer.to_string()),
-          None,
-          requested_module_type.clone(),
-          false,
-        ),
-      };
 
     // Skip prepare_load for lazy-loaded ESM sources -- they are embedded
     // in the binary and do not need fetching/preparation. Same goes for
@@ -267,18 +243,23 @@ impl RecursiveModuleLoad {
       return Ok(());
     }
 
+    let (referrer, code, options) = match &mut self.init {
+      LoadInit::DynamicImport(_, referrer, options, _) => {
+        (Some(referrer.clone()), None, options.clone())
+      }
+      LoadInit::Main(_) => (None, None, ModuleLoadOptions::default()),
+      LoadInit::Side { kind, code, .. } => (
+        None,
+        code.take(),
+        ModuleLoadOptions {
+          is_synchronous: matches!(kind, SideModuleKind::Sync),
+          ..Default::default()
+        },
+      ),
+    };
     self
       .loader
-      .prepare_load(
-        &module_specifier,
-        maybe_referrer,
-        maybe_code,
-        ModuleLoadOptions {
-          is_synchronous,
-          is_dynamic_import: self.is_dynamic_import(),
-          requested_module_type,
-        },
-      )
+      .prepare_load(&module_specifier, referrer, code, options)
       .await
       .map_err(|e| e.into())
   }
@@ -491,7 +472,7 @@ impl RecursiveModuleLoad {
         needs_load
       };
 
-      for request in needs_load {
+      for mut request in needs_load {
         let visited_as_alias = self.visited_as_alias.clone();
         let referrer_info = code.and_then(|code| {
           let source_offset = request.referrer_source_offset?;
@@ -573,6 +554,8 @@ impl RecursiveModuleLoad {
               None,
             ))
           } else {
+            let import_attributes =
+              std::mem::take(&mut request.import_attributes);
             let load_response = loader.load(
               &resolved_specifier,
               referrer_info.as_ref(),
@@ -580,6 +563,7 @@ impl RecursiveModuleLoad {
                 is_dynamic_import,
                 is_synchronous,
                 requested_module_type,
+                import_attributes: import_attributes.into_iter().collect(),
               },
             );
             match load_response {
@@ -652,17 +636,24 @@ impl RecursiveModuleLoad {
     module_specifier: ModuleSpecifier,
     cx: &mut Context,
   ) -> Poll<Option<Result<(ModuleRequest, ModuleSource), CoreError>>> {
-    let (requested_module_type, phase) = match &inner.init {
-      LoadInit::DynamicImport(_, _, module_type, phase) => {
-        (module_type.clone(), *phase)
+    let (options, phase) = match &mut inner.init {
+      LoadInit::DynamicImport(_, _, options, phase) => {
+        (std::mem::take(options), *phase)
       }
-      _ => (RequestedModuleType::None, ModuleImportPhase::Evaluation),
+      _ => (
+        ModuleLoadOptions {
+          is_synchronous: inner.is_synchronous(),
+          ..Default::default()
+        },
+        ModuleImportPhase::Evaluation,
+      ),
     };
     let module_request = ModuleRequest {
       reference: ModuleReference {
         specifier: module_specifier.clone(),
-        requested_module_type: requested_module_type.clone(),
+        requested_module_type: options.requested_module_type.clone(),
       },
+      import_attributes: Default::default(),
       specifier_key: None,
       referrer_source_offset: None,
       phase,
@@ -708,19 +699,8 @@ impl RecursiveModuleLoad {
       .boxed_local()
     } else {
       let loader = inner.loader.clone();
-      let is_dynamic_import = inner.is_dynamic_import();
-      let is_synchronous = inner.is_synchronous();
-      let requested_module_type = requested_module_type.clone();
       async move {
-        let load_response = loader.load(
-          &module_specifier,
-          None,
-          ModuleLoadOptions {
-            is_dynamic_import,
-            is_synchronous,
-            requested_module_type,
-          },
-        );
+        let load_response = loader.load(&module_specifier, None, options);
         let result = match load_response {
           ModuleLoadResponse::Sync(result) => result,
           ModuleLoadResponse::Async(fut) => fut.await,
