@@ -321,7 +321,10 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     // Create AsyncFd eagerly so the reactor tracks this fd from the
     // start. This avoids edge-triggered readiness races where creating
     // AsyncFd lazily can miss events that fired before registration.
-    if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
+    //
+    // `fd` stays open for the lifetime of the AsyncFd: the close path drops
+    // `internal_async_fd` before closing `internal_fd`.
+    if let Ok(afd) = tokio::io::unix::AsyncFd::register(RawFdWrapper(fd)) {
       (*pipe).internal_async_fd = Some(afd);
     }
     // Note: do NOT set UV_HANDLE_ACTIVE here. In libuv, uv_pipe_open
@@ -804,7 +807,9 @@ pub unsafe fn uv_pipe_connect(
           }
 
           // Wait for connect to complete by polling for write readiness.
-          let async_fd = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd))
+          // `fd` is owned by `stream` and is not closed before `async_fd`
+          // is dropped below.
+          let async_fd = tokio::io::unix::AsyncFd::register(RawFdWrapper(fd))
             .map_err(std::io::Error::other)?;
           let _guard =
             async_fd.writable().await.map_err(std::io::Error::other)?;
@@ -1301,7 +1306,9 @@ pub(crate) unsafe fn read_start_pipe(
       && (*pipe).internal_fd.is_some()
     {
       let fd = (*pipe).internal_fd.unwrap();
-      if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
+      // `fd` stays open for the lifetime of the AsyncFd: the close path drops
+      // `internal_async_fd` before closing `internal_fd`.
+      if let Ok(afd) = tokio::io::unix::AsyncFd::register(RawFdWrapper(fd)) {
         (*pipe).internal_async_fd = Some(afd);
       }
     }
@@ -1930,10 +1937,13 @@ pub(crate) unsafe fn poll_pipe_handle(
           }
         }
         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-          // Lazily create AsyncFd for write readiness tracking.
+          // Lazily create AsyncFd for write readiness tracking. `fd` stays
+          // open for the lifetime of the AsyncFd: the close path drops
+          // `internal_async_fd` before closing `internal_fd`.
           if (*pipe_ptr).internal_async_fd.is_none()
             && let Some(fd) = (*pipe_ptr).internal_fd
-            && let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd))
+            && let Ok(afd) =
+              tokio::io::unix::AsyncFd::register(RawFdWrapper(fd))
           {
             (*pipe_ptr).internal_async_fd = Some(afd);
             let _ = (*pipe_ptr)

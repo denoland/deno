@@ -2048,7 +2048,15 @@ function invalidServer(addr: string, body: Uint8Array): Deno.Listener {
       const p1 = conn.read(new Uint8Array(2 ** 14));
       const p2 = conn.write(body);
 
-      await Promise.all([p1, p2]);
+      try {
+        await Promise.all([p1, p2]);
+      } catch (e) {
+        // The client rejects the invalid response and closes the connection
+        // with unread data, which resets it on Windows. If that happens
+        // before this read completes, Windows discards the buffered request
+        // and the read fails with ConnectionReset.
+        if (!(e instanceof Deno.errors.ConnectionReset)) throw e;
+      }
       conn.close();
     }
   })();

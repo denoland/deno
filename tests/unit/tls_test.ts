@@ -816,15 +816,23 @@ async function tlsWithTcpFailureTestImpl(
         ),
       ]);
 
+      // On corruption tlsConn1 sends a fatal alert, which may be forwarded to
+      // tlsConn2 before forwarding is interrupted. tlsConn2 then fails with
+      // InvalidData instead of UnexpectedEof, depending on timing.
+      const expectedErrors2: (typeof Deno.errors.UnexpectedEof)[] =
+        failureMode === "corruption"
+          ? [Deno.errors.UnexpectedEof, Deno.errors.InvalidData]
+          : [Deno.errors.UnexpectedEof];
+      const assertRejectsWithOneOf = async (fn: () => Promise<void>) => {
+        const error = await assertRejects(fn);
+        assert(
+          expectedErrors2.some((errorClass) => error instanceof errorClass),
+          `Unexpected error: ${error}`,
+        );
+      };
       const tlsTrafficPromise2 = Promise.all([
-        assertRejects(
-          () => sendBytes(tlsConn2, 0x02, 1),
-          Deno.errors.UnexpectedEof,
-        ),
-        assertRejects(
-          () => receiveBytes(tlsConn2, 0x01, 1),
-          Deno.errors.UnexpectedEof,
-        ),
+        assertRejectsWithOneOf(() => sendBytes(tlsConn2, 0x02, 1)),
+        assertRejectsWithOneOf(() => receiveBytes(tlsConn2, 0x01, 1)),
       ]);
 
       await tcpForwardingPromise1;
