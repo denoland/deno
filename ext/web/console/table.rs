@@ -127,35 +127,17 @@ fn is_integer_like(value: &str) -> bool {
 }
 
 fn js_string_to_number(s: &str) -> f64 {
-  let unsigned = s.strip_prefix(['+', '-']).unwrap_or(s);
-  if let Some(hex) = unsigned
-    .strip_prefix("0x")
-    .or_else(|| unsigned.strip_prefix("0X"))
-  {
-    return match u128::from_str_radix(hex, 16) {
-      Ok(v) => v as f64,
-      Err(_) => f64::NAN,
-    };
+  // Number() only recognizes non-decimal radix prefixes without a sign.
+  if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+    return parse_radix_number(hex, 16);
   }
-  if let Some(oct) = unsigned
-    .strip_prefix("0o")
-    .or_else(|| unsigned.strip_prefix("0O"))
-  {
-    return match u128::from_str_radix(oct, 8) {
-      Ok(v) => v as f64,
-      Err(_) => f64::NAN,
-    };
+  if let Some(oct) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) {
+    return parse_radix_number(oct, 8);
   }
-  if let Some(bin) = unsigned
-    .strip_prefix("0b")
-    .or_else(|| unsigned.strip_prefix("0B"))
-  {
-    return match u128::from_str_radix(bin, 2) {
-      Ok(v) => v as f64,
-      Err(_) => f64::NAN,
-    };
+  if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
+    return parse_radix_number(bin, 2);
   }
-  if unsigned == "Infinity" {
+  if s.strip_prefix(['+', '-']).unwrap_or(s) == "Infinity" {
     return if s.starts_with('-') {
       f64::NEG_INFINITY
     } else {
@@ -164,12 +146,29 @@ fn js_string_to_number(s: &str) -> f64 {
   }
   // Rust's f64 parser accepts "inf"/"nan" spellings JS does not; restrict to
   // decimal/exponent characters before delegating.
-  if !unsigned.bytes().all(|b| {
+  if !s.bytes().all(|b| {
     b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-')
   }) {
     return f64::NAN;
   }
   s.parse::<f64>().unwrap_or(f64::NAN)
+}
+
+fn parse_radix_number(digits: &str, radix: u32) -> f64 {
+  let mut value = 0.0;
+  let mut has_digit = false;
+  for c in digits.chars() {
+    let Some(digit) = c.to_digit(radix) else {
+      return f64::NAN;
+    };
+    value = value * radix as f64 + digit as f64;
+    has_digit = true;
+  }
+  if has_digit {
+    value
+  } else {
+    f64::NAN
+  }
 }
 
 #[cfg(test)]
@@ -187,5 +186,23 @@ mod tests {
     assert!(out.contains("(idx)"));
     assert!(out.starts_with(TOP_LEFT));
     assert!(out.ends_with(BOTTOM_RIGHT));
+  }
+
+  #[test]
+  fn integer_like_matches_number_radix_signs() {
+    assert!(!is_integer_like("-0x1"));
+    assert!(!is_integer_like("+0x1"));
+    assert!(!is_integer_like("-0b10"));
+    assert!(!is_integer_like("+0o7"));
+
+    assert!(is_integer_like("0x1"));
+    assert!(is_integer_like("-1"));
+    assert!(is_integer_like("+1"));
+  }
+
+  #[test]
+  fn integer_like_accepts_large_finite_radix_numbers() {
+    let value = format!("0x1{}", "0".repeat(40));
+    assert!(is_integer_like(&value));
   }
 }
