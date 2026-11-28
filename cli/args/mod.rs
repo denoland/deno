@@ -48,7 +48,9 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
+use deno_runtime::deno_permissions::ImportDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
+use deno_runtime::deno_permissions::QueryDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1314,8 +1316,23 @@ impl CliOptions {
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
     // do not add if the user specified --allow-all or --allow-import
-    if options.allow_import.is_none() {
+    if options.allow_import.is_some() {
+      return;
+    }
+    // When using --cached-only the empty implicit list means "allow all";
+    // pass it through untouched.
+    if self.cache_setting() == CacheSetting::Only {
       options.allow_import = Some(self.implicit_allow_import());
+      return;
+    }
+    let filtered = filter_implicit_imports_against_deny(
+      self.implicit_allow_import(),
+      options.deny_import.as_deref(),
+    );
+    // Only set an allow list when something survives: an empty list would
+    // mean "allow all" and undo the deny rules entirely.
+    if !filtered.is_empty() {
+      options.allow_import = Some(filtered);
     }
   }
 
@@ -1736,6 +1753,51 @@ pub fn parallelism_count(parallel: bool) -> NonZeroUsize {
     .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
 }
 
+/// Drops implicit `--allow-import` entries covered by an explicit
+/// `--deny-import` rule.
+///
+/// The implicit allow list grants the main module's host (and a few builtin
+/// hosts) so a remote entry point runs without `--allow-import`. Those grants
+/// are host:port pairs, while a deny rule may name a bare host, so a plain
+/// string comparison would miss the overlap. Worse, the permission query
+/// returns the first matching descriptor in sorted order, and an entry with a
+/// port sorts before a bare-host entry — so the implicit allow would win over
+/// the user's explicit deny and a denied host would still load, cached or
+/// not. Compare the parsed descriptors instead, using the same matching the
+/// permission check itself uses.
+///
+/// `deny_import` is `None` when no deny rules were given and `Some(vec![])`
+/// when `--deny-import` was passed with no value, i.e. deny everything.
+fn filter_implicit_imports_against_deny(
+  implicit: Vec<String>,
+  deny_import: Option<&[String]>,
+) -> Vec<String> {
+  let Some(deny_import) = deny_import else {
+    return implicit;
+  };
+  if deny_import.is_empty() {
+    // Deny everything: no implicit allow may survive.
+    return Vec::new();
+  }
+  let deny_descs: Vec<ImportDescriptor> = deny_import
+    .iter()
+    .filter_map(|entry| ImportDescriptor::parse_for_list(entry).ok())
+    .collect();
+  implicit
+    .into_iter()
+    .filter(|entry| {
+      let Ok(allow_desc) = ImportDescriptor::parse_for_list(entry) else {
+        // Unparseable implicit entries are built from URLs and should not
+        // occur; keep them rather than silently changing behavior.
+        return true;
+      };
+      !deny_descs
+        .iter()
+        .any(|deny_desc| allow_desc.matches_deny(deny_desc))
+    })
+    .collect()
+}
+
 /// Gets the --allow-import host from the provided url
 fn allow_import_host_from_url(url: &Url) -> Option<String> {
   let host = url.host()?;
@@ -2064,6 +2126,70 @@ mod test {
       Some("example.com:80".to_string())
     );
     assert_eq!(parse("file:///example.com"), None);
+  }
+
+  #[test]
+  fn test_filter_implicit_imports_against_deny() {
+    fn strings(items: &[&str]) -> Vec<String> {
+      items.iter().map(|s| s.to_string()).collect()
+    }
+
+    // A bare-host deny covers the host:port implicit grant for the same host.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["127.0.0.1:8765", "jsr.io:443"]),
+        Some(&strings(&["127.0.0.1"])),
+      ),
+      strings(&["jsr.io:443"]),
+    );
+    // An exact host:port deny covers the same implicit grant.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["127.0.0.1:8765", "jsr.io:443"]),
+        Some(&strings(&["127.0.0.1:8765"])),
+      ),
+      strings(&["jsr.io:443"]),
+    );
+    // A deny for a different port does not cover the implicit grant.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["127.0.0.1:8765", "jsr.io:443"]),
+        Some(&strings(&["127.0.0.1:4545"])),
+      ),
+      strings(&["127.0.0.1:8765", "jsr.io:443"]),
+    );
+    // A deny for an unrelated host leaves the implicit grants untouched.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["127.0.0.1:8765", "jsr.io:443"]),
+        Some(&strings(&["example.com"])),
+      ),
+      strings(&["127.0.0.1:8765", "jsr.io:443"]),
+    );
+    // A wildcard deny covers subdomains; a subnet deny covers its addresses.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["cdn.example.com:443", "127.0.0.1:8765"]),
+        Some(&strings(&["*.example.com", "127.0.0.0/8"])),
+      ),
+      Vec::<String>::new(),
+    );
+    // `--deny-import` with no value denies everything.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["127.0.0.1:8765", "jsr.io:443"]),
+        Some(&[]),
+      ),
+      Vec::<String>::new(),
+    );
+    // No deny rules: the implicit grants pass through untouched.
+    assert_eq!(
+      filter_implicit_imports_against_deny(
+        strings(&["127.0.0.1:8765", "jsr.io:443"]),
+        None,
+      ),
+      strings(&["127.0.0.1:8765", "jsr.io:443"]),
+    );
   }
 
   #[test]

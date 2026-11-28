@@ -1,0 +1,56 @@
+{
+  "tests": {
+    // A bare-host --deny-import must block a cached remote main module too.
+    // The implicit allow for the main module's host used to shadow the deny
+    // rule (the allow entry carries a port, the deny entry does not, and the
+    // ported entry sorts first in the permission query), so the denied host
+    // still loaded and ran from cache.
+    "denied_when_cached": {
+      "steps": [{
+        "args": "cache --quiet http://localhost:4545/run/002_hello.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet --deny-import=localhost http://localhost:4545/run/002_hello.ts",
+        "output": "[WILDCARD]Requires import access[WILDCARD]",
+        "exitCode": 1
+      }]
+    },
+    // Control: the same cached main module still runs when nothing is denied.
+    "allowed_when_cached": {
+      "steps": [{
+        "args": "cache --quiet http://localhost:4545/run/002_hello.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet http://localhost:4545/run/002_hello.ts",
+        "output": "Hello World\n"
+      }]
+    },
+    // Control: a host:port deny already blocked the cached main module.
+    "denied_with_port_when_cached": {
+      "steps": [{
+        "args": "cache --quiet http://localhost:4545/run/002_hello.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet --deny-import=localhost:4545 http://localhost:4545/run/002_hello.ts",
+        "output": "[WILDCARD]Requires import access[WILDCARD]",
+        "exitCode": 1
+      }]
+    },
+    // A bare --deny-import (deny everything) must block the cached main
+    // module too, not just its dependencies.
+    "denied_all_when_cached": {
+      "steps": [{
+        "args": "cache --quiet http://localhost:4545/run/002_hello.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet --deny-import http://localhost:4545/run/002_hello.ts",
+        "output": "[WILDCARD]Requires import access[WILDCARD]",
+        "exitCode": 1
+      }]
+    }
+  }
+}

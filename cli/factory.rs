@@ -512,11 +512,14 @@ impl CliFactory {
   ) -> Result<&Option<PermissionsContainer>, AnyError> {
     self.services.import_deny_permissions.get_or_try_init(|| {
       let options = self.cli_options()?.import_deny_permissions_options()?;
-      if options.deny_import.as_ref().is_none_or(|d| d.is_empty()) {
-        // nothing to check against, so leave the plain client and its
-        // connection pool alone
+      if options.deny_import.is_none() {
+        // no deny rules, so leave the plain client and its connection pool
+        // alone
         return Ok(None);
       }
+      // Note: an empty deny list is not "no rules": `--deny-import` with no
+      // value denies every import, so the permissioned client must still be
+      // built for it.
       let desc_parser = self.permission_desc_parser()?.clone();
       let permissions =
         Permissions::from_options(desc_parser.as_ref(), &options)?;
