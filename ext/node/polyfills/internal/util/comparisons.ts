@@ -1283,10 +1283,9 @@ function objEquiv(
         if (!hasOwn(b, i)) {
           return sparseArrayEquiv(a, b, mode, memos, i);
         }
-        if (mode !== kLoose && (a[i] !== undefined || !hasOwn(a, i))) {
-          return false;
-        } else if (
-          mode === kLoose && !innerDeepEqual(a[i], b[i], mode, memos)
+        if (
+          (a[i] !== undefined || !hasOwn(a, i)) &&
+          (mode !== kLoose || a[i] !== null)
         ) {
           return false;
         }

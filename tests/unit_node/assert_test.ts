@@ -142,3 +142,24 @@ Deno.test("[node/assert] doesNotReject with 3 parameters", async () => {
     "custom message",
   );
 });
+
+Deno.test("[node/assert] deepEqual is symmetric for array holes vs undefined", () => {
+  // https://github.com/denoland/deno/issues/37029
+  // A hole never loosely equals an own `undefined`, in either order.
+  assert.throws(() => {
+    assert.deepEqual([1, , 3], [1, undefined, 3]);
+  });
+  assert.throws(() => {
+    assert.deepEqual([1, undefined, 3], [1, , 3]);
+  });
+  assert.notDeepEqual([1, , 3], [1, undefined, 3]);
+  assert.notDeepEqual([1, undefined, 3], [1, , 3]);
+  // Holes still equal holes...
+  assert.deepEqual([1, , 3], [1, , 3]);
+  // ...and `null` still loosely equals `undefined`.
+  assert.deepEqual([null], [undefined]);
+  assert.deepEqual([undefined], [null]);
+  assert.throws(() => {
+    assert.deepStrictEqual([null], [undefined]);
+  });
+});
