@@ -253,7 +253,13 @@ class TextDecoder {
           this.#ignoreBOM,
         );
       }
-      return op_encoding_decode(input, this.#handle, stream);
+      try {
+        return op_encoding_decode(input, this.#handle, stream);
+      } catch (error) {
+        // A decoding error ends the stream, even when more input was expected.
+        this.#handle = null;
+        throw error;
+      }
     } finally {
       if (!stream && this.#handle !== null) {
         this.#handle = null;

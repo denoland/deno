@@ -109,6 +109,33 @@ Deno.test(function textDecoderErrorEncoding() {
   assert(didThrow);
 });
 
+Deno.test(function textDecoderResetsBOMAfterFatalStreamingError() {
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const bom = Uint8Array.of(0xef, 0xbb, 0xbf);
+  assertEquals(decoder.decode(bom, { stream: true }), "");
+  assertThrows(
+    () => decoder.decode(Uint8Array.of(0xff), { stream: true }),
+    TypeError,
+  );
+  assertEquals(decoder.decode(Uint8Array.of(...bom, 0x41)), "A");
+});
+
+Deno.test(function textDecoderResetsEncodingStateAfterFatalStreamingError() {
+  const decoder = new TextDecoder("iso-2022-jp", { fatal: true });
+  // Switch to the Roman character set, where 0x7e maps to an overline.
+  assertEquals(
+    decoder.decode(Uint8Array.of(0x1b, 0x28, 0x4a, 0x7e), {
+      stream: true,
+    }),
+    "\u203e",
+  );
+  assertThrows(
+    () => decoder.decode(Uint8Array.of(0xff), { stream: true }),
+    TypeError,
+  );
+  assertEquals(decoder.decode(Uint8Array.of(0x7e), { stream: true }), "~");
+});
+
 Deno.test(function textEncoder() {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
