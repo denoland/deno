@@ -194,6 +194,31 @@ mod impl_ {
       None => return Ok(None),
     };
     log::debug!("op_node_child_ipc_pipe: {:?}, {:?}", fd, serialization);
+    // The parent clears CLOEXEC on this fd so it survives exec into this
+    // process (see the pre_exec dup2 in `ext/process`). Once the runtime
+    // has adopted the channel, mark it close-on-exec again so processes
+    // this child spawns do not inherit the parent's IPC channel
+    // (https://github.com/denoland/deno/issues/37041). Without this, the
+    // channel stays open until the last grandchild exits and any grandchild
+    // can read from / write to it. Best-effort, mirroring the `set_cloexec`
+    // helper in `ext/io/bi_pipe.rs`: a failure here leaves the previous
+    // behaviour, and an invalid fd is still rejected below when the
+    // resource is created.
+    #[cfg(unix)]
+    {
+      // SAFETY: `fd` is a valid open file descriptor received from the
+      // parent via NODE_CHANNEL_FD.
+      unsafe {
+        let flags = libc::fcntl(fd as libc::c_int, libc::F_GETFD);
+        if flags != -1 {
+          libc::fcntl(
+            fd as libc::c_int,
+            libc::F_SETFD,
+            flags | libc::FD_CLOEXEC,
+        );
+        }
+      }
+    }
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
     match serialization {
       ChildIpcSerialization::Json => {
