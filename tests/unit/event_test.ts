@@ -116,7 +116,7 @@ Deno.test(function eventInspectOutput() {
     [
       new CustomEvent("custom"),
       (event: Event) =>
-        `CustomEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  srcElement: null,\n  target: null,\n  returnValue: true,\n  timeStamp: ${event.timeStamp},\n  type: "custom",\n  detail: undefined\n}`,
+        `CustomEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  srcElement: null,\n  target: null,\n  returnValue: true,\n  timeStamp: ${event.timeStamp},\n  type: "custom",\n  detail: null\n}`,
     ],
     [
       new ProgressEvent("progress"),
@@ -202,4 +202,45 @@ Deno.test(function messageEventSourceIsRetainedFromInit() {
 
   const e3 = new MessageEvent("message", {});
   assertEquals(e3.source, null);
+});
+
+Deno.test(function customEventDefaultDetail() {
+  assertEquals(new CustomEvent("test").detail, null);
+  assertEquals(new CustomEvent("test", undefined).detail, null);
+  assertEquals(
+    new CustomEvent("test", null as unknown as CustomEventInit).detail,
+    null,
+  );
+  assertEquals(new CustomEvent("test", {}).detail, null);
+  assertEquals(new CustomEvent("test", { detail: undefined }).detail, null);
+});
+
+Deno.test(function customEventExplicitDetail() {
+  for (const detail of [null, false, 0, "", { value: 1 }]) {
+    const event = new CustomEvent("test", {
+      detail,
+      bubbles: true,
+      cancelable: true,
+    });
+    assertEquals(event.detail, detail);
+    assertEquals(event.bubbles, true);
+    assertEquals(event.cancelable, true);
+    if (
+      detail !== null && typeof detail === "object" && event.detail !== detail
+    ) {
+      throw new Error("CustomEvent must preserve detail identity");
+    }
+  }
+});
+
+Deno.test(function customEventDetailGetterReadOnce() {
+  let reads = 0;
+  const event = new CustomEvent("test", {
+    get detail() {
+      reads++;
+      return undefined;
+    },
+  });
+  assertEquals(event.detail, null);
+  assertEquals(reads, 1);
 });
