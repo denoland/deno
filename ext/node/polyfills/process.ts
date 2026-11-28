@@ -111,7 +111,8 @@ export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 export let pid = 0;
 export let ppid = 0;
 
-let stdin, stdout, stderr;
+let stdin;
+let stdout: unknown, stderr: unknown;
 
 export { stderr, stdin, stdout };
 
@@ -1875,8 +1876,9 @@ internals.__bootstrapNodeProcess = function (
     // Constructing them eagerly here pulls the node stream/net/tty closure
     // into the snapshot for every program (TTYWriteStream extends net.Socket;
     // the pipe path builds a node Writable). Most `deno run` invocations never
-    // touch process.stdout (Deno's own `console` doesn't route through it), so
+    // touch process.stdout (the default console output bypasses it), so
     // deferring construction keeps that closure out of the deserialized heap.
+    const defaultStdioWrites = new SafeWeakMap();
     const makeStdioWriteStream = (fd, ioStream, name) => {
       let s;
       if (ioStream.isTerminal()) {
@@ -1901,6 +1903,7 @@ internals.__bootstrapNodeProcess = function (
       } else {
         s = lazyStreamsMod().createWritableStdioStream(ioStream, name);
       }
+      defaultStdioWrites.set(s, s.write);
       return s;
     };
     ObjectDefineProperty(process, "stdout", {
@@ -1929,6 +1932,18 @@ internals.__bootstrapNodeProcess = function (
         stderr = v;
       },
     });
+    internals.writeNodeConsole = (msg: string, isErr: boolean) => {
+      const stream = isErr ? stderr : stdout;
+      if (stream == null || streamDelegates.has(stream)) return false;
+      const write = (stream as { write?: unknown }).write;
+      if (
+        typeof write !== "function" || write === defaultStdioWrites.get(stream)
+      ) {
+        return false;
+      }
+      ReflectApply(write, stream, [msg]);
+      return true;
+    };
     core.loadExtScript("ext:deno_node/internal/console/constructor.mjs")
       .bindStreamsLazy(globalThis.console, process);
 
