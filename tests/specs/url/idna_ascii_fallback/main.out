@@ -1,0 +1,55 @@
+== parse ==
+hostname: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+href: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com/
+roundtrip: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+upper.hostname: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+full.href: https://user:pass@xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com:8080/p/q?x=1#frag
+full.username: user
+full.password: pass
+full.hostname: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+full.port: 8080
+full.pathname: /p/q
+full.search: ?x=1
+full.hash: #frag
+URL.parse: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+URL.canParse: true
+== scheme-relative against a base ==
+rel.protocol: https:
+rel.hostname: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+rel.pathname: /path
+rel.search: ?q
+rel.hash: #f
+rel.canParse: true
+rel.upper.hostname: xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com
+== mutate a fallback-host URL ==
+mut.pathname: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com/changed?q#f
+mut.hash: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com/changed?q#newhash
+mut.search: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com/changed?newq=1#newhash
+mut.port: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com:9999/changed?newq=1#newhash
+mut.hostname->normal: https://example.com:9999/changed?newq=1#newhash
+mut.hostname->bogus: https://xn--bogus/p
+== setter host-substring semantics (normal url) ==
+n.hostname=bogus/stuff: https://xn--bogus:123/p
+n.hostname=example.org/stuff: https://example.org:123/p
+n.hostname=bogus:8080: https://example.com:123/p
+n.hostname=example.org:8080: https://example.com:123/p
+n.hostname=bogus?x: https://xn--bogus:123/p
+n.hostname=bogus#x: https://xn--bogus:123/p
+n.host=bogus:8080/path: https://xn--bogus:8080/p
+n.host=example.org:8080/path: https://example.org:8080/p
+n.host=bogus/stuff: https://xn--bogus/p
+== setter host-substring semantics (fallback-host url) ==
+f.hostname=bogus/stuff: https://xn--bogus:123/p
+f.hostname=example.org/stuff: https://example.org:123/p
+f.hostname=bogus:8080: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com:123/p
+f.host=bogus:8080/path: https://xn--bogus:8080/p
+f.host=example.org:8080/path: https://example.org:8080/p
+f.host=bogus/stuff: https://xn--bogus/p
+== invalid IPv4 still fails / no-ops ==
+ipv4.parse: throws TypeError
+n.hostname=ipv4: https://example.com:123/p
+f.host=ipv4: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com/p
+== other still-throw / no-op ==
+nonascii.parse: throws TypeError
+forbidden.parse: throws TypeError
+f.hostname=forbidden: https://xn--72czcrhaj7cpt0ed1dxb4mb1s1.blogspot.com/p
