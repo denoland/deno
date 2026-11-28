@@ -879,8 +879,10 @@ unsafe fn write_pipe(
       && (*pipe).internal_fd.is_some()
     {
       let fd = (*pipe).internal_fd.unwrap();
+      // `fd` stays open for the lifetime of the AsyncFd: the close path drops
+      // `internal_async_fd` before closing `internal_fd`.
       if let Ok(afd) =
-        tokio::io::unix::AsyncFd::new(super::pipe::RawFdWrapper(fd))
+        tokio::io::unix::AsyncFd::register(super::pipe::RawFdWrapper(fd))
       {
         (*pipe).internal_async_fd = Some(afd);
       }

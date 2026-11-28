@@ -37,7 +37,7 @@ pub async fn get_tcp_listener_stream(
     .await
     .expect(host_and_port)
     .inspect(|address| addresses.push(*address))
-    .map(tokio::net::TcpListener::bind)
+    .map(crate::bind_tcp_listener)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
     .await

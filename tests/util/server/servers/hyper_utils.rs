@@ -16,7 +16,6 @@ use http::Request;
 use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper_util::rt::TokioIo;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
 use crate::eprintln;
@@ -46,7 +45,7 @@ where
 {
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
-      let listener = TcpListener::bind(options.addr).await?;
+      let listener = crate::bind_tcp_listener(options.addr).await?;
       println!("ready: {}", options.addr);
       loop {
         let (stream, _) = listener.accept().await?;
@@ -110,7 +109,7 @@ pub async fn run_server_with_remote_addr<F, S>(
 {
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
-      let listener = TcpListener::bind(options.addr).await?;
+      let listener = crate::bind_tcp_listener(options.addr).await?;
       println!("ready: {}", options.addr);
       loop {
         let (stream, addr) = listener.accept().await?;

@@ -1352,7 +1352,9 @@ pub unsafe fn uv_tty_init(
       // /dev/tty). When AsyncFd::new fails, we probe kqueue to
       // confirm, then set up a select(2) fallback thread — matching
       // libuv's uv__stream_try_select.
-      match AsyncFd::new(TtyFd(actual_fd)) {
+      // `actual_fd` is open and owned by this tty handle, which keeps it
+      // open while the reactor holds the AsyncFd.
+      match AsyncFd::register(TtyFd(actual_fd)).map_err(std::io::Error::from) {
         Ok(afd) => {
           reactor = Some(TtyReactor::Normal(afd));
         }
@@ -2818,7 +2820,11 @@ fn setup_select_fallback(fd: RawFd) -> Result<SelectFallbackState, c_int> {
   }
 
   // Wrap fake_fd in AsyncFd — socketpairs work fine with kqueue.
-  let async_fd = match AsyncFd::new(TtyFd(fake_fd)) {
+  // SAFETY: `fake_fd` was just created above and is only closed after the
+  // AsyncFd is dropped (see the select fallback teardown).
+  let async_fd = match unsafe { AsyncFd::register(TtyFd(fake_fd)) }
+    .map_err(std::io::Error::from)
+  {
     Ok(afd) => afd,
     Err(e) => {
       unsafe {
