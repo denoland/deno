@@ -679,14 +679,14 @@ function dispatch(
       (isNode(clearTargetsTuple.relatedTarget) &&
         isShadowRoot(getRoot(clearTargetsTuple.relatedTarget)));
 
-    setEventPhase(eventImpl, Event.CAPTURING_PHASE);
-
     for (let i = path.length - 1; i >= 0; --i) {
       const tuple = path[i];
 
-      if (tuple.target === null) {
-        invokeEventListeners(tuple, eventImpl);
-      }
+      setEventPhase(
+        eventImpl,
+        tuple.target === null ? Event.CAPTURING_PHASE : Event.AT_TARGET,
+      );
+      invokeEventListeners(tuple, eventImpl, true);
     }
 
     for (let i = 0; i < path.length; i++) {
@@ -703,7 +703,7 @@ function dispatch(
           eventImpl.bubbles) ||
         eventImpl.eventPhase === Event.AT_TARGET
       ) {
-        invokeEventListeners(tuple, eventImpl);
+        invokeEventListeners(tuple, eventImpl, false);
       }
     }
   }
@@ -737,6 +737,7 @@ function dispatch(
 function innerInvokeEventListeners(
   eventImpl,
   targetListeners,
+  capturing,
 ) {
   let found = false;
 
@@ -783,8 +784,7 @@ function innerInvokeEventListeners(
     found = true;
 
     if (
-      (eventImpl.eventPhase === Event.CAPTURING_PHASE && !capture) ||
-      (eventImpl.eventPhase === Event.BUBBLING_PHASE && capture)
+      (capturing && !capture) || (!capturing && capture)
     ) {
       continue;
     }
@@ -822,7 +822,7 @@ function innerInvokeEventListeners(
 /** Invokes the listeners on a given event path with the supplied event.
  *
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
-function invokeEventListeners(tuple, eventImpl) {
+function invokeEventListeners(tuple, eventImpl, capturing) {
   const path = getPath(eventImpl);
   if (path.length === 1) {
     const t = path[0];
@@ -842,14 +842,20 @@ function invokeEventListeners(tuple, eventImpl) {
 
   setRelatedTarget(eventImpl, tuple.relatedTarget);
 
-  if (eventImpl.cancelBubble) {
+  if (
+    eventImpl.cancelBubble &&
+    !(tuple === path[0] && !capturing && getStopImmediatePropagation(eventImpl))
+  ) {
     return;
   }
 
+  // When target capture stops immediate propagation, still reach the target's
+  // non-capture group for Node's protected internal listeners. The inner loop
+  // skips every ordinary listener while the immediate-propagation flag is set.
   setCurrentTarget(eventImpl, tuple.item);
 
   try {
-    innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
+    innerInvokeEventListeners(eventImpl, getListeners(tuple.item), capturing);
   } catch (error) {
     reportException(error);
   }
