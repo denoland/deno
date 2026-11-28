@@ -1320,12 +1320,21 @@ fn compute_run_cmd_and_check_permissions(
   api_name: &str,
   allow_cwd_inherit: bool,
 ) -> Result<(PathBuf, RunEnv), ProcessError> {
-  let run_env =
-    compute_run_env(arg_cwd, arg_envs, arg_clear_env, allow_cwd_inherit)
-      .map_err(|e| ProcessError::SpawnFailed {
-        command: arg_cmd.to_string(),
-        error: Box::new(e),
-      })?;
+  let current_dir = state
+    .borrow::<deno_fs::FileSystemRc>()
+    .cwd()
+    .map_err(|e| e.into_io_error());
+  let run_env = compute_run_env(
+    current_dir,
+    arg_cwd,
+    arg_envs,
+    arg_clear_env,
+    allow_cwd_inherit,
+  )
+  .map_err(|e| ProcessError::SpawnFailed {
+    command: arg_cmd.to_string(),
+    error: Box::new(e),
+  })?;
   let cmd =
     resolve_cmd(arg_cmd, &run_env).map_err(|e| ProcessError::SpawnFailed {
       command: arg_cmd.to_string(),
@@ -1414,21 +1423,20 @@ struct RunEnv {
 /// the same environment used to spawn the sub command. This protects against
 /// someone doing timing attacks by changing the environment on a worker.
 ///
+/// `current_dir` is the runtime's cwd as reported by its `FileSystem`, which
+/// is the same cwd `Deno.cwd()` returns.
+///
 /// `allow_cwd_inherit` controls whether spawning is allowed to proceed when
-/// no explicit cwd was passed and `current_dir()` fails (e.g. the parent's
+/// no explicit cwd was passed and `current_dir` is an error (e.g. the parent's
 /// cwd has been unlinked). Only Node-compat ops opt into this; Deno's own
 /// `Deno.run` / `Deno.Command` keep the existing strict behavior.
 fn compute_run_env(
+  current_dir: std::io::Result<PathBuf>,
   arg_cwd: Option<&str>,
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
   allow_cwd_inherit: bool,
 ) -> Result<RunEnv, ProcessError> {
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "ok for now because launching a sub process requires the real fs"
-  )]
-  let current_dir = std::env::current_dir();
   let (cwd, set_cwd_on_command) = match arg_cwd {
     Some(cwd_arg) => {
       let arg_path = Path::new(cwd_arg);
@@ -2546,5 +2554,52 @@ mod tests {
       ]
     );
     assert_eq!(error.raw_os_error(), Some(libc::ENOENT));
+  }
+}
+
+#[cfg(test)]
+mod run_env_tests {
+  use std::path::PathBuf;
+
+  use super::compute_run_env;
+
+  fn runtime_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from(r"C:\runtime\cwd")
+    } else {
+      PathBuf::from("/runtime/cwd")
+    }
+  }
+
+  #[test]
+  fn uses_given_cwd_when_no_cwd_arg() {
+    let run_env =
+      compute_run_env(Ok(runtime_cwd()), None, &[], true, false).unwrap();
+    assert_eq!(run_env.cwd, runtime_cwd());
+    assert!(run_env.set_cwd_on_command);
+  }
+
+  #[test]
+  fn resolves_relative_cwd_arg_against_given_cwd() {
+    let run_env = compute_run_env(
+      Ok(runtime_cwd()),
+      Some("sub/../child"),
+      &[],
+      true,
+      false,
+    )
+    .unwrap();
+    assert_eq!(run_env.cwd, runtime_cwd().join("child"));
+    assert!(run_env.set_cwd_on_command);
+  }
+
+  #[test]
+  fn cwd_error_is_only_inherited_when_allowed() {
+    let not_found = || Err(std::io::ErrorKind::NotFound.into());
+    assert!(compute_run_env(not_found(), None, &[], true, false).is_err());
+
+    let run_env = compute_run_env(not_found(), None, &[], true, true).unwrap();
+    assert_eq!(run_env.cwd, PathBuf::from("."));
+    assert!(!run_env.set_cwd_on_command);
   }
 }

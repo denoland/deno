@@ -24,6 +24,8 @@ use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorClass;
 use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_fs::FileSystemRc;
+use deno_io::fs::FsResult;
 use deno_permissions::PermissionsContainer;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -479,17 +481,16 @@ fn ensure_watcher(
 /// reported back in `FsEvent` don't carry the leftover relative bits notify
 /// pastes onto its event paths (see denoland/deno#32000). Symlinks are
 /// intentionally not resolved here so user-visible event paths still reflect
-/// the path the caller passed in.
-fn normalize_watch_path(path: PathBuf) -> PathBuf {
+/// the path the caller passed in. Relative paths are resolved against the
+/// runtime's `FileSystem` cwd, which is the same cwd `Deno.cwd()` returns.
+fn normalize_watch_path(
+  path: PathBuf,
+  cwd: impl FnOnce() -> FsResult<PathBuf>,
+) -> PathBuf {
   if path.is_absolute() {
     return deno_path_util::normalize_path(Cow::Owned(path)).into_owned();
   }
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "fs watcher needs the real cwd to absolutize the watch path"
-  )]
-  let cwd = std::env::current_dir();
-  match cwd {
+  match cwd() {
     Ok(cwd) => {
       deno_path_util::normalize_path(Cow::Owned(cwd.join(&path))).into_owned()
     }
@@ -507,6 +508,7 @@ fn op_fs_events_open(
 ) -> Result<ResourceId, FsEventsError> {
   let mut resolved_paths = Vec::with_capacity(paths.len());
   let mut ignore_paths = Vec::with_capacity(ignore.len());
+  let fs = state.borrow::<FileSystemRc>().clone();
   {
     let permissions_container = state.borrow_mut::<PermissionsContainer>();
     for path in ignore {
@@ -517,7 +519,7 @@ fn op_fs_events_open(
           Some("Deno.watchFs()"),
         )?
         .into_owned_path();
-      ignore_paths.push(normalize_watch_path(checked));
+      ignore_paths.push(normalize_watch_path(checked, || fs.cwd()));
     }
     for path in paths {
       let checked = permissions_container
@@ -527,7 +529,7 @@ fn op_fs_events_open(
           Some("Deno.watchFs()"),
         )?
         .into_owned_path();
-      resolved_paths.push(normalize_watch_path(checked));
+      resolved_paths.push(normalize_watch_path(checked, || fs.cwd()));
     }
   }
 
@@ -761,5 +763,42 @@ mod tests {
       }
       kind => panic!("expected Io error, got {kind:?}"),
     }
+  }
+
+  fn test_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from(r"C:\runtime\cwd")
+    } else {
+      PathBuf::from("/runtime/cwd")
+    }
+  }
+
+  #[test]
+  fn normalize_watch_path_resolves_relative_paths_against_given_cwd() {
+    assert_eq!(
+      normalize_watch_path(PathBuf::from("watched/../file.txt"), || Ok(
+        test_cwd()
+      )),
+      test_cwd().join("file.txt")
+    );
+  }
+
+  #[test]
+  fn normalize_watch_path_does_not_query_cwd_for_absolute_paths() {
+    let absolute = test_cwd().join("watched").join("..").join("file.txt");
+    assert_eq!(
+      normalize_watch_path(absolute, || panic!("cwd should not be queried")),
+      test_cwd().join("file.txt")
+    );
+  }
+
+  #[test]
+  fn normalize_watch_path_keeps_relative_path_when_cwd_fails() {
+    assert_eq!(
+      normalize_watch_path(PathBuf::from("file.txt"), || Err(
+        std::io::ErrorKind::NotFound.into()
+      )),
+      PathBuf::from("file.txt")
+    );
   }
 }
