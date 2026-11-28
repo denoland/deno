@@ -8,6 +8,10 @@
       "args": "run -A main_load.cjs",
       "output": "main_load.out"
     },
+    "load_hook_format": {
+      "args": "run -A format.mjs",
+      "output": "format.out"
+    },
     "chained_hooks": {
       "args": "run -A main_chained.cjs",
       "output": "main_chained.out"
