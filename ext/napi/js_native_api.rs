@@ -7,7 +7,6 @@ const NAPI_VERSION: u32 = 10;
 
 use std::ptr::NonNull;
 
-use libc::INT_MAX;
 use napi_sym::napi_sym;
 
 use super::util::SendPtr;
@@ -1264,7 +1263,7 @@ fn napi_create_string_latin1(
   }
   crate::return_status_if_false!(
     env,
-    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    (length == NAPI_AUTO_LENGTH) || length <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
 
@@ -1311,7 +1310,7 @@ pub(crate) fn napi_create_string_utf8(
   }
   crate::return_status_if_false!(
     env,
-    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    (length == NAPI_AUTO_LENGTH) || length <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
 
@@ -1358,7 +1357,7 @@ fn napi_create_string_utf16(
   }
   crate::return_status_if_false!(
     env,
-    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    (length == NAPI_AUTO_LENGTH) || length <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
 
@@ -1848,7 +1847,7 @@ fn node_api_create_property_key_latin1(
   }
   crate::return_status_if_false!(
     env,
-    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    (length == NAPI_AUTO_LENGTH) || length <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
 
@@ -1899,7 +1898,7 @@ fn node_api_create_property_key_utf8(
   }
   crate::return_status_if_false!(
     env,
-    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    (length == NAPI_AUTO_LENGTH) || length <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
 
@@ -1946,7 +1945,7 @@ fn node_api_create_property_key_utf16(
   }
   crate::return_status_if_false!(
     env,
-    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    (length == NAPI_AUTO_LENGTH) || length <= std::ffi::c_int::MAX as _,
     napi_invalid_arg
   );
 
@@ -2097,7 +2096,7 @@ fn napi_create_bigint_words<'s>(
   check_arg!(env, words);
   check_arg!(env, result);
 
-  if word_count > INT_MAX as _ {
+  if word_count > std::ffi::c_int::MAX as _ {
     return napi_invalid_arg;
   }
 

@@ -238,6 +238,7 @@ impl TryFrom<Field> for DictionaryField {
 }
 
 #[allow(dead_code, reason = "unused properties")]
+#[allow(clippy::large_enum_variant, reason = "proc-macro AST, not hot")]
 enum DictionaryFieldArgument {
   Default {
     name_token: kw::default,

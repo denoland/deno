@@ -337,6 +337,7 @@ impl Parse for WebIDLArgs {
 /// tend to have similar argument handling characteristics. This may need one more level of indirection
 /// given how many of these types have option variants, however.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant, reason = "proc-macro AST, not hot")]
 pub enum Arg {
   Void,
   VoidUndefined,
@@ -784,6 +785,7 @@ pub enum BufferSource {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant, reason = "proc-macro AST, not hot")]
 pub enum AttributeModifier {
   /// #[serde], for serde_v8 types.
   Serde,
