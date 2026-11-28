@@ -1552,60 +1552,73 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       return deno_core::ModuleLoadResponse::Sync(result);
     }
 
-    deno_core::ModuleLoadResponse::Async(
-      async move {
-        // A `registerHooks` resolve hook may have rewritten this specifier
-        // to a URL the initial graph preparation never saw (e.g. appended a
-        // fragment for cache busting), so prepare it on demand.
-        if inner.hook_registry.resolve_active()
-          && !matches!(
-            options.requested_module_type,
-            RequestedModuleType::Text | RequestedModuleType::Bytes
-          )
-          && !inner.shared.in_npm_pkg_checker.in_npm_package(&specifier)
-          && inner.graph_container.graph().get(&specifier).is_none()
-        {
-          inner
-            .prepare_hooked_specifier(&specifier, options.is_dynamic_import)
-            .await;
-        }
+    let load_in_new_runtime =
+      options.is_synchronous && inner.hook_registry.hooks_active.get();
+    let load = async move {
+      // A `registerHooks` resolve hook may have rewritten this specifier
+      // to a URL the initial graph preparation never saw (e.g. appended a
+      // fragment for cache busting), so prepare it on demand.
+      if (inner.hook_registry.resolve_active()
+        || (options.is_synchronous && inner.hook_registry.load_active.get()))
+        && !matches!(
+          options.requested_module_type,
+          RequestedModuleType::Text | RequestedModuleType::Bytes
+        )
+        && !inner.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+        && inner.graph_container.graph().get(&specifier).is_none()
+      {
         inner
-          .load_inner(
-            &specifier,
-            maybe_referrer.as_ref().map(|r| &r.specifier),
-            &options.requested_module_type,
-          )
-          .await
-          .map_err(|err| {
-            let Some(referrer) = maybe_referrer else {
-              return err;
-            };
-            let position = deno_graph::Position {
-              line: referrer.line_number as usize - 1,
-              character: referrer.column_number as usize - 1,
-            };
-            JsErrorBox::new(
-              err.get_class(),
-              format!(
-                "{err}\n    at {}",
-                format_range_with_colors(&deno_graph::Range {
-                  specifier: referrer.specifier,
-                  range: deno_graph::PositionRange {
-                    start: position,
-                    end: position
-                  },
-                  resolution_mode: None
-                })
-              ),
-            )
-          })
+          .prepare_hooked_specifier(&specifier, options.is_dynamic_import)
+          .await;
       }
-      .boxed_local(),
-    )
+      inner
+        .load_inner(
+          &specifier,
+          maybe_referrer.as_ref().map(|r| &r.specifier),
+          &options.requested_module_type,
+        )
+        .await
+        .map_err(|err| {
+          let Some(referrer) = maybe_referrer else {
+            return err;
+          };
+          let position = deno_graph::Position {
+            line: referrer.line_number as usize - 1,
+            character: referrer.column_number as usize - 1,
+          };
+          JsErrorBox::new(
+            err.get_class(),
+            format!(
+              "{err}\n    at {}",
+              format_range_with_colors(&deno_graph::Range {
+                specifier: referrer.specifier,
+                range: deno_graph::PositionRange {
+                  start: position,
+                  end: position
+                },
+                resolution_mode: None
+              })
+            ),
+          )
+        })
+    };
+    if load_in_new_runtime {
+      deno_core::ModuleLoadResponse::Sync(run_future_in_new_runtime(load))
+    } else {
+      deno_core::ModuleLoadResponse::Async(load.boxed_local())
+    }
   }
 
   fn should_load_synthetic_esm(&self, specifier: &str) -> bool {
     self.0.hook_registry.load_active.get() && specifier.starts_with("node:")
+  }
+
+  fn should_load_synthetic_esm_with_mode(
+    &self,
+    specifier: &str,
+    is_synchronous: bool,
+  ) -> bool {
+    !is_synchronous && self.should_load_synthetic_esm(specifier)
   }
 
   fn prepare_load(
@@ -1646,7 +1659,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     // graph builder cannot fetch; in that case the load itself will be
     // serviced entirely by hooks, so failure here is fine and must not
     // abort the load.
-    if self.0.hook_registry.load_active.get() {
+    if !options.is_synchronous && self.0.hook_registry.load_active.get() {
       self.0.shared.has_js_execution_started_flag.raise();
       let specifier = specifier.clone();
       let inner = self.0.clone();
@@ -1672,6 +1685,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let specifier = specifier.clone();
     let inner = self.0.clone();
     let is_synchronous = options.is_synchronous;
+    let prepare_hook_source = is_synchronous
+      && maybe_code.is_some()
+      && (inner.hook_registry.resolve_active()
+        || inner.hook_registry.load_active.get());
 
     let future = async move {
       let graph_container = &inner.graph_container;
@@ -1775,13 +1792,26 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               ext_overwrite: None,
               allow_unknown_media_types: false,
               allow_sloppy_imports_hints_for_unreferenced_roots,
-              skip_graph_roots_validation: is_dynamic,
+              skip_graph_roots_validation: is_dynamic || prepare_hook_source,
               file_content_overrides: file_overrides,
               file_header_overrides: header_overrides,
             },
           )
           .await
-          .map_err(JsErrorBox::from_err)?;
+          .map_err(|err| {
+            if prepare_hook_source {
+              JsErrorBox::new(
+                err.get_class(),
+                format!(
+                  "Failed to prepare hook-provided ES module {}: {}",
+                  specifiers[0],
+                  err.get_message()
+                ),
+              )
+            } else {
+              JsErrorBox::from_err(err)
+            }
+          })?;
         graph.prune_types();
         update_permit.commit();
         inner.shared.has_js_execution_started_flag.raise();
