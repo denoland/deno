@@ -524,6 +524,10 @@ ArgDef::new("unstable-bare-node-builtins")
     .set_true()
     .hidden()
 .help("Enable unstable Temporal API"),
+  ArgDef::new("unstable-tsgo")
+    .long("unstable-tsgo")
+    .set_true()
+    .hidden(),
   ArgDef::new("unstable-unsafe-proto")
     .long("unstable-unsafe-proto")
     .long_aliases(&["unsafe-proto"])
