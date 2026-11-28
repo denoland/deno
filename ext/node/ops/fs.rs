@@ -156,6 +156,25 @@ fn file_for_fd(
     .ok_or_else(ebadf)
 }
 
+/// Re-check permissions for an fd-based op against the path the fd was
+/// opened with, mirroring the checks done by `Deno.FsFile` ops. Fds without
+/// a known path (stdio, pipes) are not checked.
+fn check_fd_permission(
+  state: &OpState,
+  file: &dyn deno_io::fs::File,
+  access_kind: OpenAccessKind,
+  api_name: &'static str,
+) -> Result<(), FsError> {
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow::<PermissionsContainer>().check_open(
+      Cow::Borrowed(path),
+      access_kind,
+      Some(api_name),
+    )?;
+  }
+  Ok(())
+}
+
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
 /// offload work to a blocking thread. Otherwise, run inline.
 macro_rules! maybe_spawn_blocking {
@@ -1144,6 +1163,12 @@ pub fn op_node_fs_fstat_sync(
   fd: i32,
 ) -> Result<NodeFsStat, FsError> {
   let file = file_for_fd(state, fd)?;
+  check_fd_permission(
+    state,
+    &*file,
+    OpenAccessKind::Read,
+    "node:fs.fstatSync()",
+  )?;
   let stat = file.stat_sync()?;
   Ok(NodeFsStat::from(stat))
 }
@@ -1153,7 +1178,17 @@ pub async fn op_node_fs_fstat(
   state: Rc<RefCell<OpState>>,
   fd: i32,
 ) -> Result<NodeFsStat, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = {
+    let state = state.borrow();
+    let file = file_for_fd(&state, fd)?;
+    check_fd_permission(
+      &state,
+      &*file,
+      OpenAccessKind::Read,
+      "node:fs.fstat()",
+    )?;
+    file
+  };
   let stat = file.stat_async().await?;
   Ok(NodeFsStat::from(stat))
 }
@@ -1230,6 +1265,12 @@ pub fn op_node_fs_futimes_sync(
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsError> {
   let file = file_for_fd(state, fd)?;
+  check_fd_permission(
+    state,
+    &*file,
+    OpenAccessKind::WriteNoFollow,
+    "node:fs.futimesSync()",
+  )?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
@@ -1243,7 +1284,17 @@ pub async fn op_node_fs_futimes(
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = {
+    let state = state.borrow();
+    let file = file_for_fd(&state, fd)?;
+    check_fd_permission(
+      &state,
+      &*file,
+      OpenAccessKind::WriteNoFollow,
+      "node:fs.futimes()",
+    )?;
+    file
+  };
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;

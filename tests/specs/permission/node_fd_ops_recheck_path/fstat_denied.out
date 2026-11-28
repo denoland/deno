@@ -1,0 +1,3 @@
+fstatSync: Requires read access to "[WILDLINE]secret.txt", [WILDLINE]
+fstat: Requires read access to "[WILDLINE]secret.txt", [WILDLINE]
+FileHandle.stat: Requires read access to "[WILDLINE]secret.txt", [WILDLINE]
