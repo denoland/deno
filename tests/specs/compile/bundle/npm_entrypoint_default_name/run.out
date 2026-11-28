@@ -1,0 +1,3 @@
+Hello in CLI with permissions
+Reading DENO_HELLO env var...
+it works
