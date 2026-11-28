@@ -726,39 +726,22 @@ fn import_key_ec(
 ) -> Result<ImportKeyResult, ImportKeyError> {
   match key_data {
     KeyData::Raw(data) => {
-      // The point is parsed and validated, ultimately the original data is
-      // returned though.
       match named_curve {
         EcNamedCurve::P256 => {
-          // 1-2.
-          let point = p256::EncodedPoint::from_bytes(&data)
+          p256::PublicKey::from_sec1_bytes(&data)
             .map_err(|_| ImportKeyError::InvalidP256ECPoint)?;
-          // 3.
-          if point.is_identity() {
-            return Err(ImportKeyError::InvalidP256ECPoint);
-          }
         }
         EcNamedCurve::P384 => {
-          // 1-2.
-          let point = p384::EncodedPoint::from_bytes(&data)
+          p384::PublicKey::from_sec1_bytes(&data)
             .map_err(|_| ImportKeyError::InvalidP384ECPoint)?;
-          // 3.
-          if point.is_identity() {
-            return Err(ImportKeyError::InvalidP384ECPoint);
-          }
         }
         EcNamedCurve::P521 => {
-          // 1-2.
-          let point = p521::EncodedPoint::from_bytes(&data)
+          p521::PublicKey::from_sec1_bytes(&data)
             .map_err(|_| ImportKeyError::InvalidP521ECPoint)?;
-          // 3.
-          if point.is_identity() {
-            return Err(ImportKeyError::InvalidP521ECPoint);
-          }
         }
-      };
+      }
       Ok(ImportKeyResult::Ec {
-        raw_data: RustRawKeyData::Public(data.to_vec().into()),
+        raw_data: RustRawKeyData::Public(data.into()),
       })
     }
     KeyData::Pkcs8(data) => {
