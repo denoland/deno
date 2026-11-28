@@ -27,6 +27,10 @@
             "try { Deno.statSync('node_modules/@types/denotest__index-export-no-types'); console.log('@types exists'); } catch { console.log('@types not found'); }"
           ],
           "output": "has_types.out"
+        },
+        {
+          "args": "run --allow-read check_production.ts",
+          "output": "ok\n"
         }
       ]
     },
@@ -99,6 +103,10 @@
             "try { Deno.statSync('node_modules/@denotest/types'); console.log('typesDep exists'); } catch { console.log('typesDep not found'); }"
           ],
           "output": "no_types_dep.out"
+        },
+        {
+          "args": "run --allow-read check_production.ts entrypoint",
+          "output": "ok\n"
         }
       ]
     },
@@ -116,6 +124,158 @@
             "try { Deno.statSync('node_modules/@denotest/types'); console.log('typesDep exists'); } catch { console.log('typesDep not found'); }"
           ],
           "output": "has_types_dep.out"
+        }
+      ]
+    },
+    "prod_with_lockfile": {
+      "tempDir": true,
+      "variants": {
+        "isolated": { "linker": "isolated" },
+        "hoisted": {
+          "linker": "hoisted"
+        }
+      },
+      "steps": [
+        {
+          "args": "eval Deno.writeTextFileSync('deno.json',JSON.stringify({nodeModulesDir:'manual',nodeModulesLinker:'${linker}'}));",
+          "output": ""
+        },
+        {
+          "args": "install --lockfile-only",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --lockfile-only --entrypoint entrypoint.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.copyFileSync('deno.lock', 'deno.lock.before');"
+          ],
+          "output": ""
+        },
+        {
+          "args": "install --prod",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read check_production.ts locked",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "prod_with_frozen_lockfile": {
+      "tempDir": true,
+      "variants": {
+        "isolated": { "linker": "isolated" },
+        "hoisted": {
+          "linker": "hoisted"
+        }
+      },
+      "steps": [
+        {
+          "args": "eval Deno.writeTextFileSync('deno.json',JSON.stringify({nodeModulesDir:'manual',nodeModulesLinker:'${linker}'}));",
+          "output": ""
+        },
+        {
+          "args": "install --lockfile-only",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --lockfile-only --entrypoint entrypoint.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.copyFileSync('deno.lock', 'deno.lock.before');"
+          ],
+          "output": ""
+        },
+        {
+          "args": "install --prod --frozen",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read check_production.ts locked",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "ci_prod_with_lockfile": {
+      "tempDir": true,
+      "variants": {
+        "isolated": { "linker": "isolated" },
+        "hoisted": {
+          "linker": "hoisted"
+        }
+      },
+      "steps": [
+        {
+          "args": "eval Deno.writeTextFileSync('deno.json',JSON.stringify({nodeModulesDir:'manual',nodeModulesLinker:'${linker}'}));",
+          "output": ""
+        },
+        {
+          "args": "install --lockfile-only",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --lockfile-only --entrypoint entrypoint.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.copyFileSync('deno.lock', 'deno.lock.before');"
+          ],
+          "output": ""
+        },
+        {
+          "args": "ci --prod",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read check_production.ts locked",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "entrypoint_prod_with_lockfile": {
+      "tempDir": true,
+      "variants": {
+        "isolated": { "linker": "isolated" },
+        "hoisted": {
+          "linker": "hoisted"
+        }
+      },
+      "steps": [
+        {
+          "args": "eval Deno.writeTextFileSync('deno.json',JSON.stringify({nodeModulesDir:'manual',nodeModulesLinker:'${linker}'}));",
+          "output": ""
+        },
+        {
+          "args": "install --lockfile-only",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --lockfile-only --entrypoint entrypoint.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.copyFileSync('deno.lock', 'deno.lock.before');"
+          ],
+          "output": ""
+        },
+        {
+          "args": "install --prod --frozen --entrypoint entrypoint.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read check_production.ts locked entrypoint",
+          "output": "ok\n"
         }
       ]
     }
