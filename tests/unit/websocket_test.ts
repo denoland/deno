@@ -1293,3 +1293,118 @@ Deno.test("WebSocket close with reason but no code doesn't send 1005", async () 
   conn.close();
   await server.finished;
 });
+
+// https://github.com/denoland/deno/issues/37147
+// Closes without a close frame (failed connect, dropped TCP) must report 1006.
+
+// Accepts one WebSocket client on a raw TCP listener, completes the
+// handshake, runs `afterOpen`, and returns the client's "close" event.
+async function closeEventAfter(
+  afterOpen: (conn: Deno.Conn) => Promise<void>,
+): Promise<{ event: CloseEvent; sawError: boolean }> {
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const { port } = listener.addr as Deno.NetAddr;
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  let sawError = false;
+  ws.onerror = () => sawError = true;
+  const closed = new Promise<CloseEvent>((resolve) => ws.onclose = resolve);
+  const opened = new Promise<void>((resolve) => ws.onopen = () => resolve());
+  const conn = await listener.accept();
+  listener.close();
+  const buf = new Uint8Array(4096);
+  const n = (await conn.read(buf))!;
+  const key = /sec-websocket-key:\s*(\S+)/i.exec(
+    new TextDecoder().decode(buf.subarray(0, n)),
+  )![1];
+  const digest = await crypto.subtle.digest(
+    "SHA-1",
+    new TextEncoder().encode(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"),
+  );
+  await conn.write(
+    new TextEncoder().encode(
+      "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
+        "Connection: Upgrade\r\nSec-WebSocket-Accept: " +
+        `${btoa(String.fromCharCode(...new Uint8Array(digest)))}\r\n\r\n`,
+    ),
+  );
+  await opened;
+  await afterOpen(conn);
+  const event = await closed;
+  try {
+    conn.close();
+  } catch { /* already closed */ }
+  return { event, sawError };
+}
+
+Deno.test("websocket failed connect reports close code 1006", async () => {
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const { port } = listener.addr as Deno.NetAddr;
+  listener.close();
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  let sawError = false;
+  ws.onerror = () => sawError = true;
+  const event = await new Promise<CloseEvent>((r) => ws.onclose = r);
+  assert(sawError);
+  assertEquals(event.code, 1006);
+  assertEquals(event.wasClean, false);
+});
+
+Deno.test("websocket TCP drop reports close code 1006", async () => {
+  const { event, sawError } = await closeEventAfter((conn) => {
+    conn.close();
+    return Promise.resolve();
+  });
+  assert(sawError);
+  assertEquals(event.code, 1006);
+  assertEquals(event.wasClean, false);
+});
+
+Deno.test("websocket close frames keep their status code", async () => {
+  // Close frame with status 1000.
+  let r = await closeEventAfter(async (conn) => {
+    await conn.write(new Uint8Array([0x88, 0x02, 0x03, 0xe8]));
+  });
+  assertEquals(r.event.code, 1000);
+  assert(r.event.wasClean);
+  // Close frame without a status.
+  r = await closeEventAfter(async (conn) => {
+    await conn.write(new Uint8Array([0x88, 0x00]));
+  });
+  assertEquals(r.event.code, 1005);
+  assert(r.event.wasClean);
+});
+
+Deno.test("upgradeWebSocket reports close code 1006 on client drop", async () => {
+  const closed = Promise.withResolvers<CloseEvent>();
+  const listening = Promise.withResolvers<number>();
+  const ac = new AbortController();
+  const server = Deno.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    signal: ac.signal,
+    onListen: ({ port }) => listening.resolve(port),
+    handler(req) {
+      const { socket, response } = Deno.upgradeWebSocket(req);
+      socket.onclose = closed.resolve;
+      return response;
+    },
+  });
+  const conn = await Deno.connect({
+    hostname: "127.0.0.1",
+    port: await listening.promise,
+  });
+  await conn.write(
+    new TextEncoder().encode(
+      "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\n" +
+        "Upgrade: websocket\r\nSec-WebSocket-Version: 13\r\n" +
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+    ),
+  );
+  await conn.read(new Uint8Array(1024));
+  conn.close();
+  const event = await closed.promise;
+  assertEquals(event.code, 1006);
+  assertEquals(event.wasClean, false);
+  ac.abort();
+  await server.finished;
+});
