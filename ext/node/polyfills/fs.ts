@@ -122,6 +122,7 @@ const {
   validateStringAfterArrayBufferView,
   warnOnNonPortableTemplate,
 } = core.createLazyLoader("ext:deno_node/internal/fs/utils.mjs")();
+const { isDate } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 const { glob, globSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
 )();
@@ -214,6 +215,7 @@ const {
   ArrayBufferIsView,
   ArrayIsArray,
   BigInt,
+  DatePrototypeGetTime,
   DateUTC,
   Error,
   FunctionPrototypeBind,
@@ -221,6 +223,7 @@ const {
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
+  MathFloor,
   MathMax,
   MathMin,
   MathTrunc,
@@ -1482,10 +1485,17 @@ function ftruncateSync(fd: number, len: number = 0) {
   op_node_fs_ftruncate_sync(fd, MathMax(0, len));
 }
 
-function _getValidTime(
+function getFutimesTimestamp(
   time: number | string | Date,
   name: string,
-): number | Date {
+): [number, number] {
+  if (isDate(time)) {
+    // Split the integer milliseconds before converting the remainder to nanoseconds.
+    const milliseconds = DatePrototypeGetTime(time);
+    const seconds = MathFloor(milliseconds / 1e3);
+    return [seconds, (milliseconds - seconds * 1e3) * 1e6];
+  }
+
   if (typeof time === "string") {
     time = Number(time);
   }
@@ -1499,7 +1509,9 @@ function _getValidTime(
     );
   }
 
-  return toUnixTimestamp(time);
+  const timestamp = toUnixTimestamp(time);
+  const seconds = MathTrunc(timestamp);
+  return [seconds, MathTrunc((timestamp - seconds) * 1e9)];
 }
 
 function futimes(
@@ -1517,17 +1529,8 @@ function futimes(
 
   validateInteger(fd, "fd", 0, 2147483647);
 
-  atime = _getValidTime(atime, "atime");
-  mtime = _getValidTime(mtime, "mtime");
-
-  const atimeSecs = MathTrunc(atime as number);
-  const atimeNanos = MathTrunc(
-    ((atime as number) - atimeSecs) * 1e9,
-  );
-  const mtimeSecs = MathTrunc(mtime as number);
-  const mtimeNanos = MathTrunc(
-    ((mtime as number) - mtimeSecs) * 1e9,
-  );
+  const { 0: atimeSecs, 1: atimeNanos } = getFutimesTimestamp(atime, "atime");
+  const { 0: mtimeSecs, 1: mtimeNanos } = getFutimesTimestamp(mtime, "mtime");
   PromisePrototypeThen(
     op_node_fs_futimes(fd, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos),
     () => callback(null),
@@ -1564,17 +1567,8 @@ function futimesSync(
 
   validateInteger(fd, "fd", 0, 2147483647);
 
-  atime = _getValidTime(atime, "atime");
-  mtime = _getValidTime(mtime, "mtime");
-
-  const atimeSecs = MathTrunc(atime as number);
-  const atimeNanos = MathTrunc(
-    ((atime as number) - atimeSecs) * 1e9,
-  );
-  const mtimeSecs = MathTrunc(mtime as number);
-  const mtimeNanos = MathTrunc(
-    ((mtime as number) - mtimeSecs) * 1e9,
-  );
+  const { 0: atimeSecs, 1: atimeNanos } = getFutimesTimestamp(atime, "atime");
+  const { 0: mtimeSecs, 1: mtimeNanos } = getFutimesTimestamp(mtime, "mtime");
   op_node_fs_futimes_sync(fd, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos);
 }
 

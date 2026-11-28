@@ -34,6 +34,7 @@ import {
   fchownSync,
   fdatasync,
   fdatasyncSync,
+  fstatSync,
   fsync,
   fsyncSync,
   ftruncate,
@@ -1744,37 +1745,28 @@ Deno.test({
 
 // -- futimes --
 
-const _randomDate = new Date(Date.now() + 1000);
+const futimesAtime = new Date(1_700_000_000_370);
+const futimesMtime = new Date(1_700_000_001_370);
 
 Deno.test({
   name: "[node/fs futimes] change file timestamps",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   async fn() {
     const filePath = Deno.makeTempFileSync();
-    using file = await Deno.open(filePath, { create: true, write: true });
-
-    await new Promise<void>((resolve, reject) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      futimes(file.rid, _randomDate, _randomDate, (err: Error | null) => {
-        if (err !== null) reject();
-        else resolve();
+    const fd = openSync(filePath, "r+");
+    try {
+      await new Promise<void>((resolve, reject) => {
+        futimes(fd, futimesAtime, futimesMtime, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
-    })
-      .then(
-        () => {
-          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
-          assertEquals(fileInfo.mtime, _randomDate);
-          assertEquals(fileInfo.atime, _randomDate);
-        },
-        () => {
-          fail("No error expected");
-        },
-      )
-      .finally(() => {
-        Deno.removeSync(filePath);
-      });
+      const { atime, mtime } = fstatSync(fd);
+      assertEquals(atime, futimesAtime);
+      assertEquals(mtime, futimesMtime);
+    } finally {
+      closeSync(fd);
+      Deno.removeSync(filePath);
+    }
   },
 });
 
@@ -1806,22 +1798,16 @@ Deno.test({
 
 Deno.test({
   name: "[node/fs futimesSync] change file timestamps",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   fn() {
     const filePath = Deno.makeTempFileSync();
-    using file = Deno.openSync(filePath, { create: true, write: true });
-
+    const fd = openSync(filePath, "r+");
     try {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      futimesSync(file.rid, _randomDate, _randomDate);
-
-      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
-
-      assertEquals(fileInfo.mtime, _randomDate);
-      assertEquals(fileInfo.atime, _randomDate);
+      futimesSync(fd, futimesAtime, futimesMtime);
+      const { atime, mtime } = fstatSync(fd);
+      assertEquals(atime, futimesAtime);
+      assertEquals(mtime, futimesMtime);
     } finally {
+      closeSync(fd);
       Deno.removeSync(filePath);
     }
   },
