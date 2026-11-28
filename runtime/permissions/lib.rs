@@ -2188,6 +2188,21 @@ impl NetDescriptor {
       ));
     }
 
+    // Parse IPv6 networks before splitting a host from its optional port.
+    // Networks describe permission lists, not individual query targets.
+    if matches!(subdomain_wildcards, SubdomainWildcards::Enabled) {
+      let network = if let Some(rest) = hostname.strip_prefix('[')
+        && let Some((ip, prefix)) = rest.split_once("]/")
+      {
+        Cow::Owned(format!("{ip}/{prefix}"))
+      } else {
+        Cow::Borrowed(hostname)
+      };
+      if let Ok(network @ IpNet::V6(_)) = network.parse::<IpNet>() {
+        return Ok(NetDescriptor(Host::IpSubnet(network), None));
+      }
+    }
+
     // If this is a IPv6 address enclosed in square brackets, parse it as such.
     if hostname.starts_with('[') {
       if let Some((ip, after)) = hostname.split_once(']') {
@@ -8419,6 +8434,37 @@ mod tests {
         *expected,
         "'{input}'"
       );
+    }
+  }
+
+  #[test]
+  fn test_net_descriptor_ipv6_cidr() {
+    for (input, subnet) in [
+      ("fc00::/7", "fc00::/7"),
+      ("[fc00::]/7", "fc00::/7"),
+      ("::1/128", "::1/128"),
+      ("[::1]/128", "::1/128"),
+      ("fe80::/10", "fe80::/10"),
+      ("[::]/0", "::/0"),
+    ] {
+      assert_eq!(
+        NetDescriptor::parse_for_list(input).unwrap(),
+        NetDescriptor(Host::IpSubnet(subnet.parse().unwrap()), None),
+        "{input}"
+      );
+      assert!(NetDescriptor::parse_for_query(input).is_err(), "{input}");
+    }
+    for input in [
+      "fc00::/129",
+      "[fc00::]/129",
+      "[fc00::]/7:443",
+      "fc00::/7:443",
+      "[fc00::/7]",
+      "[fc00::]/",
+      "[fc00::]:65536",
+      "fc00::1",
+    ] {
+      assert!(NetDescriptor::parse_for_list(input).is_err(), "{input}");
     }
   }
 
