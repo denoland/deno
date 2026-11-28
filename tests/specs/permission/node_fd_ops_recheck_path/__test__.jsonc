@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    "fstat_denied_read": {
+      "args": "run --allow-read --allow-write --deny-read=secret.txt fstat.ts",
+      "output": "fstat_denied.out"
+    },
+    "fstat_allowed_read": {
+      "args": "run --allow-read --allow-write fstat.ts",
+      "output": "fstat_allowed.out"
+    },
+    "futimes_denied_write": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('target.txt', 'content\\n')"
+          ],
+          "output": ""
+        },
+        {
+          "args": "run --allow-read --allow-write --deny-write=target.txt futimes.ts",
+          "output": "futimes_denied.out"
+        }
+      ]
+    }
+  }
+}
