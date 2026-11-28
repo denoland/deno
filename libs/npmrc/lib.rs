@@ -270,17 +270,11 @@ impl NpmRc {
               // npm interprets the value as a number of days. Ignore values
               // that can't be parsed rather than erroring (npm is lenient
               // about unknown/invalid config values).
-              match &kv.value {
-                Value::Number(n) if *n >= 0 => {
-                  min_release_age_days = Some(*n as u64);
+              if let Value::String(text) = &kv.value {
+                let value = expand_vars(text, sys);
+                if let Ok(days) = value.trim().parse::<u64>() {
+                  min_release_age_days = Some(days);
                 }
-                Value::String(text) => {
-                  let value = expand_vars(text, sys);
-                  if let Ok(days) = value.trim().parse::<u64>() {
-                    min_release_age_days = Some(days);
-                  }
-                }
-                _ => {}
               }
             } else if key == "trust-policy"
               && let Value::String(text) = &kv.value
@@ -295,17 +289,11 @@ impl NpmRc {
             } else if key == "trust-policy-ignore-after" {
               // a number of minutes; ignore unparsable values (npm is lenient
               // about unknown/invalid config values)
-              match &kv.value {
-                Value::Number(n) if *n >= 0 => {
-                  trust_policy_ignore_after_minutes = Some(*n as u64);
+              if let Value::String(text) = &kv.value {
+                let value = expand_vars(text, sys);
+                if let Ok(minutes) = value.trim().parse::<u64>() {
+                  trust_policy_ignore_after_minutes = Some(minutes);
                 }
-                Value::String(text) => {
-                  let value = expand_vars(text, sys);
-                  if let Ok(minutes) = value.trim().parse::<u64>() {
-                    trust_policy_ignore_after_minutes = Some(minutes);
-                  }
-                }
-                _ => {}
               }
             }
           } else if let Key::Array(key) = &kv.key
@@ -1159,6 +1147,31 @@ registry=https://registry.npmjs.org/
         "MYTOKEN3"
       );
     }
+  }
+
+  #[test]
+  fn test_parse_numeric_registry_auth_values() {
+    // npm writes numeric strings unquoted and reads them back as strings
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+//registry.example.com/:_authToken=1234567890
+//registry.example.com/:username=0987654
+//registry.example.com/:_password=MTIz
+//other.example.com/:_auth=42
+"#,
+    )
+    .unwrap();
+    let config = &npm_rc.registry_configs["registry.example.com/"];
+    assert_eq!(config.auth_token.as_deref(), Some("1234567890"));
+    assert_eq!(config.username.as_deref(), Some("0987654"));
+    assert_eq!(config.password.as_deref(), Some("MTIz"));
+    assert_eq!(
+      npm_rc.registry_configs["other.example.com/"]
+        .auth
+        .as_deref(),
+      Some("42")
+    );
   }
 
   #[test]

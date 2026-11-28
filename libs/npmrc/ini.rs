@@ -34,7 +34,6 @@ pub enum Key<'a> {
 pub enum Value<'a> {
   String(Cow<'a, str>),
   Boolean(bool),
-  Number(i64),
   Null,
   Undefined,
 }
@@ -135,13 +134,9 @@ fn parse_value(input: &str) -> ParseResult<'_, Value<'_>> {
         "false" => Value::Boolean(false),
         "null" => Value::Null,
         "undefined" => Value::Undefined,
-        _ => {
-          if let Ok(value) = value.parse::<i64>() {
-            Value::Number(value)
-          } else {
-            Value::String(value)
-          }
-        }
+        // like npm's ini parser, keep numbers as strings so values such as
+        // tokens keep their exact text (e.g. leading zeros)
+        _ => Value::String(value),
       },
     ))
   }
@@ -337,7 +332,7 @@ a = 1
       vec![
         KeyValueOrSection::KeyValue(KeyValue {
           key: Key::Plain("a".into()),
-          value: Value::Number(1),
+          value: Value::String("1".into()),
         }),
         KeyValueOrSection::KeyValue(KeyValue {
           key: Key::Plain("b".into()),
@@ -369,11 +364,11 @@ a = 1
         }),
         KeyValueOrSection::KeyValue(KeyValue {
           key: Key::Array("i".into()),
-          value: Value::Number(1),
+          value: Value::String("1".into()),
         }),
         KeyValueOrSection::KeyValue(KeyValue {
           key: Key::Array("i".into()),
-          value: Value::Number(2),
+          value: Value::String("2".into()),
         }),
         KeyValueOrSection::KeyValue(KeyValue {
           key: Key::Plain("j".into()),
@@ -387,7 +382,7 @@ a = 1
           header: "section",
           items: vec![KeyValue {
             key: Key::Plain("a".into()),
-            value: Value::Number(1),
+            value: Value::String("1".into()),
           }]
         }),
       ]
