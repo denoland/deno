@@ -225,12 +225,6 @@ type ResolveCallback = (
   addresses: Records,
 ) => void;
 
-function isResolveCallback(
-  callback: unknown,
-): callback is ResolveCallback {
-  return typeof callback === "function";
-}
-
 const IANA_DNS_PORT = 53;
 const IPv6RE = new SafeRegExp("^\\[([^[\\]]*)\\]");
 const addrSplitRE = new SafeRegExp("(^.+?)(?::(\\d+))?$");
@@ -482,7 +476,6 @@ return {
   isLookupOptions,
   isLookupCallback,
   isFamily,
-  isResolveCallback,
   validateTimeout,
   validateTries,
   validateMaxTimeout,
