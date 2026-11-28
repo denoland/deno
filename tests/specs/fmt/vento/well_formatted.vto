@@ -1,0 +1,17 @@
+{{ layout "layout.vto" { title: t("notfound.title") } }}
+<header class="header">
+  <h1 class="header-title">
+    {{ t("notfound.title") }}
+  </h1>
+</header>
+
+<div class="not-found">
+  <p>
+    {{ t("notfound.description") }}
+  </p>
+
+  <a class="button is-primary" href="{{ [] |> path }}">
+    {{ t("notfound.action.back") }}
+  </a>
+</div>
+{{ /layout }}
