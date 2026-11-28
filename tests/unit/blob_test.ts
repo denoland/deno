@@ -128,3 +128,12 @@ Deno.test(function blobCustomInspectFunction() {
   );
   assertStringIncludes(Deno.inspect(Blob.prototype), "Blob");
 });
+
+Deno.test(async function blobSliceChain() {
+  // Reading or dropping a long chain of slices must not overflow the stack.
+  let blob = new Blob(["hello world"]);
+  for (let i = 0; i < 200_000; i++) {
+    blob = blob.slice();
+  }
+  assertEquals(await blob.slice(6).text(), "world");
+});
