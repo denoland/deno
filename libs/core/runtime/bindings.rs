@@ -1145,10 +1145,12 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
 ) {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   v8::callback_scope!(unsafe scope, context);
+  // Settling fails if the isolate is terminated while it runs, for example
+  // while `resolve` reads `then` from the result. There is nothing to do then.
   if success == v8::WasmAsyncSuccess::Success {
-    resolver.resolve(scope, compilation_result).unwrap();
+    let _ = resolver.resolve(scope, compilation_result);
   } else {
-    resolver.reject(scope, compilation_result).unwrap();
+    let _ = resolver.reject(scope, compilation_result);
   }
 }
 
