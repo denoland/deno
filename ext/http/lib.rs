@@ -1548,7 +1548,7 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        let bytes = view.to_vec().into();
+        let bytes = view.into_bytes();
         if body.sender().send_data(bytes).await.is_err() {
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
