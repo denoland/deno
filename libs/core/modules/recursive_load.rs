@@ -326,16 +326,10 @@ impl RecursiveModuleLoad {
       .module_map_rc
       .has_synthetic_esm_module(module_request.reference.specifier.as_str())
     {
-      let module_id = self
-        .module_map_rc
-        .build_synthetic_esm_module(
-          scope,
-          module_request.reference.specifier.as_str(),
-        )
-        .map_err(|e| {
-          let exception = e.to_v8_error(scope);
-          ModuleError::Exception(v8::Global::new(scope, exception))
-        })?;
+      let module_id = self.module_map_rc.build_synthetic_esm_module(
+        scope,
+        module_request.reference.specifier.as_str(),
+      )?;
       self.finalize_module(module_id, &module_request.reference, None);
       return Ok(RegisterOutcome::Done);
     }
