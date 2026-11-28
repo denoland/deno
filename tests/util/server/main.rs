@@ -17,23 +17,6 @@ fn main() {
   servers::run_all_servers();
 }
 
-/// Binds a TCP listener with a larger accept backlog than tokio's default,
-/// which is 128 since mio 1.1. Tests open many concurrent connections and on
-/// Windows connections are reset once the accept queue is full.
-pub async fn bind_tcp_listener(
-  addr: std::net::SocketAddr,
-) -> std::io::Result<tokio::net::TcpListener> {
-  let socket = if addr.is_ipv4() {
-    tokio::net::TcpSocket::new_v4()?
-  } else {
-    tokio::net::TcpSocket::new_v6()?
-  };
-  #[cfg(not(windows))]
-  socket.set_reuseaddr(true)?;
-  socket.bind(addr)?;
-  socket.listen(1024)
-}
-
 fn setup_panic_hook() {
   // Tokio does not exit the process when a task panics, so we define a custom
   // panic hook to implement this behaviour.
